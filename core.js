@@ -15,6 +15,23 @@ window.App = (function () {
   const C   = window.Components;    // ← gjenbrukbare komponenter
   const NS  = CFG.storageKey || "site";   // ← localStorage-prefiks fra config
 
+  // ─── TIDLEG SUPERCONFIG-OVERRIDE ──────────────────────────────────────────
+  // Må køyre HER, før modulane lèser CFG.features i sine eigne IIFE-ar.
+  // Store-abstraksjonen er ikkje klar enno, so vi les direkte frå localStorage.
+  (function earlyApplySuperConfig() {
+    try {
+      const raw = localStorage.getItem(NS + ":superconfig");
+      if (!raw) return;
+      const sc = JSON.parse(raw);
+      if (sc.features && CFG.features) Object.assign(CFG.features, sc.features);
+      if (sc.company  && CFG.company)  Object.assign(CFG.company,  sc.company);
+      if (sc.colors   && CFG.colors)   Object.assign(CFG.colors,   sc.colors);
+      if (sc.fonts    && CFG.fonts)    Object.assign(CFG.fonts,     sc.fonts);
+      if (sc.adminPassword && CFG.admin) CFG.admin.password = sc.adminPassword;
+    } catch (e) { /* localStorage utilgjengeleg */ }
+  })();
+  // ──────────────────────────────────────────────────────────────────────────
+
   /* ===========================================================================
      1) LAGRINGSLAG
      ---------------------------------------------------------------------------
