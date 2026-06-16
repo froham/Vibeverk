@@ -124,7 +124,7 @@ window.SITE_CONFIG = {
     // kan ses av tekniske brukere). Det holder skjult innhold unna vanlige
     // besøkende, men er ikke ekte sikkerhet. Ekte autentisering kommer med
     // Supabase-backenden senere.
-    password: "endre-meg-123",               // ← Admin-passord
+    password: "Vibe321",               // ← Admin-passord
 
     // Hvordan man åpner panelet:
     //   1) Trippelklikk på footeren, eller
