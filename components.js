@@ -450,6 +450,23 @@ window.Components = (function () {
         }).join("")}</ul></nav>`
       : "";
 
+    // Personvern-lenke + read-only info-popup (ingen avhukingsboks — kun visning)
+    const pcfg = (o.privacy || (window.SITE_CONFIG && window.SITE_CONFIG.privacy)) || {};
+    const pHeading = esc(pcfg.heading || "Personvern og databehandling");
+    const pText    = esc(pcfg.text    || "");
+    const privacyLink = pText
+      ? `<button type="button" class="site-footer__navlink terms-link" style="text-decoration:none" data-terms-open="footer-privacy">Personvern</button>`
+      : "";
+    const privacyModal = pText
+      ? `<div class="terms-modal-back" data-terms-modal="footer-privacy" style="display:none">
+           <div class="terms-modal">
+             <h3>${pHeading}</h3>
+             <p class="terms-modal-text">${pText}</p>
+             ${button({ label: "Lukk", variant: "ghost", class: "terms-modal-close", attrs: 'data-terms-close="footer-privacy"' })}
+           </div>
+         </div>`
+      : "";
+
     return `
       <footer class="site-footer" data-footer>
         <div class="container site-footer__inner">
@@ -459,7 +476,9 @@ window.Components = (function () {
           </div>
           ${linksHtml}
           <span class="site-footer__copy">${copyright}</span>
+          ${privacyLink}
         </div>
+        ${privacyModal}
       </footer>`;
   }
 

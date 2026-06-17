@@ -385,11 +385,13 @@ window.App = (function () {
       name:    CFG.company.name,
       year:    new Date().getFullYear(),
       footer:  Object.assign({}, CFG.footer, content.footer || {}),
-      links:   footerLinks
+      links:   footerLinks,
+      privacy: CFG.privacy
     });
     app.innerHTML = navHtml + '<main id="main"></main>' + footerHtml;
     bindMobileNav();
     bindAdminAccess();
+    bindTerms(app, "footer-privacy");
     // Søkeknapp
     const searchBtn = app.querySelector("[data-open-search]");
     if (searchBtn) searchBtn.addEventListener("click", openSearch);
@@ -1994,6 +1996,7 @@ window.App = (function () {
     if (sc.colors)   Object.assign(CFG.colors,   sc.colors);
     if (sc.fonts)    Object.assign(CFG.fonts,     sc.fonts);
     if (sc.features) Object.assign(CFG.features,  sc.features);
+    if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
     applyTheme(); render();
   }
@@ -2005,6 +2008,7 @@ window.App = (function () {
     if (sc.colors)   Object.assign(CFG.colors,   sc.colors);
     if (sc.fonts)    Object.assign(CFG.fonts,     sc.fonts);
     if (sc.features) Object.assign(CFG.features,  sc.features);
+    if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
   }
 
@@ -2072,6 +2076,7 @@ window.App = (function () {
     const ft   = Object.assign({}, CFG.features, sc.features || {});
     const meta = sc.meta || {};
     const an   = Store.get("analytics", null) || (CFG.analytics || {});
+    const priv = Object.assign({}, CFG.privacy, sc.privacy || {});
 
     const featFields = Object.keys(CFG.features || {}).map(function (k) {
       const on = (ft[k] !== false);
@@ -2121,6 +2126,11 @@ window.App = (function () {
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre for internt bruk — ikkje synleg for kunden noko sted.</p>' +
           C.field({ id:"sa-github", label:"GitHub-repo URL", value: meta.githubUrl || "", placeholder:"https://github.com/brukernavn/repo" }) +
         '</fieldset>' +
+        '<fieldset class="admin-group"><legend>Personvernerklæring</legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, samt via «Personvern»-lenken i footer.</p>' +
+          C.field({ id:"sa-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
+          C.field({ id:"sa-priv-text", label:"Tekst", multiline:true, rows:10, value: priv.text || "" }) +
+        '</fieldset>' +
         '<fieldset class="admin-group"><legend>Funksjonar</legend>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + featFields + '</div>' +
         '</fieldset>' +
@@ -2166,7 +2176,11 @@ window.App = (function () {
         },
         adminPassword: body.querySelector("#sa-apass").value,
         features: feats,
-        meta: { githubUrl: body.querySelector("#sa-github").value.trim() }
+        meta: { githubUrl: body.querySelector("#sa-github").value.trim() },
+        privacy: {
+          heading: body.querySelector("#sa-priv-heading").value.trim(),
+          text:    body.querySelector("#sa-priv-text").value.trim()
+        }
       };
       saveSuperConfig(newSC);
 
