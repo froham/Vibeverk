@@ -101,6 +101,29 @@ window.Components = (function () {
     return `<p class="eyebrow"><span class="eyebrow__mark"></span>${esc(text)}</p>`;
   }
 
+  // Delt vilkår/personvern-rad: avhukingsboks + lenke som åpner popup med fulltekst.
+  // Brukes på kontaktskjema, booking-skjema og tilbud — samme mønster, ulik idPrefix.
+  function termsField(opts) {
+    const o = opts || {};
+    const id = esc(o.idPrefix || "terms");
+    const cfg = (window.SITE_CONFIG && window.SITE_CONFIG.privacy) || {};
+    const heading = esc(o.heading || cfg.heading || "Personvern og databehandling");
+    const text    = esc(o.text    || cfg.text    || "");
+    return `
+      <div class="terms-row">
+        <input type="checkbox" id="${id}-terms">
+        <label for="${id}-terms">Jeg har lest og godtar</label>
+        <button type="button" class="terms-link" data-terms-open="${id}">${heading}</button>
+      </div>
+      <div class="terms-modal-back" data-terms-modal="${id}" style="display:none">
+        <div class="terms-modal">
+          <h3>${heading}</h3>
+          <p class="terms-modal-text">${text}</p>
+          ${button({ label: "Lukk", variant: "ghost", class: "terms-modal-close", attrs: `data-terms-close="${id}"` })}
+        </div>
+      </div>`;
+  }
+
   // Generelt skjemafelt (brukes både på kontaktskjema og i admin).
   function field(opts) {
     const o = opts || {};
@@ -388,6 +411,7 @@ window.Components = (function () {
             ${field({ id: "lead-name",    label: "Navn",    required: true,  placeholder: "Ditt navn" })}
             ${field({ id: "lead-email",   label: "E-post",  required: true,  type: "email", placeholder: "deg@eksempel.no" })}
             ${field({ id: "lead-message", label: "Melding", required: true,  multiline: true, placeholder: "Hva kan vi hjelpe med?" })}
+            ${termsField({ idPrefix: "lead" })}
             <div class="contact__actions">
               ${button({ label: "Send melding", type: "submit", variant: "primary" })}
               ${(window.SITE_CONFIG && window.SITE_CONFIG.features && window.SITE_CONFIG.features.quote !== false)
@@ -493,7 +517,7 @@ window.Components = (function () {
 
   /* --- Eksport -------------------------------------------------------------- */
   return {
-    esc, icon, button, eyebrow, field, formatDate, image, coverImg, imageField,
+    esc, icon, button, eyebrow, field, termsField, formatDate, image, coverImg, imageField,
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
     contact, footer, modal, tabbar

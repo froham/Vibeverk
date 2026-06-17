@@ -208,7 +208,8 @@ window.App = (function () {
     leads.unshift({
       id: "lead-" + Date.now(),
       name: lead.name || "", email: lead.email || "", message: lead.message || "",
-      time: new Date().toISOString()
+      time: new Date().toISOString(),
+      status: "ny"   // ny → lest → løst
     });
     saveLeads(leads);
   }
@@ -537,10 +538,26 @@ window.App = (function () {
     return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
 
+  /* --- Delt vilkår/personvern-popup (kontakt, booking, tilbud) ------------- */
+  function bindTerms(container, idPrefix) {
+    const openBtn  = container.querySelector(`[data-terms-open="${idPrefix}"]`);
+    const closeBtn = container.querySelector(`[data-terms-close="${idPrefix}"]`);
+    const modal    = container.querySelector(`[data-terms-modal="${idPrefix}"]`);
+    if (!openBtn || !modal) return;
+    openBtn.addEventListener("click", function () { modal.style.display = ""; });
+    if (closeBtn) closeBtn.addEventListener("click", function () { modal.style.display = "none"; });
+    modal.addEventListener("click", function (e) { if (e.target === modal) modal.style.display = "none"; });
+  }
+  function termsAccepted(container, idPrefix) {
+    const cb = container.querySelector(`#${idPrefix}-terms`);
+    return !!(cb && cb.checked);
+  }
+
   /* --- Kontaktskjema → lagre lead ------------------------------------------ */
   function bindContactForm() {
     const form = document.querySelector("[data-contact-form]");
     if (!form) return;
+    bindTerms(form, "lead");
     // Forhåndsutfylt melding satt av f.eks. booking-modulen (App.prefillContact)
     if (pendingContact) {
       const msg = form.querySelector("#lead-message");
@@ -562,14 +579,12 @@ window.App = (function () {
         setStatus(status, "Sjekk e-postadressen.", "error");
         return;
       }
+      if (!termsAccepted(form, "lead")) {
+        setStatus(status, "Du må godta personvernerklæringen for å sende inn.", "error");
+        return;
+      }
 
-      const leads = getLeads();
-      leads.unshift({
-        id: "lead-" + Date.now(),
-        name: name, email: email, message: message,
-        time: new Date().toISOString()
-      });
-      saveLeads(leads);
+      addLead({ name: name, email: email, message: message });
 
       form.reset();
       setStatus(status, CFG.contactSection.successMessage, "ok"); // ← config-tekst
@@ -1263,6 +1278,7 @@ window.App = (function () {
     const shown  = ns.pageShown  || [];
     const order  = ns.pageOrder  || [];
     let all = orderedModules().filter(function (m) {
+      if (m.adminOnly) return false;
       if (!m.render && !m.renderPage) return false;
       if (hidden.indexOf(m.id) > -1) return false;
       if (m.page && !m.inline) return shown.indexOf(m.id) > -1;  // page-only: krev eksplisitt vis
@@ -1281,6 +1297,7 @@ window.App = (function () {
 
   // Hent nav/footer-synlighet for en modul
   function modNavVisible(mod) {
+    if (mod.adminOnly) return false;
     const s = getNavSettings()[mod.id];
     if (s && typeof s.nav === "boolean") return s.nav;
     return true; // default: vis
@@ -1498,15 +1515,28 @@ window.App = (function () {
     const quotes   = getLeads().filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
     const bookings = Store.get("booking-bookings", []) || [];
 
-    const a = Store.get("analytics", null) || {};
-    const gaVal  = (a.googleAnalytics || (CFG.analytics && CFG.analytics.googleAnalytics) || "");
-    const plVal  = (a.plausible       || (CFG.analytics && CFG.analytics.plausible)       || "");
-    const faVal  = (a.fathom          || (CFG.analytics && CFG.analytics.fathom)          || "");
+    // Innstillingene konfigureres kun av Vibeverk i super-admin — kunden ser bare resultatet.
+    const a = Store.get("analytics", null) || (CFG.analytics || {});
+    const gaVal    = (a.googleAnalytics  || "");
+    const plVal    = (a.plausible        || "");
+    const faVal    = (a.fathom           || "");
+    const embedVal = (a.plausibleEmbed   || "");
 
-    const hasAny = gaVal || plVal || faVal;
     const gaLink = gaVal ? `<a class="an-ext-link" href="https://analytics.google.com" target="_blank" rel="noopener">Åpne Google Analytics ${C.icon("external-link")}</a>` : "";
     const plLink = plVal ? `<a class="an-ext-link" href="https://plausible.io/${C.esc(plVal)}" target="_blank" rel="noopener">Åpne Plausible ${C.icon("external-link")}</a>` : "";
     const faLink = faVal ? `<a class="an-ext-link" href="https://app.usefathom.com" target="_blank" rel="noopener">Åpne Fathom ${C.icon("external-link")}</a>` : "";
+
+    const bits = [];
+    if (embedVal) {
+      const sep = embedVal.indexOf("?") > -1 ? "&" : "?";
+      const src = embedVal + sep + "embed=true&theme=light";
+      bits.push(`<iframe plausible-embed src="${C.esc(src)}" scrolling="no" frameborder="0" loading="lazy" style="width:1px;min-width:100%;height:1400px;border:0;border-radius:var(--radius)"></iframe>`);
+      bits.push(`<p style="font-size:.78rem;color:var(--color-muted);margin-top:.5rem">Drevet av <a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a></p>`);
+    }
+    if (gaVal) bits.push(gaLink);
+    if (plVal && !embedVal) bits.push(plLink);
+    if (faVal) bits.push(faLink);
+    const trafficHtml = bits.length ? bits.join("") : `<p class="an-hint">Ingen analyse er satt opp ennå. Ta kontakt med din leverandør for oppsett.</p>`;
 
     body.innerHTML = `
       <div class="an-wrap">
@@ -1519,70 +1549,174 @@ window.App = (function () {
 
         <div class="an-traffic">
           <h4 class="an-heading">Trafikk</h4>
-          ${hasAny
-            ? `<p class="an-hint">Analytics er koblet til. Trafikktall vises i eksternt dashboard.</p>${gaLink}${plLink}${faLink}`
-            : `<p class="an-hint">Ingen analytics koblet til ennå. Fyll inn ID nedenfor og lagre — scriptet lastes automatisk når siden starter.</p>`}
+          ${trafficHtml}
         </div>
-
-        <form class="admin-form" data-an-form>
-          <h4 class="an-heading" style="margin-top:1.4rem">Analytics-innstillinger</h4>
-          ${C.field({ id:"an-ga", label:"Google Analytics 4 – målings-ID", placeholder:"G-XXXXXXXXXX", value: gaVal,
-                      hint:"Finn ID under GA → Admin → Datastrømmer" })}
-          ${C.field({ id:"an-pl", label:"Plausible – domenenavn", placeholder:"nordpunkt.no", value: plVal,
-                      hint:"GDPR-vennlig, ingen cookie-banner nødvendig" })}
-          ${C.field({ id:"an-fa", label:"Fathom – site-ID", placeholder:"ABCDEFGH", value: faVal,
-                      hint:"GDPR-vennlig, ingen cookie-banner nødvendig" })}
-          <div class="admin-row__actions">
-            ${C.button({ label:"Lagre og aktiver", type:"submit", variant:"primary" })}
-          </div>
-          <p class="form__status" data-an-status role="status" aria-live="polite"></p>
-        </form>
       </div>`;
 
-    body.querySelector("[data-an-form]").addEventListener("submit", function (e) {
-      e.preventDefault();
-      const obj = {
-        googleAnalytics: body.querySelector("#an-ga").value.trim(),
-        plausible:       body.querySelector("#an-pl").value.trim(),
-        fathom:          body.querySelector("#an-fa").value.trim()
-      };
-      Store.set("analytics", obj);
-      initAnalytics();
-      const st = body.querySelector("[data-an-status]");
-      st.textContent = "Lagret! Analytics aktiveres ved neste sideinnlasting.";
-      st.className = "form__status is-ok";
+    // embed.host.js styrer auto-høgde på iframen — injiseres én gang globalt
+    if (embedVal && !document.getElementById("_pl-embed-script")) {
+      const s = document.createElement("script");
+      s.id = "_pl-embed-script";
+      s.async = true;
+      s.src = "https://plausible.io/js/embed.host.js";
+      document.body.appendChild(s);
+    }
+  }
+
+  /* ===========================================================================
+     STATUS-SYSTEM (Ny / Lest / Løst) — delt mellom Kontakt, Tilbud og Booking
+     ======================================================================== */
+  const STATUS_LABELS = { ny: "Ny", lest: "Lest", løst: "Løst" };
+  const STATUS_ORDER  = ["ny", "lest", "løst"];
+
+  function statusBadge(status) {
+    const s = status || "ny";
+    return `<span class="stat-badge stat-badge--${C.esc(s)}">${C.esc(STATUS_LABELS[s] || s)}</span>`;
+  }
+
+  // Bygg filter-chip-rad. key brukes til localStorage (eige filter pr. fane).
+  function statusFilterBar(key, counts) {
+    const stored = Store.get("statusfilter-" + key, null);
+    const active = stored || STATUS_ORDER.slice();
+    return `<div class="stat-filters" data-stat-filters="${C.esc(key)}">` +
+      STATUS_ORDER.map(function (s) {
+        const on = active.indexOf(s) > -1;
+        return `<button type="button" class="stat-chip stat-chip--${s} ${on ? "is-on" : ""}" data-stat-chip="${s}">` +
+          `${STATUS_LABELS[s]} (${counts[s] || 0})</button>`;
+      }).join("") + `</div>`;
+  }
+
+  function getActiveStatuses(key) {
+    return Store.get("statusfilter-" + key, null) || STATUS_ORDER.slice();
+  }
+
+  function bindStatusFilterBar(body, key, onChange) {
+    const bar = body.querySelector(`[data-stat-filters="${key}"]`);
+    if (!bar) return;
+    bar.querySelectorAll("[data-stat-chip]").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        const s = chip.getAttribute("data-stat-chip");
+        let active = getActiveStatuses(key);
+        if (active.indexOf(s) > -1) {
+          // Ikkje lov å fjerne siste aktive filter (ville vist ingenting)
+          if (active.length === 1) return;
+          active = active.filter(function (x) { return x !== s; });
+        } else {
+          active = active.concat([s]);
+        }
+        Store.set("statusfilter-" + key, active);
+        onChange();
+      });
     });
   }
 
+  function setLeadStatus(id, status) {
+    const leads = getLeads();
+    const lead = leads.find(function (l) { return l.id === id; });
+    if (lead) { lead.status = status; saveLeads(leads); }
+  }
+  function deleteByEmail(email) {
+    email = (email || "").trim().toLowerCase();
+    if (!email) return 0;
+    let count = 0;
+    // Leads og tilbod
+    const before = getLeads().length;
+    saveLeads(getLeads().filter(function (l) { return (l.email || "").toLowerCase() !== email; }));
+    count += before - getLeads().length;
+    // Bookingar (via App.store — same namespace)
+    const bk = Store.get("booking-bookings", []) || [];
+    const bkAfter = bk.filter(function (b) { return (b.email || "").toLowerCase() !== email; });
+    Store.set("booking-bookings", bkAfter);
+    count += bk.length - bkAfter.length;
+    // CRM-kundar (om modulen er aktiv)
+    const customers = Store.get("crm-customers", []) || [];
+    const custAfter = customers.filter(function (c) { return (c.email || "").toLowerCase() !== email; });
+    Store.set("crm-customers", custAfter);
+    count += customers.length - custAfter.length;
+    return count;
+  }
+
   function adminLeads(body) {
-    const leads = getLeads().filter(function (l) {
+    const allLeads = getLeads().filter(function (l) {
       return !l.message || l.message.indexOf("Tilbudsforesp") !== 0;
     });
-    if (!leads.length) {
-      body.innerHTML = `<p class="prose prose--muted">Ingen innsendte skjema ennå.</p>`;
-      return;
-    }
-    const rows = leads.map(function (l) {
+    const active = getActiveStatuses("kontakt");
+    const leads = allLeads.filter(function (l) { return active.indexOf(l.status || "ny") > -1; });
+    const counts = { ny: 0, lest: 0, løst: 0 };
+    allLeads.forEach(function (l) { counts[l.status || "ny"]++; });
+
+    const rows = leads.length ? leads.map(function (l) {
+      const st = l.status || "ny";
+      const preview = (l.message || "").split("\n").filter(function (ln) { return ln.trim(); }).slice(0, 1).join("").slice(0, 90);
       return `
         <li class="admin-row admin-row--lead" data-id="${C.esc(l.id)}">
           <div class="admin-row__main">
-            <strong>${C.esc(l.name)}</strong>
-            <a href="mailto:${C.esc(l.email)}">${C.esc(l.email)}</a>
-            <div class="admin-lead-msg">${messageToHtml(l.message)}</div>
+            <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+              <strong>${C.esc(l.name)}</strong>
+              <a href="mailto:${C.esc(l.email)}">${C.esc(l.email)}</a>
+              ${statusBadge(st)}
+            </div>
+            <details class="lead-details" data-lead-details="${C.esc(l.id)}">
+              <summary>${C.esc(preview)}${preview.length === 90 ? "…" : ""}</summary>
+              <div class="admin-lead-msg">${messageToHtml(l.message)}</div>
+            </details>
             <span class="admin-row__meta">${formatDateTime(l.time)}</span>
           </div>
-          <div class="admin-row__actions">
-            ${C.button({ label: "Svar i e-post", icon: "mail-forward", variant: "primary", attrs: 'data-reply-lead="' + C.esc(l.id) + '"' })}
-            ${C.button({ label: "Slett", variant: "ghost", attrs: 'data-del-lead="' + C.esc(l.id) + '"' })}
+          <div class="admin-row__actions" style="flex-direction:column;align-items:flex-end;gap:.4rem">
+            <div style="display:flex;gap:.4rem">
+              ${C.button({ label: "Svar i e-post", icon: "mail-forward", variant: "primary", attrs: 'data-reply-lead="' + C.esc(l.id) + '"' })}
+              ${C.button({ label: "Slett", variant: "ghost", attrs: 'data-del-lead="' + C.esc(l.id) + '"' })}
+            </div>
+            <select class="stat-select" data-status-select="${C.esc(l.id)}">
+              ${STATUS_ORDER.map(function (s) { return `<option value="${s}" ${s===st?"selected":""}>${STATUS_LABELS[s]}</option>`; }).join("")}
+            </select>
           </div>
         </li>`;
-    }).join("");
-    body.innerHTML = `<ul class="admin-list">${rows}</ul>`;
+    }).join("") : '<li class="prose prose--muted" style="padding:.5rem 0">Ingen henvendingar med valgt status.</li>';
+
+    body.innerHTML =
+      `${statusFilterBar("kontakt", counts)}
+       <ul class="admin-list">${rows}</ul>
+       <div class="crm-gdpr-box">
+         <h4 class="crm-gdpr-title">${C.icon("shield")} Slett alle data på ein person</h4>
+         <p class="crm-gdpr-desc">Skriv inn e-postadresse for å slette alle henvendingar, tilbod og bookingar knytt til denne personen (GDPR §17).</p>
+         <form data-gdpr-form style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
+           <div class="field" style="flex:1;min-width:220px;margin:0">
+             <label for="gdpr-email">E-postadresse</label>
+             <input type="email" id="gdpr-email" placeholder="person@eksempel.no" required>
+           </div>
+           ${C.button({ label: "Slett all data", icon: "trash", variant: "ghost", type: "submit", attrs: 'style="border-color:#c0392b;color:#c0392b"' })}
+         </form>
+         <p class="form__status" data-gdpr-status style="margin-top:.5rem"></p>
+       </div>`;
+
+    bindStatusFilterBar(body, "kontakt", function () { adminLeads(body); });
+
+    // Variant B: eksplisitt klikk på «Vis hele meldingen» (details/summary) → Lest
+    body.querySelectorAll("[data-lead-details]").forEach(function (det) {
+      det.addEventListener("toggle", function () {
+        if (!det.open) return;
+        const id = det.getAttribute("data-lead-details");
+        const lead = getLeads().find(function (l) { return l.id === id; });
+        if (lead && (lead.status || "ny") === "ny") { setLeadStatus(id, "lest"); adminLeads(body); }
+      });
+    });
+
     body.querySelectorAll("[data-reply-lead]").forEach(function (b) {
       b.addEventListener("click", function () {
         const id   = b.getAttribute("data-reply-lead");
         const lead = getLeads().find(function (l) { return l.id === id; });
-        if (lead) openReplyModal(lead, "Re: Henvendelse fra " + (lead.name || ""));
+        if (lead) {
+          setLeadStatus(id, "løst");
+          openReplyModal(lead, "Re: Henvendelse fra " + (lead.name || ""));
+          adminLeads(body);
+        }
+      });
+    });
+    body.querySelectorAll("[data-status-select]").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        setLeadStatus(sel.getAttribute("data-status-select"), sel.value);
+        adminLeads(body);
       });
     });
     body.querySelectorAll("[data-del-lead]").forEach(function (b) {
@@ -1591,6 +1725,22 @@ window.App = (function () {
         saveLeads(getLeads().filter(function (l) { return l.id !== id; }));
         adminLeads(body);
       });
+    });
+    body.querySelector("[data-gdpr-form]").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const email = body.querySelector("#gdpr-email").value.trim();
+      const st    = body.querySelector("[data-gdpr-status]");
+      if (!confirm("Slett ALL data knytt til «" + email + "»? Dette kan ikkje angrast.")) return;
+      const n = deleteByEmail(email);
+      body.querySelector("#gdpr-email").value = "";
+      if (n > 0) {
+        st.textContent = "✓ Sletta " + n + " oppføring(ar) for " + email + ".";
+        st.className = "form__status is-ok";
+        adminLeads(body);
+      } else {
+        st.textContent = "Ingen data funne for " + email + ".";
+        st.className = "form__status is-error";
+      }
     });
   }
 
@@ -1915,11 +2065,13 @@ window.App = (function () {
   }
 
   function renderSuperAdminForm(body) {
-    const sc  = getSuperConfig();
-    const col = Object.assign({}, CFG.colors,   sc.colors   || {});
-    const com = Object.assign({}, CFG.company,  sc.company  || {});
-    const fnt = Object.assign({}, CFG.fonts,    sc.fonts    || {});
-    const ft  = Object.assign({}, CFG.features, sc.features || {});
+    const sc   = getSuperConfig();
+    const col  = Object.assign({}, CFG.colors,   sc.colors   || {});
+    const com  = Object.assign({}, CFG.company,  sc.company  || {});
+    const fnt  = Object.assign({}, CFG.fonts,    sc.fonts    || {});
+    const ft   = Object.assign({}, CFG.features, sc.features || {});
+    const meta = sc.meta || {};
+    const an   = Store.get("analytics", null) || (CFG.analytics || {});
 
     const featFields = Object.keys(CFG.features || {}).map(function (k) {
       const on = (ft[k] !== false);
@@ -1955,6 +2107,19 @@ window.App = (function () {
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
           C.field({ id:"sa-apass", label:"Passord", value: CFG.admin && CFG.admin.password || "" }) +
+        '</fieldset>' +
+        '<fieldset class="admin-group"><legend>Analyse og integrasjoner</legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre synleg her. Kunden ser kun resultatet i Analyse-fanen i sin admin.</p>' +
+          C.field({ id:"sa-an-ga",      label:"Google Analytics 4 – målings-ID", value: an.googleAnalytics || "", placeholder:"G-XXXXXXXXXX" }) +
+          C.field({ id:"sa-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"nordpunkt.no" }) +
+          C.field({ id:"sa-an-plembed", label:"Plausible – delt lenke for innebygd dashboard", value: an.plausibleEmbed || "", placeholder:"https://plausible.io/share/nordpunkt.no?auth=xxxxx",
+                      hint:"Plausible → Site Settings → Visibility → Embed dashboard. Vises direkte i kundens Analyse-fane." }) +
+          C.field({ id:"sa-an-fa",      label:"Fathom – site-ID", value: an.fathom || "", placeholder:"ABCDEFGH" }) +
+          C.field({ id:"sa-an-gtm",     label:"Google Tag Manager – container-ID", value: an.gtm || "", placeholder:"GTM-XXXXXXX" }) +
+        '</fieldset>' +
+        '<fieldset class="admin-group"><legend>Vibeverk-referanse</legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre for internt bruk — ikkje synleg for kunden noko sted.</p>' +
+          C.field({ id:"sa-github", label:"GitHub-repo URL", value: meta.githubUrl || "", placeholder:"https://github.com/brukernavn/repo" }) +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Funksjonar</legend>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + featFields + '</div>' +
@@ -2000,9 +2165,21 @@ window.App = (function () {
           }
         },
         adminPassword: body.querySelector("#sa-apass").value,
-        features: feats
+        features: feats,
+        meta: { githubUrl: body.querySelector("#sa-github").value.trim() }
       };
       saveSuperConfig(newSC);
+
+      // Analyse-innstillingar lagres separat (samme nøkkel som adminAnalyse/initAnalytics leser)
+      Store.set("analytics", {
+        googleAnalytics: body.querySelector("#sa-an-ga").value.trim(),
+        plausible:       body.querySelector("#sa-an-pl").value.trim(),
+        plausibleEmbed:  body.querySelector("#sa-an-plembed").value.trim(),
+        fathom:          body.querySelector("#sa-an-fa").value.trim(),
+        gtm:             body.querySelector("#sa-an-gtm").value.trim()
+      });
+      initAnalytics();
+
       saHasUnsaved = false;
       const st = body.querySelector("[data-sa-status]");
       st.textContent = "✓ Lagra! Endringar er aktivert."; st.className = "form__status is-ok";
@@ -2012,9 +2189,10 @@ window.App = (function () {
 
   function initAnalytics() {
     const a = Store.get("analytics", null) || (CFG.analytics || {});
-    const ga = (a.googleAnalytics || "").trim();
-    const pl = (a.plausible || "").trim();
-    const fa = (a.fathom || "").trim();
+    const ga  = (a.googleAnalytics || "").trim();
+    const pl  = (a.plausible || "").trim();
+    const fa  = (a.fathom || "").trim();
+    const gtm = (a.gtm || "").trim();
 
     if (ga && !document.getElementById("_ga-script")) {
       const s1 = document.createElement("script");
@@ -2042,6 +2220,15 @@ window.App = (function () {
       s3.defer = true;
       s3.setAttribute("data-site", fa);
       document.head.appendChild(s3);
+    }
+    if (gtm && !document.getElementById("_gtm-script")) {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+      const s4 = document.createElement("script");
+      s4.id    = "_gtm-script";
+      s4.async = true;
+      s4.src   = "https://www.googletagmanager.com/gtm.js?id=" + encodeURIComponent(gtm);
+      document.head.appendChild(s4);
     }
   }
 
@@ -2101,6 +2288,14 @@ window.App = (function () {
     openAdmin: openAdmin,
     prefillContact: prefillContact,
     openReplyModal: openReplyModal,
+    // Status-system (Ny/Lest/Løst) — for bruk i moduler (Tilbud, Booking)
+    statusBadge:          statusBadge,
+    statusFilterBar:      statusFilterBar,
+    getActiveStatuses:    getActiveStatuses,
+    bindStatusFilterBar:  bindStatusFilterBar,
+    setLeadStatus:        setLeadStatus,
+    STATUS_LABELS:        STATUS_LABELS,
+    STATUS_ORDER:         STATUS_ORDER,
     // Gjenbrukbare UI-verktøy (bildefelt med beskjæring) for moduler:
     ui: {
       imageField:      imgField,
@@ -2110,7 +2305,9 @@ window.App = (function () {
         return C.attachField({ id: id, value: JSON.stringify(existing || []) });
       },
       bindAttachField:  bindAttachField,            // kobler opp vedleggsfelt
-      readAttachments:  readAttachments             // (scope, id) → []
+      readAttachments:  readAttachments,            // (scope, id) → []
+      bindTerms:        bindTerms,                  // (container, idPrefix) — kobler opp vilkår-popup
+      termsAccepted:    termsAccepted                // (container, idPrefix) → bool
     }
   };
 })();

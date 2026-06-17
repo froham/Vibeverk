@@ -23,8 +23,8 @@
 
   var esc = C.esc;
   var QCF = CFG.quote || {};
-  var TERMS_HEADING = QCF.termsHeading || "Vilkår og personvern";
-  var TERMS_TEXT    = QCF.termsText    || "Standardvilkår — rediger i config.js under quote.termsText.";
+  var TERMS_HEADING = QCF.termsHeading || (CFG.privacy && CFG.privacy.heading) || "Vilkår og personvern";
+  var TERMS_TEXT    = QCF.termsText    || (CFG.privacy && CFG.privacy.text)    || "Standardvilkår — rediger i config.js under quote.termsText.";
   var MAX_FILE_MB   = 8;
 
   /* =========================================================================
@@ -341,36 +341,72 @@
      ====================================================================== */
   function renderAdminInfo(body) {
     var allLeads = App.getLeads ? App.getLeads() : [];
-    var quotes = allLeads.filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
+    var allQuotes = allLeads.filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
+    var active = App.getActiveStatuses("tilbud");
+    var quotes = allQuotes.filter(function (l) { return active.indexOf(l.status || "ny") > -1; });
+    var counts = { ny: 0, lest: 0, løst: 0 };
+    allQuotes.forEach(function (l) { counts[l.status || "ny"]++; });
 
     var rows = quotes.length ? quotes.map(function (l) {
+      var st = l.status || "ny";
       var preview = (l.message || "").split("\n").filter(function (ln) {
         return ln.trim() && ln.indexOf("===") === -1 && ln !== "Tilbudsforespørsel";
       }).slice(0, 2).join(" · ").slice(0, 120);
       var dato = l.time ? new Date(l.time).toLocaleDateString("nb-NO", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
       return '<li class="admin-row" style="flex-direction:column;align-items:stretch;gap:.4rem">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">' +
-          '<div>' +
+          '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">' +
             '<strong>' + esc(l.name || "(ukjent)") + '</strong>' +
             ' <a href="mailto:' + esc(l.email) + '" style="color:var(--color-primary)">' + esc(l.email) + '</a>' +
-            (dato ? '<span class="admin-row__meta" style="margin-left:.6rem">' + dato + '</span>' : '') +
+            App.statusBadge(st) +
+            (dato ? '<span class="admin-row__meta" style="margin-left:.4rem">' + dato + '</span>' : '') +
           '</div>' +
-          '<div style="display:flex;gap:.4rem">' +
-            C.button({ label:"Svar i e-post", icon:"mail-forward", variant:"primary", attrs:'data-qt-reply="' + esc(l.id) + '"' }) +
-            C.button({ label:"Slett", variant:"ghost", attrs:'data-qt-del="' + esc(l.id) + '"' }) +
+          '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem">' +
+            '<div style="display:flex;gap:.4rem">' +
+              C.button({ label:"Svar i e-post", icon:"mail-forward", variant:"primary", attrs:'data-qt-reply="' + esc(l.id) + '"' }) +
+              C.button({ label:"Slett", variant:"ghost", attrs:'data-qt-del="' + esc(l.id) + '"' }) +
+            '</div>' +
+            '<select class="stat-select" data-qt-status="' + esc(l.id) + '">' +
+              App.STATUS_ORDER.map(function (s) { return '<option value="' + s + '" ' + (s===st?"selected":"") + '>' + App.STATUS_LABELS[s] + '</option>'; }).join("") +
+            '</select>' +
           '</div>' +
         '</div>' +
-        (preview ? '<p style="margin:0;font-size:.87rem;color:var(--color-muted)">' + esc(preview) + '…</p>' : '') +
+        '<details class="lead-details" data-qt-details="' + esc(l.id) + '">' +
+          '<summary>' + esc(preview) + (preview.length >= 120 ? "…" : "") + '</summary>' +
+          '<div class="admin-lead-msg">' + esc(l.message).replace(/\n/g, "<br>") + '</div>' +
+        '</details>' +
       '</li>';
-    }).join("") : '<li class="prose prose--muted">Ingen tilbudsforespørsler ennå.</li>';
+    }).join("") : '<li class="prose prose--muted">Ingen tilbudsforespørsler med valgt status.</li>';
 
-    body.innerHTML = '<ul class="admin-list">' + rows + '</ul>';
+    body.innerHTML = App.statusFilterBar("tilbud", counts) + '<ul class="admin-list">' + rows + '</ul>';
+
+    App.bindStatusFilterBar(body, "tilbud", function () { renderAdminInfo(body); });
+
+    // Variant B: eksplisitt klikk på «Vis hele meldingen» → Lest
+    body.querySelectorAll("[data-qt-details]").forEach(function (det) {
+      det.addEventListener("toggle", function () {
+        if (!det.open) return;
+        var id = det.getAttribute("data-qt-details");
+        var lead = App.getLeads().find(function (l) { return l.id === id; });
+        if (lead && (lead.status || "ny") === "ny") { App.setLeadStatus(id, "lest"); renderAdminInfo(body); }
+      });
+    });
 
     body.querySelectorAll("[data-qt-reply]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-qt-reply");
         var lead = App.getLeads().find(function (l) { return l.id === id; });
-        if (lead && App.openReplyModal) App.openReplyModal(lead, "Re: Tilbudsforespørsel – " + (lead.name || ""));
+        if (lead && App.openReplyModal) {
+          App.setLeadStatus(id, "løst");
+          App.openReplyModal(lead, "Re: Tilbudsforespørsel – " + (lead.name || ""));
+          renderAdminInfo(body);
+        }
+      });
+    });
+    body.querySelectorAll("[data-qt-status]").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        App.setLeadStatus(sel.getAttribute("data-qt-status"), sel.value);
+        renderAdminInfo(body);
       });
     });
     body.querySelectorAll("[data-qt-del]").forEach(function (btn) {

@@ -144,7 +144,8 @@ window.SITE_CONFIG = {
     quote:       true,   // ← Tilbud-modul.  Krever module-quote.js
     references:  true,   // ← Referanser-modul. Krever module-references.js
     faq:         true,   // ← FAQ-modul.         Krever module-faq.js
-    siteSearch:  true    // ← Søk på heile sida (søkikon i toppmenyen)
+    siteSearch:  true,   // ← Søk på heile sida (søkikon i toppmenyen)
+    crm:         true    // ← Kunder-modul (lett CRM). Krever module-crm.js
   },
 
   /* --- FAQ (modul) ---------------------------------------------------------- */
@@ -170,8 +171,27 @@ window.SITE_CONFIG = {
   quote: {
     heading:      "Be om tilbud",
     intro:        "Beskriv jobben og send inn – vi gir deg et uforpliktende tilbud.",
-    termsHeading: "Vilkår og personvern",
-    termsText:    "Ved å sende inn dette skjemaet samtykker du til at vi behandler dine personopplysninger for å gi deg et tilbud. Opplysningene deles ikke med tredjeparter og slettes når de ikke lenger er nødvendige.\n\nEtter å ha mottatt tilbudet er du ikke forpliktet til å akseptere. Ta kontakt dersom du ønsker innsyn eller sletting av dine data."
+    termsHeading: "",   // tom = bruker CFG.privacy.heading
+    termsText:    ""    // tom = bruker CFG.privacy.text (delt personvernerklæring)
+  },
+
+  /* --- Personvern / GDPR ------------------------------------------------------
+     Delt vilkårstekst som vises i popup på kontaktskjema, booking og tilbud.
+     Rediger fritt — teksten under er et utgangspunkt, ikke juridisk rådgivning. */
+  privacy: {
+    heading: "Personvern og databehandling",
+    text:
+      "Når du sender oss en henvendelse, ber om tilbud eller reserverer en booking, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +
+      "Hvor lagres opplysningene?\n" +
+      "Nettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
+      "Bruker vi cookies?\n" +
+      "Nei, ikke som standard. Dersom denne siden bruker trafikkanalyse, skjer det via Plausible Analytics — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende.\n\n" +
+      "Hvor lenge lagres opplysningene?\n" +
+      "Vi oppbevarer henvendelser, tilbud og bookinger så lenge det er nødvendig for å følge opp saken din. Du kan når som helst be om at opplysningene dine slettes.\n\n" +
+      "Dine rettigheter\n" +
+      "Du har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold.\n\n" +
+      "Samtykke\n" +
+      "Ved å sende inn dette skjemaet samtykker du til at vi behandler opplysningene dine slik beskrevet over."
   },
 
   /* --- Footer --------------------------------------------------------------- */

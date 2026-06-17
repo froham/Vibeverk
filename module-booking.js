@@ -86,6 +86,7 @@
           C.field({ id:"bk-c-name", label:"Navn", required:true, placeholder:"Ditt navn" }) +
           C.field({ id:"bk-c-email", label:"E-post", required:true, type:"email", placeholder:"deg@eksempel.no" }) +
           C.field({ id:"bk-c-msg", label:"Melding", required:true, multiline:true, rows:4, placeholder:"Hva ønsker du å booke?" }) +
+          C.termsField({ idPrefix: "bk-c" }) +
           C.button({ label:"Send forespørsel", type:"submit", variant:"primary" }) +
           '<p class="form__status" data-bk-c-status role="status" aria-live="polite"></p>' +
         '</form>' +
@@ -185,6 +186,7 @@
     // Send forespørsel → lagre som lead (admin ser det under Leads)
     var cform = root.querySelector("[data-bk-contact-form]");
     if (cform) {
+      App.ui.bindTerms(cform, "bk-c");
       cform.addEventListener("submit", function (e) {
         e.preventDefault();
         var st = cform.querySelector("[data-bk-c-status]");
@@ -193,6 +195,7 @@
         var message = cform.querySelector("#bk-c-msg").value.trim();
         if (!name || !email || !message) { st.textContent = "Fyll inn navn, e-post og melding."; st.className = "form__status is-error"; return; }
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Sjekk e-postadressen."; st.className = "form__status is-error"; return; }
+        if (!App.ui.termsAccepted(cform, "bk-c")) { st.textContent = "Du må godta personvernerklæringen for å sende inn."; st.className = "form__status is-error"; return; }
         App.addLead({ name: name, email: email, message: message });
         cform.reset();
         st.textContent = (CFG.contactSection && CFG.contactSection.successMessage) || "Takk! Vi tar kontakt så snart vi kan.";
@@ -219,6 +222,7 @@
           C.field({ id: phoneId, label: "Telefonnummer", placeholder: "+47 000 00 000" }) +
           C.field({ id: msgId,   label: "Melding",       placeholder: "Evt. kommentar til bookingen" }) +
         '</div>' +
+        C.termsField({ idPrefix: "bkc-" + a.id }) +
         '<div class="admin-row__actions">' +
           C.button({ label: "Bekreft reservasjon", type: "submit", variant: "primary" }) +
           C.button({ label: "Avbryt", variant: "ghost", attrs: "data-cancel" }) +
@@ -227,6 +231,8 @@
       '</form>';
     var form = box.querySelector("[data-confirm-form]");
     var st = form.querySelector("[data-cstatus]");
+    var termsId = "bkc-" + a.id;
+    App.ui.bindTerms(form, termsId);
     form.querySelector("[data-cancel]").addEventListener("click", function () { box.innerHTML = ""; });
     form.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -236,10 +242,11 @@
       var msg   = form.querySelector("#" + msgId).value.trim();
       if (!name || !email) { st.textContent = "Fyll inn navn og e-post."; st.className = "form__status is-error"; return; }
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Sjekk e-postadressen."; st.className = "form__status is-error"; return; }
+      if (!App.ui.termsAccepted(form, termsId)) { st.textContent = "Du må godta personvernerklæringen for å reservere."; st.className = "form__status is-error"; return; }
       if (isBooked(a.id, date, time) || isBlocked(a, date, time)) { st.textContent = "Beklager, tiden er ikke tilgjengelig."; st.className = "form__status is-error"; return; }
       var list = getBookings();
       list.push({ id: "bk-" + Date.now(), assetId: a.id, date: date, time: time,
-                  name: name, email: email, phone: phone, message: msg, instant: true });
+                  name: name, email: email, phone: phone, message: msg, instant: true, status: "ny" });
       setBookings(list);
       var picker = assetEl.querySelector(".bk-picker");
       var active = picker && picker.querySelector(".bk-datepill.is-active");
@@ -422,11 +429,17 @@
     var area = root.querySelector("[data-booking-area]");
     var assets = getAssets();
     if (!assets.length) { area.innerHTML = '<p class="prose prose--muted">Opprett en ressurs først.</p>'; return; }
-    var bookings = getBookings();
+    var allBookings = getBookings();
+    var active = App.getActiveStatuses("booking");
+    var bookings = allBookings.filter(function (b) { return active.indexOf(b.status || "ny") > -1; });
+    var counts = { ny: 0, lest: 0, løst: 0 };
+    allBookings.forEach(function (b) { counts[b.status || "ny"]++; });
+
     var assetOpts = assets.map(function (a) { return '<option value="'+esc(a.id)+'">'+esc(a.name)+'</option>'; }).join("");
     var rows = bookings.slice().sort(function (x,y) { return (x.date+x.time).localeCompare(y.date+y.time); }).map(function (b) {
       var a = assets.find(function (z) { return z.id === b.assetId; });
       var hasEmail = !!b.email;
+      var st = b.status || "ny";
 
       // Avbook: e-post med avbooking + spørsmål om nytt tidspunkt
       var avbookBody = "Hei " + (b.name || "") + ",\n\nVi viser til din booking:\n" +
@@ -447,17 +460,33 @@
           "&body=" + encodeURIComponent("Hei " + (b.name || "") + ",\n\n")
         : "";
 
-      return '<li class="admin-row"><div class="admin-row__main">' +
-          '<strong>' + esc(a?a.name:"(slettet)") + '</strong>' +
-          '<span class="admin-row__meta">' + C.formatDate(b.date) + ' kl. ' + esc(b.time) +
-            (b.name?' · '+esc(b.name):'') + (b.email?' · '+esc(b.email):'') + (b.phone?' · '+esc(b.phone):'') +
-            (b.instant?' · sanntid':'') + '</span>' +
-          (b.message ? '<span class="admin-row__meta" style="font-style:italic">' + esc(b.message) + '</span>' : '') +
-        '</div><div class="admin-row__actions">' +
-          (hasEmail ? C.button({ label:"Avbook", icon:"calendar-x", variant:"ghost", href:avbookMailto }) : '') +
-          (hasEmail ? C.button({ label:"Svar",   icon:"mail",       variant:"ghost", href:svarMailto }) : '') +
-          C.button({ label:"Slett", variant:"ghost", attrs:'data-booking-del="'+esc(b.id)+'"' }) +
-        '</div></li>';
+      return '<li class="admin-row" style="flex-direction:column;align-items:stretch;gap:.4rem" data-bk-row="' + esc(b.id) + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">' +
+          '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">' +
+            '<strong>' + esc(a?a.name:"(slettet)") + '</strong>' +
+            '<span class="admin-row__meta">' + C.formatDate(b.date) + ' kl. ' + esc(b.time) + '</span>' +
+            App.statusBadge(st) +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem">' +
+            '<div style="display:flex;gap:.4rem">' +
+              (hasEmail ? C.button({ label:"Avbook", icon:"calendar-x", variant:"ghost", href:avbookMailto, attrs:'data-bk-resolve="' + esc(b.id) + '"' }) : '') +
+              (hasEmail ? C.button({ label:"Svar",   icon:"mail",       variant:"ghost", href:svarMailto,   attrs:'data-bk-resolve="' + esc(b.id) + '"' }) : '') +
+              C.button({ label:"Slett", variant:"ghost", attrs:'data-booking-del="'+esc(b.id)+'"' }) +
+            '</div>' +
+            '<select class="stat-select" data-bk-status="' + esc(b.id) + '">' +
+              App.STATUS_ORDER.map(function (s) { return '<option value="' + s + '" ' + (s===st?"selected":"") + '>' + App.STATUS_LABELS[s] + '</option>'; }).join("") +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+        '<details class="lead-details" data-bk-details="' + esc(b.id) + '">' +
+          '<summary>Vis detaljer</summary>' +
+          '<div class="admin-lead-msg">' +
+            (b.name?'Navn: '+esc(b.name)+'<br>':'') + (b.email?'E-post: '+esc(b.email)+'<br>':'') +
+            (b.phone?'Telefon: '+esc(b.phone)+'<br>':'') + (b.instant?'Sanntidsbooking<br>':'Forespørsel<br>') +
+            (b.message?'<br><em>'+esc(b.message)+'</em>':'') +
+          '</div>' +
+        '</details>' +
+      '</li>';
     }).join("");
 
     area.innerHTML = '' +
@@ -470,7 +499,40 @@
         C.field({ id:"bk-bname", label:"Navn (hvem booker)" }) +
         C.button({ label:"Legg til booking", type:"submit", variant:"primary" }) +
       '</form>' +
-      '<ul class="admin-list">' + rows + '</ul>';
+      App.statusFilterBar("booking", counts) +
+      '<ul class="admin-list">' + (rows || '<li class="prose prose--muted">Ingen bookingar med valgt status.</li>') + '</ul>';
+
+    App.bindStatusFilterBar(area, "booking", function () { renderBookingArea(root); });
+
+    // Variant B: eksplisitt klikk på «Vis detaljer» → Lest
+    area.querySelectorAll("[data-bk-details]").forEach(function (det) {
+      det.addEventListener("toggle", function () {
+        if (!det.open) return;
+        var id = det.getAttribute("data-bk-details");
+        var bk = getBookings().find(function (x) { return x.id === id; });
+        if (bk && (bk.status || "ny") === "ny") {
+          bk.status = "lest"; setBookings(getBookings().map(function (x) { return x.id === id ? bk : x; }));
+          renderBookingArea(root);
+        }
+      });
+    });
+    // Avbook/Svar → Løst (begge typer "saka er handtert")
+    area.querySelectorAll("[data-bk-resolve]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-bk-resolve");
+        var list = getBookings();
+        var bk = list.find(function (x) { return x.id === id; });
+        if (bk) { bk.status = "løst"; setBookings(list); }
+      });
+    });
+    area.querySelectorAll("[data-bk-status]").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        var id = sel.getAttribute("data-bk-status");
+        var list = getBookings();
+        var bk = list.find(function (x) { return x.id === id; });
+        if (bk) { bk.status = sel.value; setBookings(list); renderBookingArea(root); }
+      });
+    });
 
     var assetSel = area.querySelector("[data-bk-asset]");
     var timeSel  = area.querySelector("[data-bk-time]");
@@ -488,7 +550,7 @@
       if (!assetId || !date || !time) return;
       if (isBooked(assetId, date, time)) { alert("Denne tiden er allerede booket."); return; }
       var list = getBookings();
-      list.push({ id:"bk-"+Date.now(), assetId:assetId, date:date, time:time, name:name });
+      list.push({ id:"bk-"+Date.now(), assetId:assetId, date:date, time:time, name:name, status:"ny" });
       setBookings(list);
       renderAdmin(root);
     });
