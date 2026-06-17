@@ -442,22 +442,31 @@ window.Components = (function () {
       ? `<ul class="site-footer__info">${infoLines.map(function (l) { return `<li>${l}</li>`; }).join("")}</ul>`
       : "";
 
-    const links = (o.links || []);
-    const linksHtml = links.length
-      ? `<nav class="site-footer__nav"><ul>${links.map(function (l) {
-          const href = l.page ? "#" + l.id : "#" + l.id;
-          return `<li><a href="${esc(href)}" class="site-footer__navlink">${esc(l.label)}</a></li>`;
-        }).join("")}</ul></nav>`
-      : "";
-
     // Personvern-lenke + read-only info-popup (ingen avhukingsboks — kun visning)
     const pcfg = (o.privacy || (window.SITE_CONFIG && window.SITE_CONFIG.privacy)) || {};
     const pHeading = esc(pcfg.heading || "Personvern og databehandling");
     const pText    = esc(pcfg.text    || "");
-    const privacyLink = pText
-      ? `<button type="button" class="site-footer__navlink terms-link" style="text-decoration:none" data-terms-open="footer-privacy">Personvern</button>`
+    const hasPrivacy = !!pText;
+
+    // Fire seksjoner: Navn/informasjon | Meny 1 | Meny 2 | Copyright.
+    // De vanlige lenkene deles jevnt på Meny 1/Meny 2 — Personvern legges alltid
+    // til SIST i Meny 2, slik at begge kolonnene blir like lange selv om personvern
+    // teller med. Er Meny 2 alene (ingen andre lenker), står den øverst der.
+    const links = (o.links || []);
+    function linkLi(l) {
+      return `<li><a href="#${esc(l.id)}" class="site-footer__navlink">${esc(l.label)}</a></li>`;
+    }
+    const half = Math.ceil(links.length / 2);
+    const col1Items = links.slice(0, half).map(linkLi).join("");
+    const privacyLi = hasPrivacy
+      ? `<li><button type="button" class="site-footer__navlink terms-link" style="text-decoration:none;text-align:left;background:none;border:0;padding:0;font:inherit;cursor:pointer" data-terms-open="footer-privacy">Personvern</button></li>`
       : "";
-    const privacyModal = pText
+    const col2Items = links.slice(half).map(linkLi).join("") + privacyLi;
+
+    const menu1Html = col1Items ? `<nav class="site-footer__col site-footer__nav"><ul>${col1Items}</ul></nav>` : "";
+    const menu2Html = col2Items ? `<nav class="site-footer__col site-footer__nav"><ul>${col2Items}</ul></nav>` : "";
+
+    const privacyModal = hasPrivacy
       ? `<div class="terms-modal-back" data-terms-modal="footer-privacy" style="display:none">
            <div class="terms-modal">
              <h3>${pHeading}</h3>
@@ -470,13 +479,15 @@ window.Components = (function () {
     return `
       <footer class="site-footer" data-footer>
         <div class="container site-footer__inner">
-          <div class="site-footer__left">
+          <div class="site-footer__col site-footer__left">
             <span class="site-footer__brand">${esc(o.name || "")}</span>
             ${infoHtml}
           </div>
-          ${linksHtml}
-          <span class="site-footer__copy">${copyright}</span>
-          ${privacyLink}
+          ${menu1Html}
+          ${menu2Html}
+          <div class="site-footer__col site-footer__copy-col">
+            <span class="site-footer__copy">${copyright}</span>
+          </div>
         </div>
         ${privacyModal}
       </footer>`;
