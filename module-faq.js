@@ -79,7 +79,7 @@
               '<span>' + esc(item.question) + '</span>' +
               '<span class="faq-chevron">' + C.icon("chevron-down") + '</span>' +
             '</button>' +
-            '<div class="faq-a" role="region"><div class="faq-a__inner">' + esc(item.answer) + '</div></div>' +
+            '<div class="faq-a" role="region"><div class="faq-a__inner">' + C.sanitizeRichHtml(item.answer) + '</div></div>' +
           '</li>';
         }).join("") + '</ul>'
       : '<p class="prose prose--muted">Ingen spørsmål lagt til ennå.</p>';
@@ -165,7 +165,7 @@
   function faqAdminRow(item) {
     return '<li class="admin-row">' +
       '<div class="admin-row__main"><strong>' + esc(item.question) + '</strong>' +
-        (item.answer ? '<span class="admin-row__meta">' + esc(item.answer.slice(0,80)) + '…</span>' : '') +
+        (item.answer ? '<span class="admin-row__meta">' + esc(C.stripHtml(item.answer).slice(0,80)) + '…</span>' : '') +
       '</div>' +
       '<div class="admin-row__actions">' +
         C.button({ label:"Rediger", variant:"ghost", attrs:'data-faq-edit="' + esc(item.id) + '"' }) +
@@ -182,17 +182,18 @@
       '<form class="admin-form admin-form--card" data-faq-form>' +
         '<h4>' + (item ? "Rediger spørsmål" : "Nytt spørsmål") + '</h4>' +
         C.field({ id:"faq-q", label:"Spørsmål", required:true, value:item ? item.question : "" }) +
-        C.field({ id:"faq-a", label:"Svar",      required:true, multiline:true, rows:4, value:item ? item.answer : "" }) +
+        C.richTextField({ id:"faq-a", label:"Svar", value:item ? item.answer : "" }) +
         '<div class="admin-row__actions">' +
           C.button({ label:item ? "Oppdater" : "Legg til", type:"submit", variant:"primary" }) +
           C.button({ label:"Avbryt", variant:"ghost", attrs:"data-faq-cancel" }) +
         '</div>' +
       '</form>';
+    App.ui.bindRichTextFields(ed);
     ed.querySelector("[data-faq-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
     ed.querySelector("[data-faq-form]").addEventListener("submit", function (e) {
       e.preventDefault();
       var q = ed.querySelector("#faq-q").value.trim();
-      var a = ed.querySelector("#faq-a").value.trim();
+      var a = App.ui.readRichTextField(ed, "faq-a");
       if (!q || !a) return;
       var list = getItems();
       var obj = { id: item ? item.id : ("faq-" + Date.now()), question: q, answer: a };
@@ -216,6 +217,7 @@
     mountPage:  mountSection,
     admin: {
       label:  "FAQ",
+      category: "innhold",
       render: function () { return '<div data-faq-root></div>'; },
       mount:  function (body) { renderAdmin(body.querySelector("[data-faq-root]") || body); }
     }

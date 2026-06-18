@@ -378,8 +378,19 @@
       '</li>';
     }).join("") : '<li class="prose prose--muted">Ingen tilbudsforespørsler med valgt status.</li>';
 
-    body.innerHTML = App.statusFilterBar("tilbud", counts) + '<ul class="admin-list">' + rows + '</ul>';
+    body.innerHTML = App.emailTemplateCard("tilbud", "E-postmal for svar", App.DEFAULT_REPLY_TEMPLATE) +
+      '<div style="margin-bottom:.8rem">' + C.button({ label:"Eksporter tilbudsforespørsler (CSV)", icon:"table-export", variant:"ghost", attrs:'data-qt-export' }) + '</div>' +
+      App.statusFilterBar("tilbud", counts) + '<ul class="admin-list">' + rows + '</ul>';
 
+    body.querySelector("[data-qt-export]").addEventListener("click", function () {
+      App.downloadCsv(
+        "tilbudsforesporsler.csv",
+        ["Referanse", "Navn", "E-post", "Melding", "Tidspunkt", "Status"],
+        allQuotes.map(function (l) { return [l.referenceNumber || "", l.name || "", l.email || "", l.message || "", l.time || "", App.STATUS_LABELS[l.status || "ny"]]; })
+      );
+    });
+
+    App.bindEmailTemplateCard(body, "tilbud", App.DEFAULT_REPLY_TEMPLATE);
     App.bindStatusFilterBar(body, "tilbud", function () { renderAdminInfo(body); });
 
     // Variant B: eksplisitt klikk på «Vis hele meldingen» → Lest
@@ -398,7 +409,14 @@
         var lead = App.getLeads().find(function (l) { return l.id === id; });
         if (lead && App.openReplyModal) {
           App.setLeadStatus(id, "løst");
-          App.openReplyModal(lead, "Re: Tilbudsforespørsel – " + (lead.name || ""));
+          var dato = lead.time ? new Date(lead.time).toLocaleString("nb-NO", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
+          App.openReplyModal({
+            name: lead.name, email: lead.email,
+            subject: "Re: Tilbudsforespørsel – " + (lead.name || ""),
+            templateKey: "tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+            vars: { navn: lead.name || "", epost: lead.email || "", dato: dato, melding: lead.message || "", referanse: lead.referenceNumber || "" },
+            previewHtml: '<div class="admin-lead-msg">' + esc(lead.message || "").replace(/\n/g, "<br>") + '</div>'
+          });
           renderAdminInfo(body);
         }
       });
@@ -431,6 +449,7 @@
     mount:  mountPage,
     admin: {
       label:  "Tilbud",
+      category: "henvendelser",
       render: function () { return '<div data-qt-adm></div>'; },
       mount:  function (body) { renderAdminInfo(body.querySelector("[data-qt-adm]") || body); }
     }

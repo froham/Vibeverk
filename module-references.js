@@ -116,11 +116,12 @@
     var catHtml = item.category
       ? '<span class="rf-card__cat">' + esc(item.category) + '</span>' : "";
     var textHtml = "";
+    var plainText = C.stripHtml(item.text);
     if (item.text) {
       if (item.isQuote) {
-        textHtml = '<p class="rf-card__quote">' + esc(item.text) + '</p>';
+        textHtml = '<p class="rf-card__quote">' + esc(plainText) + '</p>';
       } else {
-        textHtml = '<p class="rf-card__text">' + esc(item.text) + '</p>';
+        textHtml = '<p class="rf-card__text">' + esc(plainText) + '</p>';
       }
     }
     var byHtml = (item.isQuote && item.byName)
@@ -134,7 +135,7 @@
         '<h3 class="rf-card__name">' + esc(item.name) + '</h3>' +
         textHtml +
         byHtml +
-        (item.text && item.text.length > 80
+        (plainText.length > 80
           ? '<span class="rf-readmore">Les mer →</span>'
           : "") +
       '</div>' +
@@ -148,13 +149,13 @@
     var textHtml = "";
     if (item.text) {
       if (item.isQuote) {
-        textHtml = '<p class="rf-detail__quote">' + esc(item.text) + '</p>';
+        textHtml = '<p class="rf-detail__quote">' + C.sanitizeRichHtml(item.text) + '</p>';
         if (item.byName) {
           textHtml += '<p class="rf-detail__by"><strong>' + esc(item.byName) + '</strong>' +
             (item.byTitle ? '<span style="color:var(--color-muted)"> · ' + esc(item.byTitle) + '</span>' : '') + '</p>';
         }
       } else {
-        textHtml = '<p class="rf-detail__text">' + esc(item.text) + '</p>';
+        textHtml = '<div class="rf-detail__text">' + C.sanitizeRichHtml(item.text) + '</div>';
       }
     }
     return '<section id="referanser" class="section reveal"><div class="container">' +
@@ -294,7 +295,7 @@
     return '<li class="admin-row">' +
       '<div class="admin-row__main">' +
         '<strong>' + esc(item.name) + badge + '</strong>' +
-        '<span class="admin-row__meta">' + mode + (item.text ? ' · ' + esc(item.text.slice(0, 60)) + '…' : '') + '</span>' +
+        '<span class="admin-row__meta">' + mode + (item.text ? ' · ' + esc(C.stripHtml(item.text).slice(0, 60)) + '…' : '') + '</span>' +
       '</div>' +
       '<div class="admin-row__actions">' +
         C.button({ label: "Rediger", variant: "ghost", attrs: 'data-rf-edit="' + esc(item.id) + '"' }) +
@@ -314,7 +315,7 @@
         C.field({ id: "rf-cat",   label: "Kategori / bransje",       value: item ? (item.category || "") : "",
                   placeholder: "f.eks. Bygg, Interiør, IT …", hint: "Brukes som filter på referansesiden" }) +
         App.ui.imageField("rf-image", "Bilde (valgfritt)", item ? item.image : "", 16 / 9) +
-        C.field({ id: "rf-text",  label: "Tekst / sitat", multiline: true, rows: 3, value: item ? (item.text || "") : "" }) +
+        C.richTextField({ id: "rf-text", label: "Tekst / sitat", value: item ? (item.text || "") : "" }) +
         '<div class="field"><label class="imgfield__creditrow" style="font-size:.9rem">' +
           '<input type="checkbox" id="rf-isquote" ' + (item && item.isQuote ? "checked" : "") + '> ' +
           '<span>Vis som sitat (kursiv med anførselstegn)</span>' +
@@ -332,6 +333,7 @@
       '</form>';
 
     App.ui.bindImageFields(ed);
+    App.ui.bindRichTextFields(ed);
 
     // Vis/skjul sitat-felt
     var chk = ed.querySelector("#rf-isquote");
@@ -350,7 +352,7 @@
         name:     name,
         category: ed.querySelector("#rf-cat").value.trim(),
         image:    App.ui.readImageField(ed, "rf-image"),
-        text:     ed.querySelector("#rf-text").value.trim(),
+        text:     App.ui.readRichTextField(ed, "rf-text"),
         isQuote:  ed.querySelector("#rf-isquote").checked,
         byName:   ed.querySelector("#rf-byname").value.trim(),
         byTitle:  ed.querySelector("#rf-bytitle").value.trim(),
@@ -385,6 +387,7 @@
     mountPage:  mountPage,
     admin: {
       label:  "Referanser",
+      category: "innhold",
       render: function () { return '<div data-rf-root></div>'; },
       mount:  function (body) { renderAdmin(body.querySelector("[data-rf-root]") || body); }
     }

@@ -24,18 +24,28 @@ window.Components = (function () {
     return `<img src="${esc(src)}" alt="${esc(o.alt || "")}" class="${o.class || ""}" loading="lazy">`;
   }
 
+  // Liten merke-badge ("KI" eller "©") i stedet for fullbredde-banner. Full
+  // merketekst vises som hover-tooltip (title-attributt).
+  function creditBadge(img) {
+    if (!img || !img.creditType) return "";
+    const label = img.creditType === "copyright" ? "©" : "KI";
+    return `<span class="img-credit-badge" title="${esc(img.caption || "")}">${label}</span>`;
+  }
+
   // Cover-bilde med fokuspunkt. `img` = { src, pos } der pos styrer beskjæringen
   // (object-position). Returnerer tom streng uten src.
   function coverImg(img, cls) {
     if (!img || !img.src) return "";
     const pos = `object-position:${esc(img.pos || "50% 50%")}`;
-    if (img.caption) {
+    const altAttr = esc(img.alt || "");
+    const badge = creditBadge(img);
+    if (badge) {
       return `<span class="${esc(cls || "")} has-credit">` +
-               `<img src="${esc(img.src)}" alt="" loading="lazy" style="${pos}">` +
-               `<span class="img-credit">${esc(img.caption)}</span>` +
+               `<img src="${esc(img.src)}" alt="${altAttr}" loading="lazy" style="${pos}">` +
+               badge +
              `</span>`;
     }
-    return `<img class="${esc(cls || "")}" src="${esc(img.src)}" alt="" loading="lazy" style="${pos}">`;
+    return `<img class="${esc(cls || "")}" src="${esc(img.src)}" alt="${altAttr}" loading="lazy" style="${pos}">`;
   }
 
   // Bildefelt for admin: opplasting ELLER URL, med forhåndsvisning og
@@ -52,6 +62,7 @@ window.Components = (function () {
     const o = opts || {};
     const id = esc(o.id);
     const aspect = o.aspect || (16 / 9);
+    const ct = o.creditType || "";
     return `
       <div class="field imgfield" data-imgfield>
         <label>${esc(o.label)}</label>
@@ -68,13 +79,19 @@ window.Components = (function () {
                   aria-label="Fjern bilde">${icon("trash")}</button>
         </div>
         <input type="hidden" id="${id}" value="${esc(o.value || "")}">
+        <div class="imgfield__alt">
+          <label class="imgfield__altlabel">Alt-tekst (beskriv hva bildet viser — for skjermlesere/SEO)</label>
+          <input type="text" class="imgfield__altinput" data-imgfield-alt value="${esc(o.alt || "")}" placeholder="F.eks. «Tre ansatte ved skrivebord»">
+        </div>
         <div class="imgfield__credit">
-          <label class="imgfield__creditrow">
-            <input type="checkbox" data-imgfield-credit ${o.caption ? "checked" : ""}>
-            <span>Merk bildet med tekst (f.eks. KI-opplysning)</span>
-          </label>
+          <p class="imgfield__creditlabel">Merking${helpIcon("Velg ett av valgene under — de utelukker hverandre. «Ingen» viser ingen badge på siden. «KI-generert/redigert» eller «Eget bilde» viser en liten KI- eller ©-badge i hjørnet av bildet på den offentlige siden.")}</p>
+          <div class="imgfield__creditradios">
+            <label><input type="radio" name="${id}-credit" value="" data-imgfield-credit-type ${!ct ? "checked" : ""}> Ingen</label>
+            <label><input type="radio" name="${id}-credit" value="ai" data-imgfield-credit-type ${ct === "ai" ? "checked" : ""}> KI-generert/redigert</label>
+            <label><input type="radio" name="${id}-credit" value="copyright" data-imgfield-credit-type ${ct === "copyright" ? "checked" : ""}> Eget bilde (©)</label>
+          </div>
           <input type="text" class="imgfield__creditinput" data-imgfield-credit-text
-                 placeholder="${esc(o.creditPlaceholder || "")}" value="${esc(o.caption || "")}" ${o.caption ? "" : "disabled"}>
+                 placeholder="${esc(o.creditPlaceholder || "")}" value="${esc(o.caption || "")}" ${ct ? "" : "disabled"}>
         </div>
       </div>`;
   }
@@ -82,6 +99,13 @@ window.Components = (function () {
   // Tabler-ikon. `name` er ikonnavnet uten "ti-" (f.eks. "rocket").
   function icon(name, cls) {
     return `<i class="ti ti-${esc(name)} ${cls || ""}" aria-hidden="true"></i>`;
+  }
+
+  // Liten klikkbar hjelpeboble for ikke-selvforklarende admin-funksjoner.
+  // Klikk i stedet for hover, så den fungerer likt på mobil og desktop.
+  // Bindes globalt én gang (se bindHelpIcons i core.js) — krever ingen egen binding her.
+  function helpIcon(text) {
+    return `<button type="button" class="help-icon" data-help-toggle aria-label="Hjelp">?<span class="help-icon__pop">${esc(text)}</span></button>`;
   }
 
   // Knapp eller lenke-knapp. variant: "primary" | "secondary" | "ghost"
@@ -108,7 +132,7 @@ window.Components = (function () {
     const id = esc(o.idPrefix || "terms");
     const cfg = (window.SITE_CONFIG && window.SITE_CONFIG.privacy) || {};
     const heading = esc(o.heading || cfg.heading || "Personvern og databehandling");
-    const text    = esc(o.text    || cfg.text    || "");
+    const text    = sanitizeRichHtml(o.text || cfg.text || "");
     return `
       <div class="terms-row">
         <input type="checkbox" id="${id}-terms">
@@ -118,9 +142,95 @@ window.Components = (function () {
       <div class="terms-modal-back" data-terms-modal="${id}" style="display:none">
         <div class="terms-modal">
           <h3>${heading}</h3>
-          <p class="terms-modal-text">${text}</p>
+          <div class="terms-modal-text">${text}</div>
           ${button({ label: "Lukk", variant: "ghost", class: "terms-modal-close", attrs: `data-terms-close="${id}"` })}
         </div>
+      </div>`;
+  }
+
+  // =========================================================================
+  // RIK TEKST — delt mellom Aktuelt, FAQ, Referanser og Mediebank.
+  // Lagres som sanert HTML (ikke ren tekst). Verktøylinjen bruker
+  // document.execCommand, som er eldre API men fortsatt universelt støttet
+  // og det enkleste alternativet uten byggesteg/avhengigheter.
+  // =========================================================================
+
+  // Renser HTML til et trygt undersett (allowlist). Kjøres ved lagring OG
+  // som ekstra sikkerhet ved visning, slik at korrupt/gammel data aldri
+  // kan inneholde script, event-handlere eller andre farlige elementer.
+  const RICH_ALLOWED_TAGS = { B:1, STRONG:1, I:1, EM:1, U:1, S:1, STRIKE:1, UL:1, OL:1, LI:1, BR:1, P:1, DIV:1, SPAN:1, A:1 };
+  // Disse skal fjernes HELT (tag + innhold) — aldri "unwrappes" til synlig tekst,
+  // siden innholdet deres ikke er ment som lesbar tekst (script/style-kode osv).
+  const RICH_STRIP_ENTIRELY = { SCRIPT:1, STYLE:1, IFRAME:1, OBJECT:1, EMBED:1, NOSCRIPT:1 };
+  function sanitizeRichHtml(html) {
+    if (typeof document === "undefined") return "";
+    const tmp = document.createElement("div");
+    tmp.innerHTML = String(html || "");
+    (function walk(node) {
+      Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+        if (child.nodeType === 1) {
+          const tag = child.tagName;
+          if (RICH_STRIP_ENTIRELY[tag]) {
+            node.removeChild(child);
+            return;
+          }
+          if (!RICH_ALLOWED_TAGS[tag]) {
+            while (child.firstChild) node.insertBefore(child.firstChild, child);
+            node.removeChild(child);
+            return;
+          }
+          Array.prototype.slice.call(child.attributes).forEach(function (attr) {
+            const name = attr.name.toLowerCase();
+            if (tag === "SPAN" && name === "style") {
+              const m = /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|[a-zA-Z]+)/.exec(attr.value);
+              if (m) child.setAttribute("style", "color:" + m[1]); else child.removeAttribute("style");
+            } else if (tag === "A" && name === "href") {
+              const href = attr.value.trim();
+              if (/^\s*javascript:/i.test(href)) child.removeAttribute("href");
+              else { child.setAttribute("target", "_blank"); child.setAttribute("rel", "noopener noreferrer"); }
+            } else if (!(tag === "A" && name === "target") && !(tag === "A" && name === "rel")) {
+              child.removeAttribute(attr.name);
+            }
+          });
+          walk(child);
+        } else if (child.nodeType !== 3) {
+          node.removeChild(child);
+        }
+      });
+    })(tmp);
+    return tmp.innerHTML;
+  }
+
+  // Fjerner all HTML — brukes i korte forhåndsvisninger/utdrag og søkeindeks,
+  // der formatert tekst ikke skal vises (kun selve sammendraget).
+  function stripHtml(html) {
+    return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  // Skjemafelt med verktøylinje (fet/kursiv/understrek/gjennomstrek, lister,
+  // lenke, tekstfarge, fjern formatering). Verdien lagres som HTML i et
+  // skjult felt. App.ui.bindRichTextFields() kobler opp interaktiviteten.
+  function richTextField(opts) {
+    const o = opts || {};
+    const id = esc(o.id);
+    return `
+      <div class="field rtfield" data-rtfield>
+        <label>${esc(o.label)}</label>
+        <div class="rtfield__toolbar" role="toolbar" aria-label="Tekstformatering">
+          <button type="button" data-rt-cmd="bold" title="Fet"><strong>F</strong></button>
+          <button type="button" data-rt-cmd="italic" title="Kursiv"><em>K</em></button>
+          <button type="button" data-rt-cmd="underline" title="Understrek"><u>U</u></button>
+          <button type="button" data-rt-cmd="strikeThrough" title="Gjennomstrek"><s>G</s></button>
+          <span class="rtfield__sep"></span>
+          <button type="button" data-rt-cmd="insertUnorderedList" title="Punktliste">${icon("list")}</button>
+          <button type="button" data-rt-cmd="insertOrderedList" title="Nummerert liste">${icon("list-numbers")}</button>
+          <span class="rtfield__sep"></span>
+          <button type="button" data-rt-link title="Lenke">${icon("link")}</button>
+          <label class="rtfield__colorlabel" title="Tekstfarge">${icon("palette")}<input type="color" data-rt-color value="#15616d"></label>
+          <button type="button" data-rt-clear title="Fjern formatering">${icon("clear-formatting")}</button>
+        </div>
+        <div class="rtfield__editor" contenteditable="true" data-rt-editor aria-label="${esc(o.label)}"></div>
+        <input type="hidden" id="${id}" value="${esc(sanitizeRichHtml(o.value || ""))}">
       </div>`;
   }
 
@@ -134,6 +244,7 @@ window.Components = (function () {
     return `<div class="field">
       <label for="${id}">${esc(o.label)}</label>
       ${control}
+      ${o.hint ? `<p class="field__hint">${esc(o.hint)}</p>` : ""}
     </div>`;
   }
 
@@ -180,7 +291,7 @@ window.Components = (function () {
             ${button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" })}
           </div>
         </div>
-        ${img && img.caption ? `<span class="hero__credit">${esc(img.caption)}</span>` : ""}
+        ${img ? creditBadge(img) : ""}
       </section>`;
   }
 
@@ -196,7 +307,7 @@ window.Components = (function () {
           <div class="about__body">
             ${eyebrow(d.heading)}
             <h2 class="section__title">${esc(d.heading)}</h2>
-            <p class="prose">${esc(d.text)}</p>
+            <div class="prose">${sanitizeRichHtml(d.text)}</div>
           </div>
           ${media}
         </div>
@@ -218,7 +329,7 @@ window.Components = (function () {
           <div class="card__body">
             ${hasImg ? "" : media}
             <h3 class="card__title">${esc(c.title)}</h3>
-            <p class="card__text">${esc(c.text)}</p>
+            <div class="card__text">${sanitizeRichHtml(c.text)}</div>
           </div>
         </article>`;
     }).join("");
@@ -256,11 +367,14 @@ window.Components = (function () {
   }
 
   // Ett aktuelt-innlegg. opts.teaser = forkortet visning på forsiden.
+  // NB: ikke i aktiv bruk lenger (news() bruker newsFrontCard), men holdt
+  // konsistent med rik-tekst-modellen i tilfelle den tas i bruk igjen.
   function newsPost(p, opts) {
     opts = opts || {};
     const hasImg = p.image && p.image.src;
     const teaser = !!opts.teaser;
-    const text = teaser ? truncate(p.text, 150) : esc(p.text);
+    const plain = stripHtml(p.text);
+    const text = teaser ? esc(truncate(plain, 150)) : sanitizeRichHtml(p.text);
     const titleHtml = teaser
       ? `<a href="#sak/${esc(p.id)}">${esc(p.title)}</a>`
       : esc(p.title);
@@ -269,7 +383,7 @@ window.Components = (function () {
         ${hasImg ? coverImg(p.image, "post__media") : ""}
         <time class="post__date" datetime="${esc(p.date)}">${formatDate(p.date)}</time>
         <h3 class="post__title">${titleHtml}</h3>
-        <p class="post__text">${teaser ? esc(text) : text}</p>
+        <p class="post__text">${text}</p>
         ${teaser ? `<a class="post__more" href="#sak/${esc(p.id)}">Les mer ${icon("arrow-right")}</a>` : attachmentsHtml(p.attachments)}
       </article>`;
   }
@@ -297,7 +411,8 @@ window.Components = (function () {
   // Liggende kort for forsiden — full bredde, bilde til venstre
   function newsFrontCard(p, isTeaser) {
     const img = p.image && p.image.src;
-    const txt = isTeaser ? truncate(p.text, 140) : p.text;
+    const plain = stripHtml(p.text);
+    const txt = isTeaser ? truncate(plain, 140) : plain;
     return `
       <a class="nfc" href="#sak/${esc(p.id)}">
         ${img ? `<span class="nfc__img">${coverImg(p.image, "nfc__photo")}</span>` : `<span class="nfc__img nfc__img--empty"></span>`}
@@ -320,7 +435,7 @@ window.Components = (function () {
           ${hasImg ? coverImg(p.image, "article__media") : ""}
           <time class="post__date" datetime="${esc(p.date)}">${formatDate(p.date)}</time>
           <h1 class="article__title">${esc(p.title)}</h1>
-          <div class="article__body prose">${paragraphs(p.text)}</div>
+          <div class="article__body prose">${sanitizeRichHtml(p.text)}</div>
           ${attachmentsHtml(p.attachments)}
         </div>
       </section>`;
@@ -347,18 +462,20 @@ window.Components = (function () {
   }
   function archiveRow(p) {
     const hasImg = p.image && p.image.src;
+    const plain = stripHtml(p.text);
     const thumb = hasImg
       ? coverImg(p.image, "archive__thumb")
       : `<span class="archive__thumb archive__thumb--blank">${icon("news")}</span>`;
-    return `<li class="archive__item" data-search="${esc((p.title + " " + p.text).toLowerCase())}">
+    return `<li class="archive__item" data-search="${esc((p.title + " " + plain).toLowerCase())}">
       <a class="archive__link" href="#sak/${esc(p.id)}">
         ${thumb}
         <span class="archive__meta">
           <time class="post__date" datetime="${esc(p.date)}">${formatDate(p.date)}</time>
           <span class="archive__title">${esc(p.title)}</span>
-          <span class="archive__teaser">${esc(truncate(p.text, 120))}</span>
+          <span class="archive__teaser">${esc(truncate(plain, 120))}</span>
         </span>
-      </a></li>`;
+      </a>
+    </li>`;
   }
 
   // Enkel meldingsvisning (f.eks. når en sak ikke finnes)
@@ -380,11 +497,22 @@ window.Components = (function () {
     }).join("");
   }
 
+  // Sosiale plattformer kontakt-seksjonen støtter. Delt mellom offentlig
+  // rendering (her) og admin-skjemaet (core.js), slik at begge alltid er i sync.
+  const SOCIAL_PLATFORMS = [
+    { key: "facebook",  label: "Facebook",  icon: "brand-facebook" },
+    { key: "instagram", label: "Instagram", icon: "brand-instagram" },
+    { key: "linkedin",  label: "LinkedIn",  icon: "brand-linkedin" },
+    { key: "tiktok",    label: "TikTok",    icon: "brand-tiktok" },
+    { key: "youtube",   label: "YouTube",   icon: "brand-youtube" },
+    { key: "x",         label: "X",         icon: "brand-x" }
+  ];
+
   // Kontakt (skjema + info)
   function contact(d, info) {
-    const social = [];
-    if (info.social && info.social.linkedin) social.push(`<a href="${esc(info.social.linkedin)}" target="_blank" rel="noopener">${icon("brand-linkedin")} LinkedIn</a>`);
-    if (info.social && info.social.instagram) social.push(`<a href="${esc(info.social.instagram)}" target="_blank" rel="noopener">${icon("brand-instagram")} Instagram</a>`);
+    const social = SOCIAL_PLATFORMS
+      .filter(function (p) { return info.social && info.social[p.key]; })
+      .map(function (p) { return `<a href="${esc(info.social[p.key])}" target="_blank" rel="noopener">${icon(p.icon)} ${esc(p.label)}</a>`; });
     // Egendefinerte felter (overskrift + innhold), f.eks. fakturainfo, styremedlemmer
     const extra = (info.extra || []).map(function (f) {
       if (!f || (!f.label && !f.value)) return "";
@@ -445,8 +573,8 @@ window.Components = (function () {
     // Personvern-lenke + read-only info-popup (ingen avhukingsboks — kun visning)
     const pcfg = (o.privacy || (window.SITE_CONFIG && window.SITE_CONFIG.privacy)) || {};
     const pHeading = esc(pcfg.heading || "Personvern og databehandling");
-    const pText    = esc(pcfg.text    || "");
-    const hasPrivacy = !!pText;
+    const hasPrivacy = !!(pcfg.text || "");
+    const pText    = sanitizeRichHtml(pcfg.text || "");
 
     // Fire seksjoner: Navn/informasjon | Meny 1 | Meny 2 | Copyright.
     // De vanlige lenkene deles jevnt på Meny 1/Meny 2 — Personvern legges alltid
@@ -470,7 +598,7 @@ window.Components = (function () {
       ? `<div class="terms-modal-back" data-terms-modal="footer-privacy" style="display:none">
            <div class="terms-modal">
              <h3>${pHeading}</h3>
-             <p class="terms-modal-text">${pText}</p>
+             <div class="terms-modal-text">${pText}</div>
              ${button({ label: "Lukk", variant: "ghost", class: "terms-modal-close", attrs: 'data-terms-close="footer-privacy"' })}
            </div>
          </div>`
@@ -547,7 +675,7 @@ window.Components = (function () {
 
   /* --- Eksport -------------------------------------------------------------- */
   return {
-    esc, icon, button, eyebrow, field, termsField, formatDate, image, coverImg, imageField,
+    esc, icon, button, eyebrow, field, termsField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
     contact, footer, modal, tabbar

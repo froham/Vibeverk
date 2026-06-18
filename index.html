@@ -7,13 +7,13 @@
   <title>Laster…</title>
 
   <!-- Content-Security-Policy: tillater eksplisitt alle eksterne tjenester denne
-       kodebasen bruker (Google Fonts, Tabler Icons, Plausible, GA4/GTM, Fathom).
+       kodebasen bruker (Google Fonts, Tabler Icons, Plausible).
        Dersom hosting-plattformen (f.eks. Cloudflare) også setter en CSP-header,
        gjelder den STRENGESTE av de to — oppdater begge steder ved behov. -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' https://plausible.io https://www.googletagmanager.com https://www.google-analytics.com https://cdn.usefathom.com;
-    connect-src 'self' https://plausible.io https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com;
+    script-src 'self' https://plausible.io;
+    connect-src 'self' https://plausible.io;
     frame-src https://plausible.io;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net;
     font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:;
@@ -96,7 +96,7 @@
     .site-header__inner { display: flex; align-items: center; justify-content: space-between; height: 68px; }
     .brand { display: inline-flex; align-items: center; }
     .brand__name { font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; color: var(--color-text); letter-spacing: -.01em; }
-    .brand__logo { height: 34px; width: auto; }
+    .brand__logo { height: 42px; width: auto; }
     .nav__links { display: flex; gap: clamp(.55rem, 1.5vw, 1.4rem); overflow-x: auto; scrollbar-width: none; }
     .nav__link {
       color: var(--color-text); font-weight: 500; font-size: .98rem;
@@ -185,6 +185,8 @@
     .crm-stat--active { background: #eafaf1; color: #1e8449; }
     .crm-stat--done { background: var(--color-alt); color: var(--color-muted); }
     .crm-note { font-size: .85rem; color: var(--color-muted); font-style: italic; margin: .2rem 0 0; }
+    .crm-custnum { display: inline-block; font-size: .76rem; font-weight: 600; color: var(--color-muted); background: var(--color-alt); border-radius: 999px; padding: .1rem .55rem; }
+    .crm-custnum--bedrift { color: var(--color-primary); }
     .crm-history { margin: .6rem 0 0; padding: .6rem .8rem; background: var(--color-alt); border-radius: 8px; font-size: .82rem; }
     .crm-history__item { padding: .2rem 0; border-bottom: 1px solid var(--color-border); }
     .crm-history__item:last-child { border: 0; }
@@ -290,6 +292,10 @@
 
     /* --- Skjemafelt ------------------------------------------------------- */
     .field { display: grid; gap: .35rem; }
+    .field__hint { font-size: .78rem; color: var(--color-muted); margin: -.1rem 0 0; }
+    .help-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-border); color: var(--color-muted); font-size: .72rem; font-weight: 700; border: none; cursor: pointer; vertical-align: middle; margin-left: .35rem; padding: 0; line-height: 1; }
+    .help-icon__pop { display: none; position: absolute; bottom: 135%; left: 50%; transform: translateX(-50%); width: 230px; background: var(--color-text); color: #fff; font-size: .78rem; font-weight: 400; line-height: 1.45; padding: .65rem .75rem; border-radius: 8px; z-index: 20; text-align: left; }
+    .help-icon.is-open .help-icon__pop { display: block; }
     .field label { font-size: .85rem; font-weight: 600; color: var(--color-text); }
     .field__hint { font-weight: 400; color: var(--color-muted); font-size: .78rem; }
     .icon-field { display: flex; align-items: center; gap: .6rem; }
@@ -325,16 +331,21 @@
     .imgfield__empty { color: var(--color-muted); font-size: .9rem; display: inline-flex; align-items: center; gap: .4rem; }
     .imgfield__hint { margin: .4rem 0 0; font-size: .78rem; color: var(--color-muted); }
     .imgfield__controls { display: flex; gap: .5rem; margin-top: .5rem; align-items: stretch; }
-    /* Bilde-merking (KI-opplysning) */
-    .imgfield__credit { display: flex; flex-direction: column; gap: .5rem; margin-top: .7rem; }
-    .imgfield__creditrow { display: inline-flex; align-items: center; gap: .45rem; font-size: .9rem; cursor: pointer; }
+    /* Bilde-merking (KI/copyright, enten/eller) + alt-tekst */
+    .imgfield__alt { margin-top: .7rem; }
+    .imgfield__altlabel { display: block; font-size: .82rem; color: var(--color-muted); margin-bottom: .35rem; }
+    .imgfield__altinput { width: 100%; font: inherit; padding: .55rem .7rem; border-radius: 8px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); }
+    .imgfield__credit { display: flex; flex-direction: column; gap: .5rem; margin-top: .9rem; }
+    .imgfield__creditlabel { font-size: .82rem; color: var(--color-muted); margin: 0; }
+    .imgfield__creditradios { display: flex; flex-wrap: wrap; gap: .9rem; }
+    .imgfield__creditradios label { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; cursor: pointer; }
     .imgfield__creditinput { font: inherit; padding: .55rem .7rem; border-radius: 8px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); }
     .imgfield__creditinput:disabled { opacity: .45; }
-    /* Merketekst vist på bildet ute på siden */
+    /* Liten merke-badge ("KI"/"©") på bildet ute på siden — full merketekst vises
+       kun som hover-tooltip, ikke som banner over hele bildet. */
     .has-credit { position: relative; display: block; overflow: hidden; }
     .has-credit > img { display: block; width: 100%; height: 100%; object-fit: cover; }
-    .img-credit { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: .3rem .6rem; font-size: .68rem; line-height: 1.3; color: #fff; background: rgba(0,0,0,.55); }
-    .hero__credit { position: absolute; right: .8rem; bottom: .7rem; font-size: .68rem; color: rgba(255,255,255,.85); background: rgba(0,0,0,.4); padding: .2rem .55rem; border-radius: 6px; }
+    .img-credit-badge { position: absolute; right: .5rem; bottom: .5rem; font-size: .65rem; font-weight: 700; letter-spacing: .02em; color: #fff; background: rgba(0,0,0,.62); padding: .15rem .5rem; border-radius: 5px; cursor: default; }
     .contact__quote-cta { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px solid var(--color-border); }
     .contact__quote-hint { margin: 0 0 .7rem; font-size: .92rem; color: var(--color-muted); }
     .contact__actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
@@ -346,6 +357,22 @@
     .an-card__val { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--color-primary); }
     .an-card__label { font-size: .85rem; color: var(--color-muted); margin: .3rem 0 .4rem; }
     .an-card__diff { font-size: .78rem; }
+    .an-card__split { display: flex; gap: 1rem; }
+    .an-card__split > div { flex: 1; }
+    .an-card__split .an-card__val { font-size: 1.5rem; }
+    .an-cat-list { display: flex; flex-wrap: wrap; gap: .5rem; margin: -.6rem 0 1.6rem; }
+    .an-cat-chip { font-size: .82rem; border: 1px solid var(--color-border); border-radius: 999px; padding: .25rem .7rem; background: var(--color-surface); color: var(--color-muted); }
+    .backup-summary { list-style: none; margin: 0 0 1.2rem; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
+    .backup-summary li { display: flex; justify-content: space-between; align-items: center; padding: .55rem .9rem; border-bottom: 1px solid var(--color-border); font-size: .9rem; }
+    .backup-summary li:last-child { border-bottom: none; }
+    .backup-summary li span { color: var(--color-muted); }
+    .backup-filebtn { display: inline-flex; cursor: pointer; }
+    .storage-meter { margin-bottom: .4rem; }
+    .storage-meter__bar { height: 10px; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+    .storage-meter__fill { height: 100%; border-radius: 999px; background: var(--color-primary); transition: width .3s; }
+    .storage-meter__label { font-size: .82rem; color: var(--color-muted); margin: .4rem 0 0; }
+    [data-storage-level="mid"]  .storage-meter__fill { background: #d4a017; }
+    [data-storage-level="high"] .storage-meter__fill { background: #c0392b; }
     .an-traffic { margin-bottom: 1rem; }
     .an-hint { color: var(--color-muted); font-size: .9rem; margin: 0 0 .7rem; }
     .an-ext-link { display: inline-flex; align-items: center; gap: .3rem; font-size: .9rem; color: var(--color-primary); margin-right: 1rem; }
@@ -411,13 +438,36 @@
     .modal__body { padding: 1.4rem; }
 
     .tabs { display: flex; gap: .25rem; flex-wrap: wrap; border-bottom: 1px solid var(--color-border); margin-bottom: 1.2rem; }
+    .admin-catbar { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .9rem; }
+    .admin-cat { background: var(--color-bg); border: 1.5px solid var(--color-border); font: inherit; font-size: .85rem; font-weight: 600; color: var(--color-muted); padding: .45rem .9rem; border-radius: 999px; cursor: pointer; }
+    .admin-cat.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
     .nav-label-input { width: 100%; min-width: 120px; border: 1px solid var(--color-border); border-radius: 6px; padding: .35rem .55rem; font: inherit; font-weight: 600; font-size: .9rem; background: var(--color-bg); color: var(--color-text); }
     .nav-label-input:focus { outline: none; border-color: var(--color-primary); }
+    /* Rik tekst-felt (Aktuelt, FAQ, Referanser, Mediebank) */
+    .rtfield__toolbar { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; border: 1px solid var(--color-border); border-bottom: 0; border-radius: 8px 8px 0 0; padding: .35rem .4rem; background: var(--color-alt); }
+    .rtfield__toolbar button { background: none; border: 1px solid transparent; border-radius: 6px; padding: .3rem .55rem; cursor: pointer; font-size: .85rem; color: var(--color-text); line-height: 1; }
+    .rtfield__toolbar button:hover { background: var(--color-bg); border-color: var(--color-border); }
+    .rtfield__sep { width: 1px; height: 1.2rem; background: var(--color-border); margin: 0 .15rem; }
+    .rtfield__colorlabel { display: inline-flex; align-items: center; gap: .25rem; padding: .3rem .4rem; border-radius: 6px; cursor: pointer; position: relative; }
+    .rtfield__colorlabel:hover { background: var(--color-bg); }
+    .rtfield__colorlabel input[type="color"] { width: 18px; height: 18px; padding: 0; border: 0; cursor: pointer; }
+    .rtfield__editor { min-height: 120px; border: 1px solid var(--color-border); border-radius: 0 0 8px 8px; padding: .7rem .8rem; background: var(--color-bg); font: inherit; line-height: 1.6; }
+    .rtfield__editor:focus { outline: none; border-color: var(--color-primary); }
+    .rtfield__editor ul, .rtfield__editor ol { padding-left: 1.4rem; margin: .4rem 0; }
     .tab { background: none; border: 0; font: inherit; font-size: .9rem; font-weight: 600; color: var(--color-muted); padding: .5rem .65rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
     .tab.is-active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
 
     .admin-form { display: grid; gap: 1rem; }
     .admin-form--card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.2rem; margin-top: 1rem; }
+    .fontpair-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .9rem; }
+    .fontpair-btn { font: inherit; font-size: .82rem; padding: .4rem .8rem; border-radius: 999px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); cursor: pointer; }
+    .fontpair-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .email-tpl-card { margin-top: 0; margin-bottom: 1.2rem; }
+    .email-tpl-card summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: .5rem; }
+    .email-tpl-card__body { margin-top: .8rem; }
+    .email-tpl-card__hint { font-size: .82rem; color: var(--color-muted); margin: 0 0 .6rem; }
+    .email-tpl-card textarea { width: 100%; font: inherit; font-size: .88rem; padding: .6rem .7rem; border-radius: 8px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); resize: vertical; }
+    .email-tpl-card__actions { display: flex; gap: .6rem; align-items: center; margin-top: .6rem; flex-wrap: wrap; }
     .admin-group { border: 1px solid var(--color-border); border-radius: 12px; padding: 1rem 1.1rem; display: grid; gap: .8rem; }
     .admin-group legend { font-family: var(--font-display); font-weight: 700; padding: 0 .4rem; }
     .admin-foot { margin-top: 1.2rem; display: flex; justify-content: space-between; align-items: center; padding-top: .8rem; border-top: 1px solid var(--color-border); }
@@ -477,5 +527,6 @@
   <script src="module-references.js"></script>
   <script src="module-faq.js"></script>
   <script src="module-crm.js"></script>
+  <script src="module-mediabank.js"></script>
 </body>
 </html>

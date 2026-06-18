@@ -27,11 +27,25 @@
   var esc = C.esc;
   var WD = [ {n:1,l:"Man"},{n:2,l:"Tir"},{n:3,l:"Ons"},{n:4,l:"Tor"},{n:5,l:"Fre"},{n:6,l:"Lør"},{n:0,l:"Søn"} ];
 
+  /* --- Standard e-postmaler (kan overstyres i admin) ------------------------ */
+  var DEFAULT_AVBOOK_TEMPLATE =
+    "Hei {navn},\n\nVi viser til din booking (referanse #{referanse}):\n" +
+    "Ressurs: {ressurs}\nDato: {dato} kl. {klokkeslett}\n\n" +
+    "Vi ønsker å avbooke denne timen.\n\n" +
+    "Ønsker du å bestille et nytt tidspunkt? Ta gjerne kontakt, så finner vi en tid som passer.\n\n" +
+    "Med vennlig hilsen";
+  var DEFAULT_SVAR_TEMPLATE = "Hei {navn},\n\nDette gjelder din booking (referanse #{referanse}) — {ressurs}, {dato} kl. {klokkeslett}.\n\n";
+
   /* --- Lagring (namespacet via App.store) ---------------------------------- */
   function getAssets()   { return App.store.get("booking-assets", []) || []; }
   function setAssets(v)  { App.store.set("booking-assets", v); }
   function getBookings() { return App.store.get("booking-bookings", []) || []; }
   function setBookings(v){ App.store.set("booking-bookings", v); }
+  // Sekssifret referansenummer kunden kan vise til ved telefon/e-post, f.eks. «#482913».
+  function nextBookingRef() {
+    var nums = getBookings().map(function (b) { return b.referenceNumber; }).filter(Boolean);
+    return App.generateUniqueNumber(nums);
+  }
 
   /* --- Tids-/dato-hjelpere -------------------------------------------------- */
   function timeToMin(t) { var m = String(t || "").split(":"); return (parseInt(m[0],10)||0)*60 + (parseInt(m[1],10)||0); }
@@ -62,10 +76,20 @@
   function isBooked(assetId, date, time) {
     return getBookings().some(function (b) { return b.assetId===assetId && b.date===date && b.time===time; });
   }
-  // Stengt/blokkert: hel dag (blockedDays) eller enkelt-time (blockedSlots: "YYYY-MM-DD HH:MM")
+  // Stengt/blokkert: hel dag (blockedDays), enkelt-time (blockedSlots: "YYYY-MM-DD HH:MM"),
+  // eller fast gjentakende stengning (recurringBlocks: vekedager + tidsrom, f.eks. lunsj)
   function isBlocked(a, date, time) {
     if ((a.blockedDays || []).indexOf(date) > -1) return true;
     if (time && (a.blockedSlots || []).indexOf(date + " " + time) > -1) return true;
+    if (time && (a.recurringBlocks || []).length) {
+      var wd = new Date(date + "T00:00:00").getDay();
+      var t = timeToMin(time);
+      var hit = a.recurringBlocks.some(function (r) {
+        if ((r.weekdays || []).indexOf(wd) === -1) return false;
+        return t >= timeToMin(r.from) && t < timeToMin(r.to);
+      });
+      if (hit) return true;
+    }
     return false;
   }
 
@@ -245,13 +269,13 @@
       if (!App.ui.termsAccepted(form, termsId)) { st.textContent = "Du må godta personvernerklæringen for å reservere."; st.className = "form__status is-error"; return; }
       if (isBooked(a.id, date, time) || isBlocked(a, date, time)) { st.textContent = "Beklager, tiden er ikke tilgjengelig."; st.className = "form__status is-error"; return; }
       var list = getBookings();
-      list.push({ id: "bk-" + Date.now(), assetId: a.id, date: date, time: time,
-                  name: name, email: email, phone: phone, message: msg, instant: true, status: "ny" });
+      list.push({ id: "bk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), assetId: a.id, date: date, time: time,
+                  name: name, email: email, phone: phone, message: msg, instant: true, status: "ny", referenceNumber: nextBookingRef() });
       setBookings(list);
       var picker = assetEl.querySelector(".bk-picker");
       var active = picker && picker.querySelector(".bk-datepill.is-active");
       if (picker && active) picker.querySelector("[data-times]").innerHTML = renderTimes(a, active.getAttribute("data-date"));
-      box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + time + '.</p>';
+      box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + time + '. Din referanse: #' + list[list.length - 1].referenceNumber + '</p>';
     });
   }
 
@@ -320,6 +344,9 @@
     var slotOpts = [30,45,60,90,120].map(function (m) {
       return '<option value="'+m+'" '+(((a?a.slotMinutes:60)===m)?"selected":"")+'>'+m+' min</option>';
     }).join("");
+    var recWdChecks = WD.map(function (d) {
+      return '<label class="bk-wd"><input type="checkbox" class="bk-rec-wd" value="'+d.n+'"> '+d.l+'</label>';
+    }).join("");
 
     ed.innerHTML = '' +
       '<form class="admin-form admin-form--card" data-asset-form>' +
@@ -351,6 +378,20 @@
               '<button type="button" class="btn btn--ghost" data-block-add>Steng</button>' +
             '</div>' +
             '<ul class="bk-blocklist" data-block-list></ul>' +
+          '</div>' +
+        '</div>' +
+        '<div class="field"><label>Faste stengninger (gjentakende)' +
+          C.helpIcon("Disse gjelder hver uke, i tillegg til enkeltdager du blokkerer i kalenderen under. De to typene kombineres — en time kan være stengt fordi den treffer en fast regel HER, en enkelt blokkert dato, eller begge.") +
+          '</label>' +
+          '<p class="bk-rec-hint">F.eks. lunsj hver dag, eller halv dag på onsdager. Gjelder hver uke til den fjernes.</p>' +
+          '<div class="bk-block bk-recblock">' +
+            '<div class="bk-rec-wds">' + recWdChecks + '</div>' +
+            '<div class="bk-rec-times">' +
+              '<input type="time" data-rec-from value="12:00"> – <input type="time" data-rec-to value="13:00">' +
+              '<input type="text" data-rec-label placeholder="Merkelapp (valgfritt, f.eks. «Lunsj»)">' +
+              '<button type="button" class="btn btn--ghost" data-rec-add>Legg til</button>' +
+            '</div>' +
+            '<ul class="bk-blocklist" data-rec-list></ul>' +
           '</div>' +
         '</div>' +
         '<div class="admin-row__actions">' +
@@ -397,6 +438,33 @@
       renderBlockList();
     });
 
+    // --- Faste stengninger: gjentakende vekedager + tidsrom (lunsj, halv dag …) ---
+    var recurringBlocks = (a && a.recurringBlocks ? a.recurringBlocks.slice() : []);
+    function renderRecList() {
+      var list = ed.querySelector("[data-rec-list]");
+      list.innerHTML = recurringBlocks.length ? recurringBlocks.map(function (r, i) {
+        var lbl = (r.label ? esc(r.label) + " — " : "") + esc(weekdaysLabel(r.weekdays)) + " kl. " + esc(r.from) + "–" + esc(r.to);
+        return '<li class="bk-blockitem">' + lbl + '<button type="button" class="bk-blockx" data-rec-del="'+i+'" aria-label="Fjern">×</button></li>';
+      }).join("") : '<li class="prose prose--muted" style="padding:.2rem 0">Ingen faste stengninger.</li>';
+      list.querySelectorAll("[data-rec-del]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          recurringBlocks.splice(parseInt(b.getAttribute("data-rec-del"), 10), 1);
+          renderRecList();
+        });
+      });
+    }
+    renderRecList();
+    ed.querySelector("[data-rec-add]").addEventListener("click", function () {
+      var wds = Array.prototype.slice.call(ed.querySelectorAll(".bk-rec-wd:checked")).map(function (c) { return parseInt(c.value, 10); });
+      var from = ed.querySelector("[data-rec-from]").value;
+      var to   = ed.querySelector("[data-rec-to]").value;
+      if (!wds.length || !from || !to || from >= to) return;
+      recurringBlocks.push({ weekdays: wds, from: from, to: to, label: ed.querySelector("[data-rec-label]").value.trim() });
+      ed.querySelectorAll(".bk-rec-wd").forEach(function (c) { c.checked = false; });
+      ed.querySelector("[data-rec-label]").value = "";
+      renderRecList();
+    });
+
     ed.querySelector("[data-asset-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
     ed.querySelector("[data-asset-form]").addEventListener("submit", function (e) {
       e.preventDefault();
@@ -415,7 +483,8 @@
         openTo: ed.querySelector("#as-to").value || "16:00",
         slotMinutes: parseInt(ed.querySelector("#as-slot").value,10) || 60,
         blockedDays: blockedDays,
-        blockedSlots: blockedSlots
+        blockedSlots: blockedSlots,
+        recurringBlocks: recurringBlocks
       };
       var list = getAssets();
       if (a) { var i = list.findIndex(function (x) { return x.id === a.id; }); list[i] = obj; }
@@ -441,36 +510,18 @@
       var hasEmail = !!b.email;
       var st = b.status || "ny";
 
-      // Avbook: e-post med avbooking + spørsmål om nytt tidspunkt
-      var avbookBody = "Hei " + (b.name || "") + ",\n\nVi viser til din booking:\n" +
-        "Ressurs: " + (a ? a.name : "") + "\nDato: " + C.formatDate(b.date) + " kl. " + b.time + "\n\n" +
-        "Vi ønsker å avbooke denne timen.\n\n" +
-        "Ønsker du å bestille et nytt tidspunkt? Ta gjerne kontakt, så finner vi en tid som passer.\n\n" +
-        "Med vennlig hilsen";
-      var avbookMailto = hasEmail
-        ? "mailto:" + encodeURIComponent(b.email) +
-          "?subject=" + encodeURIComponent("Avbooking – " + (a ? a.name : "") + " " + C.formatDate(b.date) + " kl. " + b.time) +
-          "&body=" + encodeURIComponent(avbookBody)
-        : "";
-
-      // Svar: tom e-post med navn forhåndsutfylt i emnefeltet
-      var svarMailto = hasEmail
-        ? "mailto:" + encodeURIComponent(b.email) +
-          "?subject=" + encodeURIComponent("Angående din reservasjon – " + (a ? a.name : "")) +
-          "&body=" + encodeURIComponent("Hei " + (b.name || "") + ",\n\n")
-        : "";
-
       return '<li class="admin-row" style="flex-direction:column;align-items:stretch;gap:.4rem" data-bk-row="' + esc(b.id) + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">' +
           '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">' +
             '<strong>' + esc(a?a.name:"(slettet)") + '</strong>' +
             '<span class="admin-row__meta">' + C.formatDate(b.date) + ' kl. ' + esc(b.time) + '</span>' +
             App.statusBadge(st) +
+            (b.referenceNumber ? '<span class="crm-custnum">#' + b.referenceNumber + '</span>' : '') +
           '</div>' +
           '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem">' +
             '<div style="display:flex;gap:.4rem">' +
-              (hasEmail ? C.button({ label:"Avbook", icon:"calendar-x", variant:"ghost", href:avbookMailto, attrs:'data-bk-resolve="' + esc(b.id) + '"' }) : '') +
-              (hasEmail ? C.button({ label:"Svar",   icon:"mail",       variant:"ghost", href:svarMailto,   attrs:'data-bk-resolve="' + esc(b.id) + '"' }) : '') +
+              (hasEmail ? C.button({ label:"Avbook", icon:"calendar-x", variant:"ghost", attrs:'data-bk-avbook="' + esc(b.id) + '"' }) : '') +
+              (hasEmail ? C.button({ label:"Svar",   icon:"mail",       variant:"ghost", attrs:'data-bk-svar="' + esc(b.id) + '"' }) : '') +
               C.button({ label:"Slett", variant:"ghost", attrs:'data-booking-del="'+esc(b.id)+'"' }) +
             '</div>' +
             '<select class="stat-select" data-bk-status="' + esc(b.id) + '">' +
@@ -490,6 +541,10 @@
     }).join("");
 
     area.innerHTML = '' +
+      App.emailTemplateCard("booking-avbook", "E-postmal for avbooking", DEFAULT_AVBOOK_TEMPLATE,
+        "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}. Mailto støtter kun ren tekst.") +
+      App.emailTemplateCard("booking-svar", "E-postmal for svar", DEFAULT_SVAR_TEMPLATE,
+        "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}. Mailto støtter kun ren tekst.") +
       '<form class="admin-form admin-form--card" data-booking-form>' +
         '<div class="field"><label for="bk-asset">Ressurs</label><select id="bk-asset" data-bk-asset>'+assetOpts+'</select></div>' +
         '<div class="bk-2col">' +
@@ -500,8 +555,22 @@
         C.button({ label:"Legg til booking", type:"submit", variant:"primary" }) +
       '</form>' +
       App.statusFilterBar("booking", counts) +
+      '<div style="margin-bottom:.8rem">' + C.button({ label:"Eksporter bookinger (CSV)", icon:"table-export", variant:"ghost", attrs:'data-bk-export' }) + '</div>' +
       '<ul class="admin-list">' + (rows || '<li class="prose prose--muted">Ingen bookingar med valgt status.</li>') + '</ul>';
 
+    area.querySelector("[data-bk-export]").addEventListener("click", function () {
+      App.downloadCsv(
+        "bookinger.csv",
+        ["Referanse", "Ressurs", "Dato", "Tid", "Navn", "E-post", "Type", "Status"],
+        allBookings.map(function (b) {
+          var a = assets.find(function (z) { return z.id === b.assetId; });
+          return [b.referenceNumber || "", a ? a.name : "(slettet)", b.date || "", b.time || "", b.name || "", b.email || "", b.instant ? "Sanntid" : "Forespørsel", App.STATUS_LABELS[b.status || "ny"]];
+        })
+      );
+    });
+
+    App.bindEmailTemplateCard(area, "booking-avbook", DEFAULT_AVBOOK_TEMPLATE);
+    App.bindEmailTemplateCard(area, "booking-svar", DEFAULT_SVAR_TEMPLATE);
     App.bindStatusFilterBar(area, "booking", function () { renderBookingArea(root); });
 
     // Variant B: eksplisitt klikk på «Vis detaljer» → Lest
@@ -516,13 +585,39 @@
         }
       });
     });
-    // Avbook/Svar → Løst (begge typer "saka er handtert")
-    area.querySelectorAll("[data-bk-resolve]").forEach(function (btn) {
+    // Avbook/Svar → åpner svar-modal med riktig mal, og marker booking Løst
+    area.querySelectorAll("[data-bk-avbook]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        var id = btn.getAttribute("data-bk-resolve");
+        var id = btn.getAttribute("data-bk-avbook");
         var list = getBookings();
         var bk = list.find(function (x) { return x.id === id; });
-        if (bk) { bk.status = "løst"; setBookings(list); }
+        if (!bk) return;
+        var a = assets.find(function (z) { return z.id === bk.assetId; });
+        bk.status = "løst"; setBookings(list);
+        App.openReplyModal({
+          name: bk.name, email: bk.email,
+          subject: "Avbooking – " + (a ? a.name : "") + " " + C.formatDate(bk.date) + " kl. " + bk.time,
+          templateKey: "booking-avbook", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE,
+          vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
+        });
+        renderBookingArea(root);
+      });
+    });
+    area.querySelectorAll("[data-bk-svar]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-bk-svar");
+        var list = getBookings();
+        var bk = list.find(function (x) { return x.id === id; });
+        if (!bk) return;
+        var a = assets.find(function (z) { return z.id === bk.assetId; });
+        bk.status = "løst"; setBookings(list);
+        App.openReplyModal({
+          name: bk.name, email: bk.email,
+          subject: "Angående din reservasjon – " + (a ? a.name : ""),
+          templateKey: "booking-svar", defaultTemplate: DEFAULT_SVAR_TEMPLATE,
+          vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
+        });
+        renderBookingArea(root);
       });
     });
     area.querySelectorAll("[data-bk-status]").forEach(function (sel) {
@@ -550,7 +645,7 @@
       if (!assetId || !date || !time) return;
       if (isBooked(assetId, date, time)) { alert("Denne tiden er allerede booket."); return; }
       var list = getBookings();
-      list.push({ id:"bk-"+Date.now(), assetId:assetId, date:date, time:time, name:name, status:"ny" });
+      list.push({ id:"bk-"+Date.now()+"-"+Math.random().toString(36).slice(2,6), assetId:assetId, date:date, time:time, name:name, status:"ny", referenceNumber: nextBookingRef() });
       setBookings(list);
       renderAdmin(root);
     });
@@ -600,7 +695,13 @@
       ".bk-hr{border:0;border-top:1px solid var(--color-border);margin:1.6rem 0 1rem}",
       ".bk-2col{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}",
       ".bk-wds{display:flex;flex-wrap:wrap;gap:.5rem}",
+      ".bk-rec-wds{display:flex;flex-wrap:wrap;gap:.5rem}",
       ".bk-wd{display:inline-flex;align-items:center;gap:.3rem;font-size:.9rem;border:1px solid var(--color-border);border-radius:999px;padding:.3rem .7rem}",
+      ".bk-rec-hint{font-size:.82rem;color:var(--color-muted);margin:.1rem 0 .6rem}",
+      ".bk-recblock{display:flex;flex-direction:column;gap:.6rem}",
+      ".bk-rec-times{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}",
+      ".bk-rec-times input[type=time]{width:auto}",
+      ".bk-rec-times input[type=text]{flex:1;min-width:160px}",
       ".bk-blockrow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}",
       ".bk-blocklist{list-style:none;margin:.7rem 0 0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem}",
       ".bk-blockitem{display:inline-flex;align-items:center;gap:.4rem;font-size:.84rem;border:1px solid var(--color-border);border-radius:999px;padding:.25rem .3rem .25rem .7rem;background:var(--color-bg)}",
@@ -628,6 +729,7 @@
     mount: mountPage,
     admin: {
       label: "Booking",
+      category: "henvendelser",
       render: function () { return '<div data-bk-root></div>'; },
       mount: function (body) { renderAdmin(body.querySelector("[data-bk-root]")); }
     }

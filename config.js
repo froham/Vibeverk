@@ -15,7 +15,15 @@ window.SITE_CONFIG = {
     name: "Nordpunkt",                       // ← Firmanavn
     tagline: "Rådgivning som flytter ting framover", // ← Slagord
     // Valgfri logo-URL. La stå tom ("") for å bruke firmanavn som tekstlogo.
-    logoUrl: ""
+    logoUrl: "",
+    // SEO/deling — settes i super-admin, ikke i vanlig admin. Vises i søkeresultater
+    // og som forhåndsvisning når en lenke til siden deles (Facebook/LinkedIn/Slack m.fl).
+    metaDescription: "",   // ← kort beskrivelse, ca. 1–2 setninger
+    // MERK: ogImage/favicon må være ekte, offentlig tilgjengelige URL-er (f.eks. fra
+    // GitHub Pages) — IKKE last opp via bildefeltet, siden opplastede bilder lagres
+    // som data-URL i nettleserens localStorage og er usynlige for eksterne crawlere.
+    ogImage: "",            // ← delingsbilde, anbefalt ca. 1200×630px
+    favicon: ""              // ← fane-ikon i nettleseren
   },
 
   /* --- Fargepalett ---------------------------------------------------------- */
@@ -50,10 +58,15 @@ window.SITE_CONFIG = {
       // { label: "Organisasjonsnummer", value: "123 456 789" },
       // { label: "Fakturainformasjon", value: "EHF: 123456789\nMerk faktura med ordrenr." }
     ],
-    // Sosiale lenker er valgfrie. Fjern linjer du ikke trenger.
+    // Sosiale lenker er valgfrie og redigeres i admin (Innhold-fanen) — verdiene
+    // her er kun standard ved første oppstart.
     social: {
-      linkedin: "https://www.linkedin.com/",
-      instagram: ""
+      facebook:  "",
+      instagram: "",
+      linkedin:  "https://www.linkedin.com/",
+      tiktok:    "",
+      youtube:   "",
+      x:         ""
     }
   },
 
@@ -126,6 +139,10 @@ window.SITE_CONFIG = {
     // Supabase-backenden senere.
     password: "test",                          // ← Admin-passord (TESTFASE — bytt via super-admin)
 
+    // Valgfritt andre passord med begrenset adgang (kun Kontakt/Tilbud/Booking/Kunder).
+    // Tomt = ingen ansatt-tilgang. Settes via super-admin.
+    employeePassword: "",
+
     // Hvordan man åpner panelet:
     //   1) Trippelklikk på footeren, eller
     //   2) Gå til  ...#admin  i adresselinja
@@ -145,7 +162,8 @@ window.SITE_CONFIG = {
     references:  true,   // ← Referanser-modul. Krever module-references.js
     faq:         true,   // ← FAQ-modul.         Krever module-faq.js
     siteSearch:  true,   // ← Søk på heile sida (søkikon i toppmenyen)
-    crm:         true    // ← Kunder-modul (lett CRM). Krever module-crm.js
+    crm:         true,   // ← Kunder-modul (lett CRM). Krever module-crm.js
+    mediabank:   true    // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
   },
 
   /* --- FAQ (modul) ---------------------------------------------------------- */
@@ -159,6 +177,15 @@ window.SITE_CONFIG = {
     heading:      "Referanser",
     intro:        "Her er noen av kundene vi har hatt gleden av å jobbe med.",
     previewCount: 3        // antall kort som vises inline på forsiden
+  },
+
+  /* --- Mediebank (modul) ------------------------------------------------------
+     Bildegalleri + fritekst om grafisk profil. Heading/ingress og bilder er
+     redigerbare i admin under fanen «Mediebank» — verdiene under er kun standard
+     ved første oppstart. */
+  mediabank: {
+    heading: "Mediebank",
+    intro:   "Her finner du bilder og vår grafiske profil til fri bruk."
   },
 
   /* --- Booking (modul) ------------------------------------------------------ */
@@ -177,21 +204,14 @@ window.SITE_CONFIG = {
 
   /* --- Personvern / GDPR ------------------------------------------------------
      Delt vilkårstekst som vises i popup på kontaktskjema, booking og tilbud.
-     Rediger fritt — teksten under er et utgangspunkt, ikke juridisk rådgivning. */
+     Tomt felt = kjernen genererer et forslag basert på hvilke moduler/funksjoner
+     som faktisk er aktive (se computeDefaultPrivacyText i core.js), slik at en
+     kunde uten f.eks. Booking eller analyse ikke får tekst som nevner det.
+     Rediger fritt i super-admin når siden er satt opp — teksten er et
+     utgangspunkt, ikke juridisk rådgivning. */
   privacy: {
     heading: "Personvern og databehandling",
-    text:
-      "Når du sender oss en henvendelse, ber om tilbud eller reserverer en booking, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +
-      "Hvor lagres opplysningene?\n" +
-      "Nettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
-      "Bruker vi cookies?\n" +
-      "Nei, ikke som standard. Dersom denne siden bruker trafikkanalyse, skjer det via Plausible Analytics — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende.\n\n" +
-      "Hvor lenge lagres opplysningene?\n" +
-      "Vi oppbevarer henvendelser, tilbud og bookinger så lenge det er nødvendig for å følge opp saken din. Du kan når som helst be om at opplysningene dine slettes.\n\n" +
-      "Dine rettigheter\n" +
-      "Du har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold.\n\n" +
-      "Samtykke\n" +
-      "Ved å sende inn dette skjemaet samtykker du til at vi behandler opplysningene dine slik beskrevet over."
+    text: ""
   },
 
   /* --- Footer --------------------------------------------------------------- */
@@ -205,11 +225,9 @@ window.SITE_CONFIG = {
   },
 
   /* --- Analyse -------------------------------------------------------------- */
-  // Fyll inn ID når domenet er oppe. Tomme felt = ingenting lastes.
+  // Fyll inn domenenavn når det er oppe. Tomt felt = ingenting lastes.
   analytics: {
-    googleAnalytics: "",   // GA4 målings-ID, f.eks. "G-XXXXXXXXXX"
-    plausible:       "",   // domenenavn, f.eks. "nordpunkt.no"
-    fathom:          ""    // Fathom site-ID, f.eks. "ABCDEFGH"
+    plausible: ""   // domenenavn, f.eks. "nordpunkt.no"
   },
 
   /* --- Lagring -------------------------------------------------------------- */

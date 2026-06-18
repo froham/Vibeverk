@@ -110,19 +110,24 @@ window.App = (function () {
       if (src && src.indexOf("media:") === 0) Store.remove(src);
     },
 
-    // Et bilde lagres som { src, pos } der pos er object-position/background-position
-    // (f.eks. "50% 30%") — altså fokuspunktet for beskjæring. Eldre data der bildet
-    // var en ren streng normaliseres her.
+    // Et bilde lagres som { src, pos, caption, creditType, alt } der pos er
+    // object-position/background-position (fokuspunkt for beskjæring), caption
+    // er selve merketeksten, creditType er "ai" | "copyright" | "" (enten/eller —
+    // styrer hvilken liten badge som vises), og alt er bildebeskrivelse for
+    // skjermlesere/SEO. Eldre data normaliseres her: en streng blir et tomt
+    // bilde-objekt, og gammel data med kun caption (fra tiden det bare fantes
+    // én KI-avhuking) regnes som creditType "ai".
     norm: function (v) {
-      if (!v) return { src: "", pos: "50% 50%", caption: "" };
-      if (typeof v === "string") return { src: v, pos: "50% 50%", caption: "" };
-      return { src: v.src || "", pos: v.pos || "50% 50%", caption: v.caption || "" };
+      if (!v) return { src: "", pos: "50% 50%", caption: "", creditType: "", alt: "" };
+      if (typeof v === "string") return { src: v, pos: "50% 50%", caption: "", creditType: "", alt: "" };
+      const creditType = v.creditType || (v.caption ? "ai" : "");
+      return { src: v.src || "", pos: v.pos || "50% 50%", caption: v.caption || "", creditType: creditType, alt: v.alt || "" };
     },
 
     // Som norm(), men med src oppløst til noe <img>/background forstår.
     resolveImage: function (v) {
       const n = this.norm(v);
-      return { src: this.resolve(n.src), pos: n.pos, caption: n.caption };
+      return { src: this.resolve(n.src), pos: n.pos, caption: n.caption, creditType: n.creditType, alt: n.alt };
     },
 
     /* --- Vedlegg (vilkårlige filer) ---------------------------------------
@@ -176,7 +181,8 @@ window.App = (function () {
       // ← seedet fra config.contact (+ egendefinerte felter, redigerbart i admin)
       contact: Object.assign({
         email: CFG.contact.email, phone: CFG.contact.phone, address: CFG.contact.address,
-        extra: (CFG.contact.extra || []).slice()
+        extra: (CFG.contact.extra || []).slice(),
+        social: Object.assign({}, CFG.contact.social || {})
       }, overrides.contact || {}),
       // ← seedet fra config.news.posts første gang, deretter fullt admin-styrt
       news: overrides.news || (CFG.news.posts || []).slice(),
@@ -205,11 +211,13 @@ window.App = (function () {
   function addLead(lead) {
     lead = lead || {};
     const leads = getLeads();
+    const refNums = leads.map(function (l) { return l.referenceNumber; }).filter(Boolean);
     leads.unshift({
-      id: "lead-" + Date.now(),
+      id: "lead-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
       name: lead.name || "", email: lead.email || "", message: lead.message || "",
       time: new Date().toISOString(),
-      status: "ny"   // ny → lest → løst
+      status: "ny",   // ny → lest → løst
+      referenceNumber: generateUniqueNumber(refNums)
     });
     saveLeads(leads);
   }
@@ -280,6 +288,45 @@ window.App = (function () {
 
     // Sidetittel
     document.title = CFG.company.name + (CFG.company.tagline ? " — " + CFG.company.tagline : "");
+    applyMeta();
+  }
+
+  // Finn-eller-lag ein <meta>-tag identifisert av attrName="attrValue", og sett content.
+  function setMetaTag(attrName, attrValue, contentValue) {
+    if (!contentValue) return;
+    let el = document.querySelector('meta[' + attrName + '="' + attrValue + '"]');
+    if (!el) {
+      el = document.createElement("meta");
+      el.setAttribute(attrName, attrValue);
+      document.head.appendChild(el);
+    }
+    el.setAttribute("content", contentValue);
+  }
+
+  // Meta-beskrivelse, Open Graph/Twitter-card-tagger og favicon — alt satt fra
+  // config.company (kun redigerbart i super-admin, siden dette er oppsett Vibeverk
+  // gjør, ikke noe kunden trenger å tenke på i den enkle admin-en).
+  function applyMeta() {
+    const com = CFG.company || {};
+    const title = com.name + (com.tagline ? " — " + com.tagline : "");
+    setMetaTag("property", "og:title", title);
+    setMetaTag("name", "twitter:title", title);
+    if (com.metaDescription) {
+      setMetaTag("name", "description", com.metaDescription);
+      setMetaTag("property", "og:description", com.metaDescription);
+      setMetaTag("name", "twitter:description", com.metaDescription);
+    }
+    if (com.ogImage) {
+      setMetaTag("property", "og:image", com.ogImage);
+      setMetaTag("name", "twitter:image", com.ogImage);
+      setMetaTag("name", "twitter:card", "summary_large_image");
+    }
+    setMetaTag("property", "og:type", "website");
+    if (com.favicon) {
+      let link = document.querySelector('link[rel="icon"]');
+      if (!link) { link = document.createElement("link"); link.setAttribute("rel", "icon"); document.head.appendChild(link); }
+      link.setAttribute("href", com.favicon);
+    }
   }
 
   function injectGoogleFonts(f) {
@@ -371,10 +418,10 @@ window.App = (function () {
     const navMods = getNavOrderedMods();
     const navItems = navMods
       .filter(function (m) { return modNavVisible(m); })
-      .map(function (m) { return { id: m.id, label: m.label }; });
+      .map(function (m) { return { id: m.id, label: modLabel(m) }; });
     const footerLinks = navMods
       .filter(function (m) { return modFooterVisible(m); })
-      .map(function (m) { return { id: m.id, label: m.label, page: !!m.page }; });
+      .map(function (m) { return { id: m.id, label: modLabel(m), page: !!m.page }; });
     const navHtml = C.nav({
       name:       CFG.company.name,
       logoUrl:    CFG.company.logoUrl,
@@ -638,13 +685,50 @@ window.App = (function () {
      Skjult, passordbeskyttet (felles passord fra config). Redigerer hero/om-oss/
      kontaktinfo, CRUD på aktuelt-innlegg og viser innsendte leads.
      ======================================================================== */
-  function isAuthed() { return sessionStorage.getItem(NS + ":admin") === "1"; }
-  function setAuthed(v) {
-    if (v) sessionStorage.setItem(NS + ":admin", "1");
+  function getAuthRole() {
+    const v = sessionStorage.getItem(NS + ":admin");
+    return (v === "owner" || v === "employee") ? v : null;
+  }
+  function isAuthed() { return !!getAuthRole(); }
+  function setAuthed(role) {
+    // role: "owner" | "employee" | falsy (logg ut)
+    if (role) sessionStorage.setItem(NS + ":admin", role);
     else sessionStorage.removeItem(NS + ":admin");
   }
 
+  // Admin-faner gruppert i tre kategorier, slik at panelet ikke blir uoversiktlig
+  // når mange moduler er aktive. Hver modul kan selv si hvilken kategori den
+  // hører til via admin.category — default "innhold" hvis ikke angitt.
+  const ADMIN_CATEGORIES = [
+    { id: "innhold",       label: "Innhold" },
+    { id: "henvendelser",  label: "Henvendelser" },
+    { id: "innstillinger", label: "Innstillinger" }
+  ];
+  // «Ansatt»-rolle (valgfritt andre passord) ser kun Henvendelser — det er
+  // driftsfanene (Kontakt/Tilbud/Booking/Kunder), ikke innhold eller innstillinger.
+  function allowedCategoriesForRole(role) {
+    return role === "employee" ? ["henvendelser"] : ["innhold", "henvendelser", "innstillinger"];
+  }
+  function buildAdminTabs() {
+    const tabs = [
+      { id: "analyse",    label: "Analyse",    category: "innstillinger" },
+      { id: "navigasjon", label: "Navigasjon", category: "innstillinger" },
+      { id: "innhold",    label: "Innhold",    category: "innhold" },
+      { id: "tjenester",  label: "Tjenester",  category: "innhold" },
+      { id: "aktuelt",    label: "Aktuelt",    category: "innhold" }
+    ];
+    orderedModules().forEach(function (m) {
+      if (m.admin && typeof m.admin.render === "function") {
+        tabs.push({ id: "mod-" + m.id, label: modLabel(m), category: m.admin.category || "innhold" });
+      }
+    });
+    tabs.push({ id: "leads", label: "Kontakt", category: "henvendelser" });
+    tabs.push({ id: "sikkerhetskopi", label: "Sikkerhetskopi", category: "innstillinger" });
+    return tabs;
+  }
+
   let activeTab = "innhold";
+  let activeCategory = "innhold";
 
   function openAdmin() {
     closeAdmin(); // unngå dobbel
@@ -678,9 +762,14 @@ window.App = (function () {
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       const pass = root.querySelector("#admin-pass").value;
-      // ← felles passord fra config.admin.password
+      const empPass = CFG.admin && CFG.admin.employeePassword;
+      // ← felles passord fra config.admin.password (eller valgfritt ansattpassord, med begrenset adgang)
       if (pass === (CFG.admin && CFG.admin.password)) {
-        setAuthed(true);
+        setAuthed("owner");
+        renderAdminPanel(root);
+      } else if (empPass && pass === empPass) {
+        setAuthed("employee");
+        activeCategory = "henvendelser";
         renderAdminPanel(root);
       } else {
         setStatus(root.querySelector("[data-login-status]"), "Feil passord.", "error");
@@ -691,32 +780,48 @@ window.App = (function () {
 
   // Selve panelet
   function renderAdminPanel(root) {
-    const tabs = [
-      { id: "analyse",    label: "Analyse" },
-      { id: "navigasjon", label: "Navigasjon" },
-      { id: "innhold",    label: "Innhold" },
-      { id: "tjenester",  label: "Tjenester" },
-      { id: "aktuelt",    label: "Aktuelt" }
-    ];
-    orderedModules().forEach(function (m) {
-      if (m.admin && typeof m.admin.render === "function") {
-        tabs.push({ id: "mod-" + m.id, label: m.admin.label || m.label || m.id });
-      }
-    });
-    tabs.push({ id: "leads", label: "Kontakt" });
+    const role = getAuthRole() || "owner";
+    const allowedCats = allowedCategoriesForRole(role);
+    const allTabs = buildAdminTabs();
+    const visibleTabs = allTabs.filter(function (t) { return allowedCats.indexOf(t.category) > -1; });
+
+    if (allowedCats.indexOf(activeCategory) === -1) activeCategory = allowedCats[0];
+    let tabsInCat = visibleTabs.filter(function (t) { return t.category === activeCategory; });
+    if (!tabsInCat.some(function (t) { return t.id === activeTab; })) {
+      activeTab = tabsInCat.length ? tabsInCat[0].id : "";
+    }
+
+    const catBarHtml = allowedCats.length > 1
+      ? '<div class="admin-catbar" role="tablist">' +
+          ADMIN_CATEGORIES.filter(function (c) { return allowedCats.indexOf(c.id) > -1; }).map(function (c) {
+            return '<button class="admin-cat ' + (c.id === activeCategory ? "is-active" : "") + '" data-admin-cat="' + c.id + '">' + C.esc(c.label) + '</button>';
+          }).join("") +
+        '</div>'
+      : "";
 
     root.innerHTML = C.modal({
       title: "Adminpanel — " + CFG.company.name,   // ← config.company.name
       label: "Adminpanel",
       wide: true,
-      body: C.tabbar(tabs, activeTab) +
+      body: catBarHtml +
+            C.tabbar(tabsInCat, activeTab) +
             `<div class="admin-tabbody" data-tabbody></div>
              <div class="admin-foot">
-               <span class="admin-vibeverk" data-vibeverk-click>Levert av Vibeverk</span>
+               ${role === "owner" ? '<span class="admin-vibeverk" data-vibeverk-click>Levert av Vibeverk</span>' : '<span class="admin-vibeverk">Levert av Vibeverk</span>'}
                ${C.button({ label: "Logg ut", variant: "ghost", attrs: 'data-logout' })}
              </div>`
     });
     bindModalClose(root);
+
+    // Kategoriveksling — hopper til første fane i kategorien
+    root.querySelectorAll("[data-admin-cat]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        activeCategory = btn.getAttribute("data-admin-cat");
+        const first = visibleTabs.find(function (t) { return t.category === activeCategory; });
+        activeTab = first ? first.id : activeTab;
+        renderAdminPanel(root);
+      });
+    });
 
     // Faneveksling
     root.querySelectorAll("[data-tab]").forEach(function (btn) {
@@ -729,14 +834,16 @@ window.App = (function () {
       setAuthed(false); closeAdmin();
     });
 
-    // Trippelklikk på «Levert av Vibeverk» → super-admin
-    let vClicks = 0, vTimer;
-    root.querySelector("[data-vibeverk-click]").addEventListener("click", function () {
-      vClicks++;
-      clearTimeout(vTimer);
-      vTimer = setTimeout(function () { vClicks = 0; }, 600);
-      if (vClicks >= 3) { vClicks = 0; openSuperAdmin(root); }
-    });
+    // Trippelklikk på «Levert av Vibeverk» → super-admin (kun eigaren, ikke ansattrolle)
+    if (role === "owner") {
+      let vClicks = 0, vTimer;
+      root.querySelector("[data-vibeverk-click]").addEventListener("click", function () {
+        vClicks++;
+        clearTimeout(vTimer);
+        vTimer = setTimeout(function () { vClicks = 0; }, 600);
+        if (vClicks >= 3) { vClicks = 0; openSuperAdmin(root); }
+      });
+    }
 
     renderAdminTab(root.querySelector("[data-tabbody]"));
   }
@@ -749,6 +856,7 @@ window.App = (function () {
     if (activeTab === "navigasjon") return adminNavigation(body);
     if (activeTab === "analyse")    return adminAnalyse(body);
     if (activeTab === "leads")      return adminLeads(body);
+    if (activeTab === "sikkerhetskopi") return adminBackup(body);
     if (activeTab.indexOf("mod-") === 0) {
       const id = activeTab.slice(4);
       const mod = modules.find(function (m) { return m.id === id; });
@@ -759,11 +867,71 @@ window.App = (function () {
     }
   }
 
+  /* --- Admin: rik-tekst-felt-hjelpere ---------------------------------------
+     Kobler opp verktøylinjen (fra C.richTextField) til document.execCommand.
+     Verdien lagres sanert (C.sanitizeRichHtml) i et skjult felt ved hver
+     endring, slik at det alltid er trygt å sette inn direkte som HTML. */
+  function bindRichTextFields(scope) {
+    scope.querySelectorAll("[data-rtfield]").forEach(function (wrap) {
+      const editor = wrap.querySelector("[data-rt-editor]");
+      const hidden = wrap.querySelector('input[type="hidden"]');
+      editor.innerHTML = hidden.value || "";
+
+      function sync() { hidden.value = C.sanitizeRichHtml(editor.innerHTML); }
+      editor.addEventListener("input", sync);
+      editor.addEventListener("blur", sync);
+
+      wrap.querySelectorAll("[data-rt-cmd]").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          editor.focus();
+          document.execCommand(btn.getAttribute("data-rt-cmd"), false, null);
+          sync();
+        });
+      });
+      const linkBtn = wrap.querySelector("[data-rt-link]");
+      if (linkBtn) linkBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        editor.focus();
+        const url = prompt("Lenke (https://...)");
+        if (!url) return;
+        document.execCommand("createLink", false, url);
+        sync();
+      });
+      const colorInput = wrap.querySelector("[data-rt-color]");
+      if (colorInput) colorInput.addEventListener("input", function () {
+        editor.focus();
+        document.execCommand("styleWithCSS", false, true);
+        document.execCommand("foreColor", false, colorInput.value);
+        sync();
+      });
+      const clearBtn = wrap.querySelector("[data-rt-clear]");
+      if (clearBtn) clearBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        editor.focus();
+        document.execCommand("removeFormat", false, null);
+        sync();
+      });
+    });
+  }
+  function readRichTextField(scope, id) {
+    const el = scope.querySelector("#" + id);
+    return el ? C.sanitizeRichHtml(el.value) : "";
+  }
+  // Plain text (med \n\n for avsnitt) → trygg HTML for å fylle en rik-tekst-editor
+  // programmatisk, f.eks. fra et generert forslag.
+  function textToRichHtml(text) {
+    return String(text || "").split(/\n\n+/).map(function (para) {
+      return "<p>" + C.esc(para).replace(/\n/g, "<br>") + "</p>";
+    }).join("");
+  }
+
   /* --- Admin: bildefelt-hjelpere ------------------------------------------- */
   // Bygger et bildefelt fra et bilde-objekt { src, pos }. `aspect` er forholdet
   // utsnittet skal ha (matcher hvordan seksjonen viser bildet på siden).
-  // Standard merketekst for bilder (KI-opplysning). Kan overstyres pr. bilde.
-  const DEFAULT_CREDIT = "Bildet er generert eller redigert av kunstig intelligens";
+  // Standard merketekster. Kan overstyres pr. bilde i fritekstfeltet.
+  const DEFAULT_CREDIT_AI        = "Bildet er generert eller redigert av kunstig intelligens";
+  const DEFAULT_CREDIT_COPYRIGHT = "© " + (CFG.company && CFG.company.name ? CFG.company.name + " " : "") + "— alle rettigheter forbeholdt";
 
   function imgField(id, label, img, aspect) {
     const n = Media.norm(img);
@@ -774,7 +942,9 @@ window.App = (function () {
       urlValue: isUrl ? n.src : "",
       aspect: aspect || (16 / 9),
       caption: n.caption,
-      creditPlaceholder: DEFAULT_CREDIT
+      creditType: n.creditType,
+      alt: n.alt,
+      creditPlaceholder: n.creditType === "copyright" ? DEFAULT_CREDIT_COPYRIGHT : DEFAULT_CREDIT_AI
     });
   }
 
@@ -797,8 +967,9 @@ window.App = (function () {
       const file    = wrap.querySelector("[data-imgfield-file]");
       const url     = wrap.querySelector("[data-imgfield-url]");
       const clear   = wrap.querySelector("[data-imgfield-clear]");
-      const credOn  = wrap.querySelector("[data-imgfield-credit]");
+      const credRadios = wrap.querySelectorAll("[data-imgfield-credit-type]");
       const credTx  = wrap.querySelector("[data-imgfield-credit-text]");
+      const altInput = wrap.querySelector("[data-imgfield-alt]");
       const outAspect = parseFloat(preview.getAttribute("data-aspect")) || (16 / 9);
 
       let state, crop = null;   // crop = { ww, wh } i prosent av forhåndsvisningen
@@ -844,32 +1015,54 @@ window.App = (function () {
         if (img.complete && img.naturalWidth) layout(img.naturalWidth, img.naturalHeight);
         else { img.onload = function () { layout(img.naturalWidth, img.naturalHeight); }; img.onerror = function () { layout(0, 0); }; }
       }
-      function setSrc(src) { Media.free(state.src); state = { src: src, pos: "50% 50%", caption: state.caption || "" }; sync(); render(); }
+      function setSrc(src) { Media.free(state.src); state = { src: src, pos: "50% 50%", caption: state.caption || "", creditType: state.creditType || "", alt: state.alt || "" }; sync(); render(); }
 
-      // Merketekst (KI-opplysning): avhuking + fritekst
+      // Merking (enten/eller): radioknapper for type + fritekst-overstyring
+      function activeCreditType() {
+        const checked = wrap.querySelector("[data-imgfield-credit-type]:checked");
+        return checked ? checked.value : "";
+      }
+      function defaultTextFor(type) {
+        return type === "copyright" ? DEFAULT_CREDIT_COPYRIGHT : (type === "ai" ? DEFAULT_CREDIT_AI : "");
+      }
       function syncCredit() {
-        if (credOn && credOn.checked) state.caption = (credTx.value.trim() || DEFAULT_CREDIT);
-        else state.caption = "";
-        if (credTx) credTx.disabled = !(credOn && credOn.checked);
+        const type = activeCreditType();
+        state.creditType = type;
+        state.caption = type ? (credTx.value.trim() || defaultTextFor(type)) : "";
+        if (credTx) credTx.disabled = !type;
         sync();
       }
-      if (credOn) credOn.addEventListener("change", function () {
-        if (credOn.checked && credTx && !credTx.value.trim()) credTx.value = DEFAULT_CREDIT;
-        syncCredit();
+      credRadios.forEach(function (r) {
+        r.addEventListener("change", function () {
+          if (r.checked && credTx && !credTx.value.trim()) credTx.value = defaultTextFor(r.value);
+          syncCredit();
+        });
       });
       if (credTx) credTx.addEventListener("input", syncCredit);
+      if (altInput) altInput.addEventListener("input", function () { state.alt = altInput.value; sync(); });
 
       file.addEventListener("change", function () {
         const f = file.files && file.files[0];
         if (!f) return;
-        Media.put(f).then(function (ref) { url.value = ""; setSrc(ref); }).catch(function () {
-          alert("Kunne ikke lagre bildet. I demo lagres bilder lokalt (localStorage er " +
-                "begrenset til noen få MB), så prøv et mindre bilde eller lim inn en URL i stedet.");
+        Media.put(f).then(function (ref) { url.value = ""; setSrc(ref); }).catch(function (err) {
+          if (err && err.message === "quota") {
+            alert("Lagringen er full og kan ikke ta flere bilder. Se Sikkerhetskopi-fanen i admin for å sjekke hvor mye plass som er brukt, og slett gamle bilder i Mediebank for å frigjøre plass.");
+          } else {
+            alert("Kunne ikke lagre bildet. Prøv et mindre bilde, eller lim inn en URL i stedet.");
+          }
         });
         file.value = "";
       });
       url.addEventListener("input", function () { setSrc(url.value.trim()); });
-      clear.addEventListener("click", function () { Media.free(state.src); state = { src: "", pos: "50% 50%", caption: "" }; url.value = ""; if (credOn) credOn.checked = false; if (credTx) { credTx.value = ""; credTx.disabled = true; } sync(); render(); });
+      clear.addEventListener("click", function () {
+        Media.free(state.src);
+        state = { src: "", pos: "50% 50%", caption: "", creditType: "", alt: "" };
+        url.value = "";
+        wrap.querySelectorAll("[data-imgfield-credit-type]").forEach(function (r) { r.checked = (r.value === ""); });
+        if (credTx) { credTx.value = ""; credTx.disabled = true; }
+        if (altInput) altInput.value = "";
+        sync(); render();
+      });
 
       // Dra utsnittet → object-position i prosent
       let dragging = false, sx = 0, sy = 0, swl = 0, swt = 0;
@@ -954,8 +1147,10 @@ window.App = (function () {
         }).catch(function (err) {
           if (err && err.message === "size") {
             alert('"' + files[idx].name + '" er for stor for demo-lagringen (maks ' + Media.MAX_FILE_MB + ' MB per fil).');
+          } else if (err && err.message === "quota") {
+            alert("Lagringen er full og kan ikke ta flere filer. Se Sikkerhetskopi-fanen i admin for å sjekke hvor mye plass som er brukt, og rydd opp for å frigjøre plass.");
           } else {
-            alert("Kunne ikke lagre vedlegget. I demo lagres filer lokalt (localStorage er begrenset), så prøv en mindre fil.");
+            alert("Kunne ikke lagre vedlegget. Prøv en mindre fil.");
           }
           next(idx + 1);
         });
@@ -999,7 +1194,7 @@ window.App = (function () {
         </fieldset>
         <fieldset class="admin-group">
           <legend>Om oss</legend>
-          ${C.field({ id: "f-about", label: "Tekst", multiline: true, rows: 5, value: content.about.text })}
+          ${C.richTextField({ id: "f-about", label: "Tekst", value: content.about.text })}
           ${imgField("f-about-image", "Bilde", content.about.image, 4/3)}
         </fieldset>
         <fieldset class="admin-group">
@@ -1012,6 +1207,13 @@ window.App = (function () {
             <div data-extra-list>${(content.contact.extra || []).map(extraRow).join("")}</div>
             ${C.button({ label: "Legg til felt", icon: "plus", variant: "ghost", attrs: 'data-extra-add' })}
           </div>
+        </fieldset>
+        <fieldset class="admin-group">
+          <legend>Sosiale medier</legend>
+          <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Fyll inn lenke for de du bruker — tomme felt vises ikke.</p>
+          ${C.SOCIAL_PLATFORMS.map(function (p) {
+            return C.field({ id: "f-soc-" + p.key, label: p.label, value: (content.contact.social || {})[p.key] || "", placeholder: "https://…" });
+          }).join("")}
         </fieldset>
         <fieldset class="admin-group">
           <legend>Footer</legend>
@@ -1027,6 +1229,7 @@ window.App = (function () {
         <p class="form__status" data-content-status role="status" aria-live="polite"></p>
       </form>`;
     bindImageFields(body);
+    bindRichTextFields(body);
 
     const extraList = body.querySelector("[data-extra-list]");
     body.querySelector("[data-extra-add]").addEventListener("click", function () {
@@ -1042,7 +1245,7 @@ window.App = (function () {
       content.hero.title    = body.querySelector("#f-hero-title").value;
       content.hero.subtitle = body.querySelector("#f-hero-sub").value;
       content.hero.image    = readImageField(body, "f-hero-image");
-      content.about.text    = body.querySelector("#f-about").value;
+      content.about.text    = readRichTextField(body, "f-about");
       content.about.image   = readImageField(body, "f-about-image");
       content.contact.email = body.querySelector("#f-c-email").value;
       content.contact.phone = body.querySelector("#f-c-phone").value;
@@ -1054,6 +1257,11 @@ window.App = (function () {
         if (label || value) extra.push({ label: label, value: value });
       });
       content.contact.extra = extra;
+      const social = {};
+      C.SOCIAL_PLATFORMS.forEach(function (p) {
+        social[p.key] = body.querySelector("#f-soc-" + p.key).value.trim();
+      });
+      content.contact.social = social;
       // Footer
       content.footer = {
         orgNr:          body.querySelector("#f-ft-orgnr").value.trim(),
@@ -1121,7 +1329,7 @@ window.App = (function () {
         <h4>${editing ? "Rediger innlegg" : "Nytt innlegg"}</h4>
         ${C.field({ id: "p-title", label: "Tittel", required: true, value: editing ? editing.title : "" })}
         ${C.field({ id: "p-date", label: "Dato", type: "date", value: editing ? editing.date : today })}
-        ${C.field({ id: "p-text", label: "Tekst", multiline: true, rows: 4, value: editing ? editing.text : "" })}
+        ${C.richTextField({ id: "p-text", label: "Tekst", value: editing ? editing.text : "" })}
         ${imgField("p-image", "Bilde (valgfritt)", editing ? editing.image : "", 16/9)}
         ${feat("attachments") ? `
         <div class="field attach-field" data-attach>
@@ -1141,12 +1349,13 @@ window.App = (function () {
       </form>`;
     bindImageFields(editor);
     bindAttachField(editor);
+    bindRichTextFields(editor);
     editor.querySelector("[data-cancel]").addEventListener("click", function () { editor.innerHTML = ""; });
     editor.querySelector("[data-post]").addEventListener("submit", function (e) {
       e.preventDefault();
       const title = editor.querySelector("#p-title").value.trim();
       const date = editor.querySelector("#p-date").value || today;
-      const text = editor.querySelector("#p-text").value.trim();
+      const text = readRichTextField(editor, "p-text");
       const image = readImageField(editor, "p-image");
       // Bevar lagrede vedlegg når funksjonen er avslått (feltet vises ikke da)
       const attachments = feat("attachments")
@@ -1170,7 +1379,7 @@ window.App = (function () {
         <li class="admin-row" data-id="${C.esc(c.id)}">
           <div class="admin-row__main">
             <strong>${C.icon(c.icon)} ${C.esc(c.title)}</strong>
-            <span class="admin-row__meta">${C.esc(c.text)}</span>
+            <span class="admin-row__meta">${C.esc(C.stripHtml(c.text))}</span>
           </div>
           <div class="admin-row__actions">
             ${C.button({ label: "Rediger", variant: "ghost", attrs: 'data-edit="' + C.esc(c.id) + '"' })}
@@ -1220,7 +1429,7 @@ window.App = (function () {
           </div>
         </div>
         ${C.field({ id: "s-title", label: "Tittel", required: true, value: editing ? editing.title : "" })}
-        ${C.field({ id: "s-text", label: "Beskrivelse", multiline: true, rows: 3, value: editing ? editing.text : "" })}
+        ${C.richTextField({ id: "s-text", label: "Beskrivelse", value: editing ? editing.text : "" })}
         ${imgField("s-image", "Bilde (valgfritt — erstatter ikonet)", editing ? editing.image : "", 16/10)}
         <div class="admin-row__actions">
           ${C.button({ label: editing ? "Oppdater" : "Opprett", type: "submit", variant: "primary" })}
@@ -1229,6 +1438,7 @@ window.App = (function () {
       </form>`;
 
     bindImageFields(editor);
+    bindRichTextFields(editor);
     // Live forhåndsvisning av ikonet mens man skriver
     const iconInput = editor.querySelector("#s-icon");
     const preview = editor.querySelector("[data-icon-preview]");
@@ -1241,7 +1451,7 @@ window.App = (function () {
       e.preventDefault();
       const icon = cleanIcon(iconInput.value) || "point";
       const title = editor.querySelector("#s-title").value.trim();
-      const text = editor.querySelector("#s-text").value.trim();
+      const text = readRichTextField(editor, "s-text");
       const image = readImageField(editor, "s-image");
       if (!title) return;
       if (editing) {
@@ -1261,7 +1471,7 @@ window.App = (function () {
 
   // Henter moduler i custom nav-rekkefølge (felles for toppmeny og footer)
   function getNavOrderedMods() {
-    const all = orderedModules().filter(function (m) { return m.label; });
+    const all = orderedModules().filter(function (m) { return m.label && !m.adminOnly; });
     const order = (getNavSettings().navOrder || []);
     if (!order.length) return all;
     const indexed = {};
@@ -1297,6 +1507,13 @@ window.App = (function () {
     return all;
   }
 
+  // Hent visningsnavn for en modul — overstyrt navn (satt i Navigasjon-fanen) har forrang
+  function modLabel(mod) {
+    const s = getNavSettings()[mod.id];
+    if (s && s.label) return s.label;
+    return (mod.admin && mod.admin.label) || mod.label || mod.id;
+  }
+
   // Hent nav/footer-synlighet for en modul
   function modNavVisible(mod) {
     if (mod.adminOnly) return false;
@@ -1305,6 +1522,7 @@ window.App = (function () {
     return true; // default: vis
   }
   function modFooterVisible(mod) {
+    if (mod.adminOnly) return false;
     const s = getNavSettings()[mod.id];
     if (s && typeof s.footer === "boolean") return s.footer;
     return false; // default: ikke i footer
@@ -1324,7 +1542,9 @@ window.App = (function () {
         const isFirst  = i === 0;
         const isLast   = i === arr.length - 1;
         return `<tr>
-          <td style="padding:.4rem .5rem;font-weight:600;white-space:nowrap">${C.esc(m.label)}</td>
+          <td style="padding:.4rem .5rem">
+            <input type="text" class="nav-label-input" data-nav-label="${C.esc(m.id)}" value="${C.esc(modLabel(m))}" placeholder="${C.esc(m.label)}" title="Visningsnavn — vises i meny, footer og admin-fane">
+          </td>
           <td style="padding:.4rem .5rem;text-align:center">
             <input type="checkbox" data-nav-mod="${C.esc(m.id)}" data-nav-type="nav" ${inNav ? "checked" : ""}>
           </td>
@@ -1346,6 +1566,19 @@ window.App = (function () {
     }
 
     function bindNavTableEvents() {
+      body.querySelectorAll("[data-nav-label]").forEach(function (inp) {
+        inp.addEventListener("change", function () {
+          const id  = inp.getAttribute("data-nav-label");
+          const val = inp.value.trim();
+          const cur = getNavSettings();
+          if (!cur[id]) cur[id] = {};
+          if (val) { cur[id].label = val; } else { delete cur[id].label; }
+          saveNavSettings(cur);
+          render();
+          const st = body.querySelector("[data-nav-status]");
+          if (st) { st.textContent = "Visningsnavn lagret. Admin-fanen oppdaterer seg neste gang panelet åpnes."; st.className = "form__status is-ok"; setTimeout(function () { if (st) st.textContent = ""; }, 2500); }
+        });
+      });
       body.querySelectorAll("[data-nav-mod]").forEach(function (cb) {
         cb.addEventListener("change", function () {
           const id   = cb.getAttribute("data-nav-mod");
@@ -1389,7 +1622,7 @@ window.App = (function () {
         <table style="width:100%;border-collapse:collapse;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
           <thead>
             <tr style="background:var(--color-alt)">
-              <th style="padding:.5rem .5rem;text-align:left;font-size:.85rem">Seksjon</th>
+              <th style="padding:.5rem .5rem;text-align:left;font-size:.85rem">Visningsnavn</th>
               <th style="padding:.5rem .5rem;text-align:center;font-size:.85rem">Toppmeny</th>
               <th style="padding:.5rem .5rem;text-align:center;font-size:.85rem">Footer</th>
               <th style="padding:.5rem .5rem;text-align:center;font-size:.85rem">Rekkefølge</th>
@@ -1422,7 +1655,7 @@ window.App = (function () {
       const hidden  = ns.pageHidden || [];
       const shown   = ns.pageShown  || [];
       // Alle moduler med render eller renderPage
-      const allMods = orderedModules().filter(function (m) { return m.label && (m.render || m.renderPage); });
+      const allMods = orderedModules().filter(function (m) { return m.label && !m.adminOnly && (m.render || m.renderPage); });
       const custOrder = ns.pageOrder || [];
       let mods;
       if (custOrder.length) {
@@ -1439,7 +1672,7 @@ window.App = (function () {
         const vis = isPageOnly ? shown.indexOf(m.id) > -1 : hidden.indexOf(m.id) === -1;
         const badge = isPageOnly ? ' <span style="font-size:.72rem;color:var(--color-muted)">(eigen side)</span>' : '';
         return `<tr>
-          <td style="padding:.4rem .5rem;font-weight:600">${C.esc(m.label)}${badge}</td>
+          <td style="padding:.4rem .5rem;font-weight:600">${C.esc(modLabel(m))}${badge}</td>
           <td style="padding:.4rem .5rem;text-align:center">
             <input type="checkbox" data-page-vis="${C.esc(m.id)}" data-page-only="${isPageOnly?'1':'0'}" ${vis ? "checked" : ""}>
           </td>
@@ -1512,21 +1745,68 @@ window.App = (function () {
         <div class="an-card__diff" style="color:${color}">${arrow} ${Math.abs(diff)} vs. forrige måned (${prevVal})</div>
       </div>`;
     }
+    // Åpne = ny + lest, Løst = løst. Samme status-system som brukes i Kontakt/Tilbud/Booking.
+    function openCount(items)     { return items.filter(function (x) { return (x.status || "ny") !== "løst"; }).length; }
+    function resolvedCount(items) { return items.filter(function (x) { return (x.status || "ny") === "løst"; }).length; }
+    function statusCard(label, items) {
+      return `<div class="an-card">
+        <div class="an-card__split">
+          <div><div class="an-card__val">${openCount(items)}</div><div class="an-card__label">Åpne</div></div>
+          <div><div class="an-card__val">${resolvedCount(items)}</div><div class="an-card__label">Løst</div></div>
+        </div>
+        <div class="an-card__label" style="margin:.5rem 0 0;font-weight:600">${C.esc(label)}</div>
+      </div>`;
+    }
+    function countCard(label, val) {
+      return `<div class="an-card">
+        <div class="an-card__val">${val}</div>
+        <div class="an-card__label">${C.esc(label)}</div>
+      </div>`;
+    }
+    // Vis kun tal for moduler kunden faktisk har — basismalen skal aldri vise tomme/feil kort.
+    function hasModule(id) { return modules.some(function (m) { return m.id === id; }); }
 
     const leads    = getLeads().filter(function (l) { return !l.message || l.message.indexOf("Tilbudsforesp") !== 0; });
     const quotes   = getLeads().filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
     const bookings = Store.get("booking-bookings", []) || [];
 
+    const monthCards = [statCard("Kontaktskjema", countByMonth(leads, thisM), countByMonth(leads, prevM))];
+    if (hasModule("tilbud"))  monthCards.push(statCard("Tilbud", countByMonth(quotes, thisM), countByMonth(quotes, prevM)));
+    if (hasModule("booking")) monthCards.push(statCard("Bookinger", countByMonth(bookings, thisM), countByMonth(bookings, prevM)));
+
+    const statusCards = [statusCard("Kontaktskjema", leads)];
+    if (hasModule("tilbud"))  statusCards.push(statusCard("Tilbud", quotes));
+    if (hasModule("booking")) statusCards.push(statusCard("Bookinger", bookings));
+
+    const contentCards = [];
+    let refCatHtml = "";
+    if (hasModule("booking")) {
+      const instantN = bookings.filter(function (b) { return b.instant; }).length;
+      contentCards.push(countCard("Sanntidsbooking", instantN));
+      contentCards.push(countCard("Forespørsel (booking)", bookings.length - instantN));
+    }
+    if (hasModule("referanser")) {
+      const refs = Store.get("ref-items", []) || [];
+      contentCards.push(countCard("Referanser", refs.length));
+      const cats = {};
+      refs.forEach(function (r) { const c = r.category || "Ukategorisert"; cats[c] = (cats[c] || 0) + 1; });
+      const catKeys = Object.keys(cats);
+      if (catKeys.length) {
+        refCatHtml = `<div class="an-cat-list">` + catKeys.map(function (c) {
+          return `<span class="an-cat-chip">${C.esc(c)} (${cats[c]})</span>`;
+        }).join("") + `</div>`;
+      }
+    }
+    if (hasModule("faq"))       contentCards.push(countCard("FAQ-spørsmål", (Store.get("faq-items", []) || []).length));
+    if (hasModule("mediabank")) contentCards.push(countCard("Bilder i Mediebank", (Store.get("mediabank-images", []) || []).length));
+    if (hasModule("crm"))       contentCards.push(countCard("Kunder", (Store.get("crm-customers", []) || []).length));
+
     // Innstillingene konfigureres kun av Vibeverk i super-admin — kunden ser bare resultatet.
     const a = Store.get("analytics", null) || (CFG.analytics || {});
-    const gaVal    = (a.googleAnalytics  || "");
     const plVal    = (a.plausible        || "");
-    const faVal    = (a.fathom           || "");
     const embedVal = (a.plausibleEmbed   || "");
 
-    const gaLink = gaVal ? `<a class="an-ext-link" href="https://analytics.google.com" target="_blank" rel="noopener">Åpne Google Analytics ${C.icon("external-link")}</a>` : "";
     const plLink = plVal ? `<a class="an-ext-link" href="https://plausible.io/${C.esc(plVal)}" target="_blank" rel="noopener">Åpne Plausible ${C.icon("external-link")}</a>` : "";
-    const faLink = faVal ? `<a class="an-ext-link" href="https://app.usefathom.com" target="_blank" rel="noopener">Åpne Fathom ${C.icon("external-link")}</a>` : "";
 
     const bits = [];
     if (embedVal) {
@@ -1535,19 +1815,18 @@ window.App = (function () {
       bits.push(`<iframe plausible-embed src="${C.esc(src)}" scrolling="no" frameborder="0" loading="lazy" style="width:1px;min-width:100%;height:1400px;border:0;border-radius:var(--radius)"></iframe>`);
       bits.push(`<p style="font-size:.78rem;color:var(--color-muted);margin-top:.5rem">Drevet av <a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a></p>`);
     }
-    if (gaVal) bits.push(gaLink);
     if (plVal && !embedVal) bits.push(plLink);
-    if (faVal) bits.push(faLink);
     const trafficHtml = bits.length ? bits.join("") : `<p class="an-hint">Ingen analyse er satt opp ennå. Ta kontakt med din leverandør for oppsett.</p>`;
 
     body.innerHTML = `
       <div class="an-wrap">
         <h4 class="an-heading">Denne måneden</h4>
-        <div class="an-cards">
-          ${statCard("Kontaktskjema", countByMonth(leads, thisM),    countByMonth(leads, prevM))}
-          ${statCard("Tilbud",        countByMonth(quotes, thisM),   countByMonth(quotes, prevM))}
-          ${statCard("Bookinger",     countByMonth(bookings, thisM), countByMonth(bookings, prevM))}
-        </div>
+        <div class="an-cards">${monthCards.join("")}</div>
+
+        <h4 class="an-heading">Status (åpne/løst)</h4>
+        <div class="an-cards">${statusCards.join("")}</div>
+
+        ${contentCards.length ? `<h4 class="an-heading">Innhold</h4><div class="an-cards">${contentCards.join("")}</div>${refCatHtml}` : ""}
 
         <div class="an-traffic">
           <h4 class="an-heading">Trafikk</h4>
@@ -1657,6 +1936,7 @@ window.App = (function () {
               <strong>${C.esc(l.name)}</strong>
               <a href="mailto:${C.esc(l.email)}">${C.esc(l.email)}</a>
               ${statusBadge(st)}
+              ${l.referenceNumber ? '<span class="crm-custnum">#' + l.referenceNumber + '</span>' : ""}
             </div>
             <details class="lead-details" data-lead-details="${C.esc(l.id)}">
               <summary>${C.esc(preview)}${preview.length === 90 ? "…" : ""}</summary>
@@ -1677,7 +1957,9 @@ window.App = (function () {
     }).join("") : '<li class="prose prose--muted" style="padding:.5rem 0">Ingen henvendingar med valgt status.</li>';
 
     body.innerHTML =
-      `${statusFilterBar("kontakt", counts)}
+      `${emailTemplateCard("kontakt", "E-postmal for svar", DEFAULT_REPLY_TEMPLATE)}
+       <div style="margin-bottom:1rem">${C.button({ label: "Eksporter henvendelser (CSV)", icon: "table-export", variant: "ghost", attrs: 'data-export-leads' })}</div>
+       ${statusFilterBar("kontakt", counts)}
        <ul class="admin-list">${rows}</ul>
        <div class="crm-gdpr-box">
          <h4 class="crm-gdpr-title">${C.icon("shield")} Slett alle data på ein person</h4>
@@ -1692,6 +1974,7 @@ window.App = (function () {
          <p class="form__status" data-gdpr-status style="margin-top:.5rem"></p>
        </div>`;
 
+    bindEmailTemplateCard(body, "kontakt", DEFAULT_REPLY_TEMPLATE);
     bindStatusFilterBar(body, "kontakt", function () { adminLeads(body); });
 
     // Variant B: eksplisitt klikk på «Vis hele meldingen» (details/summary) → Lest
@@ -1704,13 +1987,28 @@ window.App = (function () {
       });
     });
 
+    const exportLeadsBtn = body.querySelector("[data-export-leads]");
+    if (exportLeadsBtn) exportLeadsBtn.addEventListener("click", function () {
+      downloadCsv(
+        "kontakthenvendelser.csv",
+        ["Referanse", "Navn", "E-post", "Melding", "Tidspunkt", "Status"],
+        allLeads.map(function (l) { return [l.referenceNumber || "", l.name || "", l.email || "", cleanMessageText(l.message), formatDateTime(l.time), STATUS_LABELS[l.status || "ny"]]; })
+      );
+    });
+
     body.querySelectorAll("[data-reply-lead]").forEach(function (b) {
       b.addEventListener("click", function () {
         const id   = b.getAttribute("data-reply-lead");
         const lead = getLeads().find(function (l) { return l.id === id; });
         if (lead) {
           setLeadStatus(id, "løst");
-          openReplyModal(lead, "Re: Henvendelse fra " + (lead.name || ""));
+          openReplyModal({
+            name: lead.name, email: lead.email,
+            subject: "Re: Henvendelse fra " + (lead.name || ""),
+            templateKey: "kontakt", defaultTemplate: DEFAULT_REPLY_TEMPLATE,
+            vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDateTime(lead.time), melding: cleanMessageText(lead.message), referanse: lead.referenceNumber || "" },
+            previewHtml: messageToHtml(lead.message)
+          });
           adminLeads(body);
         }
       });
@@ -1743,6 +2041,152 @@ window.App = (function () {
         st.textContent = "Ingen data funne for " + email + ".";
         st.className = "form__status is-error";
       }
+    });
+  }
+
+  /* --- Sikkerhetskopi: full eksport/import av ALT under sidens navnerom ----
+     Alt (innhold, henvendelser, bookinger, kunder, bilder, innstillinger) ligger
+     under samme localStorage-prefiks (NS + ":"), så en full kopi er bare å liste
+     opp og dumpe alle disse nøklene — ingen spesialhåndtering pr. datatype. */
+  function allStoreKeys() {
+    const prefix = NS + ":";
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(prefix) === 0) keys.push(k.slice(prefix.length));
+    }
+    return keys;
+  }
+  function exportBackup() {
+    const payload = buildBackupPayload();
+    const stamp = new Date().toISOString().slice(0, 10);
+    const slug  = ((CFG.company && CFG.company.name) || "side").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "side";
+    downloadBlob("sikkerhetskopi-" + slug + "-" + stamp + ".json", JSON.stringify(payload, null, 2), "application/json");
+  }
+  function buildBackupPayload() {
+    const keys = allStoreKeys();
+    const data = {};
+    keys.forEach(function (k) { data[k] = Store.get(k, null); });
+    return {
+      vibeverk_backup: true,
+      version: 1,
+      site: (CFG.company && CFG.company.name) || "",
+      exportedAt: new Date().toISOString(),
+      data: data
+    };
+  }
+  // Skriver ALT fra et parset backup-objekt tilbake (full overskriving — fjerner
+  // først alt eksisterende under navnerommet, slik at gjenoppretting blir et
+  // eksakt speil av kopien, ikke en sammenslåing).
+  function restoreBackupData(data) {
+    allStoreKeys().forEach(function (k) { Store.remove(k); });
+    Object.keys(data).forEach(function (k) { Store.set(k, data[k]); });
+  }
+  function importBackup(file, onDone) {
+    const reader = new FileReader();
+    reader.onerror = function () { onDone(false, "Kunne ikke lese filen."); };
+    reader.onload = function () {
+      let parsed;
+      try { parsed = JSON.parse(reader.result); }
+      catch (e) { onDone(false, "Fila kunne ikke leses som JSON — er det en sikkerhetskopi fra denne siden?"); return; }
+      if (!parsed || typeof parsed.data !== "object" || !parsed.data) {
+        onDone(false, "Dette ser ikke ut som en gyldig sikkerhetskopi.");
+        return;
+      }
+      restoreBackupData(parsed.data);
+      onDone(true, "Sikkerhetskopi importert.");
+    };
+    reader.readAsText(file);
+  }
+
+  // Anslag på localStorage-kvote — konservativt (Safari er strammest med ~5 MB).
+  const STORAGE_QUOTA_BYTES = 5 * 1024 * 1024;
+  function storageUsageBytes() {
+    let total = 0;
+    const prefix = NS + ":";
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(prefix) === 0) total += k.length + (localStorage.getItem(k) || "").length;
+    }
+    return total;
+  }
+
+  function adminBackup(body) {
+    function hasModule(id) { return modules.some(function (m) { return m.id === id; }); }
+    const leads     = getLeads().filter(function (l) { return !l.message || l.message.indexOf("Tilbudsforesp") !== 0; });
+    const quotes    = getLeads().filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
+    const bookings  = Store.get("booking-bookings",  []) || [];
+    const customers = Store.get("crm-customers",     []) || [];
+    const refs      = Store.get("ref-items",         []) || [];
+    const faqs      = Store.get("faq-items",         []) || [];
+    const images    = Store.get("mediabank-images",  []) || [];
+    const mediaCount = allStoreKeys().filter(function (k) { return k.indexOf("media:") === 0 || k.indexOf("file:") === 0; }).length;
+
+    const usedBytes = storageUsageBytes();
+    const pct = Math.min(100, Math.round((usedBytes / STORAGE_QUOTA_BYTES) * 100));
+    const usedMb = (usedBytes / (1024 * 1024)).toFixed(1);
+    const level = pct >= 90 ? "high" : pct >= 70 ? "mid" : "low";
+    const levelText = level === "high"
+      ? "Lagringen er nesten full. Slett gamle bilder i Mediebank, eller eksporter en sikkerhetskopi og rydd opp i gamle henvendelser/bookinger."
+      : level === "mid"
+      ? "Lagringen begynner å fylles opp — verdt å holde et øye med, særlig om Mediebank vokser."
+      : "God plass igjen.";
+
+    const rows = [["Kontakthenvendelser", leads.length]];
+    if (hasModule("tilbud"))     rows.push(["Tilbudsforespørsler", quotes.length]);
+    if (hasModule("booking"))    rows.push(["Bookinger", bookings.length]);
+    if (hasModule("crm"))        rows.push(["Kunder", customers.length]);
+    if (hasModule("referanser")) rows.push(["Referanser", refs.length]);
+    if (hasModule("faq"))        rows.push(["FAQ-spørsmål", faqs.length]);
+    if (hasModule("mediabank"))  rows.push(["Bilder i Mediebank", images.length]);
+    rows.push(["Opplastede bilder/filer totalt", mediaCount]);
+
+    body.innerHTML = `
+      <div class="bk-wrap">
+        <h4 class="an-heading">Lagringsplass</h4>
+        <div class="storage-meter" data-storage-level="${level}">
+          <div class="storage-meter__bar"><div class="storage-meter__fill" style="width:${pct}%"></div></div>
+          <p class="storage-meter__label">${usedMb} MB av ~5 MB brukt (${pct} %)</p>
+        </div>
+        <p class="prose prose--muted" style="margin:0 0 1.6rem">${levelText}</p>
+
+        <h4 class="an-heading">Last ned sikkerhetskopi</h4>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">Laster ned ALT innhold på denne siden — tekst, bilder, henvendelser, bookinger, kunder og innstillinger — som én fil. Bruk denne jevnlig, og alltid før du gjør store endringer.</p>
+        <ul class="backup-summary">
+          ${rows.map(function (r) { return '<li><span>' + C.esc(r[0]) + '</span><strong>' + r[1] + '</strong></li>'; }).join("")}
+        </ul>
+        ${C.button({ label: "Last ned sikkerhetskopi", icon: "download", variant: "primary", attrs: 'data-backup-export' })}
+
+        <h4 class="an-heading" style="margin-top:2rem">Importer sikkerhetskopi</h4>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} Dette overskriver ALT eksisterende innhold på denne siden med innholdet i fila. Kan ikke angres. Last ned en fersk sikkerhetskopi av nåværende innhold først hvis du er usikker.</p>
+        <label class="btn btn--ghost backup-filebtn">
+          ${C.icon("upload")} Velg sikkerhetskopi-fil
+          <input type="file" accept="application/json" hidden data-backup-import>
+        </label>
+        <p class="form__status" data-backup-status style="margin-top:.6rem" role="status" aria-live="polite"></p>
+      </div>`;
+
+    body.querySelector("[data-backup-export]").addEventListener("click", exportBackup);
+    body.querySelector("[data-backup-import]").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const st = body.querySelector("[data-backup-status]");
+      if (!confirm("Dette overskriver ALT eksisterende innhold på denne siden med innholdet i «" + file.name + "». Dette kan ikke angres. Er du sikker?")) {
+        e.target.value = "";
+        return;
+      }
+      importBackup(file, function (ok, msg) {
+        if (ok) {
+          st.textContent = msg + " Laster siden på nytt …";
+          st.className = "form__status is-ok";
+          setTimeout(function () { location.reload(); }, 700);
+        } else {
+          st.textContent = msg;
+          st.className = "form__status is-error";
+          e.target.value = "";
+        }
+      });
     });
   }
 
@@ -1808,49 +2252,139 @@ window.App = (function () {
     return html;
   }
 
-  function buildMailto(lead, subject) {
-    const MAX = 1800;
-    const cleaned = cleanMessageText(lead.message);
-    const body = ("Hei " + (lead.name || "") + ",\n\n\n\n" +
-      "─────────────────────────────────────\n" +
-      "Fra: " + (lead.name || "") + " <" + (lead.email || "") + ">\n" +
-      "Mottatt: " + formatDateTime(lead.time) + "\n" +
-      "─────────────────────────────────────\n\n" +
-      cleaned).slice(0, MAX);
-    return "mailto:" + encodeURIComponent(lead.email || "") +
-      "?subject=" + encodeURIComponent(subject || ("Re: Henvendelse fra " + (lead.name || ""))) +
-      "&body=" + encodeURIComponent(body);
+  /* --- E-postmaler (delt mellom Kontakt, Tilbud og Booking) -----------------
+     Hver kontekst har sin egen redigerbare mal (lagret separat under
+     "email-template-<key>"), med plassholdere som fylles inn automatisk.
+     mailto støtter kun ren tekst, så malen er alltid en vanlig textarea —
+     ikke rik-tekst-editoren. */
+  function getEmailTemplate(key, fallback) {
+    const v = Store.get("email-template-" + key, null);
+    return (v === null || v === undefined) ? fallback : v;
+  }
+  function setEmailTemplate(key, value) { Store.set("email-template-" + key, value); }
+
+  function fillTemplate(tpl, vars) {
+    return String(tpl || "").replace(/\{(\w+)\}/g, function (m, key) {
+      return (vars && vars[key] !== undefined) ? (vars[key] || "") : m;
+    });
   }
 
-  function openReplyModal(lead, subject) {
+  function buildMailtoUrl(email, subject, body) {
+    let url = "mailto:" + encodeURIComponent(email || "") + "?subject=" + encodeURIComponent(subject || "");
+    if (body) url += "&body=" + encodeURIComponent(body);
+    return url;
+  }
+
+  /* --- Nedlasting / CSV-eksport (delt mellom Kontakt/CRM/Booking/Tilbud) -----
+     CSV med UTF-8 BOM åpnes rett opp i Excel med riktige æøå, helt uten
+     biblioteker. rows er en array av arrays (header + datarader). */
+  function downloadBlob(filename, content, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+  function toCsvValue(v) {
+    const s = String(v == null ? "" : v).replace(/"/g, '""');
+    return /[",\n\r]/.test(s) ? '"' + s + '"' : s;
+  }
+  function downloadCsv(filename, headers, rows) {
+    const lines = [headers.map(toCsvValue).join(",")].concat(
+      rows.map(function (r) { return r.map(toCsvValue).join(","); })
+    );
+    downloadBlob(filename, "\uFEFF" + lines.join("\r\n"), "text/csv;charset=utf-8");
+  }
+
+  // Genererer et unikt sekssifret tilfeldig nummer (100000–999999), med
+  // kollisjonssjekk mot eksisterende nummer. Delt mellom CRM (kundenummer) og
+  // Booking/Tilbud (referansenummer) — hver kontekst har sin egen pool, så det
+  // holder å sjekke mot nummer av samme type.
+  function generateUniqueNumber(existingNumbers) {
+    const existing = new Set(existingNumbers || []);
+    let n, attempts = 0;
+    do {
+      n = Math.floor(100000 + Math.random() * 900000);
+      attempts++;
+    } while (existing.has(n) && attempts < 50);
+    return n;
+  }
+
+  const DEFAULT_REPLY_TEMPLATE =
+    "Hei {navn},\n\n\n\n" +
+    "─────────────────────────────────────\n" +
+    "Fra: {navn} <{epost}>\n" +
+    "Mottatt: {dato}\n" +
+    "─────────────────────────────────────\n\n" +
+    "{melding}";
+
+  // Redigeringskort for en e-postmal — brukes i Kontakt/Tilbud/Booking sine
+  // admin-faner. Kollapset (<details>) som standard, siden dette er noe man
+  // setter opp én gang og sjelden går tilbake til.
+  function emailTemplateCard(key, label, defaultTpl, hint) {
+    const tpl = getEmailTemplate(key, defaultTpl);
+    return `
+      <details class="admin-form admin-form--card email-tpl-card">
+        <summary>${C.icon("mail")} ${C.esc(label)}</summary>
+        <div class="email-tpl-card__body">
+          <p class="email-tpl-card__hint">${C.esc(hint || "Plassholdere fylles inn automatisk når e-posten åpnes. Mailto støtter kun ren tekst, ingen formatering.")}</p>
+          <textarea data-email-tpl="${C.esc(key)}" rows="8">${C.esc(tpl)}</textarea>
+          <div class="email-tpl-card__actions">
+            ${C.button({ label: "Lagre mal", variant: "ghost", attrs: 'data-email-tpl-save="' + C.esc(key) + '"' })}
+            ${C.button({ label: "Tilbakestill til standard", variant: "ghost", attrs: 'data-email-tpl-reset="' + C.esc(key) + '"' })}
+            <span class="form__status" data-email-tpl-status="${C.esc(key)}"></span>
+          </div>
+        </div>
+      </details>`;
+  }
+  function bindEmailTemplateCard(scope, key, defaultTpl) {
+    const ta = scope.querySelector('[data-email-tpl="' + key + '"]');
+    if (!ta) return;
+    const saveBtn  = scope.querySelector('[data-email-tpl-save="' + key + '"]');
+    const resetBtn = scope.querySelector('[data-email-tpl-reset="' + key + '"]');
+    const status   = scope.querySelector('[data-email-tpl-status="' + key + '"]');
+    function flash(msg) {
+      if (!status) return;
+      status.textContent = msg; status.className = "form__status is-ok";
+      setTimeout(function () { if (status) status.textContent = ""; }, 1500);
+    }
+    if (saveBtn) saveBtn.addEventListener("click", function () { setEmailTemplate(key, ta.value); flash("Lagret."); });
+    if (resetBtn) resetBtn.addEventListener("click", function () { ta.value = defaultTpl; setEmailTemplate(key, defaultTpl); flash("Tilbakestilt."); });
+  }
+
+  // Generisk svar-modal, brukt av Kontakt, Tilbud og Booking.
+  // opts = { name, email, subject, templateKey, defaultTemplate, vars, previewHtml }
+  function openReplyModal(opts) {
     const existing = document.getElementById("reply-modal-root");
     if (existing) existing.remove();
 
-    const mailto = buildMailto(lead, subject);
+    const tpl      = getEmailTemplate(opts.templateKey, opts.defaultTemplate || DEFAULT_REPLY_TEMPLATE);
+    const bodyText = fillTemplate(tpl, opts.vars || {}).slice(0, 1800);
+    const mailtoFull  = buildMailtoUrl(opts.email, opts.subject, bodyText);
+    const mailtoBlank = buildMailtoUrl(opts.email, opts.subject, "");
+
     const root = document.createElement("div");
     root.id = "reply-modal-root";
     root.innerHTML =
       '<div style="position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem" data-reply-back>' +
         '<div style="background:var(--color-bg);border-radius:var(--radius);width:min(620px,100%);max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.3rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
-            '<strong style="font-size:1rem">Svar til ' + C.esc(lead.name || lead.email) + '</strong>' +
+            '<strong style="font-size:1rem">Svar til ' + C.esc(opts.name || opts.email) + '</strong>' +
             '<button data-reply-close style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
           '</div>' +
           '<div style="padding:1.1rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
-            '<p style="margin:0 0 .25rem;font-size:.88rem"><strong>Fra:</strong> ' + C.esc(lead.name || "–") +
-              ' &lt;<a href="mailto:' + C.esc(lead.email) + '" style="color:var(--color-primary)">' + C.esc(lead.email) + '</a>&gt;</p>' +
-            '<p style="margin:0;font-size:.88rem"><strong>Mottatt:</strong> ' + formatDateTime(lead.time) + '</p>' +
+            '<p style="margin:0;font-size:.88rem"><strong>Til:</strong> &lt;<a href="mailto:' + C.esc(opts.email) + '" style="color:var(--color-primary)">' + C.esc(opts.email) + '</a>&gt;</p>' +
           '</div>' +
-          '<div style="padding:1.1rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
-            messageToHtml(lead.message) +
-          '</div>' +
+          (opts.previewHtml ? '<div style="padding:1.1rem 1.3rem;border-bottom:1px solid var(--color-border)">' + opts.previewHtml + '</div>' : '') +
           '<div style="padding:1rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
             '<p style="margin:0;font-size:.8rem;color:var(--color-muted)">' +
               C.icon("info-circle") + ' E-posten åpnes som ren tekst.' +
             '</p>' +
           '</div>' +
           '<div style="padding:1rem 1.3rem;display:flex;gap:.7rem;flex-wrap:wrap;align-items:center">' +
-            C.button({ label: "Åpne i Outlook", icon: "mail-forward", variant: "primary", href: mailto }) +
+            C.button({ label: "Åpne i Outlook", icon: "mail-forward", variant: "primary", href: mailtoFull }) +
+            C.button({ label: "Åpne uten mal", variant: "ghost", href: mailtoBlank }) +
           '</div>' +
         '</div>' +
       '</div>';
@@ -1876,8 +2410,21 @@ window.App = (function () {
     render();
     started = true;
     bindGlobalNav();
+    bindHelpIcons();
     window.addEventListener("hashchange", handleRoute);
     handleRoute();
+  }
+
+  // Delegert klikk-handtering for alle hjelpebobler (C.helpIcon) — bindes én gang
+  // globalt, fungerer uansett hvor mange/hvilke admin-paneler som åpnes senere.
+  function bindHelpIcons() {
+    document.addEventListener("click", function (e) {
+      const btn = e.target && e.target.closest ? e.target.closest("[data-help-toggle]") : null;
+      document.querySelectorAll(".help-icon.is-open").forEach(function (h) {
+        if (h !== btn) h.classList.remove("is-open");
+      });
+      if (btn) btn.classList.toggle("is-open");
+    });
   }
 
   // Laster analytics-script basert på config.analytics.
@@ -1889,25 +2436,30 @@ window.App = (function () {
     const items = [];
     // Aktuelt
     resolvedPosts().forEach(function (p) {
-      items.push({ type: "Aktuelt", title: p.title, text: p.text || "", href: "#sak/" + p.id, meta: C.formatDate(p.date) });
+      items.push({ type: "Aktuelt", title: p.title, text: C.stripHtml(p.text || ""), href: "#sak/" + p.id, meta: C.formatDate(p.date) });
     });
     // Tjenester
     (content.services || []).forEach(function (s) {
-      items.push({ type: "Tjenester", title: s.title || "", text: s.text || "", href: "#tjenester" });
+      items.push({ type: "Tjenester", title: s.title || "", text: C.stripHtml(s.text || ""), href: "#tjenester" });
     });
     // Om oss
     if (content.about && content.about.text) {
-      items.push({ type: "Om oss", title: "Om oss", text: content.about.text, href: "#om-oss" });
+      items.push({ type: "Om oss", title: "Om oss", text: C.stripHtml(content.about.text), href: "#om-oss" });
     }
     // FAQ
     const faqItems = Store.get("faq-items", []) || [];
     faqItems.forEach(function (f) {
-      items.push({ type: "FAQ", title: f.question || "", text: f.answer || "", href: "#faq" });
+      items.push({ type: "FAQ", title: f.question || "", text: C.stripHtml(f.answer || ""), href: "#faq" });
     });
     // Referanser
     const refs = Store.get("ref-items", []) || [];
     refs.forEach(function (r) {
-      items.push({ type: "Referanser", title: r.name || "", text: (r.text || "") + " " + (r.category || ""), href: "#referanser/" + r.id });
+      items.push({ type: "Referanser", title: r.name || "", text: C.stripHtml(r.text || "") + " " + (r.category || ""), href: "#referanser/" + r.id });
+    });
+    // Mediebank
+    const mbImages = Store.get("mediabank-images", []) || [];
+    mbImages.forEach(function (m) {
+      items.push({ type: "Mediebank", title: C.stripHtml(m.description || "").slice(0, 60) || "Bilde", text: C.stripHtml(m.description || "") + " " + (m.tags || []).join(" "), href: "#mediabank" });
     });
     return items;
   }
@@ -1987,6 +2539,48 @@ window.App = (function () {
   const SUPER_PASS = "Superadmin";
   const SUPER_KEY  = "superconfig";
 
+  // Sett sammen et forslag til personvernerklæring basert på hvilke moduler/
+  // funksjoner som faktisk er aktive — så en kunde uten Tilbud/Booking ikke får
+  // tekst som nevner ting de ikke har. Brukes som startpunkt (kun ved første
+  // oppstart, før noe er lagret) og av «Generer forslag på nytt»-knappen i
+  // super-admin. Når noe er lagret, er det den lagra teksten som gjelder —
+  // dette skriver aldri over en allerede lagra (også tom) personvernstekst.
+  function computeDefaultPrivacyText() {
+    const hasTilbud  = modules.some(function (m) { return m.id === "tilbud"; });
+    const hasBooking = modules.some(function (m) { return m.id === "booking"; });
+    const an = Store.get("analytics", null) || (CFG.analytics || {});
+    const hasAnalytics = !!(an.plausible || an.plausibleEmbed);
+
+    const collectBits = ["en henvendelse"];
+    if (hasTilbud)  collectBits.push("ber om tilbud");
+    if (hasBooking) collectBits.push("reserverer en booking");
+    const collectPhrase = collectBits.length > 1
+      ? collectBits.slice(0, -1).join(", ") + " eller " + collectBits[collectBits.length - 1]
+      : collectBits[0];
+
+    const storedBits = ["henvendelser"];
+    if (hasTilbud)  storedBits.push("tilbud");
+    if (hasBooking) storedBits.push("bookinger");
+    const storedPhrase = storedBits.length > 1
+      ? storedBits.slice(0, -1).join(", ") + " og " + storedBits[storedBits.length - 1]
+      : storedBits[0];
+
+    const cookieText = hasAnalytics
+      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
+      : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
+
+    return "Når du sender oss " + collectPhrase + ", lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +
+      "Hvor lagres opplysningene?\n" +
+      "Nettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
+      "Bruker vi cookies?\n" + cookieText + "\n\n" +
+      "Hvor lenge lagres opplysningene?\n" +
+      "Vi oppbevarer " + storedPhrase + " så lenge det er nødvendig for å følge opp saken din. Du kan når som helst be om at opplysningene dine slettes.\n\n" +
+      "Dine rettigheter\n" +
+      "Du har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold.\n\n" +
+      "Samtykke\n" +
+      "Ved å sende inn dette skjemaet samtykker du til at vi behandler opplysningene dine slik beskrevet over.";
+  }
+
   function getSuperConfig() { return Store.get(SUPER_KEY, {}) || {}; }
   function saveSuperConfig(v) {
     Store.set(SUPER_KEY, v);
@@ -1998,6 +2592,7 @@ window.App = (function () {
     if (sc.features) Object.assign(CFG.features,  sc.features);
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
+    if (sc.employeePassword !== undefined) CFG.admin.employeePassword = sc.employeePassword;
     applyTheme(); render();
   }
 
@@ -2009,7 +2604,9 @@ window.App = (function () {
     if (sc.fonts)    Object.assign(CFG.fonts,     sc.fonts);
     if (sc.features) Object.assign(CFG.features,  sc.features);
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
+    else             CFG.privacy.text = computeDefaultPrivacyText();   // aldri lagra → modul-bevisst forslag
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
+    if (sc.employeePassword !== undefined) CFG.admin.employeePassword = sc.employeePassword;
   }
 
   function openSuperAdmin(adminRoot) {
@@ -2068,6 +2665,18 @@ window.App = (function () {
     setTimeout(function () { const i = body.querySelector("#sa-pass"); if (i) i.focus(); }, 50);
   }
 
+  let saActiveTab = "utseende";
+
+  // Kuratert utvalg fontpar — rask-velg som fyller inn fritekstfelta under.
+  // Fritekstfelta er framleis kilden til sanninga; dette er berre ein snarvei.
+  const FONT_PAIRS = [
+    { label: "Syne + Inter",                     display: "Syne",              body: "Inter" },
+    { label: "Playfair Display + Source Sans 3", display: "Playfair Display",  body: "Source Sans 3" },
+    { label: "Space Grotesk + Work Sans",        display: "Space Grotesk",     body: "Work Sans" },
+    { label: "Fraunces + Karla",                 display: "Fraunces",          body: "Karla" },
+    { label: "Poppins + Nunito Sans",             display: "Poppins",          body: "Nunito Sans" }
+  ];
+
   function renderSuperAdminForm(body) {
     const sc   = getSuperConfig();
     const col  = Object.assign({}, CFG.colors,   sc.colors   || {});
@@ -2085,61 +2694,140 @@ window.App = (function () {
       </label>`;
     }).join("");
 
+    const saTabs = [
+      { id: "utseende",   label: "Utseende" },
+      { id: "analyse",    label: "Analyse" },
+      { id: "personvern", label: "Personvern" },
+      { id: "funksjoner", label: "Funksjoner" },
+      { id: "system",     label: "System" }
+    ];
+    const saTabsHtml = `<div class="tabs" role="tablist">` + saTabs.map(function (t) {
+      return `<button type="button" class="tab ${t.id === saActiveTab ? "is-active" : ""}" data-sa-tab="${t.id}">${C.esc(t.label)}</button>`;
+    }).join("") + `</div>`;
+
+    function pane(id, html) {
+      return `<div class="sa-pane" data-sa-pane="${id}" style="${id === saActiveTab ? "" : "display:none"}">${html}</div>`;
+    }
+
     body.innerHTML =
+      saTabsHtml +
       '<form data-sa-form>' +
-        '<fieldset class="admin-group"><legend>Firma</legend>' +
-          C.field({ id:"sa-name",    label:"Firmanavn",  value: com.name    || "" }) +
-          C.field({ id:"sa-tagline", label:"Tagline",    value: com.tagline || "" }) +
-          C.field({ id:"sa-logo",    label:"Logo-URL",   value: com.logoUrl || "", placeholder:"https://…" }) +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Fargar</legend>' +
-          '<div class="bk-2col">' +
-            `<div class="field"><label>Primærfarge</label><input type="color" id="sa-primary" value="${C.esc(col.primary||"#1a7a6e")}"></div>` +
-            `<div class="field"><label>Sekundærfarge</label><input type="color" id="sa-secondary" value="${C.esc(col.secondary||"#c17f3e")}"></div>` +
-          '</div>' +
-          `<div class="field"><label>Bakgrunnsfarge</label><input type="color" id="sa-bg" value="${C.esc(col.background||"#fbfaf8")}"></div>` +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Fontar</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Skriv inn Google Fonts-namn og dei weights du treng. Sida brukar: display <strong>600, 700, 800</strong> · brødtekst <strong>400, 500, 600</strong>.</p>' +
-          '<div class="bk-2col">' +
-            C.field({ id:"sa-dfont", label:"Display-font", value: fnt.display || "", placeholder:"Syne" }) +
-            C.field({ id:"sa-dweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.display ? fnt.weights.display.join(",") : "600,700,800"), placeholder:"600,700,800", hint:"Typisk for overskrifter" }) +
-          '</div>' +
-          '<div class="bk-2col">' +
-            C.field({ id:"sa-bfont", label:"Brødtekst-font", value: fnt.body || "", placeholder:"Inter" }) +
-            C.field({ id:"sa-bweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.body ? fnt.weights.body.join(",") : "400,500,600"), placeholder:"400,500,600", hint:"Typisk for brødtekst" }) +
-          '</div>' +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
-          C.field({ id:"sa-apass", label:"Passord", value: CFG.admin && CFG.admin.password || "" }) +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Analyse og integrasjoner</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre synleg her. Kunden ser kun resultatet i Analyse-fanen i sin admin.</p>' +
-          C.field({ id:"sa-an-ga",      label:"Google Analytics 4 – målings-ID", value: an.googleAnalytics || "", placeholder:"G-XXXXXXXXXX" }) +
-          C.field({ id:"sa-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"nordpunkt.no" }) +
-          C.field({ id:"sa-an-plembed", label:"Plausible – delt lenke for innebygd dashboard", value: an.plausibleEmbed || "", placeholder:"https://plausible.io/share/nordpunkt.no?auth=xxxxx",
-                      hint:"Plausible → Site Settings → Visibility → Embed dashboard. Vises direkte i kundens Analyse-fane." }) +
-          C.field({ id:"sa-an-fa",      label:"Fathom – site-ID", value: an.fathom || "", placeholder:"ABCDEFGH" }) +
-          C.field({ id:"sa-an-gtm",     label:"Google Tag Manager – container-ID", value: an.gtm || "", placeholder:"GTM-XXXXXXX" }) +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Vibeverk-referanse</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre for internt bruk — ikkje synleg for kunden noko sted.</p>' +
-          C.field({ id:"sa-github", label:"GitHub-repo URL", value: meta.githubUrl || "", placeholder:"https://github.com/brukernavn/repo" }) +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Personvernerklæring</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, samt via «Personvern»-lenken i footer.</p>' +
-          C.field({ id:"sa-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
-          C.field({ id:"sa-priv-text", label:"Tekst", multiline:true, rows:10, value: priv.text || "" }) +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Funksjonar</legend>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + featFields + '</div>' +
-        '</fieldset>' +
+        pane("utseende",
+          '<fieldset class="admin-group"><legend>Firma</legend>' +
+            C.field({ id:"sa-name",    label:"Firmanavn",  value: com.name    || "" }) +
+            C.field({ id:"sa-tagline", label:"Tagline",    value: com.tagline || "" }) +
+            C.field({ id:"sa-logo",    label:"Logo-URL",   value: com.logoUrl || "", placeholder:"https://…" }) +
+          '</fieldset>' +
+          '<fieldset class="admin-group"><legend>SEO og deling</legend>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i søkeresultater og som forhåndsvisning når en lenke til siden deles. Bilde/favicon må være ekte, offentlig tilgjengelige URL-er (f.eks. fra GitHub Pages) — IKKE data-URL fra bildefeltet, eksterne crawlere kan ikke lese localStorage.</p>' +
+            C.field({ id:"sa-metadesc", label:"Meta-beskrivelse", multiline:true, rows:2, value: com.metaDescription || "", placeholder:"Kort beskrivelse, 1–2 setninger" }) +
+            C.field({ id:"sa-ogimage", label:"Delingsbilde (OG-bilde)", value: com.ogImage || "", placeholder:"https://… (anbefalt ca. 1200×630px)" }) +
+            C.field({ id:"sa-favicon", label:"Favicon-URL", value: com.favicon || "", placeholder:"https://…" }) +
+          '</fieldset>' +
+          '<fieldset class="admin-group"><legend>Fargar</legend>' +
+            '<div class="bk-2col">' +
+              `<div class="field"><label>Primærfarge</label><input type="color" id="sa-primary" value="${C.esc(col.primary||"#1a7a6e")}"></div>` +
+              `<div class="field"><label>Sekundærfarge</label><input type="color" id="sa-secondary" value="${C.esc(col.secondary||"#c17f3e")}"></div>` +
+            '</div>' +
+            `<div class="field"><label>Bakgrunnsfarge</label><input type="color" id="sa-bg" value="${C.esc(col.background||"#fbfaf8")}"></div>` +
+            '<div class="bk-2col">' +
+              `<div class="field"><label>Tekstfarge</label><input type="color" id="sa-text" value="${C.esc(col.text||"#1B1B1F")}"></div>` +
+              `<div class="field"><label>Overflate-farge (kort, paneler)</label><input type="color" id="sa-surface" value="${C.esc(col.surface||"#ffffff")}"></div>` +
+            '</div>' +
+          '</fieldset>' +
+          '<fieldset class="admin-group"><legend>Fontar</legend>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Skriv inn Google Fonts-namn og dei weights du treng. Sida brukar: display <strong>600, 700, 800</strong> · brødtekst <strong>400, 500, 600</strong>.</p>' +
+            '<div class="fontpair-row">' +
+              FONT_PAIRS.map(function (p, i) {
+                return `<button type="button" class="fontpair-btn" data-fontpair="${i}">${C.esc(p.label)}</button>`;
+              }).join("") +
+            '</div>' +
+            '<div class="bk-2col">' +
+              C.field({ id:"sa-dfont", label:"Display-font", value: fnt.display || "", placeholder:"Syne" }) +
+              C.field({ id:"sa-dweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.display ? fnt.weights.display.join(",") : "600,700,800"), placeholder:"600,700,800", hint:"Typisk for overskrifter" }) +
+            '</div>' +
+            '<div class="bk-2col">' +
+              C.field({ id:"sa-bfont", label:"Brødtekst-font", value: fnt.body || "", placeholder:"Inter" }) +
+              C.field({ id:"sa-bweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.body ? fnt.weights.body.join(",") : "400,500,600"), placeholder:"400,500,600", hint:"Typisk for brødtekst" }) +
+            '</div>' +
+          '</fieldset>'
+        ) +
+        pane("analyse",
+          '<fieldset class="admin-group"><legend>Analyse og integrasjoner</legend>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre synleg her. Kunden ser kun resultatet i Analyse-fanen i sin admin.</p>' +
+            C.field({ id:"sa-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"nordpunkt.no" }) +
+            C.field({ id:"sa-an-plembed", label:"Plausible – delt lenke for innebygd dashboard", value: an.plausibleEmbed || "", placeholder:"https://plausible.io/share/nordpunkt.no?auth=xxxxx",
+                        hint:"Plausible → Site Settings → Visibility → Embed dashboard. Vises direkte i kundens Analyse-fane." }) +
+          '</fieldset>'
+        ) +
+        pane("personvern",
+          '<fieldset class="admin-group"><legend>Personvernerklæring</legend>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, samt via «Personvern»-lenken i footer.</p>' +
+            C.field({ id:"sa-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
+            C.richTextField({ id:"sa-priv-text", label:"Tekst", value: priv.text || "" }) +
+            '<div style="margin-top:.6rem">' +
+              C.button({ label:"Generer forslag på nytt", variant:"ghost", attrs:'data-priv-regen' }) +
+              '<p style="font-size:.78rem;color:var(--color-muted);margin:.4rem 0 0">Lager et nytt forslag basert på modulene som er aktive nå (Tilbud/Booking/analyse). Overskriver kun feltet over — lagres ikke før du selv trykker «Lagre og bruk».</p>' +
+            '</div>' +
+          '</fieldset>'
+        ) +
+        pane("funksjoner",
+          '<fieldset class="admin-group"><legend>Funksjonar</legend>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + featFields + '</div>' +
+          '</fieldset>'
+        ) +
+        pane("system",
+          '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
+            C.field({ id:"sa-apass", label:"Passord (full adgang)", value: CFG.admin && CFG.admin.password || "" }) +
+            C.field({ id:"sa-emp-pass", label:"Ansattpassord (valgfritt)", value: (CFG.admin && CFG.admin.employeePassword) || "", hint:"Gir adgang til kun Kontakt/Tilbud/Booking/Kunder — ikke innhold eller innstillinger. La stå tomt for å skru av." }) +
+          '</fieldset>' +
+          '<fieldset class="admin-group"><legend>Vibeverk-referanse</legend>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre for internt bruk — ikkje synleg for kunden noko sted.</p>' +
+            C.field({ id:"sa-github", label:"GitHub-repo URL", value: meta.githubUrl || "", placeholder:"https://github.com/brukernavn/repo" }) +
+          '</fieldset>' +
+          '<fieldset class="admin-group"><legend>Faresone</legend>' +
+            C.button({ label:"Nullstill alt", variant:"ghost", attrs:'data-sa-reset style="border-color:#c0392b;color:#c0392b"' }) +
+          '</fieldset>'
+        ) +
         '<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:1.2rem">' +
-          C.button({ label:"Lagre og bruk",   type:"submit",  variant:"primary" }) +
-          C.button({ label:"Nullstill alt",    variant:"ghost", attrs:"data-sa-reset" }) +
+          C.button({ label:"Lagre og bruk", type:"submit", variant:"primary" }) +
         '</div>' +
         '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
       '</form>';
+
+    body.querySelectorAll("[data-sa-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        saActiveTab = btn.getAttribute("data-sa-tab");
+        body.querySelectorAll("[data-sa-tab]").forEach(function (b) { b.classList.toggle("is-active", b === btn); });
+        body.querySelectorAll("[data-sa-pane]").forEach(function (p) {
+          p.style.display = (p.getAttribute("data-sa-pane") === saActiveTab) ? "" : "none";
+        });
+      });
+    });
+    bindRichTextFields(body);
+
+    // Fontpar rask-velg: fyller inn fritekstfelta (som framleis er kilden til sanninga)
+    body.querySelectorAll("[data-fontpair]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const p = FONT_PAIRS[parseInt(btn.getAttribute("data-fontpair"), 10)];
+        if (!p) return;
+        body.querySelector("#sa-dfont").value = p.display;
+        body.querySelector("#sa-bfont").value = p.body;
+        body.querySelector("#sa-dweights").value = "600,700,800";
+        body.querySelector("#sa-bweights").value = "400,500,600";
+        saHasUnsaved = true;
+      });
+    });
+
+    // Personvernerklæring: regenerer forslag basert på moduler/analyse som er aktive NÅ
+    const privRegenBtn = body.querySelector("[data-priv-regen]");
+    if (privRegenBtn) privRegenBtn.addEventListener("click", function () {
+      const wrap = body.querySelector("#sa-priv-text").closest("[data-rtfield]");
+      const editor = wrap.querySelector("[data-rt-editor]");
+      editor.innerHTML = textToRichHtml(computeDefaultPrivacyText());
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      saHasUnsaved = true;
+    });
 
     body.querySelector("[data-sa-reset]").addEventListener("click", function () {
       if (!confirm("Nullstill all super-admin-konfig og gå tilbake til config.js-verdiane?")) return;
@@ -2162,10 +2850,15 @@ window.App = (function () {
       const newSC = {
         company:  { name: body.querySelector("#sa-name").value.trim(),
                     tagline: body.querySelector("#sa-tagline").value.trim(),
-                    logoUrl: body.querySelector("#sa-logo").value.trim() },
+                    logoUrl: body.querySelector("#sa-logo").value.trim(),
+                    metaDescription: body.querySelector("#sa-metadesc").value.trim(),
+                    ogImage: body.querySelector("#sa-ogimage").value.trim(),
+                    favicon: body.querySelector("#sa-favicon").value.trim() },
         colors:   { primary:    body.querySelector("#sa-primary").value,
                     secondary:  body.querySelector("#sa-secondary").value,
-                    background: body.querySelector("#sa-bg").value },
+                    background: body.querySelector("#sa-bg").value,
+                    text:       body.querySelector("#sa-text").value,
+                    surface:    body.querySelector("#sa-surface").value },
         fonts: {
           display:  body.querySelector("#sa-dfont").value.trim(),
           body:     body.querySelector("#sa-bfont").value.trim(),
@@ -2175,22 +2868,20 @@ window.App = (function () {
           }
         },
         adminPassword: body.querySelector("#sa-apass").value,
+        employeePassword: body.querySelector("#sa-emp-pass").value,
         features: feats,
         meta: { githubUrl: body.querySelector("#sa-github").value.trim() },
         privacy: {
           heading: body.querySelector("#sa-priv-heading").value.trim(),
-          text:    body.querySelector("#sa-priv-text").value.trim()
+          text:    readRichTextField(body, "sa-priv-text")
         }
       };
       saveSuperConfig(newSC);
 
       // Analyse-innstillingar lagres separat (samme nøkkel som adminAnalyse/initAnalytics leser)
       Store.set("analytics", {
-        googleAnalytics: body.querySelector("#sa-an-ga").value.trim(),
         plausible:       body.querySelector("#sa-an-pl").value.trim(),
-        plausibleEmbed:  body.querySelector("#sa-an-plembed").value.trim(),
-        fathom:          body.querySelector("#sa-an-fa").value.trim(),
-        gtm:             body.querySelector("#sa-an-gtm").value.trim()
+        plausibleEmbed:  body.querySelector("#sa-an-plembed").value.trim()
       });
       initAnalytics();
 
@@ -2202,23 +2893,9 @@ window.App = (function () {
   }
 
   function initAnalytics() {
-    const a = Store.get("analytics", null) || (CFG.analytics || {});
-    const ga  = (a.googleAnalytics || "").trim();
-    const pl  = (a.plausible || "").trim();
-    const fa  = (a.fathom || "").trim();
-    const gtm = (a.gtm || "").trim();
+    const a  = Store.get("analytics", null) || (CFG.analytics || {});
+    const pl = (a.plausible || "").trim();
 
-    if (ga && !document.getElementById("_ga-script")) {
-      const s1 = document.createElement("script");
-      s1.id  = "_ga-script";
-      s1.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(ga);
-      s1.async = true;
-      document.head.appendChild(s1);
-      window.dataLayer = window.dataLayer || [];
-      window.gtag = function () { window.dataLayer.push(arguments); };
-      window.gtag("js", new Date());
-      window.gtag("config", ga);
-    }
     if (pl && !document.getElementById("_pl-script")) {
       const s2 = document.createElement("script");
       s2.id            = "_pl-script";
@@ -2226,23 +2903,6 @@ window.App = (function () {
       s2.defer         = true;
       s2.setAttribute("data-domain", pl);
       document.head.appendChild(s2);
-    }
-    if (fa && !document.getElementById("_fa-script")) {
-      const s3 = document.createElement("script");
-      s3.id  = "_fa-script";
-      s3.src = "https://cdn.usefathom.com/script.js";
-      s3.defer = true;
-      s3.setAttribute("data-site", fa);
-      document.head.appendChild(s3);
-    }
-    if (gtm && !document.getElementById("_gtm-script")) {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
-      const s4 = document.createElement("script");
-      s4.id    = "_gtm-script";
-      s4.async = true;
-      s4.src   = "https://www.googletagmanager.com/gtm.js?id=" + encodeURIComponent(gtm);
-      document.head.appendChild(s4);
     }
   }
 
@@ -2281,9 +2941,9 @@ window.App = (function () {
 
     registerModule({ id: "kontakt",  label: "Kontakt",  order: 50,
       render: function () {
-        // extra fra redigerbar tilstand; sosiale lenker fra config (kan slås av med feature-flagg)
+        // extra og sosiale lenker fra redigerbar tilstand (kan slås av med feature-flagg)
         return C.contact(CFG.contactSection, Object.assign({}, content.contact, {
-          social: feat("social") ? CFG.contact.social : null
+          social: feat("social") ? content.contact.social : null
         }));
       } });
   }
@@ -2302,6 +2962,25 @@ window.App = (function () {
     openAdmin: openAdmin,
     prefillContact: prefillContact,
     openReplyModal: openReplyModal,
+    // E-postmaler (delt mellom Kontakt/Tilbud/Booking)
+    getEmailTemplate:    getEmailTemplate,
+    setEmailTemplate:    setEmailTemplate,
+    fillTemplate:        fillTemplate,
+    buildMailtoUrl:      buildMailtoUrl,
+    emailTemplateCard:   emailTemplateCard,
+    bindEmailTemplateCard: bindEmailTemplateCard,
+    DEFAULT_REPLY_TEMPLATE: DEFAULT_REPLY_TEMPLATE,
+    computeDefaultPrivacyText: computeDefaultPrivacyText,
+    downloadBlob: downloadBlob,
+    toCsvValue:   toCsvValue,
+    downloadCsv:  downloadCsv,
+    generateUniqueNumber: generateUniqueNumber,
+    // Sikkerhetskopi (full eksport/import av alt under sidens navnerom)
+    buildBackupPayload: buildBackupPayload,
+    restoreBackupData:  restoreBackupData,
+    importBackup:       importBackup,
+    allStoreKeys:        allStoreKeys,
+    storageUsageBytes:   storageUsageBytes,
     // Status-system (Ny/Lest/Løst) — for bruk i moduler (Tilbud, Booking)
     statusBadge:          statusBadge,
     statusFilterBar:      statusFilterBar,
@@ -2321,7 +3000,9 @@ window.App = (function () {
       bindAttachField:  bindAttachField,            // kobler opp vedleggsfelt
       readAttachments:  readAttachments,            // (scope, id) → []
       bindTerms:        bindTerms,                  // (container, idPrefix) — kobler opp vilkår-popup
-      termsAccepted:    termsAccepted                // (container, idPrefix) → bool
+      termsAccepted:    termsAccepted,               // (container, idPrefix) → bool
+      bindRichTextFields: bindRichTextFields,        // kobler opp verktøylinje for alle rik-tekst-felt i et område
+      readRichTextField: readRichTextField           // (scope, id) → sanert HTML-streng
     }
   };
 })();
