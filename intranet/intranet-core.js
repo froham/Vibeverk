@@ -45,7 +45,8 @@ window.Intranet = (function () {
   };
 
   function getContext() {
-    context.role = getRole(); // refresh ved kall
+    // Les alltid live frå sessionStorage
+    context.role = getRole();
     return context;
   }
 
@@ -408,10 +409,8 @@ window.Intranet = (function () {
 
   function init() {
     if (started) return;
-    // Oppdater context med faktisk rolle
-    var role = "guest";
-    try { role = sessionStorage.getItem(NS + ":intranet-auth") || "guest"; } catch(e) {}
-    context.role = role;
+    // Oppdater context med faktisk rolle (les live)
+    context.role = getRole();
 
     buildShell();
     started = true;

@@ -195,7 +195,12 @@
   }
 
   function isAdmin(ctx) {
-    return !ctx || ctx.role === "owner" || ctx.role === "admin";
+    if (ctx && (ctx.role === "owner" || ctx.role === "admin")) return true;
+    try {
+      var ns   = (window.SITE_CONFIG && window.SITE_CONFIG.storageKey) || "site";
+      var role = sessionStorage.getItem(ns + ":intranet-auth");
+      return role === "owner" || role === "admin";
+    } catch (e) { return false; }
   }
 
   function renderList(root, ctx) {
