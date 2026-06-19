@@ -17,7 +17,11 @@ const patchedHtml = html
   .replace(/src="intranet-core\.js"/g,    'src="intranet/intranet-core.js"')
   .replace(/src="module-settings\.js"/g,  'src="intranet/module-settings.js"')
   .replace(/src="module-tasks\.js"/g,     'src="intranet/module-tasks.js"')
-  .replace(/src="module-dashboard\.js"/g, 'src="intranet/module-dashboard.js"');
+  .replace(/src="module-crm\.js"/g,       'src="intranet/module-crm.js"')
+  .replace(/src="module-booking\.js"/g,   'src="intranet/module-booking.js"')
+  .replace(/src="module-quote\.js"/g,     'src="intranet/module-quote.js"')
+  .replace(/src="module-dashboard\.js"/g, 'src="intranet/module-dashboard.js"')
+  .replace(/src="module-workspaceship\.js"/g, 'src="intranet/module-workspaceship.js"');
 
 const dom = new JSDOM(patchedHtml, {
   runScripts: "outside-only",
@@ -39,7 +43,7 @@ window.scrollTo = () => {};
 window.HTMLElement.prototype.scrollIntoView = () => {};
 window.URL.createObjectURL = window.URL.createObjectURL || (() => "blob:mock-url");
 window.URL.revokeObjectURL = window.URL.revokeObjectURL || (() => {});
-window.confirm = () => true; // auto-bekreft dialogs i tester
+window.confirm = () => true;
 
 // Last filer i rekkefølge
 [
@@ -47,7 +51,11 @@ window.confirm = () => true; // auto-bekreft dialogs i tester
   "intranet/intranet-core.js",
   "intranet/module-settings.js",
   "intranet/module-tasks.js",
-  "intranet/module-dashboard.js"
+  "intranet/module-crm.js",
+  "intranet/module-booking.js",
+  "intranet/module-quote.js",
+  "intranet/module-dashboard.js",
+  "intranet/module-workspaceship.js"
 ].forEach(f => {
   window.eval(fs.readFileSync(f, "utf8"));
 });
@@ -101,12 +109,10 @@ assert(!doc.getElementById("hjem"),        "c3: ingen #hjem-seksjon");
 /* ---------------------------------------------------------------------------
    D) ROUTING OG MODUL-MOUNT
    ------------------------------------------------------------------------ */
-// Standard rute (#/dashboard) er aktiv ved oppstart
 const activeLink = doc.querySelector(".i-nav__link.is-active");
 assert(activeLink && activeLink.getAttribute("data-inav") === "dashboard",
   "d1: dashboard er aktiv rute ved oppstart");
 
-// Naviger til tasks
 window.location.hash = "#/tasks";
 window.dispatchEvent(new window.Event("hashchange"));
 const taskActiveLink = doc.querySelector(".i-nav__link.is-active");
@@ -118,19 +124,17 @@ assert(!!doc.querySelector("#tasks-quick-form"), "d4: hurtig-opprett form rendre
 /* ---------------------------------------------------------------------------
    E) TASKS CRUD
    ------------------------------------------------------------------------ */
-// Opprett via hurtig-form
+const App = window.App;
 const inp = doc.querySelector("#tasks-quick-input");
 inp.value = "Testoppgave 1";
 doc.querySelector("#tasks-quick-form").dispatchEvent(
   new window.Event("submit", { cancelable: true, bubbles: true })
 );
-const App = window.App;
 const tasks1 = App.store.get("wsp-tasks", []);
 assert(tasks1.length === 1, "e1: én oppgave lagret etter opprett");
 assert(tasks1[0].title === "Testoppgave 1", "e2: tittel korrekt");
 assert(tasks1[0].status === "todo",         "e3: status=todo ved opprettelse");
 
-// Legg til en til — re-hent form siden renderList() re-skriver innerHTML
 const inp2 = doc.querySelector("#tasks-quick-input");
 inp2.value = "Testoppgave 2";
 doc.querySelector("#tasks-quick-form").dispatchEvent(
@@ -139,7 +143,6 @@ doc.querySelector("#tasks-quick-form").dispatchEvent(
 const tasks2 = App.store.get("wsp-tasks", []);
 assert(tasks2.length === 2, "e4: to oppgaver etter andre opprett");
 
-// Endre status via klikk — naviger bort/tilbake for frisk mount (renderList re-binder handlere)
 window.location.hash = "#/settings";
 window.dispatchEvent(new window.Event("hashchange"));
 window.location.hash = "#/tasks";
@@ -167,7 +170,6 @@ assert(!!doc.querySelector("#settings-root"), "g1: settings-root rendret");
 assert(!!doc.querySelector("#settings-form"), "g2: settings-form finnes");
 assert(!!doc.querySelector("#settings-reset"), "g3: reset-knapp finnes");
 
-// Lagre innstillinger
 doc.querySelector("#settings-name").value = "Testbedriften AS";
 doc.querySelector("#settings-form").dispatchEvent(
   new window.Event("submit", { cancelable: true, bubbles: true })
@@ -175,7 +177,6 @@ doc.querySelector("#settings-form").dispatchEvent(
 const saved = App.store.get("wsp-settings", {});
 assert(saved.tenantName === "Testbedriften AS", "g4: tenantName lagret");
 
-// Data reset nullstiller wsp-*
 doc.querySelector("#settings-reset").click();
 assert(!App.store.get("wsp-tasks"),    "g5: wsp-tasks slettet etter reset");
 assert(!App.store.get("wsp-settings"), "g6: wsp-settings slettet etter reset");
@@ -184,30 +185,38 @@ assert(!App.store.get("wsp-activity"), "g7: wsp-activity slettet etter reset");
 /* ---------------------------------------------------------------------------
    H) DASHBOARD
    ------------------------------------------------------------------------ */
-// Seed litt data og naviger til dashboard
 App.store.set("wsp-tasks", [
   { id: "t1", title: "A", status: "todo",        createdAt: Date.now(), updatedAt: Date.now() },
   { id: "t2", title: "B", status: "in_progress", createdAt: Date.now(), updatedAt: Date.now() }
 ]);
 Intranet.logActivity({ type: "task_created", label: "Seeded for test" });
 
-window.location.hash = "#/settings"; // naviger bort
+window.location.hash = "#/settings";
 window.dispatchEvent(new window.Event("hashchange"));
-window.location.hash = "#/dashboard"; // og tilbake — tvinger re-mount
+window.location.hash = "#/dashboard";
 window.dispatchEvent(new window.Event("hashchange"));
 assert(!!doc.querySelector("#dashboard-root"), "h1: dashboard-root rendret");
 assert(doc.querySelector("#dashboard-root").textContent.includes("Å gjøre") &&
        doc.querySelector("#dashboard-root").textContent.includes("Pågår"),
   "h2: dashboard viser statuskategorier med oppgavetall");
-
-/* ---------------------------------------------------------------------------
-   H2) EKSISTERENDE test.js IKKE BRUTT  (smoke-sjekk)
-   ------------------------------------------------------------------------ */
-// core.js lagrer ikke offentlig innhold i denne DOM-en (ingen #app/#main).
-// Verifiser at App og Store fortsatt fungerer som normalt.
 assert(typeof App.store.get === "function",   "h3: App.store.get tilgjengelig");
 assert(typeof App.store.set === "function",   "h4: App.store.set tilgjengelig");
 assert(typeof App.media.resolveImage === "function", "h5: App.media tilgjengelig");
+
+/* ---------------------------------------------------------------------------
+   I) WORKSPACESHIP EASTER EGG
+   ------------------------------------------------------------------------ */
+const wsNavLink = doc.querySelector('[data-inav="workspaceship"]');
+assert(!wsNavLink, "i1: workspaceship vises ikke i sidebar-nav (hideFromNav)");
+
+App.store.set("wsp-workspaceship", { best: 42 });
+const wsState = App.store.get("wsp-workspaceship", {});
+assert(wsState.best === 42, "i2: highscore lagres og leses via App.store");
+
+// Workspaceship er registrert (tilgjengelig via ruting selv om skjult i nav)
+window.location.hash = "#/workspaceship";
+window.dispatchEvent(new window.Event("hashchange"));
+assert(!!doc.querySelector("#workspaceship-root"), "i3: workspaceship-root rendret via direkterute");
 
 /* ---------------------------------------------------------------------------
    RESULTAT

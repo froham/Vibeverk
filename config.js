@@ -166,6 +166,17 @@ window.SITE_CONFIG = {
     mediabank:   true    // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
   },
 
+
+  /* --- Intranett-funksjoner (skru av/på) ------------------------------------
+     Styrer hvilke gjenspeilde moduler som vises i intranettet.
+     Native intranett-moduler (Dashboard, Oppgaver, Innstillinger) er alltid på.
+     Settes via super-admin → Funksjoner → Intranett. */
+  intranettFeatures: {
+    crm:     true,   // ← Kundeoversikt i intranettet
+    booking: true,   // ← Bookingbehandling i intranettet
+    quote:   true    // ← Tilbudsbehandling i intranettet
+  },
+
   /* --- FAQ (modul) ---------------------------------------------------------- */
   faq: {
     heading: "Ofte stilte spørsmål",

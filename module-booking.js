@@ -285,7 +285,10 @@
   function renderAdmin(root) {
     if (!root) return;
     var assets = getAssets();
-    root.innerHTML = '' +
+    var intraLink = (CFG.intranettFeatures && CFG.intranettFeatures.booking !== false)
+      ? '<a href="../intranet/#/booking" target="_blank" class="btn btn--ghost" style="font-size:.82rem;padding:.4rem .8rem;margin-bottom:.8rem;display:inline-flex"><i class="ti ti-external-link"></i> Åpne i intranett</a>'
+      : "";
+    root.innerHTML = (intraLink ? intraLink : '') +
       '<div class="bk-adm">' +
         '<div class="bk-adm__head"><h4>Ressurser</h4>' +
           C.button({ label:"Nytt asset", icon:"plus", variant:"primary", attrs:"data-asset-new" }) +

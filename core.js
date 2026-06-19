@@ -24,6 +24,7 @@ window.App = (function () {
       if (!raw) return;
       const sc = JSON.parse(raw);
       if (sc.features && CFG.features) Object.assign(CFG.features, sc.features);
+      if (sc.intranettFeatures && CFG.intranettFeatures) Object.assign(CFG.intranettFeatures, sc.intranettFeatures);
       if (sc.company  && CFG.company)  Object.assign(CFG.company,  sc.company);
       if (sc.colors   && CFG.colors)   Object.assign(CFG.colors,   sc.colors);
       if (sc.fonts    && CFG.fonts)    Object.assign(CFG.fonts,     sc.fonts);
@@ -2590,6 +2591,7 @@ window.App = (function () {
     if (sc.colors)   Object.assign(CFG.colors,   sc.colors);
     if (sc.fonts)    Object.assign(CFG.fonts,     sc.fonts);
     if (sc.features) Object.assign(CFG.features,  sc.features);
+    if (sc.intranettFeatures && CFG.intranettFeatures) Object.assign(CFG.intranettFeatures, sc.intranettFeatures);
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
     if (sc.employeePassword !== undefined) CFG.admin.employeePassword = sc.employeePassword;
@@ -2603,6 +2605,7 @@ window.App = (function () {
     if (sc.colors)   Object.assign(CFG.colors,   sc.colors);
     if (sc.fonts)    Object.assign(CFG.fonts,     sc.fonts);
     if (sc.features) Object.assign(CFG.features,  sc.features);
+    if (sc.intranettFeatures && CFG.intranettFeatures) Object.assign(CFG.intranettFeatures, sc.intranettFeatures);
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     else             CFG.privacy.text = computeDefaultPrivacyText();   // aldri lagra → modul-bevisst forslag
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
@@ -2693,6 +2696,13 @@ window.App = (function () {
         <input type="checkbox" data-sa-feat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(k)}
       </label>`;
     }).join("");
+    const ift  = Object.assign({}, CFG.intranettFeatures, sc.intranettFeatures || {});
+    const intranettFeatFields = Object.keys(CFG.intranettFeatures || {}).map(function (k) {
+      const on = (ift[k] !== false);
+      return `<label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem;cursor:pointer">
+        <input type="checkbox" data-sa-ifeat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(k)}
+      </label>`;
+    }).join("");
 
     const saTabs = [
       { id: "utseende",   label: "Utseende" },
@@ -2772,8 +2782,12 @@ window.App = (function () {
           '</fieldset>'
         ) +
         pane("funksjoner",
-          '<fieldset class="admin-group"><legend>Funksjonar</legend>' +
+          '<fieldset class="admin-group"><legend>Nettside</legend>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + featFields + '</div>' +
+          '</fieldset>' +
+          '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Intranett</legend>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Gjenspeilde moduler i intranettet. Native intranett-moduler (Dashboard, Oppgaver, Innstillinger) er alltid på.</p>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + intranettFeatFields + '</div>' +
           '</fieldset>'
         ) +
         pane("system",
@@ -2847,6 +2861,10 @@ window.App = (function () {
       body.querySelectorAll("[data-sa-feat]").forEach(function (cb) {
         feats[cb.getAttribute("data-sa-feat")] = cb.checked;
       });
+      const ifeats = {};
+      body.querySelectorAll("[data-sa-ifeat]").forEach(function (cb) {
+        ifeats[cb.getAttribute("data-sa-ifeat")] = cb.checked;
+      });
       const newSC = {
         company:  { name: body.querySelector("#sa-name").value.trim(),
                     tagline: body.querySelector("#sa-tagline").value.trim(),
@@ -2870,6 +2888,7 @@ window.App = (function () {
         adminPassword: body.querySelector("#sa-apass").value,
         employeePassword: body.querySelector("#sa-emp-pass").value,
         features: feats,
+        intranettFeatures: ifeats,
         meta: { githubUrl: body.querySelector("#sa-github").value.trim() },
         privacy: {
           heading: body.querySelector("#sa-priv-heading").value.trim(),

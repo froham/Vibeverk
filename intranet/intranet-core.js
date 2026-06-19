@@ -161,7 +161,7 @@ window.Intranet = (function () {
     var nav = document.getElementById("intranet-nav");
     if (!nav) return;
     var r = parseRoute();
-    nav.innerHTML = orderedModules().map(function (m) {
+    nav.innerHTML = orderedModules().filter(function (m) { return !m.hideFromNav; }).map(function (m) {
       var active = m.id === r.id ? " is-active" : "";
       var icon = m.icon ? '<i class="ti ti-' + C.esc(m.icon) + ' i-nav__icon"></i>' : "";
       return '<a class="i-nav__link' + active + '" data-inav="' + C.esc(m.id) + '" href="#/' + C.esc(m.id) + '">' +
