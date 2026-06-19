@@ -274,14 +274,45 @@
 
     /* --- Mørkt modus ----------------------------------------------------- */
     [data-theme="dark"] {
-      --color-bg:      #0f1117;
-      --color-surface: #1a1d27;
-      --color-text:    #e8eaf0;
-      --color-muted:   #8b8fa8;
-      --color-border:  rgba(255,255,255,.1);
-      --color-alt:     color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
-      --color-tint:    color-mix(in srgb, var(--color-primary) 14%, var(--color-bg));
+      --color-bg:      #1e2130;
+      --color-surface: #262a3d;
+      --color-text:    #dde1f0;
+      --color-muted:   #8b91b0;
+      --color-border:  rgba(255,255,255,.09);
+      --color-alt:     #232638;
+      --color-tint:    color-mix(in srgb, var(--color-primary) 18%, #262a3d);
     }
+    /* Sikre at alle felt og inputs følger mørk bakgrunn */
+    [data-theme="dark"] input,
+    [data-theme="dark"] textarea,
+    [data-theme="dark"] select {
+      background: #1e2130 !important;
+      color: #dde1f0 !important;
+      border-color: rgba(255,255,255,.12) !important;
+    }
+    [data-theme="dark"] .i-card {
+      background: #262a3d;
+      border-color: rgba(255,255,255,.09);
+    }
+    [data-theme="dark"] .admin-row {
+      background: #262a3d;
+      border-color: rgba(255,255,255,.09);
+    }
+    [data-theme="dark"] .i-topbar {
+      background: rgba(30,33,48,.95);
+      border-color: rgba(255,255,255,.09);
+    }
+    [data-theme="dark"] .i-sidebar {
+      background: #232638;
+      border-color: rgba(255,255,255,.09);
+    }
+    [data-theme="dark"] .i-nav__link:hover { background: rgba(255,255,255,.06); }
+    [data-theme="dark"] .i-nav__link.is-active { background: rgba(255,255,255,.1); }
+    [data-theme="dark"] .btn--ghost {
+      border-color: rgba(255,255,255,.15);
+      color: #dde1f0;
+    }
+    [data-theme="dark"] .btn--ghost:hover { background: rgba(255,255,255,.08); }
     /* --- Tetthet ---------------------------------------------------------- */
     [data-density="compact"] { --gap: .7rem; --section-y: 1.2rem; }
     [data-density="compact"] .i-main { padding: 1.2rem 1rem; }
@@ -293,9 +324,30 @@
     [data-density="roomy"]   .i-nav__link { padding: .85rem 1rem; }
 
     /* --- Mobil ------------------------------------------------------------ */
-    @media (max-width: 680px) {
-      :root { --sidebar-w: 0px; }
-      .i-sidebar { display: none; }
+    .i-hamburger {
+      display: none;
+      background: none; border: 0; cursor: pointer;
+      font-size: 1.4rem; color: var(--color-text); line-height: 1;
+      padding: .3rem;
+    }
+    .i-sidebar-overlay {
+      display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40;
+    }
+    @media (max-width: 700px) {
+      .i-hamburger { display: flex; align-items: center; }
+      .i-sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0;
+        z-index: 50; transform: translateX(-100%);
+        transition: transform .22s ease;
+        box-shadow: 4px 0 24px rgba(0,0,0,.18);
+      }
+      .i-sidebar.is-open { transform: translateX(0); }
+      .i-sidebar.is-open ~ .i-sidebar-overlay,
+      .i-sidebar-overlay.is-open { display: block; }
+      .i-body { width: 100%; }
+      .i-topbar { padding: 0 .9rem; gap: .6rem; }
+      .i-main { padding: 1.2rem .9rem; }
     }
   </style>
 </head>
