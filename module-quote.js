@@ -24,7 +24,11 @@
   var esc = C.esc;
   var QCF = CFG.quote || {};
   var TERMS_HEADING = QCF.termsHeading || (CFG.privacy && CFG.privacy.heading) || "Vilkår og personvern";
-  var TERMS_TEXT    = QCF.termsText    || (CFG.privacy && CFG.privacy.text)    || "Standardvilkår — rediger i config.js under quote.termsText.";
+  var TERMS_TEXT = (QCF.termsText != null && QCF.termsText !== "")
+    ? QCF.termsText
+    : (CFG.privacy && CFG.privacy.text != null && CFG.privacy.text !== "")
+      ? CFG.privacy.text
+      : "Standardvilkår — rediger i config.js under quote.termsText.";
   var MAX_FILE_MB   = 8;
 
   /* =========================================================================
@@ -200,7 +204,7 @@
       '<div class="qt-modal-back" data-qt-terms-modal style="display:none">' +
         '<div class="qt-modal">' +
           '<h3>' + esc(TERMS_HEADING) + '</h3>' +
-          '<p class="qt-modal-text">' + esc(TERMS_TEXT) + '</p>' +
+          '<div class="qt-modal-text">' + C.sanitizeRichHtml(QCF.termsText || (CFG.privacy && CFG.privacy.text) || TERMS_TEXT) + '</div>' +
           C.button({ label:"Lukk", variant:"ghost", attrs:'data-qt-terms-close class="qt-modal-close"' }) +
         '</div>' +
       '</div>';
