@@ -136,7 +136,7 @@ window.Intranet = (function () {
                      || "Intranett";
 
     root.innerHTML =
-      '<aside class="i-sidebar">' +
+      '<aside class="i-sidebar" id="intranet-sidebar">' +
         '<div class="i-sidebar__brand">' +
           '<span class="i-sidebar__name">' + C.esc(tenantName) + '</span>' +
           '<span class="i-sidebar__label">Business OS</span>' +
@@ -144,17 +144,56 @@ window.Intranet = (function () {
         '<nav class="i-nav" id="intranet-nav"></nav>' +
         '<div class="i-sidebar__footer">' +
           '<div class="i-sidebar__user">' + C.esc(ctx.userId === "local" ? "Lokal bruker" : ctx.userId) + '</div>' +
-          '<div>' + C.esc(ctx.role) + '</div>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between">' +
+            '<span style="font-size:.78rem;color:var(--color-muted)">' + C.esc(ctx.role) + '</span>' +
+            '<button id="intranet-logout" style="background:none;border:0;cursor:pointer;font-size:.75rem;color:var(--color-muted);padding:.2rem .4rem;border-radius:4px" title="Logg ut">Logg ut</button>' +
+          '</div>' +
         '</div>' +
       '</aside>' +
+      '<div class="i-sidebar-overlay" id="intranet-overlay"></div>' +
       '<div class="i-body">' +
         '<div class="i-topbar">' +
+          '<button class="i-hamburger" id="intranet-hamburger" aria-label="Meny">' +
+            '<i class="ti ti-menu-2"></i>' +
+          '</button>' +
           '<span class="i-topbar__title" id="intranet-topbar-title">Intranett</span>' +
         '</div>' +
         '<main class="i-main" id="intranet-main"></main>' +
       '</div>';
 
     renderNav();
+
+    // Hamburgermeny (mobil)
+    var sidebar  = document.getElementById("intranet-sidebar");
+    var overlay  = document.getElementById("intranet-overlay");
+    var hamburger = document.getElementById("intranet-hamburger");
+
+    function openSidebar() {
+      if (sidebar)  sidebar.classList.add("is-open");
+      if (overlay)  overlay.classList.add("is-open");
+    }
+    function closeSidebar() {
+      if (sidebar)  sidebar.classList.remove("is-open");
+      if (overlay)  overlay.classList.remove("is-open");
+    }
+    if (hamburger) hamburger.addEventListener("click", openSidebar);
+    if (overlay)   overlay.addEventListener("click", closeSidebar);
+
+    // Lukk sidebar ved navigasjon på mobil
+    document.querySelectorAll(".i-nav__link").forEach(function(a) {
+      a.addEventListener("click", function() {
+        if (window.innerWidth <= 700) closeSidebar();
+      });
+    });
+
+    // Logg ut
+    var logoutBtn = document.getElementById("intranet-logout");
+    if (logoutBtn) logoutBtn.addEventListener("click", function() {
+      try { sessionStorage.removeItem(NS + ":intranet-auth"); } catch(e) {}
+      started = false;
+      context.role = "guest";
+      renderLogin();
+    });
   }
 
   var HENVENDELSER_IDS = ["contact", "quote", "booking"];
@@ -307,12 +346,76 @@ window.Intranet = (function () {
   /* =========================================================================
      10) INIT
      ====================================================================== */
+  /* =========================================================================
+     INNLOGGING (midlertidig — erstattes av Supabase-auth)
+     ====================================================================== */
+  function isAuthed() {
+    try { return !!sessionStorage.getItem(NS + ":intranet-auth"); } catch(e) { return false; }
+  }
+
+  function setAuthed(role) {
+    try { sessionStorage.setItem(NS + ":intranet-auth", role); } catch(e) {}
+  }
+
+  function renderLogin() {
+    var root = document.getElementById("intranet");
+    if (!root) return;
+    root.innerHTML =
+      '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--color-bg);padding:1rem">' +
+        '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2rem;width:min(380px,100%);box-shadow:0 8px 32px rgba(0,0,0,.1)">' +
+          '<div style="margin-bottom:1.6rem">' +
+            '<div style="font-family:var(--font-display);font-weight:700;font-size:1.15rem;margin-bottom:.2rem">' +
+              C.esc((CFG.company && CFG.company.name) || "Intranett") +
+            '</div>' +
+            '<div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--color-muted)">Business OS</div>' +
+          '</div>' +
+          '<div style="display:grid;gap:.8rem" id="login-form">' +
+            '<div style="display:grid;gap:.3rem">' +
+              '<label for="intranet-pass" style="font-size:.85rem;font-weight:600">Passord</label>' +
+              '<input id="intranet-pass" type="password" style="width:100%;font:inherit;padding:.6rem .8rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" placeholder="Admin-passord" autocomplete="current-password">' +
+            '</div>' +
+            '<button id="intranet-login-btn" class="btn btn--primary" style="width:100%">Logg inn</button>' +
+            '<p id="intranet-login-err" style="font-size:.85rem;color:#c0392b;margin:0;min-height:1.2rem"></p>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    function attempt() {
+      var pass = root.querySelector("#intranet-pass").value;
+      var err  = root.querySelector("#intranet-login-err");
+      var adminPass = CFG.admin && CFG.admin.password;
+      var empPass   = CFG.admin && CFG.admin.employeePassword;
+      if (pass === adminPass) {
+        setAuthed("owner"); init();
+      } else if (empPass && pass === empPass) {
+        setAuthed("employee"); init();
+      } else {
+        err.textContent = "Feil passord.";
+        root.querySelector("#intranet-pass").value = "";
+        root.querySelector("#intranet-pass").focus();
+      }
+    }
+
+    root.querySelector("#intranet-login-btn").addEventListener("click", attempt);
+    root.querySelector("#intranet-pass").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") attempt();
+    });
+    setTimeout(function() {
+      var inp = root.querySelector("#intranet-pass");
+      if (inp) inp.focus();
+    }, 50);
+  }
+
   function init() {
     if (started) return;
+    // Oppdater context med faktisk rolle
+    var role = "guest";
+    try { role = sessionStorage.getItem(NS + ":intranet-auth") || "guest"; } catch(e) {}
+    context.role = role;
+
     buildShell();
     started = true;
     window.addEventListener("hashchange", handleRoute);
-    // Standardrute: #/dashboard hvis ingen hash er satt
     if (!location.hash || location.hash === "#" || location.hash === "#/") {
       location.hash = "#/dashboard";
     } else {
