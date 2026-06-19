@@ -1,258 +1,112 @@
 /* =============================================================================
-   module-references.js  —  REFERANSER-MODUL
+   module-faq.js  —  OFTE STILTE SPØRSMÅL (FAQ)
    -----------------------------------------------------------------------------
-   Selvstendig IIFE. Lastes etter core.js. Slås av/på med features.references.
+   Selvstendig IIFE. Lastes etter core.js. Slås av/på med features.faq.
 
-   Vises på TO måter:
-     1. Inline-seksjon på forsiden: viser de første N kortene (config.references.
-        previewCount, standard 3) + «Se alle referanser»-knapp dersom det finnes
-        flere.
-     2. Egen fullside (#referanser): viser alle, med kategori-filter dersom
-        minst ett kort har kategori satt.
+   Vises som en inline-seksjon på forsiden (order 42, mellom Aktuelt og Booking).
+   Kan ha et valgfritt bilde øverst — kollapser automatisk hvis tomt.
+   Spørsmål/svar vises som en accordion (klikk spørsmål → svar vises/skjules).
 
-   Hvert kort har:
-     - Bilde (valgfritt, 16:9 cover)
-     - Kundenavn / prosjektnavn  (påkrevd)
-     - Kategori/bransje          (valgfritt — brukes som filter)
-     - Tekst / sitat             (valgfritt)
-     - Sitat-modus               (valgfritt — kursiv + anførselstegn)
-     - Navn og tittel på den som uttaler seg (valgfritt, kun i sitat-modus)
-     - Rekkefølge (order)        (tall, lavere = først)
-
-   Admin: full CRUD under «Referanser»-fanen.
+   Admin: CRUD for Q&A-par under «FAQ»-fanen. Bilde og intro-tekst er redigerbart.
    ========================================================================== */
 (function () {
   "use strict";
 
   var App = window.App, C = window.Components, CFG = window.SITE_CONFIG || {};
   if (!App || !C) return;
-  if (CFG.features && CFG.features.references === false) return;
+  if (CFG.features && CFG.features.faq === false) return;
 
   var esc = C.esc;
-  var RCF = CFG.references || {};
-  var PREVIEW_COUNT = RCF.previewCount || 3;
-  var STORE_KEY = "ref-items";
+  var FCF = CFG.faq || {};
+  var STORE_KEY = "faq-items";
+  var CONTENT_KEY = "faq-content";
 
   /* =========================================================================
      LAGRING
      ====================================================================== */
   function getItems() { return App.store.get(STORE_KEY, []) || []; }
   function setItems(v) { App.store.set(STORE_KEY, v); }
-  function sorted(items) {
-    return items.slice().sort(function (a, b) {
-      return (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name);
-    });
+  function getFaqContent() {
+    return Object.assign(
+      { heading: FCF.heading || "Ofte stilte spørsmål", intro: FCF.intro || "", image: "" },
+      App.store.get(CONTENT_KEY, {}) || {}
+    );
   }
+  function setFaqContent(v) { App.store.set(CONTENT_KEY, v); }
 
   /* =========================================================================
      STILER
      ====================================================================== */
   function injectStyles() {
-    if (document.getElementById("rf-styles")) return;
+    if (document.getElementById("faq-styles")) return;
     var s = document.createElement("style");
-    s.id = "rf-styles";
+    s.id = "faq-styles";
     s.textContent = [
-      /* Rutenett */
-      ".rf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.9rem;margin-top:1rem}",
-      ".rf-card{border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;background:var(--color-surface);display:flex;flex-direction:column;height:360px;transition:border-color .15s,transform .15s}",
-      ".rf-card:hover{border-color:var(--color-primary);transform:translateY(-2px)}",
-      /* Preview-grid på forsiden: alltid 3 kolonner i full bredde */
-      ".rf-grid--preview{grid-template-columns:repeat(3,1fr)}",
-      "@media(max-width:700px){.rf-grid--preview{grid-template-columns:1fr}}",
-      /* Kort */
-      ".rf-card{border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;background:var(--color-surface);display:flex;flex-direction:column}",
-
-      ".rf-card__img{width:100%;height:140px;object-fit:cover;display:block}",
-      ".rf-card__img.has-credit{display:block;height:140px}",
-      ".rf-card__placeholder{width:100%;height:140px;background:var(--color-alt);display:flex;align-items:center;justify-content:center;flex-shrink:0}",
-      ".rf-card__placeholder span{font-size:.8rem;color:var(--color-muted);font-style:italic}",
-      ".rf-card__body{padding:.8rem .9rem .95rem;display:flex;flex-direction:column;flex:1;gap:.3rem;overflow:hidden;min-height:0}",
-      ".rf-card__cat{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary);flex-shrink:0}",
-      ".rf-card__name{font-size:.9rem;font-weight:700;margin:0;flex-shrink:0}",
-      /* Sitat-stil */
-      ".rf-card__quote{font-style:italic;color:var(--color-muted);margin:0;font-size:.85rem;line-height:1.55;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}",
-      ".rf-card__quote::before{content:'\\201C';font-size:1.4em;line-height:0;vertical-align:-.3em;margin-right:.1em;color:var(--color-primary)}",
-      ".rf-card__quote::after{content:'\\201D';font-size:1.4em;line-height:0;vertical-align:-.3em;margin-left:.1em;color:var(--color-primary)}",
-      /* Vanlig tekst */
-      ".rf-card__text{color:var(--color-muted);margin:0;font-size:.85rem;line-height:1.55;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}",
-      /* Avsender */
-      ".rf-card__by{font-size:.76rem;color:var(--color-muted);margin-top:auto;padding-top:.4rem;border-top:1px solid var(--color-border)}",
-      ".rf-card__by strong{color:var(--color-text)}",
-      /* Kategori-filter */
-      ".rf-filters{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:.5rem}",
-      ".rf-filter{font:inherit;font-size:.84rem;padding:.38rem .8rem;border-radius:999px;border:1.5px solid var(--color-border);background:transparent;color:var(--color-text);cursor:pointer}",
-      ".rf-filter:hover{border-color:var(--color-primary)}",
-      ".rf-filter.is-active{background:var(--color-primary);border-color:var(--color-primary);color:#fff}",
-      /* «Se alle»-rad */
-      ".rf-more{margin-top:1.4rem;text-align:center}",
-      ".rf-readmore{font-size:.78rem;color:var(--color-primary);margin-top:auto;padding-top:.3rem;display:inline-flex;align-items:center;gap:.2rem;font-weight:600}",
-      /* Detaljvisning */
-      ".rf-detail{max-width:720px;margin:0 auto}",
-      ".rf-detail__img{width:100%;border-radius:var(--radius);overflow:hidden;margin-bottom:1.4rem}",
-      ".rf-detail__cat{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary);margin-bottom:.3rem}",
-      ".rf-detail__name{font-size:1.8rem;font-weight:800;margin:0 0 1rem}",
-      ".rf-detail__quote{font-style:italic;font-size:1.15rem;line-height:1.7;color:var(--color-muted);margin:0 0 1rem}",
-      ".rf-detail__quote::before{content:'\\201C';font-size:1.4em;line-height:0;vertical-align:-.3em;margin-right:.1em;color:var(--color-primary)}",
-      ".rf-detail__quote::after{content:'\\201D';font-size:1.4em;line-height:0;vertical-align:-.3em;margin-left:.1em;color:var(--color-primary)}",
-      ".rf-detail__text{color:var(--color-muted);line-height:1.75;margin:0 0 1rem;font-size:1.05rem}",
-      ".rf-detail__by{display:flex;align-items:center;gap:.5rem;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--color-border)}",
-      ".rf-detail__by strong{color:var(--color-text)}",
-      ".rf-back{margin-bottom:1.4rem}",
+      ".faq-img{width:100%;max-height:320px;object-fit:cover;border-radius:var(--radius);margin-bottom:1.6rem;display:block}",
+      ".faq-intro{color:var(--color-muted);margin:0 0 1.6rem;max-width:680px}",
+      ".faq-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--color-border)}",
+      ".faq-item{border-bottom:1px solid var(--color-border)}",
+      ".faq-q{width:100%;text-align:left;background:none;border:0;padding:1rem 0;display:flex;align-items:center;justify-content:space-between;gap:1rem;cursor:pointer;font:inherit;font-size:1rem;font-weight:600;color:var(--color-text);line-height:1.4}",
+      ".faq-q:hover{color:var(--color-primary)}",
+      ".faq-chevron{flex-shrink:0;font-size:1.1rem;transition:transform .2s;color:var(--color-muted)}",
+      ".faq-item.is-open .faq-chevron{transform:rotate(180deg);color:var(--color-primary)}",
+      ".faq-a{max-height:0;overflow:hidden;transition:max-height .3s ease}",
+      ".faq-item.is-open .faq-a{max-height:800px}",
+      ".faq-a__inner{padding:0 0 1rem;color:var(--color-muted);line-height:1.7;white-space:pre-wrap}",
       /* Admin */
-      ".rf-adm__head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.6rem}",
-      ".rf-adm__head h4{margin:0}"
+      ".faq-adm__head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.6rem}",
+      ".faq-adm__head h4{margin:0}"
     ].join("");
     document.head.appendChild(s);
   }
 
   /* =========================================================================
-     KORT-HTML  (delt mellom inline + fullside)
-     ====================================================================== */
-  function cardHtml(item) {
-    var img = App.media.resolveImage(item.image);
-    var imgHtml = img.src
-      ? C.coverImg(img, "rf-card__img")
-      : '<div class="rf-card__placeholder"><span>Bilde kommer</span></div>';
-    var catHtml = item.category
-      ? '<span class="rf-card__cat">' + esc(item.category) + '</span>' : "";
-    var textHtml = "";
-    var plainText = C.stripHtml(item.text);
-    if (item.text) {
-      if (item.isQuote) {
-        textHtml = '<p class="rf-card__quote">' + esc(plainText) + '</p>';
-      } else {
-        textHtml = '<p class="rf-card__text">' + esc(plainText) + '</p>';
-      }
-    }
-    var byHtml = (item.isQuote && item.byName)
-      ? '<p class="rf-card__by"><strong>' + esc(item.byName) + '</strong>' +
-          (item.byTitle ? ' · ' + esc(item.byTitle) : '') + '</p>'
-      : "";
-    return '<article class="rf-card" data-rf-open="' + esc(item.id) + '">' +
-      imgHtml +
-      '<div class="rf-card__body">' +
-        catHtml +
-        '<h3 class="rf-card__name">' + esc(item.name) + '</h3>' +
-        textHtml +
-        byHtml +
-        (plainText.length > 80
-          ? '<span class="rf-readmore">Les mer →</span>'
-          : "") +
-      '</div>' +
-    '</article>';
-  }
-
-  /* --- Detaljvisning -------------------------------------------------------- */
-  function detailHtml(item) {
-    var img = App.media.resolveImage(item.image);
-    var imgHtml = img.src ? '<div class="rf-detail__img">' + C.coverImg(img, "") + '</div>' : "";
-    var textHtml = "";
-    if (item.text) {
-      if (item.isQuote) {
-        textHtml = '<p class="rf-detail__quote">' + C.sanitizeRichHtml(item.text) + '</p>';
-        if (item.byName) {
-          textHtml += '<p class="rf-detail__by"><strong>' + esc(item.byName) + '</strong>' +
-            (item.byTitle ? '<span style="color:var(--color-muted)"> · ' + esc(item.byTitle) + '</span>' : '') + '</p>';
-        }
-      } else {
-        textHtml = '<div class="rf-detail__text">' + C.sanitizeRichHtml(item.text) + '</div>';
-      }
-    }
-    return '<section id="referanser" class="section reveal"><div class="container">' +
-      '<div class="rf-back">' +
-        C.button({ label: "← Alle referanser", href: "#referanser", variant: "ghost" }) +
-      '</div>' +
-      '<div class="rf-detail">' +
-        imgHtml +
-        (item.category ? '<p class="rf-detail__cat">' + esc(item.category) + '</p>' : '') +
-        '<h2 class="rf-detail__name">' + esc(item.name) + '</h2>' +
-        textHtml +
-      '</div>' +
-    '</div></section>';
-  }
-
-  /* =========================================================================
-     INLINE-SEKSJON (forsiden)
+     OFFENTLIG SEKSJON
      ====================================================================== */
   function renderSection() {
-    var items = sorted(getItems());
-    if (!items.length) return "";
-    var preview = items.slice(0, PREVIEW_COUNT);
-    var hasMore = items.length > PREVIEW_COUNT;
-    var cards = preview.map(cardHtml).join("");
-    var moreBtn = hasMore
-      ? '<div class="rf-more">' +
-          C.button({ label: "Se alle referanser (" + items.length + ")", href: "#referanser", variant: "ghost" }) +
-        '</div>'
-      : "";
-    return '<section id="referanser-preview" class="section reveal"><div class="container">' +
-      C.eyebrow(RCF.intro || RCF.heading || "Referanser") +
-      '<h2 class="section__title">' + esc(RCF.heading || "Referanser") + '</h2>' +
-      '<div class="rf-grid rf-grid--preview">' + cards + '</div>' +
-      moreBtn +
+    var items = getItems();
+    var fc = getFaqContent();
+    if (!items.length && !fc.intro && !fc.image) return "";   // ingen innhold → skjul
+
+    var img = App.media.resolveImage(fc.image);
+    var imgHtml = img.src ? '<img class="faq-img" src="' + esc(img.src) + '" alt="" loading="lazy">' : "";
+    var introHtml = fc.intro ? '<p class="faq-intro">' + esc(fc.intro) + '</p>' : "";
+
+    var listHtml = items.length
+      ? '<ul class="faq-list">' + items.map(function (item, i) {
+          return '<li class="faq-item">' +
+            '<button type="button" class="faq-q" data-faq-toggle="' + i + '" aria-expanded="false">' +
+              '<span>' + esc(item.question) + '</span>' +
+              '<span class="faq-chevron">' + C.icon("chevron-down") + '</span>' +
+            '</button>' +
+            '<div class="faq-a" role="region"><div class="faq-a__inner">' + C.sanitizeRichHtml(item.answer) + '</div></div>' +
+          '</li>';
+        }).join("") + '</ul>'
+      : '<p class="prose prose--muted">Ingen spørsmål lagt til ennå.</p>';
+
+    return '<section id="faq" class="section reveal"><div class="container">' +
+      imgHtml +
+      C.eyebrow("Spørsmål og svar") +
+      '<h2 class="section__title">' + esc(fc.heading) + '</h2>' +
+      introHtml +
+      listHtml +
     '</div></section>';
   }
 
-  /* =========================================================================
-     FULLSIDE  (#referanser)
-     ====================================================================== */
-  function renderPage() {
-    // Sjekk om vi er på #referanser/<id>
-    var hash = (window.location && window.location.hash || "").replace(/^#/, "");
-    var sub = hash.indexOf("referanser/") === 0 ? hash.slice("referanser/".length) : null;
-    if (sub) {
-      var item = sorted(getItems()).find(function (x) { return x.id === sub; });
-      return item ? detailHtml(item) : renderListHtml();
-    }
-    return renderListHtml();
-  }
-
-  function renderListHtml() {
-    var items = sorted(getItems());
-    var cats = [];
-    items.forEach(function (it) {
-      if (it.category && cats.indexOf(it.category) === -1) cats.push(it.category);
-    });
-    var filterHtml = cats.length > 1
-      ? '<div class="rf-filters" data-rf-filters>' +
-          '<button type="button" class="rf-filter is-active" data-cat="">Alle</button>' +
-          cats.map(function (c) {
-            return '<button type="button" class="rf-filter" data-cat="' + esc(c) + '">' + esc(c) + '</button>';
-          }).join("") +
-        '</div>'
-      : "";
-    var cards = items.length
-      ? items.map(function (it) {
-          return '<div data-rf-item data-cat="' + esc(it.category || "") + '">' + cardHtml(it) + '</div>';
-        }).join("")
-      : '<p class="prose prose--muted">Ingen referanser lagt til ennå.</p>';
-    return '<section id="referanser" class="section reveal"><div class="container">' +
-      C.eyebrow(RCF.intro || RCF.heading || "Referanser") +
-      '<h2 class="section__title">' + esc(RCF.heading || "Referanser") + '</h2>' +
-      filterHtml +
-      '<div class="rf-grid" data-rf-grid>' + cards + '</div>' +
-    '</div></section>';
-  }
-
-  function mountPage(container) {
-    // Klikk på kort → naviger til detaljvisning
+  function mountSection(container) {
     container.addEventListener("click", function (e) {
-      var card = e.target.closest("[data-rf-open]");
-      if (card) {
-        window.location.hash = "#referanser/" + card.getAttribute("data-rf-open");
-        return;
-      }
-      // Kategori-filter
-      var btn = e.target.closest("[data-cat]");
-      var filters = container.querySelector("[data-rf-filters]");
-      if (btn && filters) {
-        var cat = btn.getAttribute("data-cat");
-        filters.querySelectorAll(".rf-filter").forEach(function (b) {
-          b.classList.toggle("is-active", b === btn);
-        });
-        container.querySelectorAll("[data-rf-item]").forEach(function (el) {
-          el.style.display = (!cat || el.getAttribute("data-cat") === cat) ? "" : "none";
-        });
+      var btn = e.target.closest("[data-faq-toggle]");
+      if (!btn) return;
+      var item = btn.closest(".faq-item");
+      var isOpen = item.classList.contains("is-open");
+      // Lukk alle andre
+      container.querySelectorAll(".faq-item.is-open").forEach(function (el) {
+        el.classList.remove("is-open");
+        el.querySelector("[data-faq-toggle]").setAttribute("aria-expanded", "false");
+      });
+      if (!isOpen) {
+        item.classList.add("is-open");
+        btn.setAttribute("aria-expanded", "true");
       }
     });
   }
@@ -261,45 +115,61 @@
      ADMIN
      ====================================================================== */
   function renderAdmin(root) {
-    var items = sorted(getItems());
-    root.innerHTML =
-      '<div class="rf-adm__head"><h4>Referanser</h4>' +
-        C.button({ label: "Ny referanse", icon: "plus", variant: "primary", attrs: "data-rf-new" }) +
-      '</div>' +
-      '<ul class="admin-list" data-rf-list>' +
-        (items.length ? items.map(adminRow).join("") : '<li class="prose prose--muted">Ingen referanser ennå.</li>') +
-      '</ul>' +
-      '<div data-rf-editor></div>';
+    var items = getItems();
+    var fc = getFaqContent();
 
-    root.querySelector("[data-rf-new]").addEventListener("click", function () {
+    root.innerHTML =
+      '<form class="admin-form admin-form--card" data-faq-content-form style="margin-bottom:1.2rem">' +
+        '<h4 style="margin:0 0 .8rem">Innstillinger</h4>' +
+        C.field({ id:"faq-heading", label:"Overskrift", value:fc.heading }) +
+        C.field({ id:"faq-intro",   label:"Ingress (valgfritt)", multiline:true, rows:2, value:fc.intro }) +
+        App.ui.imageField("faq-image", "Bilde øverst (valgfritt)", fc.image, 3) +
+        C.button({ label:"Lagre innstillinger", type:"submit", variant:"primary" }) +
+        '<p class="form__status" data-faq-cs></p>' +
+      '</form>' +
+      '<div class="faq-adm__head"><h4>Spørsmål og svar</h4>' +
+        C.button({ label:"Nytt spørsmål", icon:"plus", variant:"primary", attrs:"data-faq-new" }) +
+      '</div>' +
+      '<ul class="admin-list" data-faq-list>' +
+        (items.length ? items.map(faqAdminRow).join("") : '<li class="prose prose--muted">Ingen spørsmål ennå.</li>') +
+      '</ul>' +
+      '<div data-faq-editor></div>';
+
+    App.ui.bindImageFields(root);
+
+    root.querySelector("[data-faq-content-form]").addEventListener("submit", function (e) {
+      e.preventDefault();
+      setFaqContent({
+        heading: root.querySelector("#faq-heading").value.trim() || FCF.heading,
+        intro:   root.querySelector("#faq-intro").value.trim(),
+        image:   App.ui.readImageField(root, "faq-image")
+      });
+      var st = root.querySelector("[data-faq-cs]");
+      st.textContent = "Lagret."; st.className = "form__status is-ok";
+    });
+
+    root.querySelector("[data-faq-new]").addEventListener("click", function () {
       openEditor(root, null);
     });
-    root.querySelectorAll("[data-rf-edit]").forEach(function (b) {
-      b.addEventListener("click", function () { openEditor(root, b.getAttribute("data-rf-edit")); });
+    root.querySelectorAll("[data-faq-edit]").forEach(function (b) {
+      b.addEventListener("click", function () { openEditor(root, b.getAttribute("data-faq-edit")); });
     });
-    root.querySelectorAll("[data-rf-del]").forEach(function (b) {
+    root.querySelectorAll("[data-faq-del]").forEach(function (b) {
       b.addEventListener("click", function () {
-        var id = b.getAttribute("data-rf-del");
-        var item = getItems().find(function (x) { return x.id === id; });
-        if (item && item.image) App.media.free(item.image);
-        setItems(getItems().filter(function (x) { return x.id !== id; }));
+        setItems(getItems().filter(function (x) { return x.id !== b.getAttribute("data-faq-del"); }));
         renderAdmin(root);
       });
     });
   }
 
-  function adminRow(item) {
-    var badge = item.category
-      ? ' <span class="bk-badge bk-badge--public">' + esc(item.category) + '</span>' : "";
-    var mode = item.isQuote ? "sitat" : "tekst";
+  function faqAdminRow(item) {
     return '<li class="admin-row">' +
-      '<div class="admin-row__main">' +
-        '<strong>' + esc(item.name) + badge + '</strong>' +
-        '<span class="admin-row__meta">' + mode + (item.text ? ' · ' + esc(C.stripHtml(item.text).slice(0, 60)) + '…' : '') + '</span>' +
+      '<div class="admin-row__main"><strong>' + esc(item.question) + '</strong>' +
+        (item.answer ? '<span class="admin-row__meta">' + esc(C.stripHtml(item.answer).slice(0,80)) + '…</span>' : '') +
       '</div>' +
       '<div class="admin-row__actions">' +
-        C.button({ label: "Rediger", variant: "ghost", attrs: 'data-rf-edit="' + esc(item.id) + '"' }) +
-        C.button({ label: "Slett",   variant: "ghost", attrs: 'data-rf-del="'  + esc(item.id) + '"' }) +
+        C.button({ label:"Rediger", variant:"ghost", attrs:'data-faq-edit="' + esc(item.id) + '"' }) +
+        C.button({ label:"Slett",   variant:"ghost", attrs:'data-faq-del="'  + esc(item.id) + '"' }) +
       '</div>' +
     '</li>';
   }
@@ -307,64 +177,28 @@
   function openEditor(root, id) {
     var items = getItems();
     var item = id ? items.find(function (x) { return x.id === id; }) : null;
-    var ed = root.querySelector("[data-rf-editor]");
+    var ed = root.querySelector("[data-faq-editor]");
     ed.innerHTML =
-      '<form class="admin-form admin-form--card" data-rf-form>' +
-        '<h4>' + (item ? "Rediger referanse" : "Ny referanse") + '</h4>' +
-        C.field({ id: "rf-name",  label: "Kundenavn / prosjektnavn", required: true,  value: item ? item.name : "" }) +
-        C.field({ id: "rf-cat",   label: "Kategori / bransje",       value: item ? (item.category || "") : "",
-                  placeholder: "f.eks. Bygg, Interiør, IT …", hint: "Brukes som filter på referansesiden" }) +
-        App.ui.imageField("rf-image", "Bilde (valgfritt)", item ? item.image : "", 16 / 9) +
-        C.richTextField({ id: "rf-text", label: "Tekst / sitat", value: item ? (item.text || "") : "" }) +
-        '<div class="field"><label class="imgfield__creditrow" style="font-size:.9rem">' +
-          '<input type="checkbox" id="rf-isquote" ' + (item && item.isQuote ? "checked" : "") + '> ' +
-          '<span>Vis som sitat (kursiv med anførselstegn)</span>' +
-        '</label></div>' +
-        '<div data-rf-byfields style="' + (item && item.isQuote ? "" : "display:none") + '">' +
-          C.field({ id: "rf-byname",  label: "Navn på den som uttaler seg", value: item ? (item.byName || "") : "" }) +
-          C.field({ id: "rf-bytitle", label: "Tittel / stilling",           value: item ? (item.byTitle || "") : "" }) +
-        '</div>' +
-        C.field({ id: "rf-order", label: "Rekkefølge", type: "number", value: item ? (item.order || 0) : items.length,
-                  hint: "Lavere tall vises først" }) +
+      '<form class="admin-form admin-form--card" data-faq-form>' +
+        '<h4>' + (item ? "Rediger spørsmål" : "Nytt spørsmål") + '</h4>' +
+        C.field({ id:"faq-q", label:"Spørsmål", required:true, value:item ? item.question : "" }) +
+        C.richTextField({ id:"faq-a", label:"Svar", value:item ? item.answer : "" }) +
         '<div class="admin-row__actions">' +
-          C.button({ label: item ? "Oppdater" : "Legg til", type: "submit", variant: "primary" }) +
-          C.button({ label: "Avbryt", variant: "ghost", attrs: "data-rf-cancel" }) +
+          C.button({ label:item ? "Oppdater" : "Legg til", type:"submit", variant:"primary" }) +
+          C.button({ label:"Avbryt", variant:"ghost", attrs:"data-faq-cancel" }) +
         '</div>' +
       '</form>';
-
-    App.ui.bindImageFields(ed);
     App.ui.bindRichTextFields(ed);
-
-    // Vis/skjul sitat-felt
-    var chk = ed.querySelector("#rf-isquote");
-    var byFields = ed.querySelector("[data-rf-byfields]");
-    chk.addEventListener("change", function () {
-      byFields.style.display = chk.checked ? "" : "none";
-    });
-
-    ed.querySelector("[data-rf-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
-    ed.querySelector("[data-rf-form]").addEventListener("submit", function (e) {
+    ed.querySelector("[data-faq-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
+    ed.querySelector("[data-faq-form]").addEventListener("submit", function (e) {
       e.preventDefault();
-      var name = ed.querySelector("#rf-name").value.trim();
-      if (!name) return;
-      var obj = {
-        id:       item ? item.id : ("rf-" + Date.now()),
-        name:     name,
-        category: ed.querySelector("#rf-cat").value.trim(),
-        image:    App.ui.readImageField(ed, "rf-image"),
-        text:     App.ui.readRichTextField(ed, "rf-text"),
-        isQuote:  ed.querySelector("#rf-isquote").checked,
-        byName:   ed.querySelector("#rf-byname").value.trim(),
-        byTitle:  ed.querySelector("#rf-bytitle").value.trim(),
-        order:    parseInt(ed.querySelector("#rf-order").value, 10) || 0
-      };
+      var q = ed.querySelector("#faq-q").value.trim();
+      var a = App.ui.readRichTextField(ed, "faq-a");
+      if (!q || !a) return;
       var list = getItems();
-      if (item) {
-        var idx = list.findIndex(function (x) { return x.id === item.id; });
-        list[idx] = obj;
-      } else {
-        list.push(obj);
-      }
+      var obj = { id: item ? item.id : ("faq-" + Date.now()), question: q, answer: a };
+      if (item) { var idx = list.findIndex(function (x) { return x.id === item.id; }); list[idx] = obj; }
+      else list.push(obj);
       setItems(list);
       renderAdmin(root);
     });
@@ -375,21 +209,17 @@
      ====================================================================== */
   injectStyles();
   App.registerModule({
-    id:    "referanser",
-    label: RCF.heading || "Referanser",
-    order: 35,        // mellom Tjenester (30) og Aktuelt (40)
-    // Vises BÅDE som inline-seksjon på forsiden OG som egen side
-    render:     renderSection,   // inline-seksjon på forsiden
-    inline:     true,            // vis på forsiden selv om page:true
-    page:       true,            // har også eigen fullside (#referanser)
-    renderPage: renderPage,
-    mount:      mountPage,       // same handler: kortklikkene virker på forsiden OG på egensida
-    mountPage:  mountPage,
+    id:         "faq",
+    label:      getFaqContent().heading || "Spørsmål og svar",
+    order:      42,
+    page:       true,          // kun eigen side (#faq), aldri inline på forsiden
+    renderPage: renderSection, // brukes når hash = #faq
+    mountPage:  mountSection,
     admin: {
-      label:  "Referanser",
+      label:  "FAQ",
       category: "innhold",
-      render: function () { return '<div data-rf-root></div>'; },
-      mount:  function (body) { renderAdmin(body.querySelector("[data-rf-root]") || body); }
+      render: function () { return '<div data-faq-root></div>'; },
+      mount:  function (body) { renderAdmin(body.querySelector("[data-faq-root]") || body); }
     }
   });
 })();

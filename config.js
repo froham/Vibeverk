@@ -1,246 +1,271 @@
 /* =============================================================================
-   config.js  —  ALT KUNDESPESIFIKT BOR HER
+   module-tasks.js  —  OPPGAVER (intranett)
    -----------------------------------------------------------------------------
-   Dette er den ENESTE filen du trenger å endre for en ny kunde.
-   core.js og components.js skal aldri røres per kunde.
+   Enkel intern oppgavestyring. Ikke prosjektstyring — kun det som trengs for å
+   validere context → Store → shell → routing ende til ende.
 
-   Bytt verdiene under, så endres farger, fonter, tekster og innhold automatisk.
+   Funksjoner:
+   - Liste over oppgaver med status (todo / in_progress / done)
+   - Opprett ny oppgave
+   - Rediger/slett via drawer
+   - Statusendring direkte fra listen
+   - Aktivitetslogging til wsp-activity (for Dashboard)
+
+   Lagring:  App.store ("wsp-tasks")
+   Ruter:    #/tasks, #/tasks/<id>
    ========================================================================== */
+(function () {
+  "use strict";
 
-window.SITE_CONFIG = {
+  var Intranet = window.Intranet;
+  var App      = window.App;
+  var C        = window.Components;
+  if (!Intranet || !App || !C) return;
 
-  /* --- Identitet ------------------------------------------------------------ */
-  // Brukes i logo, footer, <title>, e-poster osv.
-  company: {
-    name: "Nordpunkt",                       // ← Firmanavn
-    tagline: "Rådgivning som flytter ting framover", // ← Slagord
-    // Valgfri logo-URL. La stå tom ("") for å bruke firmanavn som tekstlogo.
-    logoUrl: "",
-    // SEO/deling — settes i super-admin, ikke i vanlig admin. Vises i søkeresultater
-    // og som forhåndsvisning når en lenke til siden deles (Facebook/LinkedIn/Slack m.fl).
-    metaDescription: "",   // ← kort beskrivelse, ca. 1–2 setninger
-    // MERK: ogImage/favicon må være ekte, offentlig tilgjengelige URL-er (f.eks. fra
-    // GitHub Pages) — IKKE last opp via bildefeltet, siden opplastede bilder lagres
-    // som data-URL i nettleserens localStorage og er usynlige for eksterne crawlere.
-    ogImage: "",            // ← delingsbilde, anbefalt ca. 1200×630px
-    favicon: ""              // ← fane-ikon i nettleseren
-  },
+  var STORE_KEY = "wsp-tasks";
 
-  /* --- Fargepalett ---------------------------------------------------------- */
-  // Kun disse tre styrer hele uttrykket. Resten utledes automatisk i CSS
-  // (overflater, kantlinjer, dempet tekst) via color-mix() — du trenger ikke
-  // definere flere farger med mindre du vil overstyre.
-  colors: {
-    primary:    "#15616D",   // ← Primærfarge (knapper, lenker, aksent)
-    secondary:  "#E8833A",   // ← Sekundærfarge (CTA, highlights)
-    background: "#FBFAF8"    // ← Bakgrunnsfarge
-    // Valgfritt å overstyre: text, muted, surface, border (se core.js for default)
-  },
+  /* =========================================================================
+     LAGRING
+     ====================================================================== */
+  function getTasks() { return App.store.get(STORE_KEY, []) || []; }
+  function setTasks(v) { App.store.set(STORE_KEY, v); }
 
-  /* --- Fonter --------------------------------------------------------------- */
-  // Hentes automatisk fra Google Fonts av core.js. Skriv navnet slik Google
-  // Fonts staver det. Vekter du vil ha må listes i `weights`.
-  fonts: {
-    display: "Space Grotesk",                // ← Overskrifter
-    body:    "Inter",                        // ← Brødtekst
-    weights: { display: [500, 700], body: [400, 500, 600] }
-  },
+  function newId() {
+    return "wsp-t-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+  }
 
-  /* --- Kontaktinfo ---------------------------------------------------------- */
-  // Vises i Kontakt-seksjonen og footer. Kan redigeres i admin-panelet.
-  contact: {
-    email:   "post@nordpunkt.no",            // ← E-post
-    phone:   "+47 21 00 00 00",              // ← Telefon
-    address: "Storgata 1, 0001 Oslo",        // ← Adresse
-    // Egendefinerte felter (overskrift + innhold) — kan også legges til i admin.
-    // F.eks. fakturainformasjon, org.nr, styremedlemmer. La stå [] for ingen.
-    extra: [
-      // { label: "Organisasjonsnummer", value: "123 456 789" },
-      // { label: "Fakturainformasjon", value: "EHF: 123456789\nMerk faktura med ordrenr." }
-    ],
-    // Sosiale lenker er valgfrie og redigeres i admin (Innhold-fanen) — verdiene
-    // her er kun standard ved første oppstart.
-    social: {
-      facebook:  "",
-      instagram: "",
-      linkedin:  "https://www.linkedin.com/",
-      tiktok:    "",
-      youtube:   "",
-      x:         ""
-    }
-  },
+  function createTask(title) {
+    var now = Date.now();
+    var task = { id: newId(), title: title, status: "todo", createdAt: now, updatedAt: now };
+    var list = getTasks();
+    list.unshift(task);
+    setTasks(list);
+    Intranet.logActivity({ type: "task_created", label: "Ny oppgave: " + title });
+    return task;
+  }
 
-  /* --- Hjem / Hero ---------------------------------------------------------- */
-  // Tittel og undertittel kan redigeres i admin-panelet.
-  hero: {
-    title:    "Klare råd. Konkrete resultater.",   // ← Hero-tittel
-    subtitle: "Vi hjelper virksomheter med å ta gode beslutninger og " +
-              "gjennomføre dem — uten støy.",       // ← Hero-undertittel
-    ctaLabel: "Ta kontakt",                         // ← Tekst på CTA-knapp
-    ctaTarget: "#kontakt",                          // ← Hvor CTA peker (seksjons-id)
-    image:    ""                                    // ← Valgfritt fullbredde bakgrunnsbilde (URL). Kan også lastes opp i admin.
-  },
+  function updateTask(id, changes) {
+    var list = getTasks();
+    var idx  = list.findIndex(function (t) { return t.id === id; });
+    if (idx < 0) return null;
+    Object.assign(list[idx], changes, { updatedAt: Date.now() });
+    setTasks(list);
+    return list[idx];
+  }
 
-  /* --- Om oss --------------------------------------------------------------- */
-  // Teksten kan redigeres i admin-panelet. Bilde er valgfritt (la stå "" for å skjule).
-  about: {
-    heading: "Om oss",
-    text: "Vi er et lite, erfarent team som jobber tett på kundene våre. " +
-          "I stedet for tykke rapporter leverer vi beslutninger som lar seg " +
-          "gjennomføre, og blir værende til jobben er gjort.",
-    imageUrl: ""                              // ← Valgfritt bilde-URL
-  },
+  function deleteTask(id) {
+    var list  = getTasks();
+    var task  = list.find(function (t) { return t.id === id; });
+    setTasks(list.filter(function (t) { return t.id !== id; }));
+    if (task) Intranet.logActivity({ type: "task_deleted", label: "Slettet oppgave: " + task.title });
+  }
 
-  /* --- Tjenester ------------------------------------------------------------ */
-  // 3–4 kort. `icon` bruker Tabler Icons-navn (uten "ti-" prefiks),
-  // se https://tabler.io/icons for alle navn. Hvert kort kan også ha et
-  // valgfritt `image` (URL) som da vises i stedet for ikonet — eller lastes
-  // opp i admin.
-  services: {
-    heading: "Tjenester",
-    intro: "Det vi er best på.",
-    cards: [
-      { icon: "compass",       title: "Strategi",     text: "Retning, prioritering og en plan folk faktisk forstår." },
-      { icon: "chart-arcs",    title: "Analyse",      text: "Tall og innsikt gjort om til noe du kan handle på." },
-      { icon: "rocket",        title: "Gjennomføring", text: "Vi blir med fra idé til levert resultat." },
-      { icon: "users",         title: "Rådgivning",   text: "En sparringpartner når avgjørelsene betyr noe." }
-    ]
-  },
+  /* =========================================================================
+     STATUS-HJELPERE
+     ====================================================================== */
+  var STATUS_LABELS = { todo: "Å gjøre", in_progress: "Pågår", done: "Ferdig" };
+  var STATUS_CYCLE  = { todo: "in_progress", in_progress: "done", done: "todo" };
+  var STATUS_BADGE  = { todo: "i-badge--todo", in_progress: "i-badge--progress", done: "i-badge--done" };
 
-  /* --- Aktuelt -------------------------------------------------------------- */
-  // Standard-innlegg som vises før noen er opprettet i admin. Når admin lager,
-  // redigerer eller sletter innlegg, lagres det i localStorage og overstyrer dette.
-  news: {
-    heading: "Aktuelt",
-    intro: "Nytt fra oss.",
-    frontCount: 3,                           // ← Antall saker på forsiden (resten i arkivet)
-    posts: [
-      { id: "seed-1", title: "Vi utvider teamet", date: "2026-05-12",
-        text: "To nye rådgivere er på plass for å møte økt etterspørsel." },
-      { id: "seed-2", title: "Ny rapport om bærekraft", date: "2026-04-03",
-        text: "Vår gjennomgang av tiltak som faktisk monner er nå tilgjengelig." }
-    ]
-  },
+  function badgeHtml(status) {
+    var cls = STATUS_BADGE[status] || "i-badge--todo";
+    var lbl = STATUS_LABELS[status] || status;
+    return '<span class="i-badge ' + cls + '">' + C.esc(lbl) + '</span>';
+  }
 
-  /* --- Kontakt -------------------------------------------------------------- */
-  contactSection: {
-    heading: "Kontakt",
-    intro: "Send oss et par ord, så svarer vi raskt.",
-    // Etter innsending vises denne meldingen.
-    successMessage: "Takk! Vi tar kontakt så snart vi kan."
-  },
+  function formatDate(ts) {
+    if (!ts) return "";
+    var d = new Date(ts);
+    return d.toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
+  }
 
-  /* --- Admin ---------------------------------------------------------------- */
-  admin: {
-    // Felles passord for redigeringspanelet.
-    // MERK: Dette er klient-side beskyttelse (passordet ligger i denne filen og
-    // kan ses av tekniske brukere). Det holder skjult innhold unna vanlige
-    // besøkende, men er ikke ekte sikkerhet. Ekte autentisering kommer med
-    // Supabase-backenden senere.
-    password: "test",                          // ← Admin-passord (TESTFASE — bytt via super-admin)
+  /* =========================================================================
+     RENDER (liste)
+     ====================================================================== */
+  function render() {
+    return '<div id="tasks-root"></div>';
+  }
 
-    // Valgfritt andre passord med begrenset adgang (kun Kontakt/Tilbud/Booking/Kunder).
-    // Tomt = ingen ansatt-tilgang. Settes via super-admin.
-    employeePassword: "",
+  function mount(outlet, ctx, sub) {
+    var root = outlet.querySelector("#tasks-root") || outlet;
+    // Sub-rute: #/tasks/<id> åpner drawer direkte
+    renderList(root);
+    if (sub) openTaskDrawer(sub, root);
+  }
 
-    // Hvordan man åpner panelet:
-    //   1) Trippelklikk på footeren, eller
-    //   2) Gå til  ...#admin  i adresselinja
-    tripleClickFooter: true
-  },
+  function renderList(root) {
+    var tasks = getTasks();
 
-  /* --- Funksjoner (skru av/på) --------------------------------------------- */
-  // Enkle ja/nei-brytere. Sett til false for å skjule funksjonen helt (både på
-  // siden og i admin). Mangler et flagg, regnes det som på.
-  features: {
-    newsArchive: true,   // ← «Les mer» + «Se alle saker» + arkivside
-    search:      true,   // ← Søkefelt i arkivet (krever newsArchive)
-    attachments: true,   // ← Vedlegg på aktuelt-innlegg
-    social:      true,   // ← Sosiale lenker i kontaktseksjonen
-    booking:     true,   // ← Booking-modul. Krever module-booking.js
-    quote:       true,   // ← Tilbud-modul.  Krever module-quote.js
-    references:  true,   // ← Referanser-modul. Krever module-references.js
-    faq:         true,   // ← FAQ-modul.         Krever module-faq.js
-    siteSearch:  true,   // ← Søk på heile sida (søkikon i toppmenyen)
-    crm:         true,   // ← Kunder-modul (lett CRM). Krever module-crm.js
-    mediabank:   true    // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
-  },
+    // Grupper etter status
+    var groups = [
+      { status: "todo",        tasks: [] },
+      { status: "in_progress", tasks: [] },
+      { status: "done",        tasks: [] }
+    ];
+    tasks.forEach(function (t) {
+      var g = groups.find(function (g) { return g.status === t.status; });
+      if (g) g.tasks.push(t); else groups[0].tasks.push(t);
+    });
 
+    var listHtml = groups.map(function (g) {
+      if (!g.tasks.length) return "";
+      return '<div style="margin-bottom:1.2rem">' +
+        '<p class="i-section-label">' + C.esc(STATUS_LABELS[g.status]) +
+          ' <span style="font-weight:400;opacity:.6">(' + g.tasks.length + ')</span>' +
+        '</p>' +
+        '<ul class="admin-list">' +
+          g.tasks.map(function (t) { return taskRow(t); }).join("") +
+        '</ul>' +
+      '</div>';
+    }).join("");
 
-  /* --- Intranett-funksjoner (skru av/på) ------------------------------------
-     Styrer hvilke gjenspeilde moduler som vises i intranettet.
-     Native intranett-moduler (Dashboard, Oppgaver, Innstillinger) er alltid på.
-     Settes via super-admin → Funksjoner → Intranett. */
-  intranettFeatures: {
-    crm:     true,   // ← Kundeoversikt i intranettet
-    booking: true,   // ← Bookingbehandling i intranettet
-    quote:   true    // ← Tilbudsbehandling i intranettet
-  },
+    root.innerHTML =
+      '<div class="i-page-head">' +
+        '<h2>Oppgaver</h2>' +
+        '<button class="btn btn--primary btn--sm" id="tasks-new-btn">' +
+          '<i class="ti ti-plus"></i> Ny oppgave' +
+        '</button>' +
+      '</div>' +
 
-  /* --- FAQ (modul) ---------------------------------------------------------- */
-  faq: {
-    heading: "Ofte stilte spørsmål",
-    intro:   ""          // valgfri ingress — tomt = vises ikke
-  },
+      /* Hurtig-opprett form */
+      '<form class="i-form" id="tasks-quick-form" style="margin-bottom:1.4rem">' +
+        '<div style="display:flex;gap:.6rem;align-items:flex-end">' +
+          '<div class="i-field" style="flex:1;margin:0">' +
+            '<label for="tasks-quick-input">Legg til oppgave</label>' +
+            '<input id="tasks-quick-input" type="text" placeholder="Hva skal gjøres?" autocomplete="off">' +
+          '</div>' +
+          '<button type="submit" class="btn btn--primary btn--sm" style="margin-bottom:.05rem">Legg til</button>' +
+        '</div>' +
+        '<p class="form__status" id="tasks-quick-status"></p>' +
+      '</form>' +
 
-  /* --- Referanser (modul) --------------------------------------------------- */
-  references: {
-    heading:      "Referanser",
-    intro:        "Her er noen av kundene vi har hatt gleden av å jobbe med.",
-    previewCount: 3        // antall kort som vises inline på forsiden
-  },
+      (tasks.length ? listHtml : '<p style="color:var(--color-muted);font-size:.9rem">Ingen oppgaver ennå. Legg til en over.</p>');
 
-  /* --- Mediebank (modul) ------------------------------------------------------
-     Bildegalleri + fritekst om grafisk profil. Heading/ingress og bilder er
-     redigerbare i admin under fanen «Mediebank» — verdiene under er kun standard
-     ved første oppstart. */
-  mediabank: {
-    heading: "Mediebank",
-    intro:   "Her finner du bilder og vår grafiske profil til fri bruk."
-  },
+    bindList(root);
+  }
 
-  /* --- Booking (modul) ------------------------------------------------------ */
-  booking: {
-    heading: "Booking",
-    intro:   "Se ledige tider og send en forespørsel."
-  },
+  function taskRow(t) {
+    return '<li class="admin-row" data-task-id="' + C.esc(t.id) + '">' +
+      '<div class="admin-row__main">' +
+        '<strong style="font-size:.92rem">' + C.esc(t.title) + '</strong>' +
+        '<span class="admin-row__meta">' + formatDate(t.createdAt) + '</span>' +
+      '</div>' +
+      '<div class="admin-row__actions">' +
+        '<button class="btn btn--ghost btn--sm" data-task-status="' + C.esc(t.id) + '" title="Endre status">' +
+          badgeHtml(t.status) +
+        '</button>' +
+        '<button class="btn btn--ghost btn--sm" data-task-edit="' + C.esc(t.id) + '">' +
+          '<i class="ti ti-pencil"></i>' +
+        '</button>' +
+      '</div>' +
+    '</li>';
+  }
 
-  /* --- Tilbud (modul) ------------------------------------------------------- */
-  quote: {
-    heading:      "Be om tilbud",
-    intro:        "Beskriv jobben og send inn – vi gir deg et uforpliktende tilbud.",
-    termsHeading: "",   // tom = bruker CFG.privacy.heading
-    termsText:    ""    // tom = bruker CFG.privacy.text (delt personvernerklæring)
-  },
+  function bindList(root) {
+    /* Hurtig-opprett */
+    root.querySelector("#tasks-quick-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var inp = root.querySelector("#tasks-quick-input");
+      var title = inp.value.trim();
+      if (!title) return;
+      createTask(title);
+      inp.value = "";
+      renderList(root);
+    });
 
-  /* --- Personvern / GDPR ------------------------------------------------------
-     Delt vilkårstekst som vises i popup på kontaktskjema, booking og tilbud.
-     Tomt felt = kjernen genererer et forslag basert på hvilke moduler/funksjoner
-     som faktisk er aktive (se computeDefaultPrivacyText i core.js), slik at en
-     kunde uten f.eks. Booking eller analyse ikke får tekst som nevner det.
-     Rediger fritt i super-admin når siden er satt opp — teksten er et
-     utgangspunkt, ikke juridisk rådgivning. */
-  privacy: {
-    heading: "Personvern og databehandling",
-    text: ""
-  },
+    /* Delegert: endre status */
+    root.addEventListener("click", function (e) {
+      var statusBtn = e.target.closest("[data-task-status]");
+      if (statusBtn) {
+        var id = statusBtn.getAttribute("data-task-status");
+        var task = getTasks().find(function (t) { return t.id === id; });
+        if (!task) return;
+        var next = STATUS_CYCLE[task.status] || "todo";
+        updateTask(id, { status: next });
+        Intranet.logActivity({ type: "task_status", label: task.title + " → " + STATUS_LABELS[next] });
+        renderList(root);
+        return;
+      }
 
-  /* --- Footer --------------------------------------------------------------- */
-  // Vises nederst på siden. Tomme felt utelates automatisk.
-  footer: {
-    orgNr:        "",          // f.eks. "Org.nr: 123 456 789"
-    invoiceEmail: "",          // f.eks. "faktura@nordpunkt.no"
-    invoiceAddress: "",        // f.eks. "Fakturaadresse: Storgata 1, 0001 Oslo"
-    extraLines:   [],          // valgfrie fritekstlinjer, f.eks. ["MVA-registrert"]
-    copyright:    ""           // f.eks. "© 2026 Nordpunkt AS" — tomt = genereres auto
-  },
+      /* Delegert: åpne drawer */
+      var editBtn = e.target.closest("[data-task-edit]");
+      if (editBtn) {
+        var taskId = editBtn.getAttribute("data-task-edit");
+        openTaskDrawer(taskId, root);
+        Intranet.navigate("tasks", taskId);
+      }
+    });
+  }
 
-  /* --- Analyse -------------------------------------------------------------- */
-  // Fyll inn domenenavn når det er oppe. Tomt felt = ingenting lastes.
-  analytics: {
-    plausible: ""   // domenenavn, f.eks. "nordpunkt.no"
-  },
+  /* =========================================================================
+     DRAWER (rediger / slett oppgave)
+     ====================================================================== */
+  function openTaskDrawer(id, root) {
+    var task = getTasks().find(function (t) { return t.id === id; });
+    if (!task) return;
 
-  /* --- Lagring -------------------------------------------------------------- */
-  storageKey: "nordpunkt"
-};
+    var statusOptions = Object.keys(STATUS_LABELS).map(function (s) {
+      return '<option value="' + s + '"' + (task.status === s ? " selected" : "") + '>' +
+        STATUS_LABELS[s] + '</option>';
+    }).join("");
+
+    Intranet.openDrawer({
+      title: "Oppgave",
+      bodyHtml:
+        '<div class="i-field">' +
+          '<label for="drawer-task-title">Tittel</label>' +
+          '<input id="drawer-task-title" type="text" value="' + C.esc(task.title) + '">' +
+        '</div>' +
+        '<div class="i-field">' +
+          '<label for="drawer-task-status">Status</label>' +
+          '<select id="drawer-task-status">' + statusOptions + '</select>' +
+        '</div>' +
+        '<div style="font-size:.8rem;color:var(--color-muted)">' +
+          'Opprettet: ' + formatDate(task.createdAt) + '<br>' +
+          'Sist oppdatert: ' + formatDate(task.updatedAt) +
+        '</div>',
+      footHtml:
+        '<button class="btn btn--primary btn--sm" id="drawer-save">Lagre</button>' +
+        '<button class="btn btn--ghost btn--sm" id="drawer-cancel">Avbryt</button>' +
+        '<button class="btn btn--danger btn--sm" id="drawer-delete" style="margin-left:auto">Slett</button>',
+      onMount: function (dr) {
+        dr.querySelector("#drawer-save").addEventListener("click", function () {
+          var newTitle  = dr.querySelector("#drawer-task-title").value.trim();
+          var newStatus = dr.querySelector("#drawer-task-status").value;
+          if (!newTitle) return;
+          updateTask(id, { title: newTitle, status: newStatus });
+          Intranet.logActivity({ type: "task_updated", label: "Oppdatert: " + newTitle });
+          Intranet.closeDrawer();
+          Intranet.navigate("tasks");
+          if (root) renderList(root);
+        });
+
+        dr.querySelector("#drawer-cancel").addEventListener("click", function () {
+          Intranet.closeDrawer();
+          Intranet.navigate("tasks");
+        });
+
+        dr.querySelector("#drawer-delete").addEventListener("click", function () {
+          if (!confirm('Slett oppgaven "' + task.title + '"?')) return;
+          deleteTask(id);
+          Intranet.closeDrawer();
+          Intranet.navigate("tasks");
+          if (root) renderList(root);
+        });
+      }
+    });
+  }
+
+  /* =========================================================================
+     REGISTRERING
+     ====================================================================== */
+  Intranet.registerModule({
+    id:       "tasks",
+    navLabel: "Oppgaver",
+    icon:     "checklist",
+    order:    20,
+    render:   render,
+    mount:    mount
+  });
+
+})();
