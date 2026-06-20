@@ -58,6 +58,7 @@ window.confirm = () => true;
   "intranet/module-mediabank-internal.js",
   "intranet/module-kb.js",
   "intranet/module-links.js",
+  "intranet/module-orgdrift.js",
   "intranet/module-contact.js",
   "intranet/module-crm.js",
   "intranet/module-booking.js",
@@ -253,6 +254,30 @@ assert(linkItems.length === 1,                    "k2-3: lenke lagret");
 assert(linkItems[0].title === "SharePoint",       "k2-4: tittel korrekt");
 assert(linkItems[0].url   === "https://sharepoint.example.com", "k2-5: URL korrekt");
 assert(linkItems[0].icon  === "link",             "k2-6: standard-ikon satt");
+
+
+// Standarddata er lasta
+// Fanebytte
+
+
+// Verifiser at defaultdata er lasta
+
+// Søk fungerer
+
+// Faneskifte
+
+/* --- K3) ORGDRIFT --------------------------------------------------------- */
+window.location.hash = "#/notes"; window.dispatchEvent(new window.Event("hashchange"));
+window.location.hash = "#/orgdrift"; window.dispatchEvent(new window.Event("hashchange"));
+assert(!!doc.querySelector("#orgdrift-root"), "k3-1: orgdrift-root rendret");
+assert(!!doc.querySelector(".od-tabs"),       "k3-2: fane-navigasjon finnes");
+assert(!!doc.querySelector(".od-stats"),      "k3-3: statistikk-rad finnes");
+const orgData = App.store.get("wsp-orgdrift", {});
+assert(Array.isArray(orgData.people) && orgData.people.length > 0,  "k3-4: people-defaultdata lasta");
+assert(Array.isArray(orgData.systems) && orgData.systems.length > 0, "k3-5: systems-defaultdata lasta");
+assert(Array.isArray(orgData.vendors) && orgData.vendors.length > 0, "k3-6: vendors-defaultdata lasta");
+assert(!!doc.querySelector("[data-od-search]"),           "k3-7: søkefelt finnes");
+assert(!!doc.querySelector('[data-od-tab="vendors"]'),    "k3-8: vendors-fane finnes");
 
 /* --- L) WORKSPACESHIP ----------------------------------------------------- */
 assert(!doc.querySelector('[data-inav="workspaceship"]'), "l1: workspaceship skjult i nav");

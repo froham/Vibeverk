@@ -163,7 +163,8 @@ window.SITE_CONFIG = {
     faq:         true,   // ← FAQ-modul.         Krever module-faq.js
     siteSearch:  true,   // ← Søk på heile sida (søkikon i toppmenyen)
     crm:         true,   // ← Kunder-modul (lett CRM). Krever module-crm.js
-    mediabank:   true    // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
+    mediabank:     true,  // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
+    scrollbanner:  true   // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js (bildegalleri + grafisk profil). Krever module-mediabank.js
   },
 
 
@@ -172,9 +173,22 @@ window.SITE_CONFIG = {
      Native intranett-moduler (Dashboard, Oppgaver, Innstillinger) er alltid på.
      Settes via super-admin → Funksjoner → Intranett. */
   intranettFeatures: {
-    crm:     true,   // ← Kundeoversikt i intranettet
-    booking: true,   // ← Bookingbehandling i intranettet
-    quote:   true    // ← Tilbudsbehandling i intranettet
+    /* --- Låste (alltid på, visast ikkje i superadmin) ---
+       enabled, dashboard, tasks, settings               */
+
+    /* --- Gjenspeila frå offentleg side --- */
+    crm:          true,   // ← Kundeoversikt
+    booking:      true,   // ← Bookingbehandling
+    quote:        true,   // ← Tilbudsbehandling
+    contact:      true,   // ← Kontakthenvendingar
+
+    /* --- Native intranett (kan slåast av per kunde) --- */
+    announcements: true,  // ← Intern aktuelt og viktige meldingar
+    notes:         true,  // ← Personlege arbeidsnotatar
+    kb:            true,  // ← Intern kunnskapsbase
+    mediaInternal: true,  // ← Intern mediebank
+    links:         true,  // ← Eksterne lenker og snarveiar
+    orgdrift:      true   // ← Organisasjon & drift (styringsregister)
   },
 
   /* --- FAQ (modul) ---------------------------------------------------------- */
