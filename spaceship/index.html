@@ -27,14 +27,17 @@
     --sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   }
 
-  *{box-sizing:border-box}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body,#stage,#app,.ws-game,.ws-canvas-wrap,canvas{
+    -webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;
+    touch-action:none;
+  }
   html,body{height:100%;margin:0;overscroll-behavior:none}
   body{
     font-family:var(--sans);
     color:var(--ink);
-    background:
-      radial-gradient(900px 600px at 78% 12%, rgba(125,211,252,.10), transparent 60%),
-      linear-gradient(180deg,var(--space-0) 0%,var(--space-1) 55%,var(--space-2) 100%);
+    background:linear-gradient(180deg,var(--space-0) 0%,var(--space-1) 55%,var(--space-2) 100%);
     background-attachment:fixed;
     min-height:100dvh;
     display:flex;
@@ -98,12 +101,7 @@
     margin:0 auto;
   }
   #stage .ws-canvas-wrap::before,
-  #stage .ws-canvas-wrap::after{
-    content:"";position:absolute;width:18px;height:18px;pointer-events:none;
-    border:2px solid var(--cyan);opacity:.65;
-  }
-  #stage .ws-canvas-wrap::before{top:-1px;left:-1px;border-right:0;border-bottom:0;border-top-left-radius:14px}
-  #stage .ws-canvas-wrap::after{bottom:-1px;right:-1px;border-left:0;border-top:0;border-bottom-right-radius:14px}
+  #stage .ws-canvas-wrap::after{display:none}
 
   /* ---- Restyle av spillmodulens egen "chrome" (id-scope vinner over modulens klasser) ---- */
   #stage .ws-game{max-width:920px;width:100%}
@@ -132,30 +130,29 @@
   /* ---- Immersiv / fullskjerm (fungerer også der iOS nekter native fullscreen) ---- */
   body.immersive{overflow:hidden}
   body.immersive .bar{
-    position:fixed;inset:0 0 auto 0;z-index:20;
-    background:linear-gradient(180deg,rgba(6,21,40,.85),rgba(6,21,40,0));
-    border-bottom:0;
+    position:relative;z-index:20;flex:0 0 auto;
+    background:rgba(6,21,40,.96);
+    border-bottom:1px solid var(--line);
+    padding:.45rem max(.6rem, env(safe-area-inset-left)) .45rem max(.6rem, env(safe-area-inset-left));
   }
   body.immersive #stage{
-    position:fixed;inset:0;z-index:10;
-    width:100vw;height:100dvh;padding:0;
+    flex:1 1 auto;min-height:0;
+    width:100vw;padding:0;
   }
   body.immersive #stage .ws-game{max-width:none;width:auto;display:flex;flex-direction:column;justify-content:center;height:100%}
   body.immersive #stage .ws-game__head,
-  body.immersive #stage .ws-game__foot{display:none}  /* rent bilde – spillet starter på nytt med klikk/space etter game over */
+  body.immersive #stage .ws-game__foot{display:none}
+  body.immersive #stage .ws-canvas-wrap{margin:auto}
 
-  /* HUD-elementer som flyter oppå i immersiv modus */
+  /* HUD i toppbar – ikke over selve spillbildet */
   .hud{display:none}
   body.immersive .hud{
-    display:flex;position:fixed;z-index:25;
-    font-family:var(--hud);align-items:center;gap:.4rem;
-    pointer-events:none;
+    display:flex;font-family:var(--hud);align-items:center;gap:.35rem;
+    color:var(--muted);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;
+    pointer-events:none;white-space:nowrap;
   }
-  body.immersive .hud--best{
-    left:clamp(.7rem,3vw,1.4rem);bottom:clamp(.7rem,3vw,1.4rem);
-    color:var(--muted);font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;
-  }
-  body.immersive .hud--best b{color:var(--cyan)}
+  body.immersive .hud b{color:var(--cyan)}
+  body.immersive .controls{align-items:center}
 
   /* Liten toast for delingslenke */
   .toast{
@@ -177,6 +174,8 @@
   <header class="bar">
     <div class="wordmark"><span class="dot"></span>Spaceship</div>
     <div class="controls">
+      <div class="hud hud--score" aria-hidden="true">Poeng&nbsp;<b id="hudScore">0</b></div>
+      <div class="hud hud--best" aria-hidden="true">Beste&nbsp;<b id="hudBest">0</b></div>
       <button class="ctl" id="shareBtn" type="button" aria-label="Del lenke">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
         <span class="label">Del</span>
@@ -192,7 +191,6 @@
     <div id="app"></div>
   </main>
 
-  <div class="hud hud--best" aria-hidden="true">Beste&nbsp;<b id="hudBest">0</b></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <!-- ====================================================================
@@ -595,12 +593,6 @@
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
-      ctx.globalAlpha = 0.14;
-      ctx.fillStyle = "#7dd3fc";
-      ctx.beginPath();
-      ctx.arc(W * 0.78, H * 0.20, 110, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
     }
 
     function drawStars() {
@@ -836,11 +828,13 @@
 
     canvas.addEventListener("pointerdown", function (e) {
       if (e.button !== undefined && e.button !== 0) return;
+      if (e.preventDefault) e.preventDefault();
+      try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
       beginThrust();
-    });
-    canvas.addEventListener("pointerup", endThrust);
-    canvas.addEventListener("pointerleave", endThrust);
-    canvas.addEventListener("pointercancel", endThrust);
+    }, { passive:false });
+    canvas.addEventListener("pointerup", function(e){ if(e.preventDefault) e.preventDefault(); endThrust(); }, { passive:false });
+    canvas.addEventListener("pointerleave", function(e){ if(e.preventDefault) e.preventDefault(); endThrust(); }, { passive:false });
+    canvas.addEventListener("pointercancel", function(e){ if(e.preventDefault) e.preventDefault(); endThrust(); }, { passive:false });
 
     root.querySelector("[data-ws-restart]").addEventListener("click", function () {
       reset(false);
@@ -884,6 +878,7 @@
     var fsLabel = document.getElementById("fsLabel");
     var shareBtn = document.getElementById("shareBtn");
     var hudBest = document.getElementById("hudBest");
+    var hudScore = document.getElementById("hudScore");
     var toastEl = document.getElementById("toast");
     var STORE_KEY = "wsp-workspaceship";
 
@@ -896,7 +891,10 @@
       if(body.classList.contains("immersive")){
         var vw = (window.visualViewport && window.visualViewport.width)  || window.innerWidth;
         var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-        var w = Math.min(vw, vh * (720/420));
+        var bar = document.querySelector(".bar");
+        var barH = bar ? bar.getBoundingClientRect().height : 0;
+        var availableH = Math.max(1, vh - barH);
+        var w = Math.min(vw, availableH * (720/420));
         wrap.style.width = Math.floor(w) + "px";
       } else {
         wrap.style.width = "";   // tilbake til kort-bredden
@@ -910,6 +908,36 @@
         var v = raw ? JSON.parse(raw) : null;
         hudBest.textContent = String((v && v.best) || 0);
       }catch(e){ /* ignorer */ }
+    }
+
+    function refreshHudScore(){
+      var status = document.querySelector("[data-ws-status]");
+      if(!hudScore || !status) return;
+      var m = status.textContent.match(/\d+/);
+      hudScore.textContent = m ? m[0] : "0";
+      refreshHudBest();
+    }
+
+    function blockMobileChrome(e){
+      var t = e.target;
+      if(t && (t.closest && t.closest("button,a,input,textarea,select"))) return;
+      if(e.cancelable) e.preventDefault();
+    }
+
+    document.addEventListener("contextmenu", blockMobileChrome, { passive:false });
+    document.addEventListener("selectstart", blockMobileChrome, { passive:false });
+    document.addEventListener("dragstart", blockMobileChrome, { passive:false });
+    document.addEventListener("touchmove", function(e){
+      if(body.classList.contains("immersive")) blockMobileChrome(e);
+    }, { passive:false });
+
+    var hudObserver = new MutationObserver(refreshHudScore);
+    function attachHudObserver(){
+      var status = document.querySelector("[data-ws-status]");
+      var best = document.querySelector("[data-ws-best]");
+      if(status) hudObserver.observe(status, { childList:true, characterData:true, subtree:true });
+      if(best) hudObserver.observe(best, { childList:true, characterData:true, subtree:true });
+      refreshHudScore();
     }
 
     /* --- Fullskjerm: ekte Fullscreen API der det støttes, ellers CSS-immersiv (iOS) --- */
@@ -983,6 +1011,7 @@
     });
 
     refreshHudBest();
+    attachHudObserver();
     fitStage();
   })();
   </script>
