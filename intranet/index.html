@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Intranett — laster…</title>
 
+  <meta name="robots" content="noindex, nofollow">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     script-src 'self' https://plausible.io;
@@ -212,11 +213,20 @@
     .i-field label { font-size: .85rem; font-weight: 600; }
     .i-field input, .i-field textarea, .i-field select {
       width: 100%; font: inherit; font-size: .9rem;
-      padding: .6rem .8rem; border: 1.5px solid var(--color-border);
-      border-radius: 8px; background: var(--color-bg); color: var(--color-text);
+      padding: .6rem .8rem;
+      border: 1.5px solid color-mix(in srgb, var(--color-text) 28%, transparent);
+      border-radius: 8px; background: var(--color-surface); color: var(--color-text);
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
     }
-    .i-field input:focus, .i-field textarea:focus {
+    .i-field input:focus, .i-field textarea:focus, .i-field select:focus {
       outline: none; border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+    }
+    [data-theme="dark"] .i-field input,
+    [data-theme="dark"] .i-field textarea,
+    [data-theme="dark"] .i-field select {
+      border-color: rgba(255,255,255,.22);
+      background: #1e2130;
     }
     .i-field textarea { resize: vertical; min-height: 80px; }
     .form__status { font-size: .85rem; margin: 0; }
@@ -323,6 +333,59 @@
     [data-density="roomy"]   .i-card { padding: 1.6rem 1.8rem; }
     [data-density="roomy"]   .i-nav__link { padding: .85rem 1rem; }
 
+    /* --- Rik-tekst-felt (rtfield frå components.js) ----------------------- */
+    .rtfield { display: grid; gap: .35rem; }
+    .rtfield label { font-size: .85rem; font-weight: 600; }
+    .rtfield__toolbar {
+      display: flex; gap: .25rem; flex-wrap: wrap;
+      background: var(--color-alt);
+      border: 1.5px solid color-mix(in srgb,var(--color-text) 28%,transparent);
+      border-bottom: 0; border-radius: 8px 8px 0 0; padding: .35rem .5rem;
+    }
+    .rtfield__toolbar button, .rtfield__toolbar label {
+      background: none; border: 1px solid transparent; border-radius: 5px;
+      cursor: pointer; padding: .25rem .45rem; font: inherit; font-size: .85rem;
+      color: var(--color-text); line-height: 1.2; display:inline-flex; align-items:center;
+    }
+    .rtfield__toolbar button:hover, .rtfield__toolbar label:hover {
+      background: var(--color-surface); border-color: var(--color-border);
+    }
+    .rtfield__toolbar input[type="color"] { width:1.4rem;height:1.4rem;border:0;padding:0;cursor:pointer;background:none; }
+    .rtfield__sep { width:1px;background:var(--color-border);margin:.2rem .15rem;align-self:stretch;display:inline-block; }
+    .rtfield__editor {
+      min-height: 160px;
+      border: 1.5px solid color-mix(in srgb,var(--color-text) 28%,transparent);
+      border-radius: 0 0 8px 8px; padding: .7rem .85rem;
+      background: var(--color-surface); color: var(--color-text);
+      line-height: 1.7; outline: none; font-size: .92rem;
+    }
+    .rtfield__editor:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb,var(--color-primary) 15%,transparent);
+    }
+    .rtfield__editor ul, .rtfield__editor ol { padding-left: 1.4rem; }
+    .rtfield__editor a { color: var(--color-primary); }
+    [data-theme="dark"] .rtfield__editor,
+    [data-theme="dark"] .rtfield__toolbar { border-color: rgba(255,255,255,.22); }
+
+    /* --- Bildemodal (mediebank) ------------------------------------------- */
+    .wsp-img-modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.78); z-index: 200;
+      display: flex; align-items: center; justify-content: center; padding: 1rem;
+      cursor: pointer;
+    }
+    .wsp-img-modal {
+      max-width: min(900px,95vw); max-height: 90vh;
+      background: var(--color-surface); border-radius: var(--radius);
+      overflow: hidden; display: flex; flex-direction: column;
+      box-shadow: 0 30px 80px rgba(0,0,0,.5); cursor: default;
+    }
+    .wsp-img-modal__head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .6rem 1rem; border-bottom: 1px solid var(--color-border); flex-shrink: 0;
+    }
+    .wsp-img-modal__img { max-width: 100%; max-height: 68vh; object-fit: contain; display: block; margin: auto; }
+
     /* --- Mobil ------------------------------------------------------------ */
     .i-hamburger {
       display: none;
@@ -377,6 +440,8 @@
   <script src="module-mediabank-internal.js"></script>
   <script src="module-kb.js"></script>
   <script src="module-links.js"></script>
+  <script src="module-orgdrift.js"></script>
+  <script src="module-orgdrift.js"></script>
   <script src="module-contact.js"></script>
   <script src="module-crm.js"></script>
   <script src="module-booking.js"></script>

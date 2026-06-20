@@ -21,7 +21,9 @@
   var Intranet = window.Intranet;
   var App      = window.App;
   var C        = window.Components;
+  var CFG      = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
+  if (CFG.intranettFeatures && CFG.intranettFeatures.kb === false) return;
 
   var STORE_KEY = "wsp-kb";
 
@@ -415,10 +417,7 @@
             '<label for="kb-summary">Samandrag (valgfritt · AI-kontekst)</label>' +
             '<input id="kb-summary" type="text" value="' + C.esc(item && item.id ? (item.summary || "") : "") + '" placeholder="Kort beskriving av artikkelen…">' +
           '</div>' +
-          '<div class="i-field">' +
-            '<label for="kb-body">Innhald</label>' +
-            '<textarea id="kb-body" rows="10" style="resize:vertical">' + C.esc(item && item.id ? (item.body || "") : "") + '</textarea>' +
-          '</div>' +
+          C.richTextField({ id: "kb-body", label: "Innhald", value: item && item.id ? (item.body || "") : "" }) +
           '<div class="i-field">' +
             '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500">' +
               '<input type="checkbox" id="kb-official"' + (item && item.official ? " checked" : "") + '>' +
@@ -434,6 +433,7 @@
         '</div>' +
       '</div>';
 
+    App.ui.bindRichTextFields(ed);
     ed.querySelector("#kb-cancel-btn").addEventListener("click", function () {
       ed.innerHTML = "";
     });
@@ -448,7 +448,7 @@
         category: ed.querySelector("#kb-category").value.trim() || "Generelt",
         tags:     parseTags(ed.querySelector("#kb-tags").value),
         summary:  ed.querySelector("#kb-summary").value.trim(),
-        body:     ed.querySelector("#kb-body").value,
+        body:     App.ui.readRichTextField(ed, "kb-body"),
         official: ed.querySelector("#kb-official").checked
       };
 

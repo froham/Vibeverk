@@ -218,7 +218,7 @@
     id:       "crm",
     navLabel: "Kunder",
     icon:     "users",
-    order:    30,
+    order:    35,
     render:   render,
     mount:    mount
   });

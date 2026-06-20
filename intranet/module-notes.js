@@ -19,7 +19,9 @@
   var Intranet = window.Intranet;
   var App      = window.App;
   var C        = window.Components;
+  var CFG      = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
+  if (CFG.intranettFeatures && CFG.intranettFeatures.notes === false) return;
 
   var STORE_KEY = "wsp-notes";
 
@@ -234,12 +236,7 @@
         '<input id="notes-tags" type="text" value="' + C.esc((note.tags || []).join(", ")) + '" placeholder="Tags (kommaseparert)…" ' +
           'style="flex:2;min-width:160px;font:inherit;font-size:.82rem;padding:.35rem .6rem;border:1.5px solid var(--color-border);border-radius:6px;background:var(--color-bg);color:var(--color-text)">' +
       '</div>' +
-      '<textarea id="notes-body" placeholder="Skriv notat her…" ' +
-        'style="width:100%;min-height:320px;font:inherit;font-size:.92rem;line-height:1.7;' +
-        'border:1.5px solid var(--color-border);border-radius:8px;padding:.8rem;resize:vertical;' +
-        'background:var(--color-bg);color:var(--color-text)">' +
-        C.esc(note.body || "") +
-      '</textarea>' +
+      C.richTextField({ id: "notes-body", label: "", value: note.body || "" }) +
       '<div style="display:flex;gap:.5rem;margin-top:.6rem;flex-wrap:wrap">' +
         '<input id="notes-summary" type="text" value="' + C.esc(note.summary || "") + '" ' +
           'placeholder="Kort AI-sammendrag (valgfritt)…" ' +
@@ -313,14 +310,15 @@
 
   function bindEditor(root, id, refreshList) {
     var titleInp  = root.querySelector("#notes-title");
-    var bodyInp   = root.querySelector("#notes-body");
     var catInp    = root.querySelector("#notes-category");
     var tagsInp   = root.querySelector("#notes-tags");
     var summaryInp= root.querySelector("#notes-summary");
     var statusEl  = root.querySelector("#notes-autosave-status");
     var deleteBtn = root.querySelector("#notes-delete-btn");
 
-    if (!titleInp || !bodyInp) return;
+    if (!titleInp) return;
+    // Bind rik-teksteditor
+    App.ui.bindRichTextFields(root.querySelector("#notes-editor") || root);
 
     var saveTimer;
     function scheduleAutosave() {
@@ -329,7 +327,7 @@
       saveTimer = setTimeout(function () {
         updateNote(id, {
           title:    titleInp.value.trim() || "Uten tittel",
-          body:     bodyInp.value,
+          body:     App.ui.readRichTextField(ed, 'notes-body'),
           category: catInp    ? catInp.value.trim()          : "",
           tags:     tagsInp   ? parseTags(tagsInp.value)     : [],
           summary:  summaryInp ? summaryInp.value.trim()     : ""
@@ -342,12 +340,12 @@
       }, 800);
     }
 
-    [titleInp, bodyInp, catInp, tagsInp, summaryInp].forEach(function (el) {
+    [titleInp, catInp, tagsInp, summaryInp].forEach(function (el) {
       if (el) el.addEventListener("input", scheduleAutosave);
     });
-
-    /* Fokus i body */
-    bodyInp.focus();
+    // Autosave ved endring i rik-tekst-editor
+    var rtEditor = root.querySelector ? root.querySelector(".rtfield__editor") : null;
+    if (rtEditor) rtEditor.addEventListener("input", scheduleAutosave);
 
     /* Slett */
     if (deleteBtn) {

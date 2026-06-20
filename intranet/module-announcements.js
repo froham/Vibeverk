@@ -20,7 +20,9 @@
   var Intranet = window.Intranet;
   var App      = window.App;
   var C        = window.Components;
+  var CFG      = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
+  if (CFG.intranettFeatures && CFG.intranettFeatures.announcements === false) return;
 
   var STORE_KEY    = "wsp-announcements";
   var READ_KEY     = "wsp-ann-read";
@@ -291,10 +293,7 @@
             '<label for="ann-title">Tittel *</label>' +
             '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Meldingstittel" required>' +
           '</div>' +
-          '<div class="i-field">' +
-            '<label for="ann-body">Innhold</label>' +
-            '<textarea id="ann-body" rows="5" style="resize:vertical">' + C.esc(item ? (item.body || "").replace(/<[^>]+>/g, "") : "") + '</textarea>' +
-          '</div>' +
+          C.richTextField({ id: "ann-body", label: "Innhold", value: item ? (item.body || "") : "" }) +
           attachFieldHtml("ann-attachments", item ? (item.attachments || []) : []) +
           '<div class="i-field" style="margin-top:.2rem">' +
             '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500">' +
@@ -313,6 +312,7 @@
 
     bindAttachField(ed, "ann-attachments");
 
+    App.ui.bindRichTextFields(ed);
     ed.querySelector("#ann-cancel").addEventListener("click", function () {
       ed.innerHTML = "";
     });
@@ -324,7 +324,7 @@
         st.textContent = "Tittel er påkrevd."; st.className = "form__status is-err";
         return;
       }
-      var body        = ed.querySelector("#ann-body").value.trim();
+      var body        = App.ui.readRichTextField(ed, "ann-body");
       var important   = ed.querySelector("#ann-important").checked;
       var attachments = readAttachments(ed, "ann-attachments");
 

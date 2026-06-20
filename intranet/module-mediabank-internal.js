@@ -24,7 +24,9 @@
   var Intranet = window.Intranet;
   var App      = window.App;
   var C        = window.Components;
+  var CFG      = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
+  if (CFG.intranettFeatures && CFG.intranettFeatures.mediaInternal === false) return;
 
   var INDEX_KEY = "wsp-media-index";
 
@@ -285,13 +287,13 @@
     }
     return '<div class="wsp-media-grid">' +
       files.map(function (f) {
-        var img     = isImage(f) ? App.media.resolveFile(f.ref) : null;
+        var img     = isImage(f) ? App.media.resolve(f.ref) : null;
         var thumb   = img
           ? '<img src="' + C.esc(img) + '" alt="' + C.esc(f.name) + '" loading="lazy">'
           : '<i class="ti ti-' + fileIcon(f) + ' wsp-file-icon"></i>';
 
         return '<div class="wsp-media-card">' +
-          '<div class="wsp-media-card__thumb">' + thumb + '</div>' +
+          '<div class="wsp-media-card__thumb"' + (img ? ' data-wsp-lightbox="' + C.esc(f.id) + '" style="cursor:pointer" title="Vis stort"' : '') + '>' + thumb + '</div>' +
           '<div class="wsp-media-card__body">' +
             '<div class="wsp-media-card__name" title="' + C.esc(f.name) + '">' + C.esc(f.name) + '</div>' +
             '<div class="wsp-media-card__meta">' + formatBytes(f.size) + ' · ' + formatDate(f.uploadedAt) + '</div>' +
@@ -394,6 +396,38 @@
   function bindGrid(root, gridWrap) {
     if (!gridWrap) return;
 
+    /* Lightbox: vis stort bilete */
+    gridWrap.querySelectorAll("[data-wsp-lightbox]").forEach(function (thumb) {
+      thumb.addEventListener("click", function () {
+        var id    = thumb.getAttribute("data-wsp-lightbox");
+        var entry = getIndex().find(function (f) { return f.id === id; });
+        if (!entry) return;
+        var src = App.media.resolve(entry.ref);
+        if (!src) return;
+
+        var bd = document.createElement("div");
+        bd.className = "wsp-img-modal-backdrop";
+        bd.innerHTML =
+          '<div class="wsp-img-modal" onclick="event.stopPropagation()">' +
+            '<div class="wsp-img-modal__head">' +
+              '<span style="font-size:.88rem;font-weight:600">' + C.esc(entry.name) + '</span>' +
+              '<div style="display:flex;gap:.5rem;align-items:center">' +
+                '<a href="' + C.esc(src) + '" download="' + C.esc(entry.name) + '" class="btn btn--ghost btn--sm"><i class="ti ti-download"></i> Last ned</a>' +
+                '<button class="wsp-media-card__btn" id="wsp-lb-close" style="font-size:1.3rem">&times;</button>' +
+              '</div>' +
+            '</div>' +
+            '<img class="wsp-img-modal__img" src="' + C.esc(src) + '" alt="' + C.esc(entry.name) + '">' +
+          '</div>';
+
+        document.body.appendChild(bd);
+        bd.addEventListener("click", function () { bd.remove(); });
+        bd.querySelector("#wsp-lb-close").addEventListener("click", function (e) { e.stopPropagation(); bd.remove(); });
+        document.addEventListener("keydown", function escClose(e) {
+          if (e.key === "Escape") { bd.remove(); document.removeEventListener("keydown", escClose); }
+        });
+      });
+    });
+
     /* Kopier referanse */
     gridWrap.querySelectorAll("[data-wsp-copy]").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -431,7 +465,7 @@
   Intranet.registerModule({
     id:       "media-internal",
     navLabel: "Mediebank",
-    icon:     "photo-library",
+    icon:     "photo",
     order:    60,
     render:   render,
     mount:    mount
