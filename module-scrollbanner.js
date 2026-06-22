@@ -124,7 +124,7 @@
       var bid = b.id;
       App.registerModule({
         id:        b.id,
-        label:     b.label || "Scrollbanner",
+        label:     b.label || "Banner",
         order:     typeof b.order === "number" ? b.order : 25,
         navHidden: true,
         render:    function () {
@@ -312,7 +312,7 @@
         textColor:      ed.querySelector("#sb-text-color").value,
         height:         ed.querySelector("#sb-height").value,
         ctaLabel:       ed.querySelector("#sb-cta-label").value.trim(),
-        ctaUrl:         ed.querySelector("#sb-cta-url").value.trim(),
+        ctaUrl:         (function(u){ return u && !u.startsWith('http') && !u.startsWith('#') && !u.startsWith('mailto:') && !u.startsWith('/') ? 'https://'+u : u; })(ed.querySelector("#sb-cta-url").value.trim()),
         ctaBg:          ed.querySelector("#sb-cta-bg").value,
         ctaColor:       ed.querySelector("#sb-cta-color").value,
         title:          ed.querySelector("#sb-title").value.trim(),
@@ -357,7 +357,7 @@
     adminOnly: true,
     render:    function () { return ""; },
     admin: {
-      label:    "Scrollbanner",
+      label:    "Banner",
       category: "innhold",
       render:   function () { return '<div data-sb-admin-root></div>'; },
       mount:    function (body) {

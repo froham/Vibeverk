@@ -134,22 +134,83 @@
     }).join("") + '</div>';
   }
 
-  function renderPublicAsset(a) {
-    var img = App.media.resolveImage(a.image);
-    var days = upcomingDays(a, 14);
-    var picker;
-    if (!slotsFor(a).length || !days.length) {
-      picker = '<p class="prose prose--muted">Ingen ledige tider er satt opp.</p>';
-    } else {
-      var firstISO = isoDate(days[0]);
-      var pills = days.map(function (d, i) {
-        return '<button type="button" class="bk-datepill' + (i === 0 ? " is-active" : "") + '" data-date="' + isoDate(d) + '">' + dayLabel(d) + '</button>';
-      }).join("");
-      picker = '<div class="bk-picker" data-asset="' + esc(a.id) + '">' +
-                 '<div class="bk-dates">' + pills + '</div>' +
-                 '<div class="bk-times-wrap" data-times>' + renderTimes(a, firstISO) + '</div>' +
-               '</div>';
+  /* =========================================================================
+     MÅNADSKALENDER
+     ====================================================================== */
+  function renderCalendar(a, year, month) {
+    var now      = new Date(); now.setHours(0,0,0,0);
+    var today    = isoDate(now);
+    var first    = new Date(year, month, 1);
+    var last     = new Date(year, month + 1, 0);
+    var startWd  = (first.getDay() + 6) % 7; // måndag = 0
+    var hasTimes = slotsFor(a).length > 0;
+    var assetWd  = a.weekdays || [];
+
+    var headerDays = ["Ma","Ti","On","To","Fr","Lø","Sø"];
+    var monthName  = first.toLocaleDateString("nb-NO", { month:"long", year:"numeric" });
+    monthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+
+    var cells = "";
+    // Tomme celler for å starte på riktig dag
+    for (var i = 0; i < startWd; i++) cells += '<div class="bk-cal__cell bk-cal__cell--empty"></div>';
+
+    for (var day = 1; day <= last.getDate(); day++) {
+      var d   = new Date(year, month, day);
+      var iso = isoDate(d);
+      var wd  = (d.getDay() + 6) % 7; // måndag = 0 (0=Man,...,6=Søn)
+      var wdNum = d.getDay(); // søndag=0 i JS
+      var isPast     = iso < today;
+      var isWrong    = assetWd.indexOf(wdNum) === -1;
+      var isBlocked2 = (a.blockedDays || []).indexOf(iso) > -1;
+      var isToday    = iso === today;
+
+      // Tel ledige slot
+      var slots = slotsFor(a);
+      var bookedCount = slots.filter(function(t){ return isBooked(a.id, iso, t); }).length;
+      var blockedCount = slots.filter(function(t){ return isBlocked(a, iso, t); }).length;
+      var available = slots.length - bookedCount - blockedCount;
+      var isFull = hasTimes && available <= 0;
+
+      var cls = "bk-cal__cell";
+      var disabled = isPast || isWrong || isBlocked2 || !hasTimes || isFull;
+      if (isToday)    cls += " bk-cal__cell--today";
+      if (disabled)   cls += " bk-cal__cell--disabled";
+      if (!disabled)  cls += " bk-cal__cell--available";
+      if (isFull && !isPast && !isWrong && !isBlocked2) cls += " bk-cal__cell--full";
+
+      var dataAttr = disabled ? "" : ' data-cal-date="' + iso + '" data-cal-asset="' + esc(a.id) + '"';
+      cells += '<div class="' + cls + '"' + dataAttr + '>' +
+        '<span class="bk-cal__day">' + day + '</span>' +
+        (!disabled && hasTimes ? '<span class="bk-cal__avail">' + available + ' ledig' + (available !== 1 ? 'e' : '') + '</span>' : '') +
+      '</div>';
     }
+
+    return '<div class="bk-cal" data-cal-asset="' + esc(a.id) + '" data-cal-year="' + year + '" data-cal-month="' + month + '">' +
+      '<div class="bk-cal__nav">' +
+        '<button class="bk-cal__nav-btn" data-cal-prev aria-label="Forrige måned">‹</button>' +
+        '<span class="bk-cal__month">' + monthName + '</span>' +
+        '<button class="bk-cal__nav-btn" data-cal-next aria-label="Neste måned">›</button>' +
+      '</div>' +
+      '<div class="bk-cal__grid">' +
+        headerDays.map(function(h){ return '<div class="bk-cal__header">' + h + '</div>'; }).join("") +
+        cells +
+      '</div>' +
+      '<div class="bk-times-wrap" data-times style="margin-top:1rem"></div>' +
+    '</div>';
+  }
+
+  function renderPublicAsset(a) {
+    var img     = App.media.resolveImage(a.image);
+    var now     = new Date();
+    var hasTimes = slotsFor(a).length > 0;
+
+    var picker;
+    if (!hasTimes) {
+      picker = '<p class="prose prose--muted">Ingen tider er satt opp for denne ressursen.</p>';
+    } else {
+      picker = renderCalendar(a, now.getFullYear(), now.getMonth());
+    }
+
     return '' +
       '<article class="bk-asset" data-asset="' + esc(a.id) + '">' +
         (img.src ? C.coverImg(img, "bk-asset__img") : '') +
@@ -182,7 +243,48 @@
     }
 
     root.addEventListener("click", function (e) {
-      // Bytt dato → vis klokkeslett for den datoen
+      // Kalender: piler for månadsnavigasjon
+      var prevBtn = e.target.closest("[data-cal-prev]");
+      var nextBtn = e.target.closest("[data-cal-next]");
+      if (prevBtn || nextBtn) {
+        var cal  = (prevBtn || nextBtn).closest(".bk-cal");
+        if (!cal) return;
+        var yr   = parseInt(cal.getAttribute("data-cal-year"), 10);
+        var mo   = parseInt(cal.getAttribute("data-cal-month"), 10);
+        var now2 = new Date();
+        if (prevBtn) { mo--; if (mo < 0) { mo = 11; yr--; } }
+        if (nextBtn) { mo++; if (mo > 11) { mo = 0; yr++; } }
+        // Ikkje tillat navigasjon til tidlegare enn noverande månad
+        if (yr < now2.getFullYear() || (yr === now2.getFullYear() && mo < now2.getMonth())) return;
+        var assetId = cal.getAttribute("data-cal-asset");
+        var asset   = getAssets().find(function (x) { return x.id === assetId; });
+        if (!asset) return;
+        var newCal = document.createElement("div");
+        newCal.innerHTML = renderCalendar(asset, yr, mo);
+        cal.replaceWith(newCal.firstChild);
+        // Rebind — sidan vi har eit delegert event-listener høgare oppe fungerer dette automatisk
+        return;
+      }
+
+      // Kalender: klikk på tilgjengeleg dag
+      var calCell = e.target.closest("[data-cal-date]");
+      if (calCell) {
+        var dateISO = calCell.getAttribute("data-cal-date");
+        var calEl   = calCell.closest(".bk-cal");
+        if (!calEl) return;
+        var assetId2 = calEl.getAttribute("data-cal-asset");
+        var asset2   = getAssets().find(function (x) { return x.id === assetId2; });
+        if (!asset2) return;
+        // Merk aktiv dag
+        calEl.querySelectorAll("[data-cal-date]").forEach(function (c2) {
+          c2.classList.toggle("bk-cal__cell--selected", c2 === calCell);
+        });
+        // Vis tider
+        calEl.querySelector("[data-times]").innerHTML = renderTimes(asset2, dateISO);
+        return;
+      }
+
+      // Gamalt: Bytt dato-pille (fallback)
       var pill = e.target.closest(".bk-datepill");
       if (pill) {
         var picker = pill.closest(".bk-picker");
@@ -196,7 +298,16 @@
       if (!el) return;
       var a = getAssets().find(function (x) { return x.id === el.getAttribute("data-book"); });
       if (!a) return;
-      var date = el.getAttribute("data-date"), time = el.getAttribute("data-time");
+      // Hent dato: frå kalender (markert celle) eller frå pille
+      var date = el.getAttribute("data-date");
+      if (!date) {
+        var calEl2 = el.closest(".bk-asset")?.querySelector(".bk-cal");
+        if (calEl2) {
+          var selCell = calEl2.querySelector(".bk-cal__cell--selected[data-cal-date]");
+          if (selCell) date = selCell.getAttribute("data-cal-date");
+        }
+      }
+      var time = el.getAttribute("data-time");
       if (a.instant && date && time) {
         openConfirm(el.closest(".bk-asset"), a, date, time);   // sanntid: reserver direkte
       } else {
@@ -288,19 +399,52 @@
     var intraLink = (CFG.intranettFeatures && CFG.intranettFeatures.booking !== false)
       ? '<a href="../intranet/#/booking" target="_blank" class="btn btn--ghost" style="font-size:.82rem;padding:.4rem .8rem;margin-bottom:.8rem;display:inline-flex"><i class="ti ti-external-link"></i> Åpne i intranett</a>'
       : "";
+    var activeFane = root.getAttribute("data-bk-fane") || "bookinger";
     root.innerHTML = (intraLink ? intraLink : '') +
       '<div class="bk-adm">' +
-        '<div class="bk-adm__head"><h4>Ressurser</h4>' +
-          C.button({ label:"Nytt asset", icon:"plus", variant:"primary", attrs:"data-asset-new" }) +
+        '<div style="display:flex;gap:.4rem;margin-bottom:1rem;border-bottom:1px solid var(--color-border);padding-bottom:.75rem">' +
+          ['bookinger','ressursar','malar'].map(function(f){
+            var labels = {bookinger:"Bookinger",ressursar:"Ressursar",malar:"E-postmalar"};
+            return '<button class="btn btn--' + (f===activeFane?"primary":"ghost") + ' btn--sm" data-bk-fane-btn="'+f+'">'+labels[f]+'</button>';
+          }).join("") +
+        '</div>' +
+        '<div data-bk-fane-content></div>' +
+      '</div>';
+
+    root.querySelectorAll("[data-bk-fane-btn]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        root.setAttribute("data-bk-fane", btn.getAttribute("data-bk-fane-btn"));
+        renderAdmin(root);
+      });
+    });
+
+    var fc = root.querySelector("[data-bk-fane-content]");
+    if (activeFane === "ressursar") {
+      fc.innerHTML =
+        '<div class="bk-adm__head"><h4>Ressursar</h4>' +
+          C.button({ label:"Ny ressurs", icon:"plus", variant:"primary", attrs:"data-asset-new" }) +
         '</div>' +
         '<ul class="admin-list" data-asset-list>' +
-          (assets.length ? assets.map(adminAssetRow).join("") : '<li class="prose prose--muted">Ingen ressurser ennå.</li>') +
+          (assets.length ? assets.map(adminAssetRow).join("") : '<li class="prose prose--muted">Ingen ressursar ennå.</li>') +
         '</ul>' +
-        '<div data-asset-editor></div>' +
-        '<hr class="bk-hr">' +
-        '<div class="bk-adm__head"><h4>Bookinger</h4></div>' +
-        '<div data-booking-area></div>' +
-      '</div>';
+        '<div data-asset-editor></div>';
+    } else if (activeFane === "malar") {
+      fc.innerHTML =
+        App.emailTemplateCard("booking-avbook", "E-postmal for avbooking", DEFAULT_AVBOOK_TEMPLATE,
+          "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}, {referanse}") +
+        App.emailTemplateCard("booking-svar", "E-postmal for svar", DEFAULT_SVAR_TEMPLATE,
+          "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}, {referanse}");
+      App.bindEmailTemplateCard(fc, "booking-avbook", DEFAULT_AVBOOK_TEMPLATE);
+      App.bindEmailTemplateCard(fc, "booking-svar", DEFAULT_SVAR_TEMPLATE);
+      return; // Ikkje treng å binde resten
+    } else {
+      // Bookingar er standard-fane
+      fc.setAttribute("data-booking-area", "");
+      var fakeRoot = { querySelector: function(s) {
+        if (s === "[data-booking-area]") return fc;
+        return root.querySelector(s);
+      }};
+    }
 
     var nb = root.querySelector("[data-asset-new]");
     if (nb) nb.addEventListener("click", function () { openAssetEditor(root, null); });
@@ -313,12 +457,15 @@
         var a = getAssets().find(function (x) { return x.id === id; });
         if (a && a.image) App.media.free(a.image);
         setAssets(getAssets().filter(function (x) { return x.id !== id; }));
-        setBookings(getBookings().filter(function (x) { return x.assetId !== id; })); // rydd bookinger
+        setBookings(getBookings().filter(function (x) { return x.assetId !== id; }));
         renderAdmin(root);
       });
     });
 
-    renderBookingArea(root);
+    // Bookingar-fane: render booking-area
+    if (activeFane === "bookinger") {
+      renderBookingArea(root);
+    }
   }
 
   function adminAssetRow(a) {
@@ -498,7 +645,7 @@
   }
 
   function renderBookingArea(root) {
-    var area = root.querySelector("[data-booking-area]");
+    var area = root.querySelector("[data-booking-area]") || root.querySelector("[data-bk-fane-content]");
     var assets = getAssets();
     if (!assets.length) { area.innerHTML = '<p class="prose prose--muted">Opprett en ressurs først.</p>'; return; }
     var allBookings = getBookings();
@@ -544,10 +691,6 @@
     }).join("");
 
     area.innerHTML = '' +
-      App.emailTemplateCard("booking-avbook", "E-postmal for avbooking", DEFAULT_AVBOOK_TEMPLATE,
-        "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}. Mailto støtter kun ren tekst.") +
-      App.emailTemplateCard("booking-svar", "E-postmal for svar", DEFAULT_SVAR_TEMPLATE,
-        "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}. Mailto støtter kun ren tekst.") +
       '<form class="admin-form admin-form--card" data-booking-form>' +
         '<div class="field"><label for="bk-asset">Ressurs</label><select id="bk-asset" data-bk-asset>'+assetOpts+'</select></div>' +
         '<div class="bk-2col">' +
@@ -572,8 +715,7 @@
       );
     });
 
-    App.bindEmailTemplateCard(area, "booking-avbook", DEFAULT_AVBOOK_TEMPLATE);
-    App.bindEmailTemplateCard(area, "booking-svar", DEFAULT_SVAR_TEMPLATE);
+    // Malar er no i eigen fane
     App.bindStatusFilterBar(area, "booking", function () { renderBookingArea(root); });
 
     // Variant B: eksplisitt klikk på «Vis detaljer» → Lest
@@ -599,7 +741,7 @@
         bk.status = "løst"; setBookings(list);
         App.openReplyModal({
           name: bk.name, email: bk.email,
-          subject: "Avbooking – " + (a ? a.name : "") + " " + C.formatDate(bk.date) + " kl. " + bk.time,
+          subject: "Avbooking – " + (a ? a.name : "") + " " + C.formatDate(bk.date) + " kl. " + bk.time + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
           templateKey: "booking-avbook", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE,
           vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
         });
@@ -616,7 +758,7 @@
         bk.status = "løst"; setBookings(list);
         App.openReplyModal({
           name: bk.name, email: bk.email,
-          subject: "Angående din reservasjon – " + (a ? a.name : ""),
+          subject: "Angående din reservasjon – " + (a ? a.name : "") + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
           templateKey: "booking-svar", defaultTemplate: DEFAULT_SVAR_TEMPLATE,
           vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
         });
@@ -663,6 +805,35 @@
   /* =========================================================================
      STILER (modulen tar med seg sine egne)
      ====================================================================== */
+  /* =========================================================================
+     KALENDER-CSS
+     ====================================================================== */
+  function injectCalendarStyles() {
+    if (document.getElementById("bk-cal-styles")) return;
+    var s = document.createElement("style");
+    s.id  = "bk-cal-styles";
+    s.textContent = [
+      ".bk-cal{width:100%;max-width:420px;margin:1rem 0}",
+      ".bk-cal__nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}",
+      ".bk-cal__nav-btn{background:none;border:1.5px solid var(--color-border);border-radius:8px;width:2rem;height:2rem;cursor:pointer;font-size:1.1rem;color:var(--color-text);display:flex;align-items:center;justify-content:center;transition:background .15s}",
+      ".bk-cal__nav-btn:hover{background:var(--color-tint);border-color:var(--color-primary)}",
+      ".bk-cal__month{font-weight:700;font-size:.95rem;text-transform:capitalize}",
+      ".bk-cal__grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}",
+      ".bk-cal__header{text-align:center;font-size:.72rem;font-weight:700;color:var(--color-muted);padding:.25rem 0;text-transform:uppercase}",
+      ".bk-cal__cell{border-radius:8px;padding:.3rem .2rem;text-align:center;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:background .12s,border-color .12s;border:1.5px solid transparent}",
+      ".bk-cal__cell--empty{pointer-events:none}",
+      ".bk-cal__cell--disabled{color:var(--color-muted);opacity:.45;cursor:not-allowed}",
+      ".bk-cal__cell--available{cursor:pointer;border-color:var(--color-border);background:var(--color-surface)}",
+      ".bk-cal__cell--available:hover{border-color:var(--color-primary);background:var(--color-tint)}",
+      ".bk-cal__cell--selected{border-color:var(--color-primary)!important;background:var(--color-tint)!important;font-weight:700}",
+      ".bk-cal__cell--full{border-color:var(--color-border);background:var(--color-surface);opacity:.6}",
+      ".bk-cal__cell--today .bk-cal__day{background:var(--color-primary);color:#fff;border-radius:999px;width:1.5rem;height:1.5rem;display:flex;align-items:center;justify-content:center;margin:0 auto}",
+      ".bk-cal__day{font-size:.88rem;line-height:1}",
+      ".bk-cal__avail{font-size:.65rem;color:var(--color-primary);font-weight:600;margin-top:.2rem;line-height:1}"
+    ].join("");
+    document.head.appendChild(s);
+  }
+
   function injectStyles() {
     if (document.getElementById("bk-styles")) return;
     var s = document.createElement("style");

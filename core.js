@@ -1202,7 +1202,7 @@ window.App = (function () {
     body.innerHTML = `
       <form data-content class="admin-form">
         <fieldset class="admin-group">
-          <legend>Hero</legend>
+          <legend>Forsidetopp</legend>
           ${C.field({ id: "f-hero-title", label: "Tittel", value: content.hero.title })}
           ${C.field({ id: "f-hero-sub", label: "Undertittel", multiline: true, rows: 2, value: content.hero.subtitle })}
           ${imgField("f-hero-image", "Bakgrunnsbilde (vises i full bredde)", content.hero.image, 2.4)}
@@ -1276,6 +1276,8 @@ window.App = (function () {
       C.SOCIAL_PLATFORMS.forEach(function (p) {
         social[p.key] = body.querySelector("#f-soc-" + p.key).value.trim();
       });
+      // Fjern gammal twitter-nøkkel
+      delete social.twitter;
       content.contact.social = social;
       // Footer
       content.footer = {

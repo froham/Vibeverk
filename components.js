@@ -510,9 +510,12 @@ window.Components = (function () {
 
   // Kontakt (skjema + info)
   function contact(d, info) {
+    // Normaliser social: migrer gammal "twitter"-nøkkel til "x"
+    const socialData = Object.assign({}, info.social || {});
+    if (socialData.twitter && !socialData.x) { socialData.x = socialData.twitter; }
     const social = SOCIAL_PLATFORMS
-      .filter(function (p) { return info.social && info.social[p.key]; })
-      .map(function (p) { return `<a href="${esc(info.social[p.key])}" target="_blank" rel="noopener">${icon(p.icon)} ${esc(p.label)}</a>`; });
+      .filter(function (p) { return socialData[p.key]; })
+      .map(function (p) { return `<a href="${esc(socialData[p.key])}" target="_blank" rel="noopener">${icon(p.icon)} ${esc(p.label)}</a>`; });
     // Egendefinerte felter (overskrift + innhold), f.eks. fakturainfo, styremedlemmer
     const extra = (info.extra || []).map(function (f) {
       if (!f || (!f.label && !f.value)) return "";

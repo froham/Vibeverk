@@ -172,7 +172,8 @@ nav("#/settings"); nav("#/kb");
 assert(!!doc.querySelector("#kb-root"),    "j1: kb-root");
 assert(!!doc.querySelector("#kb-new-btn"), "j2: ny-artikkel-knapp (owner)");
 doc.querySelector("#kb-new-btn").dispatchEvent(new window.Event("click",{bubbles:true}));
-const kbEd = doc.querySelector("#kb-editor-area");
+// Editor er no ein modal i document.body
+const kbEd = doc.querySelector("#kb-edit-modal-bd") || doc.querySelector("#kb-editor-area");
 assert(!!kbEd?.querySelector("#kb-title"), "j3: editor opna");
 kbEd.querySelector("#kb-title").value = "Testartikkel";
 kbEd.querySelector("#kb-category").value = "Rutinar";
@@ -217,7 +218,11 @@ assert(links.length===1,              "m3: lenke lagra");
 assert(links[0].title==="SharePoint", "m4: tittel ok");
 
 /* --- N) ORGDRIFT ---------------------------------------------------------- */
-nav("#/notes"); nav("#/orgdrift");
+nav("#/notes");
+nav("#/orgdrift");
+// Re-navigér for å sikre at draw() er køyrd
+nav("#/notes");
+nav("#/orgdrift");
 assert(!!doc.querySelector("#orgdrift-root"), "n1: orgdrift-root");
 assert(!!doc.querySelector(".od-tabs"),       "n2: fane-navigasjon");
 const orgData = App.store.get("wsp-orgdrift",{});

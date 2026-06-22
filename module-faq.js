@@ -94,21 +94,29 @@
   }
 
   function mountSection(container) {
-    container.addEventListener("click", function (e) {
+    // Bind direkte til container — fungerer både inline og på eigen side
+    var handler = function (e) {
       var btn = e.target.closest("[data-faq-toggle]");
       if (!btn) return;
+      // Sjekk at knappen er innanfor denne containeren
+      if (!container.contains(btn)) return;
       var item = btn.closest(".faq-item");
+      if (!item) return;
       var isOpen = item.classList.contains("is-open");
-      // Lukk alle andre
       container.querySelectorAll(".faq-item.is-open").forEach(function (el) {
         el.classList.remove("is-open");
-        el.querySelector("[data-faq-toggle]").setAttribute("aria-expanded", "false");
+        var tb = el.querySelector("[data-faq-toggle]");
+        if (tb) tb.setAttribute("aria-expanded", "false");
       });
       if (!isOpen) {
         item.classList.add("is-open");
         btn.setAttribute("aria-expanded", "true");
       }
-    });
+    };
+    // Fjern eventuelle gamle handlers og fest ny
+    container.removeEventListener("click", container._faqHandler);
+    container._faqHandler = handler;
+    container.addEventListener("click", handler);
   }
 
   /* =========================================================================
