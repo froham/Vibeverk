@@ -187,7 +187,7 @@
         return;
       }
 
-      /* Delegert: åpne drawer */
+      /* Delegert: åpne popup */
       var editBtn = e.target.closest("[data-task-edit]");
       if (editBtn) {
         var taskId = editBtn.getAttribute("data-task-edit");
@@ -209,8 +209,15 @@
         STATUS_LABELS[s] + '</option>';
     }).join("");
 
-    Intranet.openDrawer({
-      title: "Oppgave",
+    // Bruk eigen sentrert popup i staden for sidebar-drawer
+    var existing = document.getElementById("task-modal-backdrop");
+    if (existing) existing.remove();
+    var bd = document.createElement("div");
+    bd.id = "task-modal-backdrop";
+    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem";
+    var modal = document.createElement("div");
+    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(480px,100%);box-shadow:0 30px 80px rgba(0,0,0,.3)";
+    var _unused = { title: "Oppgave",
       bodyHtml:
         '<div class="i-field">' +
           '<label for="drawer-task-title">Tittel</label>' +
@@ -224,36 +231,50 @@
           'Opprettet: ' + formatDate(task.createdAt) + '<br>' +
           'Sist oppdatert: ' + formatDate(task.updatedAt) +
         '</div>',
-      footHtml:
-        '<button class="btn btn--primary btn--sm" id="drawer-save">Lagre</button>' +
-        '<button class="btn btn--ghost btn--sm" id="drawer-cancel">Avbryt</button>' +
-        '<button class="btn btn--danger btn--sm" id="drawer-delete" style="margin-left:auto">Slett</button>',
-      onMount: function (dr) {
+    };
+    modal.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border)">' +
+        '<strong>Oppgave</strong>' +
+        '<button id="task-modal-x" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+      '</div>' +
+      '<div style="padding:1.2rem;display:grid;gap:.9rem">' +
+        _unused.bodyHtml +
+        '<div style="display:flex;gap:.5rem;padding-top:.4rem">' +
+          '<button class="btn btn--primary btn--sm" id="drawer-save">Lagre</button>' +
+          '<button class="btn btn--ghost btn--sm" id="drawer-cancel">Avbryt</button>' +
+          '<button class="btn btn--danger btn--sm" id="drawer-delete" style="margin-left:auto">Slett</button>' +
+        '</div>' +
+      '</div>';
+    bd.appendChild(modal);
+    document.body.appendChild(bd);
+    modal.querySelector("#task-modal-x").addEventListener("click", function () { bd.remove(); });
+    bd.addEventListener("click", function (e) { if (e.target === bd) bd.remove(); });
+    document.addEventListener("keydown", function escH(e) { if (e.key === "Escape") { bd.remove(); document.removeEventListener("keydown", escH); } });
+    (function (dr) {
         dr.querySelector("#drawer-save").addEventListener("click", function () {
           var newTitle  = dr.querySelector("#drawer-task-title").value.trim();
           var newStatus = dr.querySelector("#drawer-task-status").value;
           if (!newTitle) return;
           updateTask(id, { title: newTitle, status: newStatus });
           Intranet.logActivity({ type: "task_updated", label: "Oppdatert: " + newTitle });
-          Intranet.closeDrawer();
+          bd.remove();
           Intranet.navigate("tasks");
           if (root) renderList(root);
         });
 
         dr.querySelector("#drawer-cancel").addEventListener("click", function () {
-          Intranet.closeDrawer();
+          bd.remove();
           Intranet.navigate("tasks");
         });
 
         dr.querySelector("#drawer-delete").addEventListener("click", function () {
           if (!confirm('Slett oppgaven "' + task.title + '"?')) return;
           deleteTask(id);
-          Intranet.closeDrawer();
+          bd.remove();
           Intranet.navigate("tasks");
           if (root) renderList(root);
         });
-      }
-    });
+    })(modal);
   }
 
   /* =========================================================================

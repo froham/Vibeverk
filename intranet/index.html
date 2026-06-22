@@ -208,7 +208,7 @@
     .admin-row__actions { display: flex; gap: .4rem; flex-shrink: 0; }
 
     /* --- Skjema ----------------------------------------------------------- */
-    .i-form { display: grid; gap: .9rem; }
+    .i-form { display: grid; gap: .9rem; align-items: start; }
     .i-field { display: grid; gap: .3rem; }
     .i-field label { font-size: .85rem; font-weight: 600; }
     .i-field input, .i-field textarea, .i-field select {
@@ -323,6 +323,49 @@
       color: #dde1f0;
     }
     [data-theme="dark"] .btn--ghost:hover { background: rgba(255,255,255,.08); }
+
+    /* --- Mørk modus: generelle overrides for hardkoda fargar i modular --- */
+    [data-theme="dark"] .i-form input,
+    [data-theme="dark"] .i-form textarea,
+    [data-theme="dark"] .i-form select,
+    [data-theme="dark"] .i-field input,
+    [data-theme="dark"] .i-field textarea,
+    [data-theme="dark"] .i-field select,
+    [data-theme="dark"] input[type="text"],
+    [data-theme="dark"] input[type="email"],
+    [data-theme="dark"] input[type="url"],
+    [data-theme="dark"] input[type="number"],
+    [data-theme="dark"] input[type="search"],
+    [data-theme="dark"] input[type="password"],
+    [data-theme="dark"] textarea,
+    [data-theme="dark"] select {
+      background: #1e2130 !important;
+      color: #dde1f0 !important;
+      border-color: rgba(255,255,255,.18) !important;
+    }
+    [data-theme="dark"] .admin-row { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .admin-form--card { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .kb-article-row { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .kb-article-view { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .kb-editor { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .od-modal { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .od-card { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .wsp-media-card { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] .sb-adm-row { background: #262a3d; border-color: rgba(255,255,255,.08); }
+    [data-theme="dark"] [style*="background:var(--color-surface)"] { background: #262a3d !important; }
+    [data-theme="dark"] [style*="background: var(--color-surface)"] { background: #262a3d !important; }
+    [data-theme="dark"] [style*="color:var(--color-text)"] { color: #dde1f0 !important; }
+    [data-theme="dark"] [style*="color: var(--color-text)"] { color: #dde1f0 !important; }
+    [data-theme="dark"] [style*="color:var(--color-muted)"] { color: #8b91b0 !important; }
+    /* Drawers og modals */
+    [data-theme="dark"] .i-drawer { background: #1e2130; border-color: rgba(255,255,255,.1); }
+    [data-theme="dark"] .i-drawer__head { border-color: rgba(255,255,255,.1); }
+    [data-theme="dark"] .i-drawer__foot { border-color: rgba(255,255,255,.1); }
+    /* Nav seksjons-label */
+    [data-theme="dark"] .i-nav__section-label { color: #8b91b0; }
+    /* Rtfield editor */
+    [data-theme="dark"] .rtfield__editor { background: #1e2130; color: #dde1f0; }
+    [data-theme="dark"] .rtfield__toolbar { background: #262a3d; }
     /* --- Tetthet ---------------------------------------------------------- */
     [data-density="compact"] { --gap: .7rem; --section-y: 1.2rem; }
     [data-density="compact"] .i-main { padding: 1.2rem 1rem; }

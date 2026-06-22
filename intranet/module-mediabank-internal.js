@@ -226,6 +226,19 @@
         '<h2>Mediebank <span style="font-size:1rem;font-weight:400;color:var(--color-muted)">(' + files.length + ' filer)</span></h2>' +
       '</div>' +
 
+      /* --- Forklaringsseksjon --------------------------------------------- */
+      '<div class="i-card" style="margin-bottom:1rem;border-left:3px solid var(--color-primary)">' +
+        '<p class="i-section-label" style="margin-bottom:.5rem">Om mediebanken</p>' +
+        '<div style="font-size:.88rem;line-height:1.7;color:var(--color-muted);display:grid;gap:.4rem">' +
+          '<div>📁 Last opp bilete, PDF-ar, Word, Excel og andre filer til bedriftens interne mediebank.</div>' +
+          '<div>🏷️ Organiser filer med kategoriar — t.d. <em>Logoer</em>, <em>Bilete</em>, <em>Malar</em>, <em>Kontrakter</em>.</div>' +
+          '<div>📐 <strong>Grafisk profil:</strong> Last opp profilfiler under kategorien <em>Grafisk profil</em> — inkl. PowerPoint-malar, fontar, fargekodar og profilhandbok.</div>' +
+          '<div>🔗 Kopier lenkje til ei fil ved å klikke kopier-ikonet på filkortet.</div>' +
+          '<div>⚠️ Maks ' + (App.media.MAX_FILE_MB || 4) + ' MB per fil (lokal lagring). Større filer bør lagrast eksternt og leggast til som lenke.</div>' +
+        '</div>' +
+        '<button id="wsp-media-info-toggle" style="background:none;border:0;cursor:pointer;font-size:.78rem;color:var(--color-primary);padding:.4rem 0 0;font-family:inherit">Skjul info ▲</button>' +
+      '</div>' +
+
       /* Lagringsstatus */
       '<div class="i-card" style="margin-bottom:1rem">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.3rem">' +
@@ -277,6 +290,18 @@
       '<div id="wsp-media-grid-wrap">' + renderGrid(null, null) + '</div>';
 
     bindPage(root);
+
+    /* Toggle forklaringsseksjon */
+    var infoToggle = root.querySelector("#wsp-media-info-toggle");
+    var infoCard   = infoToggle ? infoToggle.closest(".i-card") : null;
+    if (infoToggle && infoCard) {
+      var infoBody = infoCard.querySelector("div");
+      infoToggle.addEventListener("click", function () {
+        var open = infoBody.style.display !== "none";
+        infoBody.style.display = open ? "none" : "";
+        infoToggle.textContent = open ? "Vis info ▼" : "Skjul info ▲";
+      });
+    }
   }
 
   function renderGrid(query, category) {

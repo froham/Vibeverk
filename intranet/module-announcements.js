@@ -108,80 +108,16 @@
   }
 
   /* =========================================================================
-     VEDLEGG-HJELPERAR (gjenbruker App.media)
+     VEDLEGG-HJELPERAR
      ====================================================================== */
-  function attachFieldHtml(id, existing) {
-    return '<div class="i-field" style="margin-top:.4rem">' +
-      '<label>Vedlegg (valgfritt)</label>' +
-      '<ul class="attach-list" data-attach-list style="list-style:none;padding:0;margin:0 0 .4rem;display:grid;gap:.3rem"></ul>' +
-      '<label class="btn btn--ghost btn--sm" style="cursor:pointer">' +
-        '<i class="ti ti-upload"></i> Last opp vedlegg' +
-        '<input type="file" multiple style="display:none" data-attach-file>' +
-      '</label>' +
-      '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Maks ' + App.media.MAX_FILE_MB + ' MB per fil.</p>' +
-      '<input type="hidden" id="' + C.esc(id) + '" value="' + C.esc(JSON.stringify(existing || [])) + '">' +
-    '</div>';
-  }
-
-  function bindAttachField(scope, hiddenId) {
-    var wrap   = scope.querySelector('[data-attach-list]') ? scope : scope.querySelector('[data-attach-list]');
-    var hidden = scope.querySelector('#' + hiddenId);
-    var list   = scope.querySelector('[data-attach-list]');
-    var file   = scope.querySelector('[data-attach-file]');
-    if (!hidden || !list || !file) return;
-
-    var state;
-    try { state = JSON.parse(hidden.value) || []; } catch (e) { state = []; }
-
-    function sync() { hidden.value = JSON.stringify(state); }
-    function renderList() {
-      list.innerHTML = state.map(function (a, i) {
-        return '<li style="display:flex;align-items:center;gap:.5rem;font-size:.85rem">' +
-          '<i class="ti ti-paperclip" style="color:var(--color-muted)"></i>' +
-          '<span style="flex:1">' + C.esc(a.name) + '</span>' +
-          '<span style="color:var(--color-muted);font-size:.75rem">' + (a.size ? Math.round(a.size/1024) + ' KB' : '') + '</span>' +
-          '<button type="button" data-rm="' + i + '" style="background:none;border:0;cursor:pointer;color:var(--color-muted);font-size:1rem;line-height:1">&times;</button>' +
-        '</li>';
-      }).join("");
-    }
-
-    file.addEventListener("change", function () {
-      var files = Array.prototype.slice.call(file.files || []);
-      file.value = "";
-      (function next(idx) {
-        if (idx >= files.length) return;
-        App.media.putFile(files[idx]).then(function (att) {
-          state.push(att); sync(); renderList(); next(idx + 1);
-        }).catch(function () { next(idx + 1); });
-      })(0);
-    });
-
-    list.addEventListener("click", function (e) {
-      var btn = e.target.closest("[data-rm]");
-      if (!btn) return;
-      var i = parseInt(btn.getAttribute("data-rm"), 10);
-      if (state[i]) { App.media.freeFile(state[i].ref); state.splice(i, 1); sync(); renderList(); }
-    });
-
-    renderList();
-  }
-
-  function readAttachments(scope, hiddenId) {
-    var el = scope.querySelector('#' + hiddenId);
-    if (!el) return [];
-    try { return JSON.parse(el.value) || []; } catch (e) { return []; }
-  }
-
   function attachmentsHtml(attachments) {
     if (!attachments || !attachments.length) return "";
     return '<ul style="list-style:none;padding:0;margin:.8rem 0 0;display:grid;gap:.3rem">' +
       attachments.map(function (a) {
-        var href = App.media.resolveFile ? App.media.resolveFile(a.ref) : "#";
-        return '<li><a href="' + C.esc(href) + '" download="' + C.esc(a.name) + '" ' +
+        var href = App.media.resolveFile ? App.media.resolveFile(a.ref) : (a.href || "#");
+        return '<li><a href="' + C.esc(href||"#") + '" download="' + C.esc(a.name||"") + '" ' +
           'style="display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--color-primary)">' +
-          '<i class="ti ti-paperclip"></i>' + C.esc(a.name) +
-          '<span style="color:var(--color-muted);font-size:.75rem">(' + Math.round((a.size||0)/1024) + ' KB)</span>' +
-          '</a></li>';
+          '<i class="ti ti-paperclip"></i>' + C.esc(a.name||"") + '</a></li>';
       }).join("") +
     '</ul>';
   }
@@ -231,10 +167,12 @@
                   : '') +
                 '<strong style="font-size:1rem">' + C.esc(a.title) + '</strong>' +
                 '<div style="font-size:.78rem;color:var(--color-muted);margin:.2rem 0 .7rem">' + formatDate(a.createdAt) + '</div>' +
+                (a.image && App.media.resolveImage(a.image) && App.media.resolveImage(a.image).src
+                  ? '<img src="' + C.esc(App.media.resolveImage(a.image).src) + '" alt="" style="width:100%;border-radius:8px;margin-bottom:.8rem;cursor:pointer;display:block" class="ann-img-preview">'
+                  : '') +
                 (a.body
                   ? '<div style="font-size:.9rem;line-height:1.6;color:var(--color-text)">' + C.sanitizeRichHtml(a.body) + '</div>'
                   : '') +
-                attachmentsHtml(a.attachments) +
                 (admin
                   ? '<div style="display:flex;gap:.4rem;margin-top:.8rem;padding-top:.6rem;border-top:1px solid var(--color-border)">' +
                       '<button class="btn btn--ghost btn--sm" data-ann-edit="' + C.esc(a.id) + '">Rediger</button>' +
@@ -245,6 +183,18 @@
             }).join("") +
           '</div>'
       );
+
+    /* Bileteklikk — stor visning */
+    root.querySelectorAll(".ann-img-preview").forEach(function (img) {
+      img.addEventListener("click", function () {
+        var bd = document.createElement("div");
+        bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:1rem";
+        bd.innerHTML = '<img src="' + img.src + '" style="max-width:100%;max-height:90vh;border-radius:8px;object-fit:contain">';
+        document.body.appendChild(bd);
+        bd.addEventListener("click", function () { bd.remove(); });
+        document.addEventListener("keydown", function esc(e) { if (e.key==="Escape") { bd.remove(); document.removeEventListener("keydown",esc); } });
+      });
+    });
 
     if (admin) {
       var newBtn = root.querySelector("#ann-new-btn");
@@ -294,7 +244,6 @@
             '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Meldingstittel" required>' +
           '</div>' +
           C.richTextField({ id: "ann-body", label: "Innhold", value: item ? (item.body || "") : "" }) +
-          attachFieldHtml("ann-attachments", item ? (item.attachments || []) : []) +
           '<div class="i-field" style="margin-top:.2rem">' +
             '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500">' +
               '<input type="checkbox" id="ann-important"' + (item && item.important ? " checked" : "") + '>' +
@@ -310,8 +259,8 @@
         '</div>' +
       '</div>';
 
-    bindAttachField(ed, "ann-attachments");
 
+    App.ui.bindImageFields(ed);
     App.ui.bindRichTextFields(ed);
     ed.querySelector("#ann-cancel").addEventListener("click", function () {
       ed.innerHTML = "";
@@ -326,26 +275,20 @@
       }
       var body        = App.ui.readRichTextField(ed, "ann-body");
       var important   = ed.querySelector("#ann-important").checked;
-      var attachments = readAttachments(ed, "ann-attachments");
 
+      var image  = App.ui ? App.ui.readImageField(ed, "ann-image") : null;
       var list = getItems();
       if (item) {
         var idx = list.findIndex(function (a) { return a.id === item.id; });
-        // Frigjør gamle vedlegg som er fjernet
-        var oldAtts = item.attachments || [];
-        var newRefs = attachments.map(function (a) { return a.ref; });
-        oldAtts.forEach(function (a) {
-          if (newRefs.indexOf(a.ref) === -1) App.media.freeFile(a.ref);
-        });
         list[idx] = Object.assign({}, item, {
           title: title, body: body, important: important,
-          attachments: attachments, updatedAt: Date.now()
+          image: image, updatedAt: Date.now()
         });
         Intranet.logActivity({ type: "ann_updated", label: "Melding oppdatert: " + title });
       } else {
         list.unshift({
           id: newId(), title: title, body: body, important: important,
-          attachments: attachments, createdAt: Date.now(), updatedAt: Date.now(),
+          image: image, createdAt: Date.now(), updatedAt: Date.now(),
           createdBy: Intranet.getContext ? Intranet.getContext().userId : "local"
         });
         Intranet.logActivity({ type: "ann_created", label: "Ny melding: " + title });

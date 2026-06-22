@@ -182,7 +182,7 @@
             '<input id="link-desc" type="text" value="' + C.esc(item ? (item.description || "") : "") + '" placeholder="Kort forklaring av kva verktøyet er">' +
           '</div>' +
           '<div class="i-field">' +
-            '<label for="link-icon">Tabler-ikon (valgfritt)</label>' +
+            '<label for="link-icon">Tabler-ikon (valgfritt) — <a href="https://tabler.io/icons" target="_blank" rel="noopener" style="font-size:.78rem;color:var(--color-primary)">Finn alle ikon →</a></label>' +
             '<input id="link-icon" type="text" value="' + C.esc(item ? (item.icon || "") : "") + '" placeholder="link, brand-slack, mail…">' +
             '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">' +
               COMMON_ICONS.map(function (ic) {

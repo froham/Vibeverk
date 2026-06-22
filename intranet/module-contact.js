@@ -48,6 +48,72 @@
     });
   }
 
+
+  /* =========================================================================
+     POPUP — vis full henvendingsdetalj
+     ====================================================================== */
+  function openLeadDetail(lead, type, onStatusChange) {
+    var existing = document.getElementById("lead-detail-backdrop");
+    if (existing) existing.remove();
+
+    var statusOptions = STATUS_ORDER.map(function (s) {
+      return '<option value="' + C.esc(s) + '"' + ((lead.status || "ny") === s ? " selected" : "") + '>' + C.esc(STATUS_LABELS[s] || s) + '</option>';
+    }).join("");
+
+    var bd = document.createElement("div");
+    bd.id = "lead-detail-backdrop";
+    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem";
+
+    var modal = document.createElement("div");
+    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(580px,100%);max-height:88vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3);display:flex;flex-direction:column";
+    modal.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
+        '<strong style="font-size:1rem">' + C.esc(type) + ' — ' + C.esc(lead.name || lead.email || "") + '</strong>' +
+        '<button id="lead-detail-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;padding:.2rem .4rem">&times;</button>' +
+      '</div>' +
+      '<div style="padding:1.2rem;display:grid;gap:1rem">' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">' +
+          infoRow("Namn",     lead.name     || "—") +
+          infoRow("E-post",   lead.email    || "—") +
+          infoRow("Telefon",  lead.phone    || "—") +
+          infoRow("Tid",      formatDate(lead.time || lead.createdAt)) +
+          (lead.referenceNumber ? infoRow("Referanse", "#" + lead.referenceNumber) : "") +
+        '</div>' +
+        (lead.message
+          ? '<div style="background:var(--color-alt);border-radius:8px;padding:.9rem">' +
+              '<p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-muted);margin:0 0 .5rem">Melding</p>' +
+              '<div style="font-size:.92rem;line-height:1.7;white-space:pre-wrap;color:var(--color-text)">' + C.esc((lead.message || "").replace(/<[^>]+>/g, "")) + '</div>' +
+            '</div>'
+          : "") +
+        '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">' +
+          '<label style="font-size:.85rem;font-weight:600">Status:</label>' +
+          '<select id="lead-detail-status" style="font-size:.88rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)">' + statusOptions + '</select>' +
+          '<a href="mailto:' + C.esc(lead.email) + '" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</a>' +
+        '</div>' +
+      '</div>';
+
+    bd.appendChild(modal);
+    document.body.appendChild(bd);
+
+    modal.querySelector("#lead-detail-close").addEventListener("click", function () { bd.remove(); });
+    bd.addEventListener("click", function (e) { if (e.target === bd) bd.remove(); });
+    document.addEventListener("keydown", function escH(e) {
+      if (e.key === "Escape") { bd.remove(); document.removeEventListener("keydown", escH); }
+    });
+
+    modal.querySelector("#lead-detail-status").addEventListener("change", function () {
+      var newStatus = modal.querySelector("#lead-detail-status").value;
+      if (typeof onStatusChange === "function") onStatusChange(newStatus);
+    });
+  }
+
+  function infoRow(label, value) {
+    return '<div style="background:var(--color-surface);border-radius:8px;padding:.6rem .8rem">' +
+      '<p style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-muted);margin:0 0 .15rem">' + C.esc(label) + '</p>' +
+      '<p style="font-size:.9rem;margin:0;color:var(--color-text)">' + C.esc(value) + '</p>' +
+    '</div>';
+  }
+
   /* =========================================================================
      STATUS
      ====================================================================== */
@@ -129,7 +195,7 @@
                   .replace(/<[^>]+>/g, "")
                   .split("\n").filter(function (ln) { return ln.trim(); })
                   .slice(0, 2).join(" · ").slice(0, 120);
-                return '<li class="admin-row">' +
+                return '<li class="admin-row" data-lead-open="' + C.esc(l.id) + '" style="cursor:pointer">' +
                   '<div class="admin-row__main">' +
                     '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">' +
                       '<strong>' + C.esc(l.name || "(ukjent)") + '</strong>' +
@@ -156,6 +222,19 @@
             '</div>';
           }).join("")
       );
+
+    /* Klikk på rad — opne popup */
+    root.querySelectorAll("[data-lead-open]").forEach(function (row) {
+      row.addEventListener("click", function (e) {
+        if (e.target.closest("button,select,a")) return;
+        var id   = row.getAttribute("data-lead-open");
+        var lead = (App.getLeads ? App.getLeads() : []).find(function (l) { return l.id === id; });
+        if (lead) openLeadDetail(lead, "Kontakt", function (newStatus) {
+          setStatus(id, newStatus);
+          renderList(root);
+        });
+      });
+    });
 
     /* Bind svar-knapper */
     root.querySelectorAll("[data-contact-reply]").forEach(function (btn) {

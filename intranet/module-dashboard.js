@@ -1,14 +1,13 @@
 /* =============================================================================
    module-dashboard.js  —  DASHBOARD (intranett)
    -----------------------------------------------------------------------------
-   Aggregator-stub for steg 1. Viser:
-   - Aktivitetsstrøm fra wsp-activity (Tasks, Settings)
-   - Hurtighandlinger til aktive moduler
-   - Oversiktstall (antall oppgaver per status)
+   Tre seksjonar:
+   1) Henvendelser — tre separate kort (Kontakt / Tilbud / Booking) med tal
+   2) Oppgåver     — statuskort (Å gjøre / Pågår / Ferdig)
+   3) Hurtighandlingar — dynamiske basert på aktive modular
+   4) Siste aktivitet — minimert gardin, kan opnast/lukkast
 
-   Er bevisst enkel — Dashboard fyller seg naturlig når flere moduler legges til.
-   Lagring:  leser App.store — skriver ingenting selv.
-   Ruter:    #/dashboard (standard)
+   Lagring: berre lesing. Rute: #/dashboard
    ========================================================================== */
 (function () {
   "use strict";
@@ -16,37 +15,68 @@
   var Intranet = window.Intranet;
   var App      = window.App;
   var C        = window.Components;
+  var CFG      = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
 
   /* =========================================================================
-     HJELPERE
+     HJELPERAR
      ====================================================================== */
   function formatTs(ts) {
     if (!ts) return "";
-    var d = new Date(ts);
-    var now = new Date();
-    var diff = Math.round((now - d) / 60000); // minutter
+    var d    = new Date(ts);
+    var diff = Math.round((Date.now() - d) / 60000);
     if (diff < 1)  return "akkurat nå";
     if (diff < 60) return diff + " min siden";
     var h = Math.round(diff / 60);
-    if (h < 24) return h + " t siden";
-    return d.toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
+    if (h < 24)   return h + " t siden";
+    return d.toLocaleDateString("nb-NO", { day:"numeric", month:"short" });
   }
 
   var ACT_ICONS = {
-    task_created: "circle-plus",
-    task_updated: "pencil",
-    task_deleted: "trash",
-    task_status:  "circle-check",
-    settings:     "settings"
+    task_created:"circle-plus", task_updated:"pencil",
+    task_deleted:"trash",       task_status:"circle-check",
+    note_created:"notes",       note_updated:"pencil",
+    kb_created:"book",          ann_created:"speakerphone",
+    link_created:"link",        media_upload:"photo",
+    contact_status:"mail",      quote_status:"file-invoice",
+    booking_status:"calendar",  settings:"settings",
+    orgdrift_updated:"building"
   };
+
+  function feat(key) {
+    var ift = CFG.intranettFeatures || {};
+    return ift[key] !== false;
+  }
+
+  /* =========================================================================
+     HENVENDELINGSDATA
+     ====================================================================== */
+  function getHenvendelser() {
+    var leads    = App.getLeads ? App.getLeads() : [];
+    var bookings = App.store.get("booking-bookings", []) || [];
+
+    var contact = leads.filter(function (l) {
+      return (!l.message || l.message.indexOf("Tilbudsforesp") !== 0);
+    });
+    var quote = leads.filter(function (l) {
+      return l.message && l.message.indexOf("Tilbudsforesp") === 0;
+    });
+
+    function count(arr, status) {
+      return arr.filter(function (x) { return (x.status || "ny") === status; }).length;
+    }
+
+    return {
+      contact: { total: contact.length, ny: count(contact,"ny"), lest: count(contact,"lest"), løst: count(contact,"løst") },
+      quote:   { total: quote.length,   ny: count(quote,"ny"),   lest: count(quote,"lest"),   løst: count(quote,"løst") },
+      booking: { total: bookings.length, ny: count(bookings,"ny"), lest: count(bookings,"lest"), løst: count(bookings,"løst") }
+    };
+  }
 
   /* =========================================================================
      RENDER
      ====================================================================== */
-  function render() {
-    return '<div id="dashboard-root"></div>';
-  }
+  function render() { return '<div id="dashboard-root"></div>'; }
 
   function mount(outlet) {
     var root = outlet.querySelector("#dashboard-root") || outlet;
@@ -55,92 +85,125 @@
 
   function renderDashboard(root) {
     var tasks    = App.store.get("wsp-tasks", []) || [];
-    var activity = Intranet.getActivity();
+    var activity = Intranet.getActivity ? Intranet.getActivity() : [];
+    var henv     = getHenvendelser();
 
-    // Telledata
-    var counts = { todo: 0, in_progress: 0, done: 0 };
-    tasks.forEach(function (t) { if (counts[t.status] !== undefined) counts[t.status]++; });
+    var taskCounts = { todo:0, in_progress:0, done:0 };
+    tasks.forEach(function (t) { if (taskCounts[t.status] !== undefined) taskCounts[t.status]++; });
 
-    // Tel opp uleste henvendelser frå alle kjelder
-    var allLeads = App.getLeads ? App.getLeads() : [];
-    var contactNew = allLeads.filter(function (l) {
-      return (!l.message || l.message.indexOf("Tilbudsforesp") !== 0) && (l.status || "ny") === "ny";
-    }).length;
-    var quoteNew = allLeads.filter(function (l) {
-      return l.message && l.message.indexOf("Tilbudsforesp") === 0 && (l.status || "ny") === "ny";
-    }).length;
-    var bookingNew = (App.store.get("booking-bookings", []) || []).filter(function (b) {
-      return (b.status || "ny") === "ny";
-    }).length;
-    var totalNew = contactNew + quoteNew + bookingNew;
-
-    function henvendelseChip(label, count, href) {
-      var hasNew = count > 0;
-      var style = hasNew
-        ? "background:color-mix(in srgb,var(--color-primary) 12%,transparent);color:var(--color-primary);border-color:var(--color-primary)"
-        : "background:var(--color-surface);color:var(--color-muted)";
-      return '<a href="' + href + '" style="display:inline-flex;align-items:center;gap:.4rem;padding:.35rem .75rem;border-radius:999px;border:1.5px solid var(--color-border);font-size:.82rem;font-weight:600;text-decoration:none;' + style + '">' +
-        C.esc(label) + (hasNew ? ' <span style="background:var(--color-primary);color:#fff;border-radius:999px;padding:.05rem .4rem;font-size:.72rem">' + count + '</span>' : '') +
-      '</a>';
-    }
+    var hasHenv = feat("contact") || feat("quote") || feat("booking");
 
     root.innerHTML =
       '<div class="i-page-head"><h2>Dashboard</h2></div>' +
 
-      /* --- Henvendelsesrad ------------------------------------------------ */
-      '<div class="i-card" style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">' +
-        '<span style="font-size:.82rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;letter-spacing:.08em">Henvendelser</span>' +
-        '<div style="display:flex;gap:.4rem;flex-wrap:wrap">' +
-          henvendelseChip("Kontakt", contactNew, "#/contact") +
-          henvendelseChip("Tilbud",  quoteNew,   "#/quote") +
-          henvendelseChip("Booking", bookingNew, "#/booking") +
-        '</div>' +
-        (totalNew > 0
-          ? '<span style="font-size:.82rem;color:var(--color-primary);font-weight:600">' + totalNew + ' nye</span>'
-          : '<span style="font-size:.82rem;color:var(--color-muted)">Ingen nye</span>'
-        ) +
+      /* --- Henvendelser: tre separate kort --------------------------------- */
+      (hasHenv
+        ? '<p class="i-section-label" style="margin-bottom:.6rem">Henvendelser</p>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.6rem;margin-bottom:1.4rem;align-items:stretch">' +
+            (feat("contact") ? henvCard("Kontakt",  henv.contact, "#/contact", "mail")          : "") +
+            (feat("quote")   ? henvCard("Tilbud",   henv.quote,   "#/quote",   "file-invoice")  : "") +
+            (feat("booking") ? henvCard("Booking",  henv.booking, "#/booking", "calendar")      : "") +
+          '</div>'
+        : '') +
+
+      /* --- Oppgåver: statuskort ------------------------------------------- */
+      '<p class="i-section-label" style="margin-bottom:.6rem">Oppgåver</p>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem;margin-bottom:1.4rem;align-items:stretch">' +
+        statCard("Å gjøre", taskCounts.todo,        "#/tasks", "ti-checklist") +
+        statCard("Pågår",   taskCounts.in_progress, "#/tasks", "ti-loader") +
+        statCard("Ferdig",  taskCounts.done,         "#/tasks", "ti-circle-check") +
       '</div>' +
 
-      /* --- Oversiktstall -------------------------------------------------- */
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem;margin-bottom:1.4rem;align-items:stretch">' +
-        statCard("Å gjøre",  counts.todo,        "#/tasks", "ti-checklist") +
-        statCard("Pågår",    counts.in_progress,  "#/tasks", "ti-loader") +
-        statCard("Ferdig",   counts.done,          "#/tasks", "ti-circle-check") +
-      '</div>' +
-
-      /* --- Hurtighandlinger ----------------------------------------------- */
+      /* --- Hurtighandlingar ----------------------------------------------- */
       '<div class="i-card" style="margin-bottom:1rem">' +
         '<p class="i-section-label">Hurtighandlinger</p>' +
         '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
-          '<a href="#/tasks" class="btn btn--ghost btn--sm"><i class="ti ti-plus"></i> Ny oppgave</a>' +
-          '<a href="#/settings" class="btn btn--ghost btn--sm"><i class="ti ti-settings"></i> Innstillinger</a>' +
+          quickAction("#/tasks",         "ti-plus",         "Ny oppgave") +
+          (feat("notes")         ? quickAction("#/notes",         "ti-notes",        "Nytt notat")          : "") +
+          (feat("announcements") ? quickAction("#/announcements", "ti-speakerphone", "Ny kunngjering")      : "") +
+          (feat("kb")            ? quickAction("#/kb",            "ti-book",         "Ny KB-artikkel")      : "") +
+          quickAction("#/settings",      "ti-settings",     "Innstillinger") +
         '</div>' +
       '</div>' +
 
-      /* --- Aktivitetsstrøm ----------------------------------------------- */
-      '<div class="i-card">' +
-        '<p class="i-section-label">Siste aktivitet</p>' +
-        (activity.length
-          ? '<ul class="admin-list">' + activity.slice(0, 15).map(function (a) {
-              var icon = ACT_ICONS[a.type] || "point";
-              return '<li style="display:flex;align-items:center;gap:.65rem;padding:.55rem 0;border-bottom:1px solid var(--color-border)">' +
-                '<i class="ti ti-' + C.esc(icon) + '" style="color:var(--color-primary);font-size:1rem;flex-shrink:0"></i>' +
-                '<span style="flex:1;font-size:.88rem">' + C.esc(a.label) + '</span>' +
-                '<span style="font-size:.78rem;color:var(--color-muted);flex-shrink:0">' + formatTs(a.ts) + '</span>' +
-              '</li>';
-            }).join("") + '</ul>'
-          : '<p style="color:var(--color-muted);font-size:.88rem">Ingen aktivitet ennå. Start med å legge til en oppgave.</p>'
-        ) +
+      /* --- Aktivitetslogg: gardin (minimert som standard) ----------------- */
+      '<div class="i-card" id="dash-act-card">' +
+        '<button id="dash-act-toggle" style="width:100%;background:none;border:0;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:0;font:inherit">' +
+          '<p class="i-section-label" style="margin:0">Siste aktivitet' +
+            (activity.length ? ' <span style="background:var(--color-primary);color:#fff;border-radius:999px;font-size:.68rem;padding:.1rem .4rem;font-weight:700">' + activity.length + '</span>' : '') +
+          '</p>' +
+          '<i class="ti ti-chevron-down" id="dash-act-chevron" style="color:var(--color-muted);font-size:1rem;transition:transform .2s"></i>' +
+        '</button>' +
+        '<div id="dash-act-body" style="display:none;margin-top:.8rem">' +
+          (activity.length
+            ? '<ul style="list-style:none;padding:0;margin:0;display:grid;gap:0">' +
+                activity.slice(0, 20).map(function (a) {
+                  var icon = ACT_ICONS[a.type] || "point";
+                  return '<li style="display:flex;align-items:center;gap:.65rem;padding:.5rem 0;border-bottom:1px solid var(--color-border)">' +
+                    '<i class="ti ti-' + C.esc(icon) + '" style="color:var(--color-primary);font-size:.95rem;flex-shrink:0"></i>' +
+                    '<span style="flex:1;font-size:.86rem">' + C.esc(a.label) + '</span>' +
+                    '<span style="font-size:.75rem;color:var(--color-muted);flex-shrink:0">' + formatTs(a.ts) + '</span>' +
+                  '</li>';
+                }).join("") +
+              '</ul>'
+            : '<p style="color:var(--color-muted);font-size:.88rem;margin:0">Ingen aktivitet ennå.</p>'
+          ) +
+        '</div>' +
       '</div>';
+
+    /* Bind gardin-toggle */
+    var toggle  = root.querySelector("#dash-act-toggle");
+    var body    = root.querySelector("#dash-act-body");
+    var chevron = root.querySelector("#dash-act-chevron");
+    if (toggle && body) {
+      toggle.addEventListener("click", function () {
+        var open = body.style.display !== "none";
+        body.style.display    = open ? "none" : "";
+        if (chevron) chevron.style.transform = open ? "" : "rotate(180deg)";
+      });
+    }
+  }
+
+  /* =========================================================================
+     KORT-HJELPERAR
+     ====================================================================== */
+  function henvCard(label, data, href, icon) {
+    var hasNew = data.ny > 0;
+    var accentColor = hasNew ? "var(--color-primary)" : "var(--color-muted)";
+    return '<a href="' + href + '" class="i-card" style="text-decoration:none;display:flex;flex-direction:column;gap:.5rem;align-self:stretch;' +
+      (hasNew ? 'border-color:color-mix(in srgb,var(--color-primary) 40%,transparent)' : '') + '">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between">' +
+        '<span style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--color-muted)">' + C.esc(label) + '</span>' +
+        '<i class="ti ti-' + C.esc(icon) + '" style="color:' + accentColor + ';font-size:1rem"></i>' +
+      '</div>' +
+      '<div style="display:flex;align-items:baseline;gap:.5rem">' +
+        '<span style="font-size:1.7rem;font-weight:700;font-family:var(--font-display);color:var(--color-text)">' + data.total + '</span>' +
+        '<span style="font-size:.78rem;color:var(--color-muted)">totalt</span>' +
+      '</div>' +
+      (hasNew
+        ? '<div style="display:inline-flex;align-items:center;gap:.3rem;font-size:.75rem;font-weight:700;color:#fff;background:var(--color-primary);border-radius:999px;padding:.15rem .6rem;align-self:flex-start">' +
+            '<i class="ti ti-circle-dot" style="font-size:.7rem"></i> ' + data.ny + ' ny' + (data.ny > 1 ? 'e' : '') +
+          '</div>'
+        : '<span style="font-size:.75rem;color:var(--color-muted)">' +
+            (data.lest > 0 ? data.lest + ' lest · ' : '') + data.løst + ' løst' +
+          '</span>'
+      ) +
+    '</a>';
   }
 
   function statCard(label, count, href, iconClass) {
     return '<a href="' + href + '" class="i-card" style="text-decoration:none;display:flex;flex-direction:column;gap:.3rem;align-self:stretch">' +
       '<div style="display:flex;align-items:center;justify-content:space-between">' +
-        '<span style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--color-muted)">' + C.esc(label) + '</span>' +
+        '<span style="font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--color-muted)">' + C.esc(label) + '</span>' +
         '<i class="ti ' + C.esc(iconClass) + '" style="color:var(--color-muted);font-size:1rem"></i>' +
       '</div>' +
-      '<span style="font-size:1.8rem;font-weight:700;font-family:var(--font-display);color:var(--color-text)">' + count + '</span>' +
+      '<span style="font-size:1.7rem;font-weight:700;font-family:var(--font-display);color:var(--color-text)">' + count + '</span>' +
+    '</a>';
+  }
+
+  function quickAction(href, icon, label) {
+    return '<a href="' + href + '" class="btn btn--ghost btn--sm">' +
+      '<i class="ti ' + C.esc(icon) + '"></i> ' + C.esc(label) +
     '</a>';
   }
 
