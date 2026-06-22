@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="nn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Portugal 2026 – Kids Ferieapp v4</title>
+<style>
+:root{
+  --sky:#58cfff;--sea:#0077b6;--deep:#053047;--sand:#ffe6a7;--sun:#ffd166;
+  --coral:#ff6b6b;--mint:#06d6a0;--white:#fffdf7;--ink:#10212d;--muted:#4b6575;
+  --shadow:0 18px 55px rgba(2,28,45,.25);--radius:28px
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);
+background:radial-gradient(circle at 10% 4%,rgba(255,209,102,.55),transparent 18%),
+linear-gradient(180deg,#8fe1ff 0%,#e7f9ff 36%,#fff4d0 68%,#ffe0a6 100%)}
+.app{max-width:1220px;margin:0 auto;padding:16px 14px 100px}
+header{position:relative;min-height:78vh;border-radius:36px;overflow:hidden;box-shadow:var(--shadow);
+background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.68)),
+url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=80") center/cover;
+display:flex;flex-direction:column;justify-content:flex-end;padding:24px;color:white}
+header:before{content:"☀️";position:absolute;right:22px;top:18px;font-size:4rem;filter:drop-shadow(0 8px 18px rgba(0,0,0,.25))}
+.badge{display:inline-flex;gap:8px;background:rgba(255,255,255,.18);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);padding:9px 13px;border-radius:999px;font-weight:900;width:max-content}
+h1{font-size:clamp(2.7rem,8vw,6.4rem);line-height:.88;margin:18px 0 10px;letter-spacing:-.07em}
+h2{font-size:clamp(1.8rem,4.8vw,3.2rem);line-height:1;margin:0 0 10px;letter-spacing:-.045em}
+h3{font-size:1.28rem;margin:0 0 8px} p{color:var(--muted);font-size:1.05rem;line-height:1.45}
+header p{color:rgba(255,255,255,.92)} .lead{font-size:clamp(1.1rem,3vw,1.55rem);max-width:820px;margin:0 0 18px}
+.namebar{margin-top:18px;display:grid;grid-template-columns:1fr auto;gap:10px;max-width:660px}
+input,textarea,select{width:100%;border:2px solid rgba(255,255,255,.45);background:rgba(255,255,255,.2);color:white;border-radius:18px;padding:14px 15px;font-size:1rem;outline:none}
+.card input,.card textarea,.card select{color:var(--ink);background:#fff;border:2px solid rgba(0,119,182,.14)}
+textarea{min-height:120px;resize:vertical} input::placeholder,textarea::placeholder{color:rgba(255,255,255,.68)}
+.card input::placeholder,.card textarea::placeholder{color:#8aa0ad}
+button,.btn{appearance:none;border:0;border-radius:18px;padding:14px 16px;background:var(--sun);color:#1a1a1a;font-weight:1000;font-size:1rem;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 10px 22px rgba(0,0,0,.13)}
+button.secondary,.btn.secondary{background:#e9f7ff;color:#08364f;border:1px solid rgba(0,119,182,.18)} button.green{background:var(--mint)}
+nav{position:sticky;top:0;z-index:5;margin:14px 0 20px;padding:8px;display:flex;gap:8px;overflow:auto;background:rgba(255,253,247,.86);backdrop-filter:blur(14px);border:1px solid rgba(0,119,182,.15);border-radius:999px;box-shadow:0 8px 20px rgba(0,0,0,.08)}
+nav a{white-space:nowrap;text-decoration:none;font-weight:1000;color:#053047;padding:10px 14px;border-radius:999px;background:#fff1c6}
+section{margin:20px 0}.section-title{display:flex;align-items:center;gap:10px;margin:26px 4px 12px}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{grid-column:span 12;background:rgba(255,253,247,.92);border:1px solid rgba(255,255,255,.85);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.card-inner{padding:18px}.two{grid-column:span 6}.three{grid-column:span 4}
+@media(max-width:820px){.two,.three{grid-column:span 12}.namebar{grid-template-columns:1fr}header{min-height:82vh}}
+.carousel{position:relative;margin-top:12px}
+.track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 4px 14px}
+.track::-webkit-scrollbar{height:10px}.track::-webkit-scrollbar-thumb{background:#77cce8;border-radius:999px}
+.slideimg{min-width:min(86vw,760px);height:430px;scroll-snap-align:center;border-radius:26px;overflow:hidden;position:relative;box-shadow:0 14px 38px rgba(0,0,0,.18);background:#ddd}
+.slideimg img{width:100%;height:100%;object-fit:cover;display:block}
+.slideimg div{position:absolute;left:0;right:0;bottom:0;padding:18px;color:#fff;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78));font-weight:1000;font-size:1.35rem}
+.arrow{position:absolute;top:43%;transform:translateY(-50%);z-index:2;border-radius:999px;width:48px;height:48px;padding:0;background:rgba(255,255,255,.9)}
+.arrow.left{left:8px}.arrow.right{right:8px}
+.checklist label{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:18px;background:#f0fbff;margin:8px 0;font-weight:800;border:1px solid rgba(0,119,182,.09)}
+.checklist input{width:23px;height:23px;accent-color:#06d6a0;margin-top:2px;flex:0 0 auto}
+.pack-group{margin:12px 0;padding:12px;border-radius:22px;background:#fff8df;border:1px solid rgba(255,209,102,.5)}
+.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.linkcard{padding:14px;border-radius:18px;background:#f0fbff;border:1px solid rgba(0,119,182,.12);text-decoration:none}
+.linkcard strong{display:block}.linkcard span{display:block;color:var(--muted);margin-top:4px;font-size:.94rem}
+.note{background:#fff8df;border:1px solid rgba(255,209,102,.55);padding:12px;border-radius:18px;margin:10px 0}
+.note small{color:#b56d00;font-weight:1000}.quiz-question{margin:12px 0;padding:14px;border-radius:22px;background:#f0fbff;border:1px solid rgba(0,119,182,.1)}
+.answers{display:grid;gap:8px;margin-top:10px}.answer{justify-content:flex-start;background:#fff;color:var(--ink);border:2px solid rgba(0,119,182,.12);box-shadow:none}
+.answer.correct{background:rgba(6,214,160,.95);color:#032014}.answer.wrong{background:rgba(239,71,111,.95);color:#fff}
+.score{font-size:1.3rem;font-weight:1000;color:#b56d00}.footer-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.tiny{font-size:.86rem;color:rgba(16,33,45,.68)}header .tiny{color:rgba(255,255,255,.72)}
+.confetti{font-size:2rem}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.tab{background:#fff1c6;border:1px solid rgba(255,209,102,.5)}.tab.active{background:var(--sea);color:#fff}
+.progressbar{height:16px;border-radius:999px;background:#d9f3ff;overflow:hidden}.progressbar>div{height:100%;width:0;background:linear-gradient(90deg,var(--mint),var(--sea));border-radius:999px;transition:.25s}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(130px);background:#10212d;color:#fff;padding:16px 18px;border-radius:22px;font-weight:1000;box-shadow:var(--shadow);z-index:20;transition:.35s;max-width:92vw}
+.toast.show{transform:translateX(-50%) translateY(0)}
+#tvOverlay{position:fixed;inset:0;background:#031827;color:#fff;z-index:50;display:none;align-items:center;justify-content:center}
+#tvOverlay.active{display:flex}.tvSlide{position:absolute;inset:0;background-size:cover;background-position:center;display:flex;align-items:flex-end;padding:5vw}
+.tvSlide:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78))}
+.tvText{position:relative;z-index:1;max-width:900px}.tvText h2{font-size:clamp(3rem,8vw,7rem);color:#fff}.tvText p{font-size:clamp(1.2rem,2.5vw,2rem);color:#fff}
+.closeTv{position:absolute;right:18px;top:18px;z-index:60}
+.favoriteImg{max-width:100%;border-radius:22px;margin-top:12px;display:none}
+</style>
+</head>
+<body>
+<div id="tvOverlay"><button class="closeTv secondary" id="closeTv">Lukk TV-modus</button><div id="tvSlide" class="tvSlide"><div class="tvText"><h2></h2><p></p></div></div></div>
+<div class="toast" id="toast">Achievement unlocked!</div>
+<div class="app">
+<header id="top">
+  <span class="badge">🇵🇹 Portugal 2026 • 24.–31. juli</span>
+  <h1>Algarve-eventyret</h1>
+  <p class="lead">Ferieappen til <strong id="displayName">deg</strong>: swipe-bilder, pakkeliste, oppdrag, achievements, reisebok, favorittbilde og quiz.</p>
+  <div class="namebar"><input id="travellerName" placeholder="Skriv namnet ditt her …"><button id="saveName">Lagre namn</button></div>
+  <div class="footer-actions"><button id="startTv">▶ Start TV-modus</button></div>
+  <p class="tiny">Alt du skriv og kryssar av blir lagra på denne mobilen/nettbrettet med localStorage.</p>
+</header>
+
+<nav>
+<a href="#hotel">Hotellet</a><a href="#places">Stader</a><a href="#waterparks">Badeland</a><a href="#packing">Pakkeliste</a><a href="#missions">Oppdrag</a><a href="#photo">Bilde</a><a href="#diary">Reisebok</a><a href="#quiz">Quiz</a><a href="#links">Lenker</a>
+</nav>
+
+<section id="hotel"><div class="section-title"><h2>🏨 Hotellet vårt</h2></div>
+<div class="card"><div class="card-inner"><h2>NH Marina Portimão Resort</h2><p>Basseng, marina, strand og feriebase i Portimão.</p><a class="btn" target="_blank" rel="noopener" href="https://www.nh-hotels.com/en/hotel/nh-marina-portimao-resort">Opne hotellet si side</a><div class="carousel" data-gallery="hotel"></div><p class="tiny">Bileta er ferie-/hotellstemning. Bruk hotell-lenka for offisielle hotellbilete.</p></div></div></section>
+
+<section id="places"><div class="section-title"><h2>🗺️ Stader og utflukter</h2></div>
+<div class="grid">
+<div class="card two"><div class="card-inner"><h2>Praia da Rocha</h2><p>Stor strand, klipper, bølger og iskrem.</p><div class="carousel" data-gallery="praia"></div></div></div>
+<div class="card two"><div class="card-inner"><h2>Benagil-grottene</h2><p>Båttur til grotter og kystlandskap.</p><div class="carousel" data-gallery="benagil"></div></div></div>
+<div class="card two"><div class="card-inner"><h2>Ferragudo</h2><p>Liten fiskarlandsby, vatntaxi og middag.</p><div class="carousel" data-gallery="ferragudo"></div></div></div>
+<div class="card two"><div class="card-inner"><h2>Lagos & Ponta da Piedade</h2><p>Klipper, utsikt, gamleby og strender.</p><div class="carousel" data-gallery="lagos"></div></div></div>
+</div></section>
+
+<section id="waterparks"><div class="section-title"><h2>🎢 Badeland</h2></div>
+<div class="grid">
+<div class="card two"><div class="card-inner"><h2>Slide & Splash</h2><p>Vassklier og familieområde.</p><a class="btn" target="_blank" rel="noopener" href="https://www.slidesplash.com/en/">Offisiell side</a><div class="carousel" data-gallery="slide"></div></div></div>
+<div class="card two"><div class="card-inner"><h2>Zoomarine</h2><p>Dyr, show og vasspark.</p><a class="btn" target="_blank" rel="noopener" href="https://www.zoomarine.pt/en/">Offisiell side</a><div class="carousel" data-gallery="zoomarine"></div></div></div>
+</div></section>
+
+<section id="packing"><div class="section-title"><h2>🎒 Pakkeliste</h2></div>
+<div class="grid"><div class="card two"><div class="card-inner"><h2>Pakk før avreise</h2><div id="packingList"></div><button class="secondary" id="clearPacking">Nullstill pakkeliste</button></div></div>
+<div class="card two"><div class="card-inner"><h2>Pakke-score</h2><p class="score"><span id="packingScore">0</span> / <span id="packingTotal">0</span> pakka</p><div class="progressbar"><div id="packingProgress"></div></div><p class="confetti" id="packingEmoji">🧳</p></div></div></div></section>
+
+<section id="missions"><div class="section-title"><h2>✅ Ferieoppdrag og achievements</h2></div>
+<div class="grid"><div class="card two"><div class="card-inner"><h2>Oppdrag i Portugal</h2><div class="checklist" id="missionList"></div><button class="secondary" id="clearChecks">Nullstill oppdrag</button></div></div>
+<div class="card two"><div class="card-inner"><h2>Min ferie-score</h2><p class="score"><span id="missionScore">0</span> / <span id="missionTotal">0</span> oppdrag</p><div class="progressbar"><div id="missionProgress"></div></div><p class="confetti" id="missionEmoji">🌊</p><h3>Achievements</h3><div id="achievements"></div></div></div></div></section>
+
+<section id="photo"><div class="section-title"><h2>📸 Mitt favorittbilde</h2></div>
+<div class="card"><div class="card-inner"><p>Vel eitt bilde frå mobilen. Det blir lagra lokalt i denne nettlesaren.</p><input id="photoInput" type="file" accept="image/*"><img id="favoriteImg" class="favoriteImg" alt="Favorittbilde"><div class="footer-actions"><button class="secondary" id="clearPhoto">Fjern bilde</button></div></div></div></section>
+
+<section id="diary"><div class="section-title"><h2>✍️ Reisebok</h2></div>
+<div class="grid"><div class="card two"><div class="card-inner"><h2>Nytt notat</h2><input id="noteTitle" placeholder="Tittel, f.eks. Dag 1 – Strand og is"><textarea id="noteText" placeholder="Kva gjorde vi? Kva var det beste?"></textarea><div class="footer-actions"><button class="green" id="saveNote">Lagre notat</button><button class="secondary" id="clearNotes">Slett alle notat</button></div></div></div><div class="card two"><div class="card-inner"><h2>Mine notat</h2><div id="diaryList"></div></div></div></div></section>
+
+<section id="quiz"><div class="section-title"><h2>🧠 Quiz-senter</h2></div><div class="card"><div class="card-inner"><div class="tabs" id="quizTabs"></div><div id="quizBox"></div><p class="score">Score: <span id="quizScore">0</span> / <span id="quizTotal">0</span></p><div class="progressbar"><div id="quizProgress"></div></div><button id="resetQuiz" class="secondary">Prøv denne quizen på nytt</button></div></div></section>
+
+<section id="links"><div class="section-title"><h2>🔗 Nyttige lenker</h2></div><div class="card"><div class="card-inner"><div class="links">
+<a class="linkcard" target="_blank" rel="noopener" href="https://www.nh-hotels.com/en/hotel/nh-marina-portimao-resort"><strong>NH Marina Portimão Resort</strong><span>Hotellet si side</span></a>
+<a class="linkcard" target="_blank" rel="noopener" href="https://www.zoomarine.pt/en/"><strong>Zoomarine</strong><span>Billettar og opningstider</span></a>
+<a class="linkcard" target="_blank" rel="noopener" href="https://www.slidesplash.com/en/"><strong>Slide & Splash</strong><span>Billettar og opningstider</span></a>
+<a class="linkcard" target="_blank" rel="noopener" href="https://5emotionsalgarve.com/en/"><strong>Benagil + delfin</strong><span>Båtturar frå Portimão</span></a>
+<a class="linkcard" target="_blank" rel="noopener" href="https://aqua-portimao.klepierre.pt/"><strong>Aqua Portimão</strong><span>Kjøpesenter</span></a>
+<a class="linkcard" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=NH+Marina+Portimao+Resort"><strong>Kart til hotellet</strong><span>Google Maps</span></a>
+</div><p class="tiny">Nokre bilete er stemningsbilete, ikkje nødvendigvis nøyaktig attraksjon/hotell.</p></div></div></section>
+</div>
+
+<script>
+const PREFIX="portugal2026kids-v3:";const $=id=>document.getElementById(id);
+function save(k,v){localStorage.setItem(PREFIX+k,JSON.stringify(v))}function load(k,f){try{return JSON.parse(localStorage.getItem(PREFIX+k))??f}catch(e){return f}}
+function toast(t){const el=$("toast");el.textContent=t;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2600)}
+const galleries={
+hotel:[
+["https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1100&q=80","Bassengliv"],
+["https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1100&q=80","Resortstemning"],
+["https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1100&q=80","Ferieutsikt"],
+["https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=1100&q=80","Stranddag"],
+["https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80","Sommar"]
+],
+praia:[
+["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20da%20Rocha%2C%20Portim%C3%A3o%20%284%29.jpg?width=1200","Praia da Rocha"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20da%20Rocha%20-%20Portim%C3%A3o%20%287%29.jpg?width=1200","Klipper og strand"],
+["https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80","Strandstemning"],
+["https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=1100&q=80","Bølger og sand"]
+],
+benagil:[
+["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%2C%20July%202012%20edited.jpg?width=1200","Benagil-grotta frå innsida"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%20%283%29.jpg?width=1200","Benagil Cave"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%20%281%29.jpg?width=1200","Inne i grotta"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%20seen%20by%20above.jpg?width=1200","Benagil sett ovanfrå"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Algarve%20Caves%20%2817411289209%29.jpg?width=1200","Grotter langs Algarve-kysten"]
+],
+ferragudo:[
+["https://commons.wikimedia.org/wiki/Special:FilePath/Ferragudo%20-%20Portugal%20%284566556091%29.jpg?width=1200","Ferragudo"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Ferragudo%20%283%29.jpg?width=1200","Landsbyen"],
+["https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1100&q=80","Kveldskos"],
+["https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&w=1100&q=80","Små gater"]
+],
+lagos:[
+["https://commons.wikimedia.org/wiki/Special:FilePath/Ponta%20da%20Piedade%20Lagos%20%28Portugal%29.jpg?width=1200","Ponta da Piedade"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Ponta%20da%20Piedade%20%28Lagos%29%20%281%29.jpg?width=1200","Klipper ved Lagos"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20Dona%20Ana%20Lagos%20Algarve%20Portugal.jpg?width=1200","Praia Dona Ana"],
+["https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=1100&q=80","Lagos-kysten"]
+],
+slide:[
+["https://commons.wikimedia.org/wiki/Special:FilePath/Slide%20%26%20Splash%20Algarve.jpg?width=1200","Slide & Splash – vassklier"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Water%20Slides%20%2819012708403%29.jpg?width=1200","Vassklier i Slide & Splash"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Slide%20and%20Splash.JPG?width=1200","Slide & Splash"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Slide%20and%20Splash%20in%202015.JPG?width=1200","Fleire sklier"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Waterpark%20Portugal%20Aug%202000%20%2851884948600%29.jpg?width=1200","Waterpark Portugal"]
+],
+zoomarine:[
+["https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1100&q=80","Delfin"],
+["https://images.unsplash.com/photo-1607153333879-c174d265f1d2?auto=format&fit=crop&w=1100&q=80","Sjødyr"],
+["https://images.unsplash.com/photo-1563911302283-d2bc129e7570?auto=format&fit=crop&w=1100&q=80","Vasspark"],
+["https://images.unsplash.com/photo-1583212292454-1fe6229603b7?auto=format&fit=crop&w=1100&q=80","Akvarium"]
+]
+};
+function renderGalleries(){document.querySelectorAll(".carousel").forEach((c,idx)=>{const key=c.dataset.gallery,imgs=galleries[key]||[];const id="track"+idx;c.innerHTML=`<button class="arrow left" data-target="${id}" data-dir="-1">‹</button><div class="track" id="${id}"></div><button class="arrow right" data-target="${id}" data-dir="1">›</button>`;const t=c.querySelector(".track");imgs.forEach(([src,cap])=>{const s=document.createElement("div");s.className="slideimg";s.innerHTML=`<img src="${src}" alt="${cap}" loading="lazy" onerror="this.onerror=null;this.src=\'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80\';this.parentElement.querySelector(\'div\').textContent += \' – reservebilde\';"><div>${cap}</div>`;t.appendChild(s)})});document.querySelectorAll(".arrow").forEach(b=>b.onclick=()=>{const t=$(b.dataset.target);t.scrollBy({left:b.dataset.dir*760,behavior:"smooth"})})}
+document.addEventListener("keydown",e=>{if(e.key==="ArrowRight"||e.key==="ArrowLeft"){const t=[...document.querySelectorAll(".track")].find(x=>{const r=x.getBoundingClientRect();return r.top>=0&&r.top<innerHeight}); if(t)t.scrollBy({left:(e.key==="ArrowRight"?760:-760),behavior:"smooth"})}});
+const missions=["Bade i bassenget","Bade på Praia da Rocha","Spise is i Portugal","Ta bilde av ei grotte","Sjå ein båt i marinaen","Reise med vatntaxi eller båt","Besøke Ferragudo","Finne eit fint skjell","Prøve ei ny brus/is/snack","Bygge sandslott","Sjå solnedgang","Besøke eit badeland","Køyre ei vassklie","Skrive minst eitt reisebok-notat","Ta eit familiebilde"];
+const achievements={0:"Første bad 🏊",2:"Ismester 🍦",5:"Båthelt 🚤",6:"Ferragudo-utforskar 🏘️",11:"Badelandklar 🎢",12:"Skliehelt 💦",13:"Reisebokforfattar ✍️",14:"Familiefotograf 📸"};
+const packingGroups=[{title:"🛂 Viktig",items:["Pass","Reiseforsikring / kort","Mobil","Ladar","Hovudtelefonar","Litt kontantar eller bankkort"]},{title:"🏖️ Strand",items:["Badetøy","Badesko/sandalar","Solbriller","Caps/solhatt","Solkrem","Etter-sol","Strandhandkle","Dykkemaske/snorkel","Badeleike/ball"]},{title:"👕 Klede",items:["Shorts","T-skjorter","Undertøy","Sokkar","Lett genser til kveld","Fine klede til middag","Pysj","Gode sko/sneakers"]},{title:"🎮 Kos på reisa",items:["Bok/blad","Nintendo/telefon/nettbrett","Liten reiselek","Kortspel","Tyggis/småsnacks til fly","Tom drikkeflaske"]},{title:"🧴 Praktisk",items:["Tannbørste","Tannkrem","Hårbørste","Medisin ved behov","Plaster","Myggmiddel","Våtserviettar","Liten sekk til dagstur"]}];
+function initName(){const n=load("name","");$("travellerName").value=n;$("displayName").textContent=n||"deg";$("saveName").onclick=()=>{const v=$("travellerName").value.trim();save("name",v);$("displayName").textContent=v||"deg"};$("travellerName").oninput=$("saveName").onclick}
+function renderMissions(){const checked=load("checked",{}), box=$("missionList");box.innerHTML="";missions.forEach((m,i)=>{const l=document.createElement("label"),cb=document.createElement("input"),sp=document.createElement("span");cb.type="checkbox";cb.checked=!!checked[i];sp.textContent=m;cb.onchange=()=>{checked[i]=cb.checked;save("checked",checked); if(cb.checked&&achievements[i])toast("Achievement unlocked: "+achievements[i]); updateMissionScore()};l.append(cb,sp);box.appendChild(l)});$("missionTotal").textContent=missions.length;$("clearChecks").onclick=()=>{save("checked",{});renderMissions()};updateMissionScore()}
+function updateMissionScore(){const checked=load("checked",{}),score=Object.values(checked).filter(Boolean).length;$("missionScore").textContent=score;$("missionProgress").style.width=score/missions.length*100+"%";$("missionEmoji").textContent=score===missions.length?"🏆🇵🇹🎉":score>10?"🐬🌞":score>5?"🏖️🍦":"🌊";const a=$("achievements");a.innerHTML="";Object.entries(achievements).forEach(([i,t])=>{const p=document.createElement("p");p.textContent=(checked[i]?"✅ ":"⬜ ")+t;a.appendChild(p)})}
+function renderPacking(){const checked=load("packing",{}),wrap=$("packingList");wrap.innerHTML="";let idx=0;packingGroups.forEach(g=>{const d=document.createElement("div");d.className="pack-group";d.innerHTML="<h3>"+g.title+"</h3>";const list=document.createElement("div");list.className="checklist";g.items.forEach(item=>{const i=idx++,l=document.createElement("label"),cb=document.createElement("input"),sp=document.createElement("span");cb.type="checkbox";cb.checked=!!checked[i];sp.textContent=item;cb.onchange=()=>{checked[i]=cb.checked;save("packing",checked);updatePackingScore()};l.append(cb,sp);list.appendChild(l)});d.appendChild(list);wrap.appendChild(d)});$("clearPacking").onclick=()=>{save("packing",{});renderPacking()};updatePackingScore()}
+function updatePackingScore(){const total=packingGroups.reduce((s,g)=>s+g.items.length,0),checked=load("packing",{}),score=Object.values(checked).filter(Boolean).length;$("packingScore").textContent=score;$("packingTotal").textContent=total;$("packingProgress").style.width=score/total*100+"%";$("packingEmoji").textContent=score===total?"🧳✅🏆":score>total*.7?"😎🧳":"🧳"}
+function initPhoto(){const img=$("favoriteImg"),data=load("favPhoto","");if(data){img.src=data;img.style.display="block"}$("photoInput").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{save("favPhoto",r.result);img.src=r.result;img.style.display="block";toast("Favorittbilde lagra 📸")};r.readAsDataURL(f)};$("clearPhoto").onclick=()=>{save("favPhoto","");img.removeAttribute("src");img.style.display="none"}}
+function renderNotes(){const notes=load("notes",[]),list=$("diaryList");list.innerHTML="";if(!notes.length){list.innerHTML="<p>Ingen notat enno.</p>";return}notes.slice().reverse().forEach((n,ri)=>{const ai=notes.length-1-ri,d=document.createElement("div");d.className="note";d.innerHTML=`<small>${n.date}</small><h3></h3><p></p>`;d.querySelector("h3").textContent=n.title||"Utan tittel";d.querySelector("p").textContent=n.text||"";const del=document.createElement("button");del.className="secondary";del.textContent="Slett";del.onclick=()=>{const all=load("notes",[]);all.splice(ai,1);save("notes",all);renderNotes()};d.appendChild(del);list.appendChild(d)})}
+function initNotes(){$("saveNote").onclick=()=>{const title=$("noteTitle").value.trim(),text=$("noteText").value.trim();if(!title&&!text)return;const notes=load("notes",[]);notes.push({title,text,date:new Date().toLocaleString("no-NO")});save("notes",notes);$("noteTitle").value="";$("noteText").value="";toast("Reisebok-notat lagra ✍️");renderNotes()};$("clearNotes").onclick=()=>{if(confirm("Slette alle notat?")){save("notes",[]);renderNotes()}};renderNotes()}
+const quizzes={"Portugal":[["Kva land skal vi til?",["Portugal","Spania","Italia"],0],["Kva heiter området sør i Portugal?",["Algarve","Alpane","Arktis"],0],["Kva språk snakkar dei i Portugal?",["Portugisisk","Italiensk","Dansk"],0],["Kva dessert er Portugal kjent for?",["Pastel de nata","Taco","Brunost"],0]],"Hotellet":[["Kva heiter hotellet vårt?",["NH Marina Portimão Resort","Minecraft Hotel","Lego Resort"],0],["Kva ligg rett ved hotellet?",["Marina","Snøpark","Vulkan"],0],["Kva kan vi gjere på hotellet?",["Bade","Gå på ski","Køyre hundeslede"],0]],"Utflukter":[["Kva er Benagil kjent for?",["Grotter","Skyskraparar","Snø"],0],["Kva kan vi ta til Ferragudo?",["Vatntaxi","Rakett","Skiheis"],0],["Kva er Lagos kjent for?",["Klipper og strender","Ørken","Nordlys"],0]],"Badeland":[["Kva er Slide & Splash?",["Badeland","Flyplass","Museum"],0],["Kva finn vi på Zoomarine?",["Sjødyr og vasspark","Snømannar","Romvesen"],0],["Kva må vi hugse i sola?",["Solkrem","Vinterjakke","Skøyter"],0]],"Pakkeliste":[["Kva er lurt i sola?",["Caps/solhatt","Ullue","Skøyter"],0],["Kva bør vere i handbagasjen?",["Pass og ladar","Våte handkle","Steinar"],0],["Kva er smart på dagstur?",["Liten sekk","Sofa","Skrivepult"],0]]};
+let currentQuiz=load("currentQuiz","Portugal");
+function renderQuiz(){const tabs=$("quizTabs");tabs.innerHTML="";Object.keys(quizzes).forEach(name=>{const b=document.createElement("button");b.className="tab"+(name===currentQuiz?" active":"");b.textContent=name;b.onclick=()=>{currentQuiz=name;save("currentQuiz",name);renderQuiz()};tabs.appendChild(b)});const quiz=quizzes[currentQuiz],key="quiz:"+currentQuiz,ans=load(key,{}),box=$("quizBox");box.innerHTML="";quiz.forEach((q,qi)=>{const div=document.createElement("div");div.className="quiz-question";div.innerHTML="<h3>"+(qi+1)+". "+q[0]+"</h3>";const ad=document.createElement("div");ad.className="answers";q[1].forEach((a,ai)=>{const b=document.createElement("button");b.className="answer";b.textContent=a;if(ans[qi]!==undefined){if(ai===q[2])b.classList.add("correct");if(ans[qi]===ai&&ai!==q[2])b.classList.add("wrong")}b.onclick=()=>{ans[qi]=ai;save(key,ans);renderQuiz()};ad.appendChild(b)});div.appendChild(ad);box.appendChild(div)});const score=Object.keys(ans).reduce((s,k)=>s+(ans[k]===quiz[k][2]?1:0),0);$("quizScore").textContent=score;$("quizTotal").textContent=quiz.length;$("quizProgress").style.width=score/quiz.length*100+"%";$("resetQuiz").onclick=()=>{save(key,{});renderQuiz()}}
+const tv=[["Algarve-eventyret","Portugal 2026 er i gang!","https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=80"],["Hotellet","NH Marina Portimão Resort","https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=2000&q=80"],["Praia da Rocha","Strand, bølger og is","https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=2000&q=80"],["Benagil","Båttur og grotter","https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=2000&q=80"],["Ferragudo","Vatntaxi og kveldskos","https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=2000&q=80"],["Lagos","Klipper og gamleby","https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=2000&q=80"],["Badeland","Slide & Splash og Zoomarine!","https://images.unsplash.com/photo-1624273410144-3a0db2129010?auto=format&fit=crop&w=2000&q=80"]];
+let tvIndex=0,tvTimer=null;function showTv(){const s=tv[tvIndex%tv.length],el=$("tvSlide");el.style.backgroundImage=`url("${s[2]}")`;el.querySelector("h2").textContent=s[0];el.querySelector("p").textContent=s[1]}
+$("startTv").onclick=()=>{$("tvOverlay").classList.add("active");tvIndex=0;showTv();tvTimer=setInterval(()=>{tvIndex++;showTv()},4500)};$("closeTv").onclick=()=>{$("tvOverlay").classList.remove("active");clearInterval(tvTimer)}
+initName();renderGalleries();renderMissions();renderPacking();initPhoto();initNotes();renderQuiz();
+</script>
+</body>
+</html>
