@@ -825,16 +825,7 @@
     var item = itemId ? (data[type] || []).find(function (x) { return x.id === itemId; }) : null;
     var html = editorHtml(type, item);
 
-    if (Intranet.openDrawer) {
-      Intranet.openDrawer({
-        title: item ? "Rediger oppføring" : "Ny oppføring",
-        bodyHtml: html,
-        footHtml: '<button class="btn btn--primary btn--sm" data-od-save>Lagre</button><button class="btn btn--ghost btn--sm" data-od-cancel>Avbryt</button>',
-        onMount: function (dr) { bindEditor(dr, root, type, item); }
-      });
-      return;
-    }
-
+    // Alltid sentrert modal — drawer er for smal for dette skjemaet
     openModal(item ? "Rediger oppføring" : "Ny oppføring", html +
       '<div class="od-actions"><button class="btn btn--primary btn--sm" data-od-save>Lagre</button><button class="btn btn--ghost btn--sm" data-od-cancel>Avbryt</button></div>',
       function (modal) { bindEditor(modal, root, type, item); });
@@ -1140,8 +1131,7 @@
 
       setData(data);
 
-      if (Intranet.closeDrawer) Intranet.closeDrawer();
-      else closeModal();
+      closeModal();
 
       draw(root, type, "");
 
@@ -1151,8 +1141,7 @@
     });
 
     scope.querySelector("[data-od-cancel]").addEventListener("click", function () {
-      if (Intranet.closeDrawer) Intranet.closeDrawer();
-      else closeModal();
+      closeModal();
     });
   }
 
