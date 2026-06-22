@@ -51,17 +51,18 @@
       /* Statisk bakgrunn */
       ".sb-section--static .sb-bg{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat}",
 
-      /* Parallax: seksjonen har fast høgde, .sb-bg er veldig høg (heile bildet) */
+      /* Parallax: fixed bakgrunn — bildet står stille medan seksjonen scrollar over */
+      ".sb-section--parallax{overflow:visible !important;isolation:auto !important}",
       ".sb-section--parallax .sb-bg{",
-      "  position:absolute;",
-      "  left:0;right:0;",
-      "  top:0;",
-      "  height:var(--sb-bg-h,300%);",   /* 300% = bildet er 3x seksjons-høgda */
+      "  position:fixed !important;",
+      "  top:0;left:0;right:0;bottom:0;",
       "  background-size:cover;",
       "  background-repeat:no-repeat;",
-      "  background-position:50% 0;",    /* start på toppen */
-      "  will-change:transform;",
+      "  z-index:-1;",
       "}",
+      /* Seksjon-innhald og overlegg ligg over det faste bakgrunnsbildet */
+      ".sb-section--parallax .sb-overlay{position:absolute;inset:0;z-index:0}",
+      ".sb-section--parallax .sb-content{position:relative;z-index:1}",
 
       /* Overlegg og innhald */
       ".sb-overlay{position:absolute;inset:0;pointer-events:none}",
@@ -95,26 +96,28 @@
     if (parallaxInited) return;
     parallaxInited = true;
 
+    // position:fixed-bakgrunn treng at vi synkroniserer background-position
+    // med kva del av skjermen seksjonen okkuperer.
+    // Bildet er allereie fixed — vi treng berre å sørgje for at
+    // background-position matchar posX/posY-valet.
+    //
+    // For å avsløre riktig del av eit stående bilde:
+    // Vi justerer background-position-y basert på scroll-progress.
     function update() {
       document.querySelectorAll(".sb-section--parallax .sb-bg").forEach(function (bg) {
         var section = bg.closest(".sb-section");
         if (!section) return;
-        var rect    = section.getBoundingClientRect();
-        var winH    = window.innerHeight;
-        var secH    = section.offsetHeight;
+        var rect     = section.getBoundingClientRect();
+        var winH     = window.innerHeight;
+        var secH     = section.offsetHeight;
 
-        // progress: 0 når seksjonen kjem inn øverst i vindauget,
-        //           1 når han forsvinn nedst
+        // Kor mykje av seksjonen er passert? 0=topp av seksjon ved botn av skjerm, 1=ferdig
         var progress = 1 - (rect.bottom / (winH + secH));
         progress = Math.max(0, Math.min(1, progress));
 
-        // Bildet er bgH (t.d. 300%) av seksjons-høgda.
-        // Vi vil flytte det frå 0 til -(bgH - 100%) av seksjons-høgda.
-        var bgMultiplier = 3;        // same som --sb-bg-h: 300%
-        var totalTravel  = secH * (bgMultiplier - 1); // kor langt bildet kan flytte seg
-        var offset       = -(progress * totalTravel);
-
-        bg.style.transform = "translateY(" + offset + "px)";
+        // Flytt background-position-y for å avdekke bildet frå topp til botn
+        var posY = (progress * 100).toFixed(1) + "%";
+        bg.style.backgroundPositionY = posY;
       });
     }
 
@@ -142,8 +145,8 @@
     var bgStyle = hasBg
       ? "background-image:url(" + esc(imgSrc) + ");background-position:" + esc(posX) + " " + esc(posY) + ";"
       : "background:var(--color-alt);";
-    // For parallax: seksjonen treng overflow:hidden og bakgrunnen startar på topp
-    var sectionExtra = isParallax ? "overflow:hidden;" : "";
+    // Parallax: ingen overflow:hidden — fixed bakgrunn scrollar gjennom
+    var sectionExtra = "";
 
     var overlayHtml = "";
     if (b.overlayColor && parseFloat(b.overlayOpacity || "0") > 0) {
