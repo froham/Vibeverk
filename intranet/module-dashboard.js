@@ -99,7 +99,7 @@
       /* --- Henvendelser: tre separate kort --------------------------------- */
       (hasHenv
         ? '<p class="i-section-label" style="margin-bottom:.6rem">Henvendelser</p>' +
-          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.6rem;margin-bottom:1.4rem;align-items:stretch">' +
+          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1.4rem">' +
             (feat("contact") ? henvCard("Kontakt",  henv.contact, "#/contact", "mail")          : "") +
             (feat("quote")   ? henvCard("Tilbud",   henv.quote,   "#/quote",   "file-invoice")  : "") +
             (feat("booking") ? henvCard("Booking",  henv.booking, "#/booking", "calendar")      : "") +
@@ -108,7 +108,7 @@
 
       /* --- Oppgåver: statuskort ------------------------------------------- */
       '<p class="i-section-label" style="margin-bottom:.6rem">Oppgåver</p>' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem;margin-bottom:1.4rem;align-items:stretch">' +
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1.4rem">' +
         statCard("Å gjøre", taskCounts.todo,        "#/tasks", "ti-checklist") +
         statCard("Pågår",   taskCounts.in_progress, "#/tasks", "ti-loader") +
         statCard("Ferdig",  taskCounts.done,         "#/tasks", "ti-circle-check") +
@@ -118,10 +118,10 @@
       '<div class="i-card" style="margin-bottom:1rem">' +
         '<p class="i-section-label">Hurtighandlinger</p>' +
         '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
-          quickAction("#/tasks",         "ti-plus",         "Ny oppgave") +
-          (feat("notes")         ? quickAction("#/notes",         "ti-notes",        "Nytt notat")          : "") +
-          (feat("announcements") ? quickAction("#/announcements", "ti-speakerphone", "Ny kunngjering")      : "") +
-          (feat("kb")            ? quickAction("#/kb",            "ti-book",         "Ny KB-artikkel")      : "") +
+          quickAction("#/tasks",         "ti-plus",         "Ny oppgave",      "data-dash-new-task") +
+          (feat("notes")         ? quickAction("#/notes",         "ti-notes",        "Nytt notat",          "data-dash-new-note")   : "") +
+          (feat("announcements") ? quickAction("#/announcements", "ti-speakerphone", "Ny kunngjering",      "data-dash-new-ann")    : "") +
+          (feat("kb")            ? quickAction("#/kb",            "ti-book",         "Ny KB-artikkel",      "data-dash-new-kb")     : "") +
           quickAction("#/settings",      "ti-settings",     "Innstillinger") +
         '</div>' +
       '</div>' +
@@ -150,6 +150,45 @@
           ) +
         '</div>' +
       '</div>';
+
+    /* Bind hurtighandlingar som triggar popup direkte */
+    var newTaskBtn = root.querySelector("[data-dash-new-task]");
+    if (newTaskBtn) newTaskBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      Intranet.navigate("tasks");
+      // Trigge ny-oppgave popup via tasks-modulen
+      setTimeout(function () {
+        var quickInput = document.querySelector("#tasks-quick-input");
+        if (quickInput) quickInput.focus();
+      }, 100);
+    });
+    var newNoteBtn = root.querySelector("[data-dash-new-note]");
+    if (newNoteBtn) newNoteBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      Intranet.navigate("notes");
+      setTimeout(function () {
+        var noteNewBtn = document.querySelector("#notes-new-btn");
+        if (noteNewBtn) noteNewBtn.click();
+      }, 100);
+    });
+    var newAnnBtn = root.querySelector("[data-dash-new-ann]");
+    if (newAnnBtn) newAnnBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      Intranet.navigate("announcements");
+      setTimeout(function () {
+        var annBtn = document.querySelector("#ann-new-btn");
+        if (annBtn) annBtn.click();
+      }, 100);
+    });
+    var newKbBtn = root.querySelector("[data-dash-new-kb]");
+    if (newKbBtn) newKbBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      Intranet.navigate("kb");
+      setTimeout(function () {
+        var kbBtn = document.querySelector("#kb-new-btn");
+        if (kbBtn) kbBtn.click();
+      }, 100);
+    });
 
     /* Bind gardin-toggle */
     var toggle  = root.querySelector("#dash-act-toggle");
@@ -201,8 +240,8 @@
     '</a>';
   }
 
-  function quickAction(href, icon, label) {
-    return '<a href="' + href + '" class="btn btn--ghost btn--sm">' +
+  function quickAction(href, icon, label, dataAttr) {
+    return '<a href="' + href + '" class="btn btn--ghost btn--sm"' + (dataAttr ? ' ' + dataAttr : '') + '>' +
       '<i class="ti ' + C.esc(icon) + '"></i> ' + C.esc(label) +
     '</a>';
   }

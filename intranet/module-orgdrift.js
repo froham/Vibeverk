@@ -247,13 +247,19 @@
     var missingOwner = data.systems.filter(function (s) { return !s.owner; }).length;
 
     return '<div class="od-stats">' +
-      '<div class="od-stat"><span>Personer</span><strong>' + data.people.length + '</strong></div>' +
-      '<div class="od-stat"><span>Ansvar</span><strong>' + data.responsibilities.length + '</strong></div>' +
-      '<div class="od-stat"><span>Leverandører</span><strong>' + data.vendors.length + '</strong></div>' +
-      '<div class="od-stat"><span>Kritiske system</span><strong>' + high + '</strong></div>' +
-      '<div class="od-stat"><span>Mangler eier</span><strong>' + missingOwner + '</strong></div>' +
-      '<div class="od-stat"><span>Systemkost</span><strong>' + Math.round(monthly) + ' kr</strong></div>' +
+      odStatCard("people",           "Personer",    data.people.length) +
+      odStatCard("responsibilities", "Ansvar",      data.responsibilities.length) +
+      odStatCard("vendors",          "Leverandørar", data.vendors.length) +
+      odStatCard("systems",          "System",      data.systems.length) +
+      odStatCard("purchases",        "Innkjøp",     (data.purchases || data.purchasing || []).length) +
     '</div>';
+  }
+
+  function odStatCard(tab, label, count) {
+    return '<button class="od-stat" data-od-tab="' + tab + '" style="cursor:pointer;text-align:left;border:0;width:100%;font:inherit">' +
+      '<span>' + label + '</span>' +
+      '<strong>' + count + '</strong>' +
+    '</button>';
   }
 
   function tabs(active) {

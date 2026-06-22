@@ -220,6 +220,10 @@
       var st    = ed.querySelector("#link-status");
       if (!title || !url) { st.textContent = "Tittel og URL er påkrevd."; st.className = "form__status is-err"; return; }
 
+      // Normaliser URL — legg til https:// om ikkje intern (#) eller protokoll
+      if (url && !url.startsWith("http") && !url.startsWith("#") && !url.startsWith("mailto:") && !url.startsWith("/")) {
+        url = "https://" + url;
+      }
       var data = {
         title:       title,
         url:         url,

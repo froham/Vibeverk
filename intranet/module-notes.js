@@ -317,8 +317,9 @@
     var deleteBtn = root.querySelector("#notes-delete-btn");
 
     if (!titleInp) return;
-    // Bind rik-teksteditor
-    App.ui.bindRichTextFields(root.querySelector("#notes-editor") || root);
+    // Bind rik-teksteditor — finn editor-kolonna
+    var editorScope = root.querySelector("#notes-editor") || root.querySelector("#notes-editor-col") || root;
+    App.ui.bindRichTextFields(editorScope);
 
     var saveTimer;
     function scheduleAutosave() {
@@ -327,7 +328,7 @@
       saveTimer = setTimeout(function () {
         updateNote(id, {
           title:    titleInp.value.trim() || "Uten tittel",
-          body:     App.ui.readRichTextField(ed, 'notes-body'),
+          body:     App.ui.readRichTextField(editorScope, 'notes-body'),
           category: catInp    ? catInp.value.trim()          : "",
           tags:     tagsInp   ? parseTags(tagsInp.value)     : [],
           summary:  summaryInp ? summaryInp.value.trim()     : ""
@@ -344,8 +345,10 @@
       if (el) el.addEventListener("input", scheduleAutosave);
     });
     // Autosave ved endring i rik-tekst-editor
-    var rtEditor = root.querySelector ? root.querySelector(".rtfield__editor") : null;
-    if (rtEditor) rtEditor.addEventListener("input", scheduleAutosave);
+    var rtEditor = editorScope ? editorScope.querySelector(".rtfield__editor") : null;
+    if (rtEditor) {
+      rtEditor.addEventListener("input", scheduleAutosave);
+    }
 
     /* Slett */
     if (deleteBtn) {

@@ -312,13 +312,13 @@
     }
     return '<div class="wsp-media-grid">' +
       files.map(function (f) {
-        var img     = isImage(f) ? App.media.resolve(f.ref) : null;
-        var thumb   = img
-          ? '<img src="' + C.esc(img) + '" alt="' + C.esc(f.name) + '" loading="lazy">'
+        var imgSrc  = isImage(f) ? App.media.resolve(f.ref) : null;
+        var thumb   = imgSrc
+          ? '<img src="' + C.esc(imgSrc) + '" alt="' + C.esc(f.name) + '" loading="lazy">'
           : '<i class="ti ti-' + fileIcon(f) + ' wsp-file-icon"></i>';
 
         return '<div class="wsp-media-card">' +
-          '<div class="wsp-media-card__thumb"' + (img ? ' data-wsp-lightbox="' + C.esc(f.id) + '" style="cursor:pointer" title="Vis stort"' : '') + '>' + thumb + '</div>' +
+          '<div class="wsp-media-card__thumb"' + (imgSrc ? ' data-wsp-lightbox="' + C.esc(f.id) + '" style="cursor:pointer" title="Vis stort"' : '') + '>' + thumb + '</div>' +
           '<div class="wsp-media-card__body">' +
             '<div class="wsp-media-card__name" title="' + C.esc(f.name) + '">' + C.esc(f.name) + '</div>' +
             '<div class="wsp-media-card__meta">' + formatBytes(f.size) + ' · ' + formatDate(f.uploadedAt) + '</div>' +
@@ -427,7 +427,7 @@
         var id    = thumb.getAttribute("data-wsp-lightbox");
         var entry = getIndex().find(function (f) { return f.id === id; });
         if (!entry) return;
-        var src = App.media.resolve(entry.ref);
+        var src = isImage(entry) ? App.media.resolve(entry.ref) : App.media.resolveFile(entry.ref);
         if (!src) return;
 
         var bd = document.createElement("div");

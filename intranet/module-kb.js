@@ -364,7 +364,7 @@
               C.esc(art.summary) +
             '</div>'
           : '') +
-        '<div class="kb-article-view__body">' + C.esc(art.body || "") + '</div>' +
+        '<div class="kb-article-view__body">' + (C.sanitizeRichHtml ? C.sanitizeRichHtml(art.body || "") : C.esc(art.body || "")) + '</div>' +
       '</div>' +
       '<div id="kb-editor-area"></div>';
 
@@ -390,11 +390,27 @@
      EDITOR
      ====================================================================== */
   function openEditor(root, item, ctx) {
-    var ed = root.querySelector("#kb-editor-area");
-    if (!ed) return;
-    var cats = getCategories();
+    // Bruk eigen sentrert modal i staden for inline editor-area
+    var existing = document.getElementById("kb-edit-modal-bd");
+    if (existing) existing.remove();
 
-    ed.innerHTML =
+    var cats = getCategories();
+    var bd   = document.createElement("div");
+    bd.id    = "kb-edit-modal-bd";
+    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto";
+    var modal = document.createElement("div");
+    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(720px,100%);max-height:88vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3)";
+    bd.appendChild(modal);
+    document.body.appendChild(bd);
+    bd.addEventListener("click", function(e) { if (e.target === bd) bd.remove(); });
+    document.addEventListener("keydown", function escH(e) { if (e.key==="Escape") { bd.remove(); document.removeEventListener("keydown",escH); } });
+    var ed = modal;
+
+    ed.innerHTML = '<div class="kb-editor" style="padding:1.4rem">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">' +
+        '<h4 style="margin:0">' + (item && item.id ? "Rediger artikkel" : "Ny artikkel") + '</h4>' +
+        '<button id="kb-modal-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+      '</div>' +
       '<div class="kb-editor" style="margin-top:1rem">' +
         '<h4 style="margin:0 0 1rem">' + (item && item.id ? "Rediger artikkel" : "Ny artikkel") + '</h4>' +
         '<div class="i-form">' +
@@ -433,9 +449,10 @@
         '</div>' +
       '</div>';
 
+    ed.querySelector("#kb-modal-close") && ed.querySelector("#kb-modal-close").addEventListener("click", function () { bd.remove(); });
     App.ui.bindRichTextFields(ed);
     ed.querySelector("#kb-cancel-btn").addEventListener("click", function () {
-      ed.innerHTML = "";
+      bd.remove();
     });
 
     ed.querySelector("#kb-save-btn").addEventListener("click", function () {
@@ -454,11 +471,12 @@
 
       if (item && item.id) {
         updateArticle(item.id, data);
+        bd.remove();
         Intranet.navigate("kb", item.id);
         renderArticleView(root, item.id, ctx);
       } else {
         var art = createArticle(data);
-        ed.innerHTML = "";
+        bd.remove();
         Intranet.navigate("kb", art.id);
         renderArticleView(root, art.id, ctx);
       }
