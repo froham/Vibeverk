@@ -51,17 +51,16 @@
       /* Statisk bakgrunn */
       ".sb-section--static .sb-bg{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat}",
 
-      /* Parallax: seksjonen har fast høgde, .sb-bg er mykje høgare */
+      /* Parallax: seksjonen har fast høgde, .sb-bg er veldig høg (heile bildet) */
       ".sb-section--parallax .sb-bg{",
       "  position:absolute;",
       "  left:0;right:0;",
-      "  top:-30%;",          /* startar over seksjonen */
-      "  height:160%;",       /* strekk for å ha nok å scrolle i */
+      "  top:0;",
+      "  height:var(--sb-bg-h,300%);",   /* 300% = bildet er 3x seksjons-høgda */
       "  background-size:cover;",
       "  background-repeat:no-repeat;",
-      "  background-position:50% 0;",
+      "  background-position:50% 0;",    /* start på toppen */
       "  will-change:transform;",
-      "  transition:transform .05s linear",
       "}",
 
       /* Overlegg og innhald */
@@ -100,12 +99,21 @@
       document.querySelectorAll(".sb-section--parallax .sb-bg").forEach(function (bg) {
         var section = bg.closest(".sb-section");
         if (!section) return;
-        var rect   = section.getBoundingClientRect();
-        var winH   = window.innerHeight;
-        // Kor langt gjennom seksjonen er vi? 0 = topp, 1 = botn
-        var progress = 1 - (rect.bottom / (winH + rect.height));
-        // Flytt bakgrunnsbildet 40% av seksjons-høgda
-        var offset   = progress * rect.height * 0.5;
+        var rect    = section.getBoundingClientRect();
+        var winH    = window.innerHeight;
+        var secH    = section.offsetHeight;
+
+        // progress: 0 når seksjonen kjem inn øverst i vindauget,
+        //           1 når han forsvinn nedst
+        var progress = 1 - (rect.bottom / (winH + secH));
+        progress = Math.max(0, Math.min(1, progress));
+
+        // Bildet er bgH (t.d. 300%) av seksjons-høgda.
+        // Vi vil flytte det frå 0 til -(bgH - 100%) av seksjons-høgda.
+        var bgMultiplier = 3;        // same som --sb-bg-h: 300%
+        var totalTravel  = secH * (bgMultiplier - 1); // kor langt bildet kan flytte seg
+        var offset       = -(progress * totalTravel);
+
         bg.style.transform = "translateY(" + offset + "px)";
       });
     }
@@ -134,6 +142,8 @@
     var bgStyle = hasBg
       ? "background-image:url(" + esc(imgSrc) + ");background-position:" + esc(posX) + " " + esc(posY) + ";"
       : "background:var(--color-alt);";
+    // For parallax: seksjonen treng overflow:hidden og bakgrunnen startar på topp
+    var sectionExtra = isParallax ? "overflow:hidden;" : "";
 
     var overlayHtml = "";
     if (b.overlayColor && parseFloat(b.overlayOpacity || "0") > 0) {
@@ -152,7 +162,7 @@
         '</div>';
     }
 
-    return '<section class="' + sectionCls + '" id="' + esc(b.id) + '" style="min-height:' + height + '">' +
+    return '<section class="' + sectionCls + '" id="' + esc(b.id) + '" style="min-height:' + height + ';' + sectionExtra + '">' +
       '<div class="sb-bg" style="' + bgStyle + '"></div>' +
       overlayHtml +
       contentHtml +
