@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Portugal 2026 – Kids Ferieapp v4</title>
+<title>Portugal 2026 – Kids Ferieapp v5</title>
 <style>
 :root{
   --sky:#58cfff;--sea:#0077b6;--deep:#053047;--sand:#ffe6a7;--sun:#ffd166;
@@ -32,20 +32,40 @@ textarea{min-height:120px;resize:vertical} input::placeholder,textarea::placehol
 .card input::placeholder,.card textarea::placeholder{color:#8aa0ad}
 button,.btn{appearance:none;border:0;border-radius:18px;padding:14px 16px;background:var(--sun);color:#1a1a1a;font-weight:1000;font-size:1rem;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 10px 22px rgba(0,0,0,.13)}
 button.secondary,.btn.secondary{background:#e9f7ff;color:#08364f;border:1px solid rgba(0,119,182,.18)} button.green{background:var(--mint)}
-nav{position:sticky;top:0;z-index:5;margin:14px 0 20px;padding:8px;display:flex;gap:8px;overflow:auto;background:rgba(255,253,247,.86);backdrop-filter:blur(14px);border:1px solid rgba(0,119,182,.15);border-radius:999px;box-shadow:0 8px 20px rgba(0,0,0,.08)}
-nav a{white-space:nowrap;text-decoration:none;font-weight:1000;color:#053047;padding:10px 14px;border-radius:999px;background:#fff1c6}
+nav{
+position:sticky;top:0;z-index:5;margin:14px 0 20px;padding:8px;
+display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;
+background:rgba(255,253,247,.92);backdrop-filter:blur(14px);
+border:1px solid rgba(0,119,182,.15);border-radius:24px;box-shadow:0 8px 20px rgba(0,0,0,.08)
+}
+nav a{
+text-align:center;text-decoration:none;font-weight:1000;color:#053047;
+padding:10px 8px;border-radius:999px;background:#fff1c6;font-size:.95rem
+}
 section{margin:20px 0}.section-title{display:flex;align-items:center;gap:10px;margin:26px 4px 12px}
 .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{grid-column:span 12;background:rgba(255,253,247,.92);border:1px solid rgba(255,255,255,.85);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
 .card-inner{padding:18px}.two{grid-column:span 6}.three{grid-column:span 4}
 @media(max-width:820px){.two,.three{grid-column:span 12}.namebar{grid-template-columns:1fr}header{min-height:82vh}}
-.carousel{position:relative;margin-top:12px}
-.track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 4px 14px}
-.track::-webkit-scrollbar{height:10px}.track::-webkit-scrollbar-thumb{background:#77cce8;border-radius:999px}
-.slideimg{min-width:min(86vw,760px);height:430px;scroll-snap-align:center;border-radius:26px;overflow:hidden;position:relative;box-shadow:0 14px 38px rgba(0,0,0,.18);background:#ddd}
-.slideimg img{width:100%;height:100%;object-fit:cover;display:block}
-.slideimg div{position:absolute;left:0;right:0;bottom:0;padding:18px;color:#fff;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78));font-weight:1000;font-size:1.35rem}
-.arrow{position:absolute;top:43%;transform:translateY(-50%);z-index:2;border-radius:999px;width:48px;height:48px;padding:0;background:rgba(255,255,255,.9)}
-.arrow.left{left:8px}.arrow.right{right:8px}
+.carousel{position:relative;margin-top:12px;max-width:900px;margin-left:auto;margin-right:auto}
+.carousel-stage{
+height:430px;border-radius:26px;overflow:hidden;position:relative;
+box-shadow:0 14px 38px rgba(0,0,0,.18);background:#d9f3ff
+}
+.carousel-stage img{width:100%;height:100%;object-fit:cover;display:block}
+.carousel-caption{
+position:absolute;left:0;right:0;bottom:0;padding:18px;color:#fff;
+background:linear-gradient(180deg,transparent,rgba(0,0,0,.78));
+font-weight:1000;font-size:1.35rem
+}
+.arrow{
+position:absolute;top:50%;transform:translateY(-50%);z-index:2;border-radius:999px;
+width:52px;height:52px;padding:0;background:rgba(255,255,255,.92)
+}
+.arrow.left{left:10px}.arrow.right{right:10px}
+.dots{display:flex;gap:7px;justify-content:center;margin-top:10px}
+.dot{width:10px;height:10px;border-radius:999px;background:#a9d8e8;display:block}
+.dot.active{background:#0077b6}
+@media(max-width:700px){.carousel-stage{height:360px}}
 .checklist label{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:18px;background:#f0fbff;margin:8px 0;font-weight:800;border:1px solid rgba(0,119,182,.09)}
 .checklist input{width:23px;height:23px;accent-color:#06d6a0;margin-top:2px;flex:0 0 auto}
 .pack-group{margin:12px 0;padding:12px;border-radius:22px;background:#fff8df;border:1px solid rgba(255,209,102,.5)}
@@ -62,24 +82,17 @@ section{margin:20px 0}.section-title{display:flex;align-items:center;gap:10px;ma
 .progressbar{height:16px;border-radius:999px;background:#d9f3ff;overflow:hidden}.progressbar>div{height:100%;width:0;background:linear-gradient(90deg,var(--mint),var(--sea));border-radius:999px;transition:.25s}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(130px);background:#10212d;color:#fff;padding:16px 18px;border-radius:22px;font-weight:1000;box-shadow:var(--shadow);z-index:20;transition:.35s;max-width:92vw}
 .toast.show{transform:translateX(-50%) translateY(0)}
-#tvOverlay{position:fixed;inset:0;background:#031827;color:#fff;z-index:50;display:none;align-items:center;justify-content:center}
-#tvOverlay.active{display:flex}.tvSlide{position:absolute;inset:0;background-size:cover;background-position:center;display:flex;align-items:flex-end;padding:5vw}
-.tvSlide:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78))}
-.tvText{position:relative;z-index:1;max-width:900px}.tvText h2{font-size:clamp(3rem,8vw,7rem);color:#fff}.tvText p{font-size:clamp(1.2rem,2.5vw,2rem);color:#fff}
-.closeTv{position:absolute;right:18px;top:18px;z-index:60}
 .favoriteImg{max-width:100%;border-radius:22px;margin-top:12px;display:none}
 </style>
 </head>
 <body>
-<div id="tvOverlay"><button class="closeTv secondary" id="closeTv">Lukk TV-modus</button><div id="tvSlide" class="tvSlide"><div class="tvText"><h2></h2><p></p></div></div></div>
 <div class="toast" id="toast">Achievement unlocked!</div>
 <div class="app">
 <header id="top">
   <span class="badge">🇵🇹 Portugal 2026 • 24.–31. juli</span>
   <h1>Algarve-eventyret</h1>
-  <p class="lead">Ferieappen til <strong id="displayName">deg</strong>: swipe-bilder, pakkeliste, oppdrag, achievements, reisebok, favorittbilde og quiz.</p>
+  <p class="lead">Ferieappen til <strong id="displayName">deg</strong>: bildekarusellar, pakkeliste, oppdrag, achievements, reisebok, favorittbilde og quiz.</p>
   <div class="namebar"><input id="travellerName" placeholder="Skriv namnet ditt her …"><button id="saveName">Lagre namn</button></div>
-  <div class="footer-actions"><button id="startTv">▶ Start TV-modus</button></div>
   <p class="tiny">Alt du skriv og kryssar av blir lagra på denne mobilen/nettbrettet med localStorage.</p>
 </header>
 
@@ -181,8 +194,73 @@ zoomarine:[
 ["https://images.unsplash.com/photo-1583212292454-1fe6229603b7?auto=format&fit=crop&w=1100&q=80","Akvarium"]
 ]
 };
-function renderGalleries(){document.querySelectorAll(".carousel").forEach((c,idx)=>{const key=c.dataset.gallery,imgs=galleries[key]||[];const id="track"+idx;c.innerHTML=`<button class="arrow left" data-target="${id}" data-dir="-1">‹</button><div class="track" id="${id}"></div><button class="arrow right" data-target="${id}" data-dir="1">›</button>`;const t=c.querySelector(".track");imgs.forEach(([src,cap])=>{const s=document.createElement("div");s.className="slideimg";s.innerHTML=`<img src="${src}" alt="${cap}" loading="lazy" onerror="this.onerror=null;this.src=\'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80\';this.parentElement.querySelector(\'div\').textContent += \' – reservebilde\';"><div>${cap}</div>`;t.appendChild(s)})});document.querySelectorAll(".arrow").forEach(b=>b.onclick=()=>{const t=$(b.dataset.target);t.scrollBy({left:b.dataset.dir*760,behavior:"smooth"})})}
-document.addEventListener("keydown",e=>{if(e.key==="ArrowRight"||e.key==="ArrowLeft"){const t=[...document.querySelectorAll(".track")].find(x=>{const r=x.getBoundingClientRect();return r.top>=0&&r.top<innerHeight}); if(t)t.scrollBy({left:(e.key==="ArrowRight"?760:-760),behavior:"smooth"})}});
+const carouselState = {};
+function renderGalleries(){
+  document.querySelectorAll(".carousel").forEach((c,idx)=>{
+    const key=c.dataset.gallery, imgs=galleries[key]||[];
+    const id="gallery"+idx;
+    carouselState[id] = { index:0, imgs };
+    c.dataset.cid = id;
+    c.innerHTML = `
+      <button class="arrow left" data-cid="${id}" data-dir="-1" aria-label="Førre bilde">‹</button>
+      <div class="carousel-stage">
+        <img alt="">
+        <div class="carousel-caption"></div>
+      </div>
+      <button class="arrow right" data-cid="${id}" data-dir="1" aria-label="Neste bilde">›</button>
+      <div class="dots"></div>
+    `;
+    updateCarousel(id);
+    let startX = 0;
+    c.addEventListener("touchstart", e => { startX = e.touches[0].clientX; }, {passive:true});
+    c.addEventListener("touchend", e => {
+      const dx = e.changedTouches[0].clientX - startX;
+      if(Math.abs(dx) > 45) moveCarousel(id, dx < 0 ? 1 : -1);
+    }, {passive:true});
+  });
+  document.querySelectorAll(".arrow").forEach(b=>b.onclick=()=>moveCarousel(b.dataset.cid, Number(b.dataset.dir)));
+}
+
+function updateCarousel(id){
+  const state = carouselState[id];
+  const carousel = document.querySelector(`[data-cid="${id}"]`);
+  if(!state || !carousel || !state.imgs.length) return;
+  const [src, cap] = state.imgs[state.index];
+  const img = carousel.querySelector(".carousel-stage img");
+  const caption = carousel.querySelector(".carousel-caption");
+  img.onerror = () => {
+    img.onerror = null;
+    img.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80";
+    caption.textContent = cap + " – reservebilde";
+  };
+  img.src = src;
+  img.alt = cap;
+  caption.textContent = cap;
+  const dots = carousel.querySelector(".dots");
+  dots.innerHTML = "";
+  state.imgs.forEach((_,i)=>{
+    const d = document.createElement("span");
+    d.className = "dot" + (i===state.index ? " active" : "");
+    d.onclick = () => { state.index = i; updateCarousel(id); };
+    dots.appendChild(d);
+  });
+}
+
+function moveCarousel(id, dir){
+  const state = carouselState[id];
+  if(!state || !state.imgs.length) return;
+  state.index = (state.index + dir + state.imgs.length) % state.imgs.length;
+  updateCarousel(id);
+}
+
+document.addEventListener("keydown",e=>{
+  if(e.key!=="ArrowRight" && e.key!=="ArrowLeft") return;
+  const visible = [...document.querySelectorAll(".carousel")].find(c=>{
+    const r=c.getBoundingClientRect();
+    return r.top < innerHeight*0.75 && r.bottom > innerHeight*0.25;
+  });
+  if(visible) moveCarousel(visible.dataset.cid, e.key==="ArrowRight" ? 1 : -1);
+});
 const missions=["Bade i bassenget","Bade på Praia da Rocha","Spise is i Portugal","Ta bilde av ei grotte","Sjå ein båt i marinaen","Reise med vatntaxi eller båt","Besøke Ferragudo","Finne eit fint skjell","Prøve ei ny brus/is/snack","Bygge sandslott","Sjå solnedgang","Besøke eit badeland","Køyre ei vassklie","Skrive minst eitt reisebok-notat","Ta eit familiebilde"];
 const achievements={0:"Første bad 🏊",2:"Ismester 🍦",5:"Båthelt 🚤",6:"Ferragudo-utforskar 🏘️",11:"Badelandklar 🎢",12:"Skliehelt 💦",13:"Reisebokforfattar ✍️",14:"Familiefotograf 📸"};
 const packingGroups=[{title:"🛂 Viktig",items:["Pass","Reiseforsikring / kort","Mobil","Ladar","Hovudtelefonar","Litt kontantar eller bankkort"]},{title:"🏖️ Strand",items:["Badetøy","Badesko/sandalar","Solbriller","Caps/solhatt","Solkrem","Etter-sol","Strandhandkle","Dykkemaske/snorkel","Badeleike/ball"]},{title:"👕 Klede",items:["Shorts","T-skjorter","Undertøy","Sokkar","Lett genser til kveld","Fine klede til middag","Pysj","Gode sko/sneakers"]},{title:"🎮 Kos på reisa",items:["Bok/blad","Nintendo/telefon/nettbrett","Liten reiselek","Kortspel","Tyggis/småsnacks til fly","Tom drikkeflaske"]},{title:"🧴 Praktisk",items:["Tannbørste","Tannkrem","Hårbørste","Medisin ved behov","Plaster","Myggmiddel","Våtserviettar","Liten sekk til dagstur"]}];
@@ -197,9 +275,6 @@ function initNotes(){$("saveNote").onclick=()=>{const title=$("noteTitle").value
 const quizzes={"Portugal":[["Kva land skal vi til?",["Portugal","Spania","Italia"],0],["Kva heiter området sør i Portugal?",["Algarve","Alpane","Arktis"],0],["Kva språk snakkar dei i Portugal?",["Portugisisk","Italiensk","Dansk"],0],["Kva dessert er Portugal kjent for?",["Pastel de nata","Taco","Brunost"],0]],"Hotellet":[["Kva heiter hotellet vårt?",["NH Marina Portimão Resort","Minecraft Hotel","Lego Resort"],0],["Kva ligg rett ved hotellet?",["Marina","Snøpark","Vulkan"],0],["Kva kan vi gjere på hotellet?",["Bade","Gå på ski","Køyre hundeslede"],0]],"Utflukter":[["Kva er Benagil kjent for?",["Grotter","Skyskraparar","Snø"],0],["Kva kan vi ta til Ferragudo?",["Vatntaxi","Rakett","Skiheis"],0],["Kva er Lagos kjent for?",["Klipper og strender","Ørken","Nordlys"],0]],"Badeland":[["Kva er Slide & Splash?",["Badeland","Flyplass","Museum"],0],["Kva finn vi på Zoomarine?",["Sjødyr og vasspark","Snømannar","Romvesen"],0],["Kva må vi hugse i sola?",["Solkrem","Vinterjakke","Skøyter"],0]],"Pakkeliste":[["Kva er lurt i sola?",["Caps/solhatt","Ullue","Skøyter"],0],["Kva bør vere i handbagasjen?",["Pass og ladar","Våte handkle","Steinar"],0],["Kva er smart på dagstur?",["Liten sekk","Sofa","Skrivepult"],0]]};
 let currentQuiz=load("currentQuiz","Portugal");
 function renderQuiz(){const tabs=$("quizTabs");tabs.innerHTML="";Object.keys(quizzes).forEach(name=>{const b=document.createElement("button");b.className="tab"+(name===currentQuiz?" active":"");b.textContent=name;b.onclick=()=>{currentQuiz=name;save("currentQuiz",name);renderQuiz()};tabs.appendChild(b)});const quiz=quizzes[currentQuiz],key="quiz:"+currentQuiz,ans=load(key,{}),box=$("quizBox");box.innerHTML="";quiz.forEach((q,qi)=>{const div=document.createElement("div");div.className="quiz-question";div.innerHTML="<h3>"+(qi+1)+". "+q[0]+"</h3>";const ad=document.createElement("div");ad.className="answers";q[1].forEach((a,ai)=>{const b=document.createElement("button");b.className="answer";b.textContent=a;if(ans[qi]!==undefined){if(ai===q[2])b.classList.add("correct");if(ans[qi]===ai&&ai!==q[2])b.classList.add("wrong")}b.onclick=()=>{ans[qi]=ai;save(key,ans);renderQuiz()};ad.appendChild(b)});div.appendChild(ad);box.appendChild(div)});const score=Object.keys(ans).reduce((s,k)=>s+(ans[k]===quiz[k][2]?1:0),0);$("quizScore").textContent=score;$("quizTotal").textContent=quiz.length;$("quizProgress").style.width=score/quiz.length*100+"%";$("resetQuiz").onclick=()=>{save(key,{});renderQuiz()}}
-const tv=[["Algarve-eventyret","Portugal 2026 er i gang!","https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=80"],["Hotellet","NH Marina Portimão Resort","https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=2000&q=80"],["Praia da Rocha","Strand, bølger og is","https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=2000&q=80"],["Benagil","Båttur og grotter","https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=2000&q=80"],["Ferragudo","Vatntaxi og kveldskos","https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=2000&q=80"],["Lagos","Klipper og gamleby","https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=2000&q=80"],["Badeland","Slide & Splash og Zoomarine!","https://images.unsplash.com/photo-1624273410144-3a0db2129010?auto=format&fit=crop&w=2000&q=80"]];
-let tvIndex=0,tvTimer=null;function showTv(){const s=tv[tvIndex%tv.length],el=$("tvSlide");el.style.backgroundImage=`url("${s[2]}")`;el.querySelector("h2").textContent=s[0];el.querySelector("p").textContent=s[1]}
-$("startTv").onclick=()=>{$("tvOverlay").classList.add("active");tvIndex=0;showTv();tvTimer=setInterval(()=>{tvIndex++;showTv()},4500)};$("closeTv").onclick=()=>{$("tvOverlay").classList.remove("active");clearInterval(tvTimer)}
 initName();renderGalleries();renderMissions();renderPacking();initPhoto();initNotes();renderQuiz();
 </script>
 </body>
