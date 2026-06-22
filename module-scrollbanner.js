@@ -121,8 +121,10 @@
   function renderBanner(b) {
     if (!b) return "";
 
-    var img      = App.media.resolveImage(b.image);
-    var hasBg    = !!(img && img.src);
+    var imgSrc   = b.imageSrc || (b.image && (typeof b.image === "string" ? b.image : (b.image.src || "")));
+    var hasBg    = !!(imgSrc);
+    var posX     = b.posX || "center";
+    var posY     = b.posY || "center";
     var isParallax = hasBg && b.mode === "parallax";
     var height   = { lav:"260px", medium:"420px", høg:"580px", fullskjerm:"100vh" }[b.height] || "420px";
     var textColor = b.textColor || (hasBg ? "#ffffff" : "var(--color-text)");
@@ -130,7 +132,7 @@
     var sectionCls = "sb-section section reveal " + (isParallax ? "sb-section--parallax" : "sb-section--static");
 
     var bgStyle = hasBg
-      ? "background-image:url(" + esc(img.src) + ");background-position:" + esc(img.pos || "50% 50%") + ";"
+      ? "background-image:url(" + esc(imgSrc) + ");background-position:" + esc(posX) + " " + esc(posY) + ";"
       : "background:var(--color-alt);";
 
     var overlayHtml = "";
@@ -209,9 +211,9 @@
       '<div id="sb-list">' +
         (banners.length
           ? banners.map(function (b) {
-              var img    = App.media.resolveImage(b.image);
-              var hasBg  = !!(img && img.src);
-              var thumbStyle = hasBg ? "background-image:url(" + esc(img.src) + ")" : "";
+              var imgSrc2 = b.imageSrc || (b.image && (typeof b.image === "string" ? b.image : (b.image.src || "")));
+              var hasBg   = !!(imgSrc2);
+              var thumbStyle = hasBg ? "background-image:url(" + esc(imgSrc2) + ")" : "";
               return '<div class="sb-adm-row">' +
                 '<div class="sb-adm-thumb" style="' + thumbStyle + '"></div>' +
                 '<div class="sb-adm-info">' +
@@ -289,7 +291,38 @@
         '</fieldset>' +
 
         '<fieldset class="sb-fieldset"><legend>Bilde og høgde</legend>' +
-          App.ui.imageField("sb-image", "Bakgrunnsbilde", b.image, 3) +
+          /* Eige bileteopplasting utan fast utsnitt */
+          '<div class="field">' +
+            '<label>Bakgrunnsbilde</label>' +
+            '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-start">' +
+              '<label class="btn btn--ghost btn--sm" style="cursor:pointer">' +
+                '<i class="ti ti-upload"></i> Last opp' +
+                '<input type="file" id="sb-img-file" accept="image/*" style="display:none">' +
+              '</label>' +
+              '<input id="sb-img-url" type="url" placeholder="…eller lim inn bilde-URL" ' +
+                'style="flex:1;min-width:160px;font:inherit;font-size:.85rem;padding:.45rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)" ' +
+                'value="' + esc(b.imageSrc || "") + '">' +
+              (b.imageSrc
+                ? '<button type="button" id="sb-img-clear" class="btn btn--ghost btn--sm"><i class="ti ti-trash"></i></button>'
+                : '') +
+            '</div>' +
+            (b.imageSrc
+              ? '<div style="margin-top:.5rem;border-radius:8px;overflow:hidden;max-width:280px;max-height:200px">' +
+                '<img id="sb-img-preview" src="' + esc(b.imageSrc) + '" style="width:100%;height:auto;display:block" alt="">' +
+              '</div>'
+              : '<div id="sb-img-preview-wrap"></div>') +
+            '<input type="hidden" id="sb-img-hidden" value="' + esc(b.imageSrc || "") + '">' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:.6rem">' +
+            '<div class="field"><label for="sb-pos-x">Horisontal posisjon</label>' +
+              '<select id="sb-pos-x">' +
+                ['left:Venstre', 'center:Midten', 'right:Høgre'].map(function(o){ var p=o.split(":"); return "<option value=\""+esc(p[0])+"\""+((b.posX||"center")===p[0]?" selected":"")+">"+esc(p[1])+"</option>"; }).join("") +
+              '</select></div>' +
+            '<div class="field"><label for="sb-pos-y">Vertikal posisjon (start)</label>' +
+              '<select id="sb-pos-y">' +
+                ['top:Topp', 'center:Midten', 'bottom:Botn'].map(function(o){ var p=o.split(":"); return "<option value=\""+esc(p[0])+"\""+((b.posY||"center")===p[0]?" selected":"")+">"+esc(p[1])+"</option>"; }).join("") +
+              '</select></div>' +
+          '</div>' +
           '<div class="field" style="margin-top:.7rem"><label for="sb-height">Høgde på seksjonen</label>' +
             '<select id="sb-height">' +
               ['lav:Lav (260px)', 'medium:Medium (420px)', 'høg:Høg (580px)', 'fullskjerm:Fullskjerm (100vh)'].map(function (h) {
@@ -325,7 +358,50 @@
         '<p class="form__status" id="sb-status"></p>' +
       '</div>';
 
-    App.ui.bindImageFields(ed);
+    // Eigen bilete-binding (ikkje standard imageField)
+    (function () {
+      var fileInp   = ed.querySelector("#sb-img-file");
+      var urlInp    = ed.querySelector("#sb-img-url");
+      var hidden    = ed.querySelector("#sb-img-hidden");
+      var prevWrap  = ed.querySelector("#sb-img-preview-wrap") || ed.querySelector("#sb-img-preview");
+      var clearBtn  = ed.querySelector("#sb-img-clear");
+
+      function setPreview(src) {
+        if (!hidden) return;
+        hidden.value = src || "";
+        if (urlInp) urlInp.value = src || "";
+        // Oppdater preview
+        var existing = ed.querySelector("#sb-img-preview");
+        if (src) {
+          if (existing) {
+            existing.src = src;
+          } else if (prevWrap) {
+            prevWrap.innerHTML = '<img id="sb-img-preview" src="' + src + '" style="width:100%;height:auto;display:block;border-radius:8px;max-width:280px;margin-top:.5rem" alt="">';
+          }
+        } else {
+          if (existing) existing.remove();
+        }
+      }
+
+      if (fileInp) {
+        fileInp.addEventListener("change", function () {
+          var file = fileInp.files && fileInp.files[0];
+          if (!file) return;
+          App.media.put(file).then(function (ref) {
+            var src = App.media.resolve(ref);
+            setPreview(src);
+          }).catch(function () {});
+          fileInp.value = "";
+        });
+      }
+      if (urlInp) {
+        urlInp.addEventListener("change", function () { setPreview(urlInp.value.trim()); });
+        urlInp.addEventListener("blur",   function () { setPreview(urlInp.value.trim()); });
+      }
+      if (clearBtn) {
+        clearBtn.addEventListener("click", function () { setPreview(""); });
+      }
+    })();
 
     ed.querySelector("[data-sb-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
 
@@ -342,7 +418,9 @@
         mode:           modeEl ? modeEl.value : "static",
         title:          ed.querySelector("#sb-title").value.trim(),
         text:           ed.querySelector("#sb-text").value.trim(),
-        image:          App.ui.readImageField(ed, "sb-image"),
+        imageSrc:       ed.querySelector("#sb-img-hidden") ? ed.querySelector("#sb-img-hidden").value.trim() : (b.imageSrc || ""),
+        posX:           ed.querySelector("#sb-pos-x") ? ed.querySelector("#sb-pos-x").value : "center",
+        posY:           ed.querySelector("#sb-pos-y") ? ed.querySelector("#sb-pos-y").value : "center",
         overlayColor:   ed.querySelector("#sb-overlay-color").value,
         overlayOpacity: parseFloat(ed.querySelector("#sb-overlay-opacity").value) || 0,
         textColor:      ed.querySelector("#sb-text-color").value,
