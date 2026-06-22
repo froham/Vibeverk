@@ -1524,6 +1524,7 @@ window.App = (function () {
   // Hent nav/footer-synlighet for en modul
   function modNavVisible(mod) {
     if (mod.adminOnly) return false;
+    if (mod.navHidden)  return false;  // ← scrollbanner og liknande grafiske seksjonar
     const s = getNavSettings()[mod.id];
     if (s && typeof s.nav === "boolean") return s.nav;
     return true; // default: vis
@@ -2770,8 +2771,8 @@ window.App = (function () {
         pane("analyse",
           '<fieldset class="admin-group"><legend>Analyse og integrasjoner</legend>' +
             '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre synleg her. Kunden ser kun resultatet i Analyse-fanen i sin admin.</p>' +
-            C.field({ id:"sa-an-tawk", label:"Tawk.to – Property ID", value: an.tawkto || "", placeholder:"abc123def/abc123def",
-              hint:"Finn Property ID under Administration → Property Settings i Tawk.to. Format: abc123/def456" }) +
+            C.field({ id:"sa-an-tawk", label:"Tidio – Public Key", value: an.tawkto || "", placeholder:"abc123defg456",
+              hint:"Finn Public Key under Settings → General i Tidio. Berre nøkkelen, ikkje heile URL-en. Ingen cookies — EU/EEA-serverar." }) +
             C.field({ id:"sa-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"nordpunkt.no" }) +
             C.field({ id:"sa-an-plembed", label:"Plausible – delt lenke for innebygd dashboard", value: an.plausibleEmbed || "", placeholder:"https://plausible.io/share/nordpunkt.no?auth=xxxxx",
                         hint:"Plausible → Site Settings → Visibility → Embed dashboard. Vises direkte i kundens Analyse-fane." }) +
@@ -2933,23 +2934,13 @@ window.App = (function () {
       document.head.appendChild(s2);
     }
 
-    // Tawk.to live chat — lastast berre på offentleg side (ikkje i intranettet)
-    if (tw && !document.getElementById("_tawk-script") && !document.getElementById("intranet")) {
-      // Tawk.to property ID format: "abc123/abc456" eller full URL
-      var propertyId = tw.replace(/^.*tawk\.to\//, "").replace(/\/+$/, "");
-      var parts      = propertyId.split("/");
-      var pid        = parts[0] || propertyId;
-      var wid        = parts[1] || "default";
-
-      window.Tawk_API   = window.Tawk_API   || {};
-      window.Tawk_LoadStart = new Date();
-
+    // Tidio live chat — lastast berre på offentleg side (ikkje i intranettet)
+    // Tidio brukar ikkje cookies, lagrar i localStorage, EU/EEA-serverar
+    if (tw && !document.getElementById("_tidio-script") && !document.getElementById("intranet")) {
       var s3   = document.createElement("script");
-      s3.id    = "_tawk-script";
+      s3.id    = "_tidio-script";
       s3.async = true;
-      s3.src   = "https://embed.tawk.to/" + pid + "/" + wid;
-      s3.charset = "UTF-8";
-      s3.setAttribute("crossorigin", "*");
+      s3.src   = "//code.tidio.co/" + tw.trim() + ".js";
       document.head.appendChild(s3);
     }
   }
