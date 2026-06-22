@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Portugal 2026 – Kids Ferieapp v5</title>
+<title>Portugal 2026 – Kids Ferieapp v7</title>
 <style>
 :root{
   --sky:#58cfff;--sea:#0077b6;--deep:#053047;--sand:#ffe6a7;--sun:#ffd166;
@@ -32,18 +32,27 @@ textarea{min-height:120px;resize:vertical} input::placeholder,textarea::placehol
 .card input::placeholder,.card textarea::placeholder{color:#8aa0ad}
 button,.btn{appearance:none;border:0;border-radius:18px;padding:14px 16px;background:var(--sun);color:#1a1a1a;font-weight:1000;font-size:1rem;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 10px 22px rgba(0,0,0,.13)}
 button.secondary,.btn.secondary{background:#e9f7ff;color:#08364f;border:1px solid rgba(0,119,182,.18)} button.green{background:var(--mint)}
-nav{
-position:sticky;top:0;z-index:5;margin:14px 0 20px;padding:8px;
-display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;
-background:rgba(255,253,247,.92);backdrop-filter:blur(14px);
-border:1px solid rgba(0,119,182,.15);border-radius:24px;box-shadow:0 8px 20px rgba(0,0,0,.08)
+.menu-wrap{
+position:sticky;top:0;z-index:5;margin:14px auto 20px;
+display:flex;flex-direction:column;align-items:center;gap:8px
 }
-nav a{
+.menu-toggle{
+min-width:180px;background:#fff1c6;color:#053047;border:1px solid rgba(0,119,182,.15);
+box-shadow:0 8px 20px rgba(0,0,0,.08)
+}
+.menu-panel{
+display:none;width:min(92vw,420px);padding:10px;background:rgba(255,253,247,.96);
+backdrop-filter:blur(14px);border:1px solid rgba(0,119,182,.15);
+border-radius:24px;box-shadow:0 8px 20px rgba(0,0,0,.12)
+}
+.menu-panel.open{display:grid;grid-template-columns:1fr;gap:8px}
+.menu-panel a{
 text-align:center;text-decoration:none;font-weight:1000;color:#053047;
-padding:10px 8px;border-radius:999px;background:#fff1c6;font-size:.95rem
+padding:12px 10px;border-radius:999px;background:#fff1c6
 }
 section{margin:20px 0}.section-title{display:flex;align-items:center;gap:10px;margin:26px 4px 12px}
-.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{grid-column:span 12;background:rgba(255,253,247,.92);border:1px solid rgba(255,255,255,.85);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.hidden-by-images{display:none!important}
+.card{grid-column:span 12;background:rgba(255,253,247,.92);border:1px solid rgba(255,255,255,.85);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
 .card-inner{padding:18px}.two{grid-column:span 6}.three{grid-column:span 4}
 @media(max-width:820px){.two,.three{grid-column:span 12}.namebar{grid-template-columns:1fr}header{min-height:82vh}}
 .carousel{position:relative;margin-top:12px;max-width:900px;margin-left:auto;margin-right:auto}
@@ -96,9 +105,20 @@ width:52px;height:52px;padding:0;background:rgba(255,255,255,.92)
   <p class="tiny">Alt du skriv og kryssar av blir lagra på denne mobilen/nettbrettet med localStorage.</p>
 </header>
 
-<nav>
-<a href="#hotel">Hotellet</a><a href="#places">Stader</a><a href="#waterparks">Badeland</a><a href="#packing">Pakkeliste</a><a href="#missions">Oppdrag</a><a href="#photo">Bilde</a><a href="#diary">Reisebok</a><a href="#quiz">Quiz</a><a href="#links">Lenker</a>
-</nav>
+<div class="menu-wrap">
+  <button id="menuToggle" class="menu-toggle">☰ Meny</button>
+  <div id="menuPanel" class="menu-panel">
+    <a href="#hotel">🏨 Hotellet</a>
+    <a href="#places">🗺️ Stader</a>
+    <a href="#waterparks">🎢 Badeland</a>
+    <a href="#packing">🎒 Pakkeliste</a>
+    <a href="#missions">✅ Oppdrag</a>
+    <a href="#photo">📸 Bilde</a>
+    <a href="#diary">✍️ Reisebok</a>
+    <a href="#quiz">🧠 Quiz</a>
+    <a href="#links">🔗 Lenker</a>
+  </div>
+</div>
 
 <section id="hotel"><div class="section-title"><h2>🏨 Hotellet vårt</h2></div>
 <div class="card"><div class="card-inner"><h2>NH Marina Portimão Resort</h2><p>Basseng, marina, strand og feriebase i Portimão.</p><a class="btn" target="_blank" rel="noopener" href="https://www.nh-hotels.com/en/hotel/nh-marina-portimao-resort">Opne hotellet si side</a><div class="carousel" data-gallery="hotel"></div><p class="tiny">Bileta er ferie-/hotellstemning. Bruk hotell-lenka for offisielle hotellbilete.</p></div></div></section>
@@ -151,46 +171,34 @@ const galleries={
 hotel:[
 ["https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1100&q=80","Bassengliv"],
 ["https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1100&q=80","Resortstemning"],
-["https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1100&q=80","Ferieutsikt"],
-["https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=1100&q=80","Stranddag"],
-["https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80","Sommar"]
+["https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1100&q=80","Ferieutsikt"]
 ],
 praia:[
 ["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20da%20Rocha%2C%20Portim%C3%A3o%20%284%29.jpg?width=1200","Praia da Rocha"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20da%20Rocha%20-%20Portim%C3%A3o%20%287%29.jpg?width=1200","Klipper og strand"],
-["https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80","Strandstemning"],
-["https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=1100&q=80","Bølger og sand"]
+["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20da%20Rocha%20-%20Portim%C3%A3o%20%287%29.jpg?width=1200","Klipper og strand"]
 ],
 benagil:[
 ["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%2C%20July%202012%20edited.jpg?width=1200","Benagil-grotta frå innsida"],
 ["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%20%283%29.jpg?width=1200","Benagil Cave"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%20%281%29.jpg?width=1200","Inne i grotta"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%20seen%20by%20above.jpg?width=1200","Benagil sett ovanfrå"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Algarve%20Caves%20%2817411289209%29.jpg?width=1200","Grotter langs Algarve-kysten"]
+["https://commons.wikimedia.org/wiki/Special:FilePath/Benagil%20Cave%20seen%20by%20above.jpg?width=1200","Benagil sett ovanfrå"]
 ],
 ferragudo:[
 ["https://commons.wikimedia.org/wiki/Special:FilePath/Ferragudo%20-%20Portugal%20%284566556091%29.jpg?width=1200","Ferragudo"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Ferragudo%20%283%29.jpg?width=1200","Landsbyen"],
-["https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1100&q=80","Kveldskos"],
-["https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&w=1100&q=80","Små gater"]
+["https://commons.wikimedia.org/wiki/Special:FilePath/Ferragudo%20%283%29.jpg?width=1200","Landsbyen"]
 ],
 lagos:[
 ["https://commons.wikimedia.org/wiki/Special:FilePath/Ponta%20da%20Piedade%20Lagos%20%28Portugal%29.jpg?width=1200","Ponta da Piedade"],
 ["https://commons.wikimedia.org/wiki/Special:FilePath/Ponta%20da%20Piedade%20%28Lagos%29%20%281%29.jpg?width=1200","Klipper ved Lagos"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20Dona%20Ana%20Lagos%20Algarve%20Portugal.jpg?width=1200","Praia Dona Ana"],
-["https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=1100&q=80","Lagos-kysten"]
+["https://commons.wikimedia.org/wiki/Special:FilePath/Praia%20Dona%20Ana%20Lagos%20Algarve%20Portugal.jpg?width=1200","Praia Dona Ana"]
 ],
 slide:[
 ["https://commons.wikimedia.org/wiki/Special:FilePath/Slide%20%26%20Splash%20Algarve.jpg?width=1200","Slide & Splash – vassklier"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Water%20Slides%20%2819012708403%29.jpg?width=1200","Vassklier i Slide & Splash"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Slide%20and%20Splash.JPG?width=1200","Slide & Splash"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Slide%20and%20Splash%20in%202015.JPG?width=1200","Fleire sklier"],
-["https://commons.wikimedia.org/wiki/Special:FilePath/Waterpark%20Portugal%20Aug%202000%20%2851884948600%29.jpg?width=1200","Waterpark Portugal"]
+["https://commons.wikimedia.org/wiki/Special:FilePath/Water%20Slides%20%2819012708403%29.jpg?width=1200","Vassklier"],
+["https://commons.wikimedia.org/wiki/Special:FilePath/Slide%20and%20Splash.JPG?width=1200","Slide & Splash"]
 ],
 zoomarine:[
 ["https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1100&q=80","Delfin"],
 ["https://images.unsplash.com/photo-1607153333879-c174d265f1d2?auto=format&fit=crop&w=1100&q=80","Sjødyr"],
-["https://images.unsplash.com/photo-1563911302283-d2bc129e7570?auto=format&fit=crop&w=1100&q=80","Vasspark"],
 ["https://images.unsplash.com/photo-1583212292454-1fe6229603b7?auto=format&fit=crop&w=1100&q=80","Akvarium"]
 ]
 };
@@ -224,28 +232,47 @@ function renderGalleries(){
 function updateCarousel(id){
   const state = carouselState[id];
   const carousel = document.querySelector(`[data-cid="${id}"]`);
-  if(!state || !carousel || !state.imgs.length) return;
+  if(!state || !carousel) return;
+
+  if(!state.imgs || !state.imgs.length){
+    const card = carousel.closest(".card");
+    if(card) card.classList.add("hidden-by-images");
+    return;
+  }
+
+  state.index = ((state.index % state.imgs.length) + state.imgs.length) % state.imgs.length;
   const [src, cap] = state.imgs[state.index];
   const img = carousel.querySelector(".carousel-stage img");
   const caption = carousel.querySelector(".carousel-caption");
-  img.onerror = () => {
-    img.onerror = null;
-    img.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1100&q=80";
-    caption.textContent = cap + " – reservebilde";
-  };
-  img.src = src;
-  img.alt = cap;
-  caption.textContent = cap;
-  const dots = carousel.querySelector(".dots");
-  dots.innerHTML = "";
-  state.imgs.forEach((_,i)=>{
-    const d = document.createElement("span");
-    d.className = "dot" + (i===state.index ? " active" : "");
-    d.onclick = () => { state.index = i; updateCarousel(id); };
-    dots.appendChild(d);
-  });
-}
 
+  const test = new Image();
+  test.onload = () => {
+    const card = carousel.closest(".card");
+    if(card) card.classList.remove("hidden-by-images");
+    img.src = src;
+    img.alt = cap;
+    caption.textContent = cap;
+    const dots = carousel.querySelector(".dots");
+    dots.innerHTML = "";
+    state.imgs.forEach((_,i)=>{
+      const d = document.createElement("span");
+      d.className = "dot" + (i===state.index ? " active" : "");
+      d.onclick = () => { state.index = i; updateCarousel(id); };
+      dots.appendChild(d);
+    });
+  };
+  test.onerror = () => {
+    state.imgs.splice(state.index, 1);
+    if(!state.imgs.length){
+      const card = carousel.closest(".card");
+      if(card) card.classList.add("hidden-by-images");
+      return;
+    }
+    state.index = state.index % state.imgs.length;
+    updateCarousel(id);
+  };
+  test.src = src;
+}
 function moveCarousel(id, dir){
   const state = carouselState[id];
   if(!state || !state.imgs.length) return;
@@ -275,6 +302,26 @@ function initNotes(){$("saveNote").onclick=()=>{const title=$("noteTitle").value
 const quizzes={"Portugal":[["Kva land skal vi til?",["Portugal","Spania","Italia"],0],["Kva heiter området sør i Portugal?",["Algarve","Alpane","Arktis"],0],["Kva språk snakkar dei i Portugal?",["Portugisisk","Italiensk","Dansk"],0],["Kva dessert er Portugal kjent for?",["Pastel de nata","Taco","Brunost"],0]],"Hotellet":[["Kva heiter hotellet vårt?",["NH Marina Portimão Resort","Minecraft Hotel","Lego Resort"],0],["Kva ligg rett ved hotellet?",["Marina","Snøpark","Vulkan"],0],["Kva kan vi gjere på hotellet?",["Bade","Gå på ski","Køyre hundeslede"],0]],"Utflukter":[["Kva er Benagil kjent for?",["Grotter","Skyskraparar","Snø"],0],["Kva kan vi ta til Ferragudo?",["Vatntaxi","Rakett","Skiheis"],0],["Kva er Lagos kjent for?",["Klipper og strender","Ørken","Nordlys"],0]],"Badeland":[["Kva er Slide & Splash?",["Badeland","Flyplass","Museum"],0],["Kva finn vi på Zoomarine?",["Sjødyr og vasspark","Snømannar","Romvesen"],0],["Kva må vi hugse i sola?",["Solkrem","Vinterjakke","Skøyter"],0]],"Pakkeliste":[["Kva er lurt i sola?",["Caps/solhatt","Ullue","Skøyter"],0],["Kva bør vere i handbagasjen?",["Pass og ladar","Våte handkle","Steinar"],0],["Kva er smart på dagstur?",["Liten sekk","Sofa","Skrivepult"],0]]};
 let currentQuiz=load("currentQuiz","Portugal");
 function renderQuiz(){const tabs=$("quizTabs");tabs.innerHTML="";Object.keys(quizzes).forEach(name=>{const b=document.createElement("button");b.className="tab"+(name===currentQuiz?" active":"");b.textContent=name;b.onclick=()=>{currentQuiz=name;save("currentQuiz",name);renderQuiz()};tabs.appendChild(b)});const quiz=quizzes[currentQuiz],key="quiz:"+currentQuiz,ans=load(key,{}),box=$("quizBox");box.innerHTML="";quiz.forEach((q,qi)=>{const div=document.createElement("div");div.className="quiz-question";div.innerHTML="<h3>"+(qi+1)+". "+q[0]+"</h3>";const ad=document.createElement("div");ad.className="answers";q[1].forEach((a,ai)=>{const b=document.createElement("button");b.className="answer";b.textContent=a;if(ans[qi]!==undefined){if(ai===q[2])b.classList.add("correct");if(ans[qi]===ai&&ai!==q[2])b.classList.add("wrong")}b.onclick=()=>{ans[qi]=ai;save(key,ans);renderQuiz()};ad.appendChild(b)});div.appendChild(ad);box.appendChild(div)});const score=Object.keys(ans).reduce((s,k)=>s+(ans[k]===quiz[k][2]?1:0),0);$("quizScore").textContent=score;$("quizTotal").textContent=quiz.length;$("quizProgress").style.width=score/quiz.length*100+"%";$("resetQuiz").onclick=()=>{save(key,{});renderQuiz()}}
+
+$("menuToggle").onclick = () => $("menuPanel").classList.toggle("open");
+document.querySelectorAll(".menu-panel a").forEach(a => {
+  a.onclick = () => $("menuPanel").classList.remove("open");
+});
+
+
+function cleanupEmptySections(){
+  document.querySelectorAll("section").forEach(sec=>{
+    const cards = [...sec.querySelectorAll(".card")];
+    if(cards.length && cards.every(c=>c.classList.contains("hidden-by-images"))){
+      sec.classList.add("hidden-by-images");
+    } else {
+      sec.classList.remove("hidden-by-images");
+    }
+  });
+}
+setTimeout(cleanupEmptySections, 2500);
+setTimeout(cleanupEmptySections, 6000);
+
 initName();renderGalleries();renderMissions();renderPacking();initPhoto();initNotes();renderQuiz();
 </script>
 </body>
