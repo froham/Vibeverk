@@ -51,18 +51,18 @@
       /* Statisk bakgrunn */
       ".sb-section--static .sb-bg{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat}",
 
-      /* Parallax: fixed bakgrunn — bildet står stille medan seksjonen scrollar over */
-      ".sb-section--parallax{overflow:visible !important;isolation:auto !important}",
+      /* Parallax: background-attachment:fixed — CSS-native parallax */
+      /* Seksjonen fungerer som vindauge, bakgrunnen er fast i viewport */
+      ".sb-section--parallax{overflow:hidden}",
       ".sb-section--parallax .sb-bg{",
-      "  position:fixed !important;",
-      "  top:0;left:0;right:0;bottom:0;",
+      "  position:absolute;inset:0;",
+      "  background-attachment:fixed;",
       "  background-size:cover;",
       "  background-repeat:no-repeat;",
-      "  z-index:-1;",
+      "  background-position:50% 50%;",
       "}",
-      /* Seksjon-innhald og overlegg ligg over det faste bakgrunnsbildet */
-      ".sb-section--parallax .sb-overlay{position:absolute;inset:0;z-index:0}",
-      ".sb-section--parallax .sb-content{position:relative;z-index:1}",
+      /* iOS støttar ikkje background-attachment:fixed — fallback til scroll */
+      "@supports (-webkit-touch-callout: none){.sb-section--parallax .sb-bg{background-attachment:scroll}}",
 
       /* Overlegg og innhald */
       ".sb-overlay{position:absolute;inset:0;pointer-events:none}",
@@ -104,20 +104,21 @@
     // For å avsløre riktig del av eit stående bilde:
     // Vi justerer background-position-y basert på scroll-progress.
     function update() {
+      // background-attachment:fixed handterer parallax-effekten nativt i CSS.
+      // JS-en vert berre brukt på iOS der fixed ikkje fungerer — der simulerer
+      // vi effekten med backgroundPositionY.
+      var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!isIOS) return;
+
       document.querySelectorAll(".sb-section--parallax .sb-bg").forEach(function (bg) {
         var section = bg.closest(".sb-section");
         if (!section) return;
         var rect     = section.getBoundingClientRect();
         var winH     = window.innerHeight;
         var secH     = section.offsetHeight;
-
-        // Kor mykje av seksjonen er passert? 0=topp av seksjon ved botn av skjerm, 1=ferdig
         var progress = 1 - (rect.bottom / (winH + secH));
         progress = Math.max(0, Math.min(1, progress));
-
-        // Flytt background-position-y for å avdekke bildet frå topp til botn
-        var posY = (progress * 100).toFixed(1) + "%";
-        bg.style.backgroundPositionY = posY;
+        bg.style.backgroundPositionY = (progress * 100).toFixed(1) + "%";
       });
     }
 
@@ -145,7 +146,6 @@
     var bgStyle = hasBg
       ? "background-image:url(" + esc(imgSrc) + ");background-position:" + esc(posX) + " " + esc(posY) + ";"
       : "background:var(--color-alt);";
-    // Parallax: ingen overflow:hidden — fixed bakgrunn scrollar gjennom
     var sectionExtra = "";
 
     var overlayHtml = "";
