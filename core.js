@@ -2770,6 +2770,8 @@ window.App = (function () {
         pane("analyse",
           '<fieldset class="admin-group"><legend>Analyse og integrasjoner</legend>' +
             '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre synleg her. Kunden ser kun resultatet i Analyse-fanen i sin admin.</p>' +
+            C.field({ id:"sa-an-tawk", label:"Tawk.to – Property ID", value: an.tawkto || "", placeholder:"abc123def/abc123def",
+              hint:"Finn Property ID under Administration → Property Settings i Tawk.to. Format: abc123/def456" }) +
             C.field({ id:"sa-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"nordpunkt.no" }) +
             C.field({ id:"sa-an-plembed", label:"Plausible – delt lenke for innebygd dashboard", value: an.plausibleEmbed || "", placeholder:"https://plausible.io/share/nordpunkt.no?auth=xxxxx",
                         hint:"Plausible → Site Settings → Visibility → Embed dashboard. Vises direkte i kundens Analyse-fane." }) +
@@ -2904,6 +2906,7 @@ window.App = (function () {
 
       // Analyse-innstillingar lagres separat (samme nøkkel som adminAnalyse/initAnalytics leser)
       Store.set("analytics", {
+        tawkto:          body.querySelector("#sa-an-tawk")    ? body.querySelector("#sa-an-tawk").value.trim()    : (an.tawkto    || ""),
         plausible:       body.querySelector("#sa-an-pl").value.trim(),
         plausibleEmbed:  body.querySelector("#sa-an-plembed").value.trim()
       });
@@ -2919,6 +2922,7 @@ window.App = (function () {
   function initAnalytics() {
     const a  = Store.get("analytics", null) || (CFG.analytics || {});
     const pl = (a.plausible || "").trim();
+    const tw = (a.tawkto    || "").trim();
 
     if (pl && !document.getElementById("_pl-script")) {
       const s2 = document.createElement("script");
@@ -2927,6 +2931,26 @@ window.App = (function () {
       s2.defer         = true;
       s2.setAttribute("data-domain", pl);
       document.head.appendChild(s2);
+    }
+
+    // Tawk.to live chat — lastast berre på offentleg side (ikkje i intranettet)
+    if (tw && !document.getElementById("_tawk-script") && !document.getElementById("intranet")) {
+      // Tawk.to property ID format: "abc123/abc456" eller full URL
+      var propertyId = tw.replace(/^.*tawk\.to\//, "").replace(/\/+$/, "");
+      var parts      = propertyId.split("/");
+      var pid        = parts[0] || propertyId;
+      var wid        = parts[1] || "default";
+
+      window.Tawk_API   = window.Tawk_API   || {};
+      window.Tawk_LoadStart = new Date();
+
+      var s3   = document.createElement("script");
+      s3.id    = "_tawk-script";
+      s3.async = true;
+      s3.src   = "https://embed.tawk.to/" + pid + "/" + wid;
+      s3.charset = "UTF-8";
+      s3.setAttribute("crossorigin", "*");
+      document.head.appendChild(s3);
     }
   }
 
