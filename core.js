@@ -730,7 +730,14 @@ window.App = (function () {
       if (m) tabs.push({ id: "mod-" + m.id, label: modLabel(m), category: "henvendelser" });
     });
     tabs.push({ id: "leads", label: "Kontakt", category: "henvendelser" });
-    tabs.push({ id: "sikkerhetskopi", label: "Sikkerhetskopi", category: "innstillinger" });
+    // Eigar ser full sikkerhetskopi (med per-modul-eksport)
+    // Tilsette/andre roller ser forenkla versjon
+    const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "owner") : "owner";
+    if (_backupRole === "owner") {
+      tabs.push({ id: "sikkerhetskopi", label: "Sikkerhetskopi", category: "innstillinger" });
+    } else {
+      tabs.push({ id: "admin-backup",   label: "Sikkerhetskopi", category: "innstillinger" });
+    }
     return tabs;
   }
 
@@ -864,6 +871,7 @@ window.App = (function () {
     if (activeTab === "analyse")    return adminAnalyse(body);
     if (activeTab === "leads")      return adminLeads(body);
     if (activeTab === "sikkerhetskopi") return adminBackup(body);
+    if (activeTab === "admin-backup")   return adminBackupCustomer(body);
     if (activeTab.indexOf("mod-") === 0) {
       const id = activeTab.slice(4);
       const mod = modules.find(function (m) { return m.id === id; });
@@ -2166,6 +2174,15 @@ window.App = (function () {
         </ul>
         ${C.button({ label: "Last ned sikkerhetskopi", icon: "download", variant: "primary", attrs: 'data-backup-export' })}
 
+        <h4 class="an-heading" style="margin-top:2rem">Eksporter per modul</h4>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">Last ned data frå enkeltmodular som JSON eller CSV.</p>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          ${hasModule("crm")     ? C.button({ label:"Kunder (CSV)",        icon:"table-export", variant:"ghost", attrs:'data-mod-export="crm-csv"'      }) : ""}
+          ${hasModule("tilbud")  ? C.button({ label:"Tilbud (JSON)",       icon:"download",     variant:"ghost", attrs:'data-mod-export="quotes-json"'   }) : ""}
+          ${hasModule("booking") ? C.button({ label:"Bookinger (JSON)",    icon:"download",     variant:"ghost", attrs:'data-mod-export="bookings-json"' }) : ""}
+          ${C.button({ label:"Henvendelser (JSON)", icon:"download", variant:"ghost", attrs:'data-mod-export="leads-json"' })}
+        </div>
+
         <h4 class="an-heading" style="margin-top:2rem">Importer sikkerhetskopi</h4>
         <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} Dette overskriver ALT eksisterende innhold på denne siden med innholdet i fila. Kan ikke angres. Last ned en fersk sikkerhetskopi av nåværende innhold først hvis du er usikker.</p>
         <label class="btn btn--ghost backup-filebtn">
@@ -2176,6 +2193,31 @@ window.App = (function () {
       </div>`;
 
     body.querySelector("[data-backup-export]").addEventListener("click", exportBackup);
+
+    body.querySelectorAll("[data-mod-export]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const type = btn.getAttribute("data-mod-export");
+        const stamp = new Date().toISOString().slice(0,10);
+        if (type === "crm-csv") {
+          if (!App.downloadCsv) return;
+          App.downloadCsv("kunder-" + stamp + ".csv",
+            ["Navn","E-post","Kundenummer","Bedrift","Notat","Opprettet"],
+            (Store.get("crm-customers",[]) || []).map(function(c){
+              var bed = (Store.get("crm-bedrifter",[]) || []).find(function(b){return b.id===c.bedriftId;});
+              return [c.name||"",c.email||"",c.customerNumber||"",bed?bed.name:"",c.note||"",c.created||""];
+            })
+          );
+        } else if (type === "quotes-json") {
+          const data = getLeads().filter(function(l){return l.message&&l.message.indexOf("Tilbudsforesp")===0;});
+          downloadBlob("tilbud-" + stamp + ".json", JSON.stringify(data, null, 2), "application/json");
+        } else if (type === "bookings-json") {
+          downloadBlob("bookinger-" + stamp + ".json", JSON.stringify(Store.get("booking-bookings",[]), null, 2), "application/json");
+        } else if (type === "leads-json") {
+          const data = getLeads().filter(function(l){return !l.message||l.message.indexOf("Tilbudsforesp")!==0;});
+          downloadBlob("henvendelser-" + stamp + ".json", JSON.stringify(data, null, 2), "application/json");
+        }
+      });
+    });
     body.querySelector("[data-backup-import]").addEventListener("change", function (e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -2194,6 +2236,64 @@ window.App = (function () {
           st.className = "form__status is-error";
           e.target.value = "";
         }
+      });
+    });
+  }
+
+  /* --- Sikkerhetskopi for kunde-admin (enklare versjon utan superconfig) ---
+     Tilgjengeleg under Admin → Innstillinger → Sikkerhetskopi.
+     Eksporterer og importerer all data under sidens navnerom.           */
+  function adminBackupCustomer(body) {
+    const usedBytes = storageUsageBytes();
+    const pct       = Math.min(100, Math.round((usedBytes / STORAGE_QUOTA_BYTES) * 100));
+    const usedMb    = (usedBytes / (1024 * 1024)).toFixed(1);
+    const level     = pct >= 90 ? "high" : pct >= 70 ? "mid" : "low";
+    const levelText = level === "high"
+      ? "Lagringen er nesten full. Slett gamle bilder eller rydd i henvendelser."
+      : level === "mid" ? "Lagringen begynner å fylles opp."
+      : "God plass igjen.";
+
+    const leads    = getLeads ? getLeads() : [];
+    const bookings = Store.get("booking-bookings", []) || [];
+    const customers= Store.get("crm-customers",    []) || [];
+
+    body.innerHTML = `
+      <div class="bk-wrap">
+        <h4 class="an-heading">Lagringsplass</h4>
+        <div class="storage-meter" data-storage-level="${level}">
+          <div class="storage-meter__bar"><div class="storage-meter__fill" style="width:${pct}%"></div></div>
+          <p class="storage-meter__label">${usedMb} MB av ~5 MB brukt (${pct} %)</p>
+        </div>
+        <p class="prose prose--muted" style="margin:0 0 1.6rem">${C.esc(levelText)}</p>
+
+        <h4 class="an-heading">Last ned sikkerhetskopi</h4>
+        <p class="prose prose--muted" style="margin:0 0 .5rem">Laster ned alt innhold på denne siden som én fil. Ta sikkerhetskopi jevnlig og alltid før store endringer.</p>
+        <ul class="backup-summary" style="margin-bottom:1rem">
+          <li><span>Kontakthenvendelser</span><strong>${leads.filter(function(l){return !l.message||l.message.indexOf("Tilbudsforesp")!==0;}).length}</strong></li>
+          <li><span>Tilbud</span><strong>${leads.filter(function(l){return l.message&&l.message.indexOf("Tilbudsforesp")===0;}).length}</strong></li>
+          <li><span>Bookinger</span><strong>${bookings.length}</strong></li>
+          <li><span>Kunder</span><strong>${customers.length}</strong></li>
+        </ul>
+        ${C.button({ label:"Last ned sikkerhetskopi", icon:"download", variant:"primary", attrs:"data-cust-backup-export" })}
+
+        <h4 class="an-heading" style="margin-top:2rem">Importer sikkerhetskopi</h4>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} <strong>OBS:</strong> Dette overskriver ALT eksisterende innhold med innholdet i fila. Kan ikke angres.</p>
+        <label class="btn btn--ghost backup-filebtn">
+          ${C.icon("upload")} Velg fil
+          <input type="file" accept="application/json" hidden data-cust-backup-import>
+        </label>
+        <p class="form__status" data-cust-backup-status style="margin-top:.6rem" role="status" aria-live="polite"></p>
+      </div>`;
+
+    body.querySelector("[data-cust-backup-export]").addEventListener("click", exportBackup);
+    body.querySelector("[data-cust-backup-import]").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const st = body.querySelector("[data-cust-backup-status]");
+      if (!confirm("Dette overskriver ALT eksisterende innhold med «" + file.name + "». Er du sikker?")) { e.target.value = ""; return; }
+      importBackup(file, function (ok, msg) {
+        if (ok) { st.textContent = msg + " Laster på nytt…"; st.className = "form__status is-ok"; setTimeout(function () { location.reload(); }, 700); }
+        else    { st.textContent = msg; st.className = "form__status is-error"; e.target.value = ""; }
       });
     });
   }
@@ -2696,17 +2796,30 @@ window.App = (function () {
     const an   = Store.get("analytics", null) || (CFG.analytics || {});
     const priv = Object.assign({}, CFG.privacy, sc.privacy || {});
 
+    const FEAT_LABELS = {
+      newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg på innlegg",
+      social:"Sosiale lenker", booking:"Booking", quote:"Tilbud",
+      references:"Referanser", faq:"FAQ", siteSearch:"Søk i toppmeny",
+      crm:"Kunder", mediabank:"Mediebank", scrollbanner:"Banner"
+    };
+    const IFEAT_LABELS = {
+      announcements:"Aktuelt", notes:"Mine notatar", kb:"Kunnskapsbase",
+      mediaInternal:"Mediebank", links:"Lenker", orgdrift:"Organisasjon & drift",
+      crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar"
+    };
     const featFields = Object.keys(CFG.features || {}).map(function (k) {
       const on = (ft[k] !== false);
+      const lbl = FEAT_LABELS[k] || k;
       return `<label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem;cursor:pointer">
-        <input type="checkbox" data-sa-feat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(k)}
+        <input type="checkbox" data-sa-feat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(lbl)}
       </label>`;
     }).join("");
     const ift = Object.assign({}, CFG.intranettFeatures, sc.intranettFeatures || {});
     const intranettFeatFields = Object.keys(CFG.intranettFeatures || {}).map(function (k) {
       const on = (ift[k] !== false);
+      const lbl = IFEAT_LABELS[k] || k;
       return `<label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem;cursor:pointer">
-        <input type="checkbox" data-sa-ifeat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(k)}
+        <input type="checkbox" data-sa-ifeat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(lbl)}
       </label>`;
     }).join("");
 

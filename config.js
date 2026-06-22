@@ -173,23 +173,23 @@ window.SITE_CONFIG = {
      Native intranett-moduler (Dashboard, Oppgaver, Innstillinger) er alltid på.
      Settes via super-admin → Funksjoner → Intranett. */
   intranettFeatures: {
-    /* --- Låste (alltid på, visast ikkje i superadmin) ---
-       enabled, dashboard, tasks, settings               */
+    /* --- Låste (alltid på, ikkje i superadmin): dashboard, tasks, settings --- */
 
-    /* --- Gjenspeila frå offentleg side --- */
-    crm:          true,   // ← Kundeoversikt
-    booking:      true,   // ← Bookingbehandling
-    quote:        true,   // ← Tilbudsbehandling
-    contact:      true,   // ← Kontakthenvendingar
+    /* --- Standard PÅ (grunnpakke for alle kundar) --- */
+    announcements: true,  // ← Aktuelt (intern)
+    notes:         true,  // ← Mine notatar
+    orgdrift:      true,  // ← Organisasjon & drift
+    links:         true,  // ← Lenker
 
-    /* --- Native intranett (kan slåast av per kunde) --- */
-    announcements: true,  // ← Intern aktuelt og viktige meldingar
-    notes:         true,  // ← Personlege arbeidsnotatar
-    kb:            true,  // ← Intern kunnskapsbase
-    mediaInternal: true,  // ← Intern mediebank
-    links:         true,  // ← Eksterne lenker og snarveiar
-    orgdrift:      true   // ← Organisasjon & drift (styringsregister)
+    /* --- Standard AV (aktiverast per kunde) --- */
+    crm:           false, // ← Kunder (frå nettsida)
+    booking:       false, // ← Booking (frå nettsida)
+    quote:         false, // ← Tilbud (frå nettsida)
+    contact:       false, // ← Kontakthenvendingar (frå nettsida)
+    kb:            false, // ← Kunnskapsbase
+    mediaInternal: false  // ← Mediebank (intern)
   },
+
 
   /* --- FAQ (modul) ---------------------------------------------------------- */
   faq: {

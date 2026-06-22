@@ -1,22 +1,18 @@
 /* =============================================================================
    module-scrollbanner.js  —  SCROLLBANNER (offentleg side)
    -----------------------------------------------------------------------------
-   To modus per banner:
+   To modus:
+   1) STATISK      — fast bilde, background-attachment:scroll
+   2) PARALLAX     — background-attachment:fixed, bildet står stille medan
+                     seksjonen scrollar over som eit vindauge (VG/Nille-effekt)
 
-   1) STATISK — vanlegt fullbredde bilde, fast posisjon. Same som alle andre
-      bildeseksjonar. Brukast for liggande (landscape) bilete.
+   Forhåndsvisning og utsnitt: gjenbrukar App.ui.imageField med riktig
+   aspect-ratio (16:9 for statisk, 9:16 for parallax portrett).
+   Dra det lyse utsnittet for å velje kva del av bildet som visast.
+   pos-verdien frå imageField er direkte brukbar som background-position.
 
-   2) PARALLAX-SCROLL — seksjonen har fast høgde (t.d. 420px) mens bakgrunns-
-      bildet er mykje høgare (t.d. eit 9:16 portrett). Bildet beveger seg
-      saktare enn sida, slik at brukaren "scrollar gjennom" bildet vertikalt
-      og ser nye delar etter kvart. Effekten er reinast med stående bilete.
-
-   Kvar banner er ein eigen registrert modul — dukkar IKKJE opp i toppmeny
-   (label er tom / navHidden:true), men visast som eigen rad i navigasjonsfanen
-   slik at admin kan plassere banneret fritt mellom andre seksjonar.
-
-   Lagring:  App.store("scrollbanners")
-   Admin:    Innhold → Scrollbanner (CRUD)
+   Kvar banner = eigen registrert modul, vises i Navigasjon-fanen men
+   IKKJE i toppmeny (navHidden:true).
    ========================================================================== */
 (function () {
   "use strict";
@@ -46,22 +42,16 @@
     s.id  = "scrollbanner-styles";
     s.textContent = [
       /* Felles */
-      ".sb-section{position:relative;width:100%;overflow:hidden;display:flex;align-items:center;justify-content:center}",
+      ".sb-section{position:relative;width:100%;display:flex;align-items:center;justify-content:center}",
 
-      /* Statisk bakgrunn */
-      ".sb-section--static .sb-bg{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat}",
+      /* Statisk — bildet er fast, scrollar med sida */
+      ".sb-section--static{overflow:hidden}",
+      ".sb-section--static .sb-bg{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;background-attachment:scroll}",
 
-      /* Parallax: background-attachment:fixed — CSS-native parallax */
-      /* Seksjonen fungerer som vindauge, bakgrunnen er fast i viewport */
+      /* Parallax — bildet er fast i viewport medan seksjonen scrollar over */
       ".sb-section--parallax{overflow:hidden}",
-      ".sb-section--parallax .sb-bg{",
-      "  position:absolute;inset:0;",
-      "  background-attachment:fixed;",
-      "  background-size:cover;",
-      "  background-repeat:no-repeat;",
-      "  background-position:50% 50%;",
-      "}",
-      /* iOS støttar ikkje background-attachment:fixed — fallback til scroll */
+      ".sb-section--parallax .sb-bg{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;background-attachment:fixed}",
+      /* iOS-fallback: fixed fungerer ikkje på iPhone/iPad */
       "@supports (-webkit-touch-callout: none){.sb-section--parallax .sb-bg{background-attachment:scroll}}",
 
       /* Overlegg og innhald */
@@ -74,7 +64,7 @@
 
       /* Admin */
       ".sb-adm-row{display:flex;align-items:center;gap:.65rem;padding:.7rem .9rem;background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;margin-bottom:.45rem}",
-      ".sb-adm-thumb{width:44px;height:36px;border-radius:6px;background:var(--color-alt);flex-shrink:0;background-size:cover;background-position:50% 50%}",
+      ".sb-adm-thumb{width:52px;height:36px;border-radius:6px;background:var(--color-alt);flex-shrink:0;background-size:cover;background-position:50% 50%}",
       ".sb-adm-info{flex:1;min-width:0}",
       ".sb-adm-title{font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sb-adm-meta{font-size:.75rem;color:var(--color-muted);margin-top:.1rem}",
@@ -86,124 +76,62 @@
   }
 
   /* =========================================================================
-     PARALLAX JS
-     Oppdaterer transform på .sb-bg-element basert på scroll-posisjon.
-     Brukar transform (ikkje background-position) for GPU-akselerasjon.
-     ====================================================================== */
-  var parallaxInited = false;
-
-  function initParallax() {
-    if (parallaxInited) return;
-    parallaxInited = true;
-
-    // position:fixed-bakgrunn treng at vi synkroniserer background-position
-    // med kva del av skjermen seksjonen okkuperer.
-    // Bildet er allereie fixed — vi treng berre å sørgje for at
-    // background-position matchar posX/posY-valet.
-    //
-    // For å avsløre riktig del av eit stående bilde:
-    // Vi justerer background-position-y basert på scroll-progress.
-    function update() {
-      // background-attachment:fixed handterer parallax-effekten nativt i CSS.
-      // JS-en vert berre brukt på iOS der fixed ikkje fungerer — der simulerer
-      // vi effekten med backgroundPositionY.
-      var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (!isIOS) return;
-
-      document.querySelectorAll(".sb-section--parallax .sb-bg").forEach(function (bg) {
-        var section = bg.closest(".sb-section");
-        if (!section) return;
-        var rect     = section.getBoundingClientRect();
-        var winH     = window.innerHeight;
-        var secH     = section.offsetHeight;
-        var progress = 1 - (rect.bottom / (winH + secH));
-        progress = Math.max(0, Math.min(1, progress));
-        bg.style.backgroundPositionY = (progress * 100).toFixed(1) + "%";
-      });
-    }
-
-    window.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update, { passive: true });
-    update();
-  }
-
-  /* =========================================================================
      RENDER EIN BANNER
      ====================================================================== */
   function renderBanner(b) {
     if (!b) return "";
-
-    var imgSrc   = b.imageSrc || (b.image && (typeof b.image === "string" ? b.image : (b.image.src || "")));
-    var hasBg    = !!(imgSrc);
-    var posX     = b.posX || "center";
-    var posY     = b.posY || "center";
-    var isParallax = hasBg && b.mode === "parallax";
+    var img      = App.media.resolveImage(b.image);
+    var hasBg    = !!(img && img.src);
+    var isParallax = b.mode === "parallax";
     var height   = { lav:"260px", medium:"420px", høg:"580px", fullskjerm:"100vh" }[b.height] || "420px";
     var textColor = b.textColor || (hasBg ? "#ffffff" : "var(--color-text)");
+    var bgPos    = (img && img.pos) ? img.pos : "50% 50%";
 
     var sectionCls = "sb-section section reveal " + (isParallax ? "sb-section--parallax" : "sb-section--static");
-
-    var bgStyle = hasBg
-      ? "background-image:url(" + esc(imgSrc) + ");background-position:" + esc(posX) + " " + esc(posY) + ";"
+    var bgStyle    = hasBg
+      ? "background-image:url(" + esc(img.src) + ");background-position:" + esc(bgPos) + ";"
       : "background:var(--color-alt);";
-    var sectionExtra = "";
 
-    var overlayHtml = "";
-    if (b.overlayColor && parseFloat(b.overlayOpacity || "0") > 0) {
-      overlayHtml = '<div class="sb-overlay" style="background:' + esc(b.overlayColor) + ';opacity:' + parseFloat(b.overlayOpacity) + '"></div>';
-    }
+    var overlayHtml = (b.overlayColor && parseFloat(b.overlayOpacity || "0") > 0)
+      ? '<div class="sb-overlay" style="background:' + esc(b.overlayColor) + ';opacity:' + parseFloat(b.overlayOpacity) + '"></div>'
+      : "";
 
-    var contentHtml = "";
-    if (b.title || b.text || (b.ctaLabel && b.ctaUrl)) {
-      contentHtml =
-        '<div class="sb-content">' +
+    var contentHtml = (b.title || b.text || (b.ctaLabel && b.ctaUrl))
+      ? '<div class="sb-content">' +
           (b.title ? '<h2 class="sb-title" style="color:' + esc(textColor) + '">' + esc(b.title) + '</h2>' : "") +
           (b.text  ? '<span class="sb-text" style="color:' + esc(textColor) + '">' + esc(b.text) + '</span>' : "") +
           (b.ctaLabel && b.ctaUrl
             ? '<a href="' + esc(b.ctaUrl) + '" class="sb-cta" style="background:' + esc(b.ctaBg || "var(--color-primary)") + ';color:' + esc(b.ctaColor || "#fff") + '">' + esc(b.ctaLabel) + '</a>'
             : "") +
-        '</div>';
-    }
+        '</div>'
+      : "";
 
-    return '<section class="' + sectionCls + '" id="' + esc(b.id) + '" style="min-height:' + height + ';' + sectionExtra + '">' +
+    return '<section class="' + sectionCls + '" id="' + esc(b.id) + '" style="min-height:' + height + '">' +
       '<div class="sb-bg" style="' + bgStyle + '"></div>' +
-      overlayHtml +
-      contentHtml +
+      overlayHtml + contentHtml +
     '</section>';
   }
 
-  function mountBanner(el, b) {
-    if (b && b.mode === "parallax") initParallax();
-  }
-
   /* =========================================================================
-     DYNAMISK REGISTRERING — kvar banner = eigen modul, IKKJE i toppmeny
+     DYNAMISK REGISTRERING
      ====================================================================== */
   var registered = {};
 
   function syncModules() {
     getBanners().forEach(function (b) {
-      if (registered[b.id]) {
-        // Oppdater label/order på eksisterande modul
-        var existing = App._modules && App._modules.find(function (m) { return m.id === b.id; });
-        if (existing) { existing.label = b.label || "Scrollbanner"; existing.order = b.order || 25; }
-        return;
-      }
+      if (registered[b.id]) return;
       registered[b.id] = true;
       var bid = b.id;
       App.registerModule({
-        id:         b.id,
-        label:      b.label || "Scrollbanner",
-        order:      typeof b.order === "number" ? b.order : 25,
-        navHidden:  true,   // Vises IKKJE i toppmeny, berre i Navigasjon-fanen
-        render:     function () {
+        id:        b.id,
+        label:     b.label || "Scrollbanner",
+        order:     typeof b.order === "number" ? b.order : 25,
+        navHidden: true,
+        render:    function () {
           var cur = getBanners().find(function (x) { return x.id === bid; });
           return cur ? renderBanner(cur) : "";
         },
-        mount:      function (el) {
-          var cur = getBanners().find(function (x) { return x.id === bid; });
-          if (cur) mountBanner(el, cur);
-        }
+        mount:     function () {}
       });
     });
   }
@@ -224,14 +152,13 @@
       '<div id="sb-list">' +
         (banners.length
           ? banners.map(function (b) {
-              var imgSrc2 = b.imageSrc || (b.image && (typeof b.image === "string" ? b.image : (b.image.src || "")));
-              var hasBg   = !!(imgSrc2);
-              var thumbStyle = hasBg ? "background-image:url(" + esc(imgSrc2) + ")" : "";
+              var img = App.media.resolveImage(b.image);
+              var hasBg = !!(img && img.src);
               return '<div class="sb-adm-row">' +
-                '<div class="sb-adm-thumb" style="' + thumbStyle + '"></div>' +
+                '<div class="sb-adm-thumb" style="' + (hasBg ? "background-image:url(" + esc(img.src) + ")" : "") + '"></div>' +
                 '<div class="sb-adm-info">' +
                   '<div class="sb-adm-title">' + esc(b.label || "(Utan namn)") + '</div>' +
-                  '<div class="sb-adm-meta">' + esc(b.height || "medium") + " · " + esc(b.mode === "parallax" ? "parallax-scroll" : "statisk") + (hasBg ? " · bilde" : "") + " · order " + (b.order || 25) + '</div>' +
+                  '<div class="sb-adm-meta">' + esc(b.height || "medium") + " · " + esc(b.mode === "parallax" ? "parallax" : "statisk") + (hasBg ? " · bilde" : "") + " · order " + (b.order || 25) + '</div>' +
                 '</div>' +
                 '<div class="sb-adm-btns">' +
                   C.button({ label:"Rediger", variant:"ghost", attrs:'data-sb-edit="' + esc(b.id) + '"' }) +
@@ -277,6 +204,10 @@
       var orders = getBanners().map(function (x) { return x.order || 25; });
       nextOrder = orders.length ? Math.max.apply(null, orders) + 5 : 25;
     }
+    var isParallax = b.mode === "parallax";
+    /* Aspect ratio: parallax brukar 9:16 portrett som standard forhåndsvisning,
+       statisk brukar 16:9. Begge kan bruke kva bilde som helst. */
+    var aspect = isParallax ? (9/16) : (16/9);
 
     ed.innerHTML =
       '<div class="admin-form admin-form--card" style="margin-top:.9rem">' +
@@ -291,67 +222,32 @@
         '</fieldset>' +
 
         '<fieldset class="sb-fieldset"><legend>Modus</legend>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">' +
-            '<label style="display:flex;align-items:flex-start;gap:.5rem;cursor:pointer;padding:.6rem;border:1.5px solid ' + (b.mode !== "parallax" ? "var(--color-primary)" : "var(--color-border)") + ';border-radius:8px">' +
-              '<input type="radio" name="sb-mode" value="static" ' + (b.mode !== "parallax" ? "checked" : "") + ' style="margin-top:.15rem">' +
-              '<div><strong style="font-size:.88rem">Statisk</strong><br><span style="font-size:.76rem;color:var(--color-muted)">Fast bilde, liggande format</span></div>' +
-            '</label>' +
-            '<label style="display:flex;align-items:flex-start;gap:.5rem;cursor:pointer;padding:.6rem;border:1.5px solid ' + (b.mode === "parallax" ? "var(--color-primary)" : "var(--color-border)") + ';border-radius:8px">' +
-              '<input type="radio" name="sb-mode" value="parallax" ' + (b.mode === "parallax" ? "checked" : "") + ' style="margin-top:.15rem">' +
-              '<div><strong style="font-size:.88rem">Parallax-scroll</strong><br><span style="font-size:.76rem;color:var(--color-muted)">Scroll gjennom stående bilde (9:16)</span></div>' +
-            '</label>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem" id="sb-mode-wrap">' +
+            modeCard("static",   "Statisk",        "Fast bilde, scrollar med sida",          !isParallax) +
+            modeCard("parallax", "Parallax-scroll", "Bildet er fast, sida scrollar over det", isParallax) +
           '</div>' +
+          '<p style="font-size:.78rem;color:var(--color-muted);margin:.5rem 0 0">Parallax: best med stående (portrett) bilete. Forhåndsvisinga brukar 9:16-format ved parallax.</p>' +
         '</fieldset>' +
 
-        '<fieldset class="sb-fieldset"><legend>Bilde og høgde</legend>' +
-          /* Eige bileteopplasting utan fast utsnitt */
-          '<div class="field">' +
-            '<label>Bakgrunnsbilde</label>' +
-            '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-start">' +
-              '<label class="btn btn--ghost btn--sm" style="cursor:pointer">' +
-                '<i class="ti ti-upload"></i> Last opp' +
-                '<input type="file" id="sb-img-file" accept="image/*" style="display:none">' +
-              '</label>' +
-              '<input id="sb-img-url" type="url" placeholder="…eller lim inn bilde-URL" ' +
-                'style="flex:1;min-width:160px;font:inherit;font-size:.85rem;padding:.45rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)" ' +
-                'value="' + esc(b.imageSrc || "") + '">' +
-              (b.imageSrc
-                ? '<button type="button" id="sb-img-clear" class="btn btn--ghost btn--sm"><i class="ti ti-trash"></i></button>'
-                : '') +
-            '</div>' +
-            (b.imageSrc
-              ? '<div style="margin-top:.5rem;border-radius:8px;overflow:hidden;max-width:280px;max-height:200px">' +
-                '<img id="sb-img-preview" src="' + esc(b.imageSrc) + '" style="width:100%;height:auto;display:block" alt="">' +
-              '</div>'
-              : '<div id="sb-img-preview-wrap"></div>') +
-            '<input type="hidden" id="sb-img-hidden" value="' + esc(b.imageSrc || "") + '">' +
-          '</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:.6rem">' +
-            '<div class="field"><label for="sb-pos-x">Horisontal posisjon</label>' +
-              '<select id="sb-pos-x">' +
-                ['left:Venstre', 'center:Midten', 'right:Høgre'].map(function(o){ var p=o.split(":"); return "<option value=\""+esc(p[0])+"\""+((b.posX||"center")===p[0]?" selected":"")+">"+esc(p[1])+"</option>"; }).join("") +
-              '</select></div>' +
-            '<div class="field"><label for="sb-pos-y">Vertikal posisjon (start)</label>' +
-              '<select id="sb-pos-y">' +
-                ['top:Topp', 'center:Midten', 'bottom:Botn'].map(function(o){ var p=o.split(":"); return "<option value=\""+esc(p[0])+"\""+((b.posY||"center")===p[0]?" selected":"")+">"+esc(p[1])+"</option>"; }).join("") +
-              '</select></div>' +
-          '</div>' +
-          '<div class="field" style="margin-top:.7rem"><label for="sb-height">Høgde på seksjonen</label>' +
-            '<select id="sb-height">' +
-              ['lav:Lav (260px)', 'medium:Medium (420px)', 'høg:Høg (580px)', 'fullskjerm:Fullskjerm (100vh)'].map(function (h) {
-                var p = h.split(":"); return '<option value="' + esc(p[0]) + '"' + (p[0] === (b.height || "medium") ? " selected" : "") + '>' + esc(p[1]) + '</option>';
-              }).join("") +
-            '</select>' +
-          '</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:.6rem">' +
+        '<fieldset class="sb-fieldset"><legend>Bilde og utsnitt</legend>' +
+          App.ui.imageField("sb-image", "Bakgrunnsbilde", b.image, aspect) +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:.7rem">' +
             '<div class="field"><label for="sb-overlay-color">Overleggsfarge</label><input type="color" id="sb-overlay-color" value="' + esc(b.overlayColor || "#000000") + '"></div>' +
             '<div class="field"><label for="sb-overlay-opacity">Dekking (0–1)</label><input type="number" id="sb-overlay-opacity" min="0" max="1" step="0.05" value="' + esc(String(b.overlayOpacity !== undefined ? b.overlayOpacity : 0)) + '"></div>' +
           '</div>' +
         '</fieldset>' +
 
+        '<fieldset class="sb-fieldset"><legend>Høgde</legend>' +
+          '<div class="field"><select id="sb-height">' +
+            ['lav:Lav (260px)', 'medium:Medium (420px)', 'høg:Høg (580px)', 'fullskjerm:Fullskjerm (100vh)'].map(function (h) {
+              var p = h.split(":"); return '<option value="' + esc(p[0]) + '"' + (p[0] === (b.height || "medium") ? " selected" : "") + '>' + esc(p[1]) + '</option>';
+            }).join("") +
+          '</select></div>' +
+        '</fieldset>' +
+
         '<fieldset class="sb-fieldset"><legend>Tekst (valgfritt)</legend>' +
-          C.field({ id:"sb-title", label:"Tittel",     value: b.title || "" }) +
-          C.field({ id:"sb-text",  label:"Brødtekst",  value: b.text  || "", multiline:true, rows:2 }) +
+          C.field({ id:"sb-title", label:"Tittel",    value: b.title || "" }) +
+          C.field({ id:"sb-text",  label:"Brødtekst", value: b.text  || "", multiline:true, rows:2 }) +
           '<div class="field"><label for="sb-text-color">Tekstfarge</label><input type="color" id="sb-text-color" value="' + esc(b.textColor || "#ffffff") + '"></div>' +
         '</fieldset>' +
 
@@ -371,50 +267,31 @@
         '<p class="form__status" id="sb-status"></p>' +
       '</div>';
 
-    // Eigen bilete-binding (ikkje standard imageField)
-    (function () {
-      var fileInp   = ed.querySelector("#sb-img-file");
-      var urlInp    = ed.querySelector("#sb-img-url");
-      var hidden    = ed.querySelector("#sb-img-hidden");
-      var prevWrap  = ed.querySelector("#sb-img-preview-wrap") || ed.querySelector("#sb-img-preview");
-      var clearBtn  = ed.querySelector("#sb-img-clear");
+    App.ui.bindImageFields(ed);
 
-      function setPreview(src) {
-        if (!hidden) return;
-        hidden.value = src || "";
-        if (urlInp) urlInp.value = src || "";
-        // Oppdater preview
-        var existing = ed.querySelector("#sb-img-preview");
-        if (src) {
-          if (existing) {
-            existing.src = src;
-          } else if (prevWrap) {
-            prevWrap.innerHTML = '<img id="sb-img-preview" src="' + src + '" style="width:100%;height:auto;display:block;border-radius:8px;max-width:280px;margin-top:.5rem" alt="">';
+    /* Modus-veksling — oppdater forhåndsvisnings-aspect-ratio */
+    ed.querySelectorAll('[name="sb-mode"]').forEach(function (radio) {
+      radio.addEventListener("change", function () {
+        var newAspect = radio.value === "parallax" ? (9/16) : (16/9);
+        /* Oppdater data-aspect på preview-elementet og trigger re-layout */
+        var preview = ed.querySelector(".imgfield__preview");
+        if (preview) {
+          preview.setAttribute("data-aspect", newAspect);
+          /* Trigge re-render ved å kalle layout på nytt (imageField har allereie init) */
+          var img = preview.querySelector("img");
+          if (img && img.naturalWidth) {
+            var newWW, newWH;
+            var imgAsp = img.naturalWidth / img.naturalHeight;
+            if (imgAsp > newAspect) { newWH = 100; newWW = (newAspect / imgAsp) * 100; }
+            else { newWW = 100; newWH = (imgAsp / newAspect) * 100; }
+            var win = preview.querySelector("[data-crop-window]");
+            if (win) { win.style.width = newWW + "%"; win.style.height = newWH + "%"; }
+            preview.style.aspectRatio = String(imgAsp);
+            preview.style.width = "min(100%, " + Math.round(340 * imgAsp) + "px)";
           }
-        } else {
-          if (existing) existing.remove();
         }
-      }
-
-      if (fileInp) {
-        fileInp.addEventListener("change", function () {
-          var file = fileInp.files && fileInp.files[0];
-          if (!file) return;
-          App.media.put(file).then(function (ref) {
-            var src = App.media.resolve(ref);
-            setPreview(src);
-          }).catch(function () {});
-          fileInp.value = "";
-        });
-      }
-      if (urlInp) {
-        urlInp.addEventListener("change", function () { setPreview(urlInp.value.trim()); });
-        urlInp.addEventListener("blur",   function () { setPreview(urlInp.value.trim()); });
-      }
-      if (clearBtn) {
-        clearBtn.addEventListener("click", function () { setPreview(""); });
-      }
-    })();
+      });
+    });
 
     ed.querySelector("[data-sb-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
 
@@ -429,11 +306,7 @@
         label:          label,
         order:          parseInt(ed.querySelector("#sb-order").value, 10) || nextOrder,
         mode:           modeEl ? modeEl.value : "static",
-        title:          ed.querySelector("#sb-title").value.trim(),
-        text:           ed.querySelector("#sb-text").value.trim(),
-        imageSrc:       ed.querySelector("#sb-img-hidden") ? ed.querySelector("#sb-img-hidden").value.trim() : (b.imageSrc || ""),
-        posX:           ed.querySelector("#sb-pos-x") ? ed.querySelector("#sb-pos-x").value : "center",
-        posY:           ed.querySelector("#sb-pos-y") ? ed.querySelector("#sb-pos-y").value : "center",
+        image:          App.ui.readImageField(ed, "sb-image"),
         overlayColor:   ed.querySelector("#sb-overlay-color").value,
         overlayOpacity: parseFloat(ed.querySelector("#sb-overlay-opacity").value) || 0,
         textColor:      ed.querySelector("#sb-text-color").value,
@@ -441,7 +314,9 @@
         ctaLabel:       ed.querySelector("#sb-cta-label").value.trim(),
         ctaUrl:         ed.querySelector("#sb-cta-url").value.trim(),
         ctaBg:          ed.querySelector("#sb-cta-bg").value,
-        ctaColor:       ed.querySelector("#sb-cta-color").value
+        ctaColor:       ed.querySelector("#sb-cta-color").value,
+        title:          ed.querySelector("#sb-title").value.trim(),
+        text:           ed.querySelector("#sb-text").value.trim()
       };
 
       var list = getBanners();
@@ -459,14 +334,15 @@
     });
   }
 
-  /* =========================================================================
-     NAVIGASJONSFANE: skjul scrollbanner frå toppmeny
-     ====================================================================== */
-  // Monkey-patch buildShell/nav til å respektere navHidden på moduler
-  // Dette skjer ved å overstyre modNavVisible i core.js sin scope er ikkje mogleg,
-  // men core.js brukar `mod.label` for å avgjere om ein modul kjem i nav.
-  // Vi set label til "" for scrollbanner-modulane ved oppstart.
-  // (label er sett av syncModules, men navHidden er flagget vi brukar)
+  function modeCard(value, title, desc, checked) {
+    return '<label style="display:flex;align-items:flex-start;gap:.5rem;cursor:pointer;padding:.65rem .8rem;' +
+      'border:1.5px solid ' + (checked ? "var(--color-primary)" : "var(--color-border)") + ';border-radius:9px">' +
+      '<input type="radio" name="sb-mode" value="' + esc(value) + '"' + (checked ? " checked" : "") + ' style="margin-top:.15rem">' +
+      '<div><strong style="font-size:.88rem;display:block">' + esc(title) + '</strong>' +
+        '<span style="font-size:.76rem;color:var(--color-muted)">' + esc(desc) + '</span>' +
+      '</div>' +
+    '</label>';
+  }
 
   /* =========================================================================
      OPPSTART
@@ -474,7 +350,6 @@
   injectStyles();
   syncModules();
 
-  /* Admin-inngangspunkt */
   App.registerModule({
     id:        "scrollbanner-admin",
     label:     "",
