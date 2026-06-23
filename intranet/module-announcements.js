@@ -1,18 +1,11 @@
 /* =============================================================================
-   module-announcements.js  —  INTERN AKTUELT (intranett)
+   module-announcements.js  —  AKTUELT (intranett)
    -----------------------------------------------------------------------------
-   Intern meldingsflate for bedriften. Admin oppretter meldinger med tittel,
-   rik tekst, vedlegg og valgfritt "viktig"-flagg.
-
-   Viktige meldinger vises som en ikkje-forstyrrande banner øverst i intranettet
-   til brukaren aktivt lukkar den. Lest-tilstand lagras per userId.
-
-   Lagring:
-   - App.store("wsp-announcements")   ← meldingsliste
-   - App.store("wsp-ann-read")        ← liste av leste id-ar per brukar
-
-   Vedlegg: App.media.putFile() — same mønster som offentleg aktuelt.
-   Ruter:   #/announcements
+   - Bilete og vedlegg på saker
+   - Klikk på sak → popup med fullt innhald (slik som på nettsida)
+   - Admin: legg til / rediger / slett inline
+   - Viktige saker vises som banner øvst
+   Lagring:  App.store("wsp-announcements")
    ========================================================================== */
 (function () {
   "use strict";
@@ -24,65 +17,42 @@
   if (!Intranet || !App || !C) return;
   if (CFG.intranettFeatures && CFG.intranettFeatures.announcements === false) return;
 
-  var STORE_KEY    = "wsp-announcements";
-  var READ_KEY     = "wsp-ann-read";
-  var BANNER_ID    = "wsp-ann-banner";
+  var STORE_KEY = "wsp-announcements";
 
   /* =========================================================================
      LAGRING
      ====================================================================== */
   function getItems()    { return App.store.get(STORE_KEY, []) || []; }
   function setItems(v)   { App.store.set(STORE_KEY, v); }
-  function getRead()     { return App.store.get(READ_KEY, []) || []; }
-  function markRead(id)  {
-    var read = getRead();
-    if (read.indexOf(id) === -1) { read.push(id); App.store.set(READ_KEY, read); }
-  }
 
   function newId() {
     return "wsp-ann-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
   }
 
+  /* =========================================================================
+     HJELPERAR
+     ====================================================================== */
   function formatDate(ts) {
     if (!ts) return "";
-    return new Date(ts).toLocaleDateString("nb-NO", {
-      day: "numeric", month: "long", year: "numeric"
-    });
+    return new Date(ts).toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" });
   }
 
   /* =========================================================================
-     BANNER (viktige meldingar øverst i shell)
+     BANNER (viktig-melding øvst)
      ====================================================================== */
   function renderBanner() {
-    var existing = document.getElementById(BANNER_ID);
-    if (existing) existing.remove();
-
-    var items = getItems();
-    var read  = getRead();
-    var unread = items.filter(function (a) {
-      return a.important && read.indexOf(a.id) === -1;
-    });
-    if (!unread.length) return;
-
-    // Vis éin om gongen — nyaste viktige melding
+    var banner = document.getElementById("wsp-ann-banner");
+    if (!banner) return;
+    var unread = getItems().filter(function (a) { return a.important; });
+    if (!unread.length) { banner.style.display = "none"; return; }
     var ann = unread[0];
-
-    var banner = document.createElement("div");
-    banner.id = BANNER_ID;
-    banner.style.cssText = [
-      "position:sticky", "top:0", "z-index:90",
-      "background:color-mix(in srgb,var(--color-primary) 92%,#000)",
-      "color:#fff", "padding:.65rem 1.2rem",
-      "display:flex", "align-items:center", "gap:.8rem",
-      "font-size:.88rem", "border-bottom:2px solid var(--color-primary)"
-    ].join(";");
-
+    banner.style.display = "";
     banner.innerHTML =
       '<i class="ti ti-speakerphone" style="font-size:1.1rem;flex-shrink:0"></i>' +
       '<strong style="flex-shrink:0">' + C.esc(ann.title) + '</strong>' +
       '<span style="flex:1;opacity:.92">' + (function () {
         var plain = C.stripHtml(ann.body || "");
-        return C.esc(plain.slice(0, 120) + (plain.length > 120 ? '…' : ''));
+        return C.esc(plain.slice(0, 120) + (plain.length > 120 ? "…" : ""));
       })() + '</span>' +
       (unread.length > 1
         ? '<span style="opacity:.7;font-size:.78rem">' + (unread.length - 1) + ' til</span>'
@@ -90,40 +60,14 @@
       '<a href="#/announcements" style="color:#fff;font-weight:700;text-decoration:underline;white-space:nowrap;font-size:.82rem">Les mer</a>' +
       '<button id="wsp-ann-close" style="background:none;border:0;color:#fff;cursor:pointer;font-size:1.2rem;line-height:1;padding:.2rem .3rem;opacity:.8" aria-label="Lukk">&times;</button>';
 
-    // Sett inn etter topbar
-    var topbar = document.querySelector(".i-topbar");
-    if (topbar && topbar.parentNode) {
-      topbar.parentNode.insertBefore(banner, topbar.nextSibling);
-    } else {
-      var body = document.querySelector(".i-body");
-      if (body) body.prepend(banner);
+    var closeBtn = banner.querySelector("#wsp-ann-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function () { banner.style.display = "none"; });
     }
-
-    banner.querySelector("#wsp-ann-close").addEventListener("click", function () {
-      markRead(ann.id);
-      banner.remove();
-      // Vis neste viktige om det finnes
-      renderBanner();
-    });
   }
 
   /* =========================================================================
-     VEDLEGG-HJELPERAR
-     ====================================================================== */
-  function attachmentsHtml(attachments) {
-    if (!attachments || !attachments.length) return "";
-    return '<ul style="list-style:none;padding:0;margin:.8rem 0 0;display:grid;gap:.3rem">' +
-      attachments.map(function (a) {
-        var href = App.media.resolveFile ? App.media.resolveFile(a.ref) : (a.href || "#");
-        return '<li><a href="' + C.esc(href||"#") + '" download="' + C.esc(a.name||"") + '" ' +
-          'style="display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--color-primary)">' +
-          '<i class="ti ti-paperclip"></i>' + C.esc(a.name||"") + '</a></li>';
-      }).join("") +
-    '</ul>';
-  }
-
-  /* =========================================================================
-     RENDER — LISTE
+     RENDER
      ====================================================================== */
   function render() { return '<div id="ann-root"></div>'; }
 
@@ -148,83 +92,154 @@
     root.innerHTML =
       '<div class="i-page-head">' +
         '<h2>Aktuelt <span style="font-size:1rem;font-weight:400;color:var(--color-muted)">(' + items.length + ')</span></h2>' +
-        (admin
-          ? '<button class="btn btn--primary btn--sm" id="ann-new-btn"><i class="ti ti-plus"></i> Ny melding</button>'
-          : '') +
+        (admin ? '<button class="btn btn--primary btn--sm" id="ann-new-btn"><i class="ti ti-plus"></i> Ny sak</button>' : '') +
       '</div>' +
 
       '<div id="ann-editor"></div>' +
 
       (items.length === 0
-        ? '<p style="color:var(--color-muted);font-size:.9rem">Ingen meldinger ennå.</p>'
-        : '<div style="display:grid;gap:.8rem">' +
-            items.map(function (a) {
-              return '<div class="i-card" style="position:relative">' +
-                (a.important
-                  ? '<span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:700;text-transform:uppercase;' +
-                    'letter-spacing:.06em;color:var(--color-primary);margin-bottom:.4rem">' +
-                    '<i class="ti ti-speakerphone"></i> Viktig</span><br>'
-                  : '') +
-                '<strong style="font-size:1rem">' + C.esc(a.title) + '</strong>' +
-                '<div style="font-size:.78rem;color:var(--color-muted);margin:.2rem 0 .7rem">' + formatDate(a.createdAt) + '</div>' +
-                (a.image && App.media.resolveImage(a.image) && App.media.resolveImage(a.image).src
-                  ? '<img src="' + C.esc(App.media.resolveImage(a.image).src) + '" alt="" style="width:100%;border-radius:8px;margin-bottom:.8rem;cursor:pointer;display:block" class="ann-img-preview">'
-                  : '') +
-                (a.body
-                  ? '<div style="font-size:.9rem;line-height:1.6;color:var(--color-text)">' + C.sanitizeRichHtml(a.body) + '</div>'
-                  : '') +
-                (admin
-                  ? '<div style="display:flex;gap:.4rem;margin-top:.8rem;padding-top:.6rem;border-top:1px solid var(--color-border)">' +
-                      '<button class="btn btn--ghost btn--sm" data-ann-edit="' + C.esc(a.id) + '">Rediger</button>' +
-                      '<button class="btn btn--ghost btn--sm" style="color:#c0392b;border-color:#c0392b" data-ann-del="' + C.esc(a.id) + '">Slett</button>' +
-                    '</div>'
-                  : '') +
-              '</div>';
-            }).join("") +
+        ? '<p style="color:var(--color-muted);font-size:.9rem">Ingen saker ennå.</p>'
+        : '<div style="display:grid;gap:1rem">' +
+            items.map(function (a) { return annCard(a, admin); }).join("") +
           '</div>'
       );
 
-    /* Bileteklikk — stor visning */
-    root.querySelectorAll(".ann-img-preview").forEach(function (img) {
-      img.addEventListener("click", function () {
-        var bd = document.createElement("div");
-        bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:1rem";
-        bd.innerHTML = '<img src="' + img.src + '" style="max-width:100%;max-height:90vh;border-radius:8px;object-fit:contain">';
-        document.body.appendChild(bd);
-        bd.addEventListener("click", function () { bd.remove(); });
-        document.addEventListener("keydown", function esc(e) { if (e.key==="Escape") { bd.remove(); document.removeEventListener("keydown",esc); } });
+    /* Klikk på sak → popup */
+    root.querySelectorAll("[data-ann-open]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id   = btn.getAttribute("data-ann-open");
+        var item = getItems().find(function (a) { return a.id === id; });
+        if (item) openReaderModal(item);
       });
     });
 
     if (admin) {
       var newBtn = root.querySelector("#ann-new-btn");
-      if (newBtn) newBtn.addEventListener("click", function () {
-        openEditor(root, null, ctx);
-      });
+      if (newBtn) newBtn.addEventListener("click", function () { openEditor(root, null, ctx); });
 
       root.querySelectorAll("[data-ann-edit]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var id = btn.getAttribute("data-ann-edit");
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var id   = btn.getAttribute("data-ann-edit");
           var item = getItems().find(function (a) { return a.id === id; });
           if (item) openEditor(root, item, ctx);
         });
       });
 
       root.querySelectorAll("[data-ann-del]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var id = btn.getAttribute("data-ann-del");
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var id   = btn.getAttribute("data-ann-del");
           var item = getItems().find(function (a) { return a.id === id; });
           if (!confirm('Slett "' + (item ? item.title : "") + '"?')) return;
           if (item && item.attachments) {
             item.attachments.forEach(function (a) { App.media.freeFile(a.ref); });
           }
           setItems(getItems().filter(function (a) { return a.id !== id; }));
-          Intranet.logActivity({ type: "ann_deleted", label: "Melding slettet" });
+          Intranet.logActivity({ type: "ann_deleted", label: "Sak slettet" });
           renderList(root, ctx);
           renderBanner();
         });
       });
     }
+  }
+
+  function annCard(a, admin) {
+    var img = a.image ? App.media.resolveImage(a.image) : null;
+    var preview = C.stripHtml(a.body || "").slice(0, 160);
+    return '<div class="i-card ann-card" style="cursor:pointer" data-ann-open="' + C.esc(a.id) + '">' +
+      (a.important
+        ? '<span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:700;' +
+          'text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary);margin-bottom:.5rem">' +
+          '<i class="ti ti-speakerphone"></i> Viktig</span><br>'
+        : '') +
+      (img && img.src
+        ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:8px;margin-bottom:.8rem;display:block">'
+        : '') +
+      '<strong style="font-size:1rem;display:block;margin-bottom:.2rem">' + C.esc(a.title) + '</strong>' +
+      '<div style="font-size:.78rem;color:var(--color-muted);margin-bottom:.5rem">' + formatDate(a.createdAt) + '</div>' +
+      (preview
+        ? '<div style="font-size:.88rem;color:var(--color-muted);line-height:1.55;margin-bottom:.5rem">' +
+            C.esc(preview + (C.stripHtml(a.body || "").length > 160 ? "…" : "")) +
+          '</div>'
+        : '') +
+      (a.attachments && a.attachments.length
+        ? '<div style="font-size:.78rem;color:var(--color-muted)"><i class="ti ti-paperclip"></i> ' +
+            a.attachments.length + ' vedlegg</div>'
+        : '') +
+      (admin
+        ? '<div style="display:flex;gap:.4rem;margin-top:.8rem;padding-top:.6rem;border-top:1px solid var(--color-border)">' +
+            '<button class="btn btn--ghost btn--sm" data-ann-edit="' + C.esc(a.id) + '">Rediger</button>' +
+            '<button class="btn btn--ghost btn--sm" style="color:#c0392b;border-color:#c0392b" data-ann-del="' + C.esc(a.id) + '">Slett</button>' +
+          '</div>'
+        : '') +
+    '</div>';
+  }
+
+  /* =========================================================================
+     LESE-POPUP
+     ====================================================================== */
+  function openReaderModal(item) {
+    var existing = document.getElementById("ann-reader-bd");
+    if (existing) existing.remove();
+
+    var img = item.image ? App.media.resolveImage(item.image) : null;
+
+    var bd = document.createElement("div");
+    bd.id  = "ann-reader-bd";
+    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto";
+
+    var modal = document.createElement("div");
+    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(680px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3)";
+
+    var attachHtml = "";
+    if (item.attachments && item.attachments.length) {
+      attachHtml = '<div style="margin-top:1.2rem;padding-top:1rem;border-top:1px solid var(--color-border)">' +
+        '<p style="font-size:.82rem;font-weight:600;color:var(--color-muted);margin:0 0 .5rem">Vedlegg</p>' +
+        '<ul style="list-style:none;padding:0;margin:0;display:grid;gap:.35rem">' +
+          item.attachments.map(function (att) {
+            var url = App.media.resolveFile(att.ref);
+            return '<li><a href="' + C.esc(url) + '" download="' + C.esc(att.name) + '" ' +
+              'style="display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--color-primary)">' +
+              '<i class="ti ti-paperclip"></i>' + C.esc(att.name) + '</a></li>';
+          }).join("") +
+        '</ul>' +
+      '</div>';
+    }
+
+    modal.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
+        '<div>' +
+          (item.important
+            ? '<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary)">' +
+              '<i class="ti ti-speakerphone"></i> Viktig · </span>'
+            : '') +
+          '<strong style="font-size:1rem">' + C.esc(item.title) + '</strong>' +
+          '<span style="font-size:.78rem;color:var(--color-muted);margin-left:.6rem">' + formatDate(item.createdAt) + '</span>' +
+        '</div>' +
+        '<button id="ann-reader-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+      '</div>' +
+      '<div style="padding:1.2rem 1.4rem">' +
+        (img && img.src
+          ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin-bottom:1.1rem;display:block">'
+          : '') +
+        (item.body
+          ? '<div style="font-size:.95rem;line-height:1.75;color:var(--color-text)">' + C.sanitizeRichHtml(item.body) + '</div>'
+          : '') +
+        attachHtml +
+      '</div>';
+
+    bd.appendChild(modal);
+    document.body.appendChild(bd);
+
+    function close() {
+      bd.remove();
+      document.removeEventListener("keydown", escH);
+    }
+    function escH(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", escH);
+    modal.querySelector("#ann-reader-close").addEventListener("click", close);
+    bd.addEventListener("click", function (e) { if (e.target === bd) close(); });
   }
 
   /* =========================================================================
@@ -234,21 +249,27 @@
     var ed = root.querySelector("#ann-editor");
     if (!ed) return;
 
-    // Enkel rik-tekst via contenteditable
+    var imgHtml = App.ui ? App.ui.imageField("ann-image", "Bilete (valgfritt)", item ? item.image : "", 16 / 9) : "";
+    var attHtml = App.ui
+      ? App.ui.attachField("ann-attachments", item ? (item.attachments || []) : [])
+      : "";
+
     ed.innerHTML =
       '<div class="i-card" style="margin-bottom:1rem">' +
-        '<h4 style="margin:0 0 1rem">' + (item ? "Rediger melding" : "Ny melding") + '</h4>' +
+        '<h4 style="margin:0 0 1rem">' + (item ? "Rediger sak" : "Ny sak") + '</h4>' +
         '<div class="i-form" id="ann-form">' +
           '<div class="i-field">' +
             '<label for="ann-title">Tittel *</label>' +
-            '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Meldingstittel" required>' +
+            '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Overskrift på saka" required>' +
           '</div>' +
-          C.richTextField({ id: "ann-body", label: "Innhold", value: item ? (item.body || "") : "" }) +
+          C.richTextField({ id: "ann-body", label: "Innhald", value: item ? (item.body || "") : "" }) +
+          imgHtml +
+          attHtml +
           '<div class="i-field" style="margin-top:.2rem">' +
             '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500">' +
               '<input type="checkbox" id="ann-important"' + (item && item.important ? " checked" : "") + '>' +
               '<i class="ti ti-speakerphone" style="color:var(--color-primary)"></i>' +
-              'Merk som viktig (vises som banner øverst)' +
+              'Merk som viktig (vises som banner øvst)' +
             '</label>' +
           '</div>' +
           '<div style="display:flex;gap:.6rem;margin-top:.4rem">' +
@@ -259,39 +280,40 @@
         '</div>' +
       '</div>';
 
-
     App.ui.bindImageFields(ed);
     App.ui.bindRichTextFields(ed);
-    ed.querySelector("#ann-cancel").addEventListener("click", function () {
-      ed.innerHTML = "";
-    });
+    App.ui.bindAttachField(ed);
+
+    ed.querySelector("#ann-cancel").addEventListener("click", function () { ed.innerHTML = ""; });
 
     ed.querySelector("#ann-save").addEventListener("click", function () {
       var title = ed.querySelector("#ann-title").value.trim();
-      if (!title) {
-        var st = ed.querySelector("#ann-status");
-        st.textContent = "Tittel er påkrevd."; st.className = "form__status is-err";
-        return;
-      }
+      var st    = ed.querySelector("#ann-status");
+      if (!title) { st.textContent = "Tittel er påkrevd."; st.className = "form__status is-err"; return; }
+
       var body        = App.ui.readRichTextField(ed, "ann-body");
       var important   = ed.querySelector("#ann-important").checked;
+      var image       = App.ui.readImageField(ed, "ann-image");
+      var attachments = App.ui.readAttachments(ed, "ann-attachments");
 
-      var image  = App.ui ? App.ui.readImageField(ed, "ann-image") : null;
       var list = getItems();
       if (item) {
         var idx = list.findIndex(function (a) { return a.id === item.id; });
-        list[idx] = Object.assign({}, item, {
-          title: title, body: body, important: important,
-          image: image, updatedAt: Date.now()
-        });
-        Intranet.logActivity({ type: "ann_updated", label: "Melding oppdatert: " + title });
+        if (idx > -1) {
+          list[idx] = Object.assign({}, item, {
+            title: title, body: body, important: important,
+            image: image, attachments: attachments, updatedAt: Date.now()
+          });
+        }
+        Intranet.logActivity({ type: "ann_updated", label: "Sak oppdatert: " + title });
       } else {
         list.unshift({
           id: newId(), title: title, body: body, important: important,
-          image: image, createdAt: Date.now(), updatedAt: Date.now(),
+          image: image, attachments: attachments,
+          createdAt: Date.now(), updatedAt: Date.now(),
           createdBy: Intranet.getContext ? Intranet.getContext().userId : "local"
         });
-        Intranet.logActivity({ type: "ann_created", label: "Ny melding: " + title });
+        Intranet.logActivity({ type: "ann_created", label: "Ny sak: " + title });
       }
       setItems(list);
       ed.innerHTML = "";
@@ -301,24 +323,19 @@
   }
 
   /* =========================================================================
-     REGISTRERING
+     OPPSTART
      ====================================================================== */
-  // Render banner ved oppstart
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
-      setTimeout(renderBanner, 50);
-    });
+    document.addEventListener("DOMContentLoaded", function () { setTimeout(renderBanner, 50); });
   } else {
     setTimeout(renderBanner, 50);
   }
-
-  // Eksponér renderBanner for intranet-core (re-render ved rute-endring)
   window._annRenderBanner = renderBanner;
 
   Intranet.registerModule({
     id:       "announcements",
     navLabel: "Aktuelt",
-    icon:     "news",
+    icon:     "speakerphone",
     order:    15,
     render:   render,
     mount:    mount

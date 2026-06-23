@@ -150,6 +150,12 @@
   function renderList(root) {
     var bookings = getBookings();
     var assets   = getAssets();
+
+    var groups = [
+      { status: "ny",   label: "Nye",  items: [] },
+      { status: "lest", label: "Lest", items: [] },
+      { status: "løst", label: "Løst", items: [] }
+    ];
     bookings.forEach(function (b) {
       var g = groups.find(function (g) { return g.status === (b.status || "ny"); });
       if (g) g.items.push(b);
