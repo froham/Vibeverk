@@ -180,11 +180,19 @@ window.App = (function () {
         text: CFG.about.text, image: CFG.about.imageUrl || ""
       }, overrides.about || {}),
       // ← seedet fra config.contact (+ egendefinerte felter, redigerbart i admin)
-      contact: Object.assign({
-        email: CFG.contact.email, phone: CFG.contact.phone, address: CFG.contact.address,
-        extra: (CFG.contact.extra || []).slice(),
-        social: Object.assign({}, CFG.contact.social || {})
-      }, overrides.contact || {}),
+      contact: (function () {
+        var c = Object.assign({
+          email: CFG.contact.email, phone: CFG.contact.phone, address: CFG.contact.address,
+          extra: (CFG.contact.extra || []).slice(),
+          social: Object.assign({}, CFG.contact.social || {})
+        }, overrides.contact || {});
+        // Ryd alltid opp gammal twitter-nøkkel frå localStorage
+        if (c.social && c.social.twitter) {
+          if (!c.social.x) { c.social.x = c.social.twitter; }
+          delete c.social.twitter;
+        }
+        return c;
+      })(),
       // ← seedet fra config.news.posts første gang, deretter fullt admin-styrt
       news: overrides.news || (CFG.news.posts || []).slice(),
       // ← seedet fra config.services.cards første gang, deretter fullt admin-styrt.
