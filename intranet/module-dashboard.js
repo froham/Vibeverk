@@ -156,10 +156,13 @@
     if (newTaskBtn) newTaskBtn.addEventListener("click", function (e) {
       e.preventDefault();
       Intranet.navigate("tasks");
-      // Trigge ny-oppgave popup via tasks-modulen
       setTimeout(function () {
-        var quickInput = document.querySelector("#tasks-quick-input");
-        if (quickInput) quickInput.focus();
+        if (typeof window._tasksOpenModal === "function") {
+          window._tasksOpenModal();
+        } else {
+          var btn = document.querySelector("#tasks-new-btn");
+          if (btn) btn.click();
+        }
       }, 100);
     });
     var newNoteBtn = root.querySelector("[data-dash-new-note]");
