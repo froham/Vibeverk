@@ -382,7 +382,7 @@
         },
         function onDone(errors) {
           progText.textContent = errors.length
-            ? (errors.length + " feil. Sjekk filstørrelse (maks ' + (App.media.MAX_FILE_MB||4) + ' MB).")
+            ? (errors.length + " feil. Sjekk filstørrelse (maks " + (App.media.MAX_FILE_MB||4) + " MB).")
             : "Ferdig!";
           setTimeout(function () {
             progWrap.style.display = "none";
