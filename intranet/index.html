@@ -196,6 +196,7 @@
       padding: 1.1rem 1.2rem;
     }
     .i-card + .i-card { margin-top: .6rem; }
+    .i-card-grid > .i-card { margin-top: 0; }
 
     .admin-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
     .admin-row {
@@ -211,18 +212,18 @@
     .i-form { display: grid; gap: .9rem; align-items: start; }
     .i-field { display: grid; gap: .3rem; }
     .i-field label { font-size: .85rem; font-weight: 600; }
-    .i-field input, .i-field textarea, .i-field select {
+    .i-field input:not([type="checkbox"]):not([type="radio"]), .i-field textarea, .i-field select {
       width: 100%; font: inherit; font-size: .9rem;
       padding: .6rem .8rem;
       border: 1.5px solid color-mix(in srgb, var(--color-text) 28%, transparent);
       border-radius: 8px; background: var(--color-surface); color: var(--color-text);
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
     }
-    .i-field input:focus, .i-field textarea:focus, .i-field select:focus {
+    .i-field input:not([type="checkbox"]):not([type="radio"]):focus, .i-field textarea:focus, .i-field select:focus {
       outline: none; border-color: var(--color-primary);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
     }
-    [data-theme="dark"] .i-field input,
+    [data-theme="dark"] .i-field input:not([type="checkbox"]):not([type="radio"]),
     [data-theme="dark"] .i-field textarea,
     [data-theme="dark"] .i-field select {
       border-color: rgba(255,255,255,.22);

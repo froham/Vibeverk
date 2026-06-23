@@ -99,7 +99,7 @@
       /* --- Henvendelser: tre separate kort --------------------------------- */
       (hasHenv
         ? '<p class="i-section-label" style="margin-bottom:.6rem">Henvendelser</p>' +
-          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1.4rem">' +
+          '<div class="i-card-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1.4rem">' +
             (feat("contact") ? henvCard("Kontakt",  henv.contact, "#/contact", "mail")          : "") +
             (feat("quote")   ? henvCard("Tilbud",   henv.quote,   "#/quote",   "file-invoice")  : "") +
             (feat("booking") ? henvCard("Booking",  henv.booking, "#/booking", "calendar")      : "") +
@@ -108,7 +108,7 @@
 
       /* --- Oppgåver: statuskort ------------------------------------------- */
       '<p class="i-section-label" style="margin-bottom:.6rem">Oppgåver</p>' +
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1.4rem">' +
+      '<div class="i-card-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1.4rem">' +
         statCard("Å gjøre", taskCounts.todo,        "#/tasks", "ti-checklist") +
         statCard("Pågår",   taskCounts.in_progress, "#/tasks", "ti-loader") +
         statCard("Ferdig",  taskCounts.done,         "#/tasks", "ti-circle-check") +

@@ -80,10 +80,10 @@
     banner.innerHTML =
       '<i class="ti ti-speakerphone" style="font-size:1.1rem;flex-shrink:0"></i>' +
       '<strong style="flex-shrink:0">' + C.esc(ann.title) + '</strong>' +
-      '<span style="flex:1;opacity:.92">' + C.esc(
-        (ann.body || "").replace(/<[^>]+>/g, "").slice(0, 120) +
-        ((ann.body || "").replace(/<[^>]+>/g, "").length > 120 ? "…" : "")
-      ) + '</span>' +
+      '<span style="flex:1;opacity:.92">' + (function () {
+        var plain = C.stripHtml(ann.body || "");
+        return C.esc(plain.slice(0, 120) + (plain.length > 120 ? '…' : ''));
+      })() + '</span>' +
       (unread.length > 1
         ? '<span style="opacity:.7;font-size:.78rem">' + (unread.length - 1) + ' til</span>'
         : '') +
