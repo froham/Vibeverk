@@ -99,30 +99,7 @@
         '</form>' +
       '</div>' +
 
-      /* --- Brukerpreferanser --------------------------------------------- */
-      '<div class="i-card" style="margin-bottom:1rem">' +
-        '<p class="i-section-label">Utseende</p>' +
-        '<div style="display:grid;gap:.9rem">' +
-          '<div class="i-field">' +
-            '<label>Fargemodus</label>' +
-            '<div style="display:flex;gap:.5rem;flex-wrap:wrap" id="pref-theme-btns">' +
-              '<button type="button" class="btn btn--ghost btn--sm pref-theme-btn' + (getPrefs().theme === "light" ? " is-active-pref" : "") + '" data-theme-val="light"><i class="ti ti-sun"></i> Lyst</button>' +
-              '<button type="button" class="btn btn--ghost btn--sm pref-theme-btn' + (getPrefs().theme === "dark" ? " is-active-pref" : "") + '" data-theme-val="dark"><i class="ti ti-moon"></i> Mørkt</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="i-field">' +
-            '<label>Tetthet</label>' +
-            '<div style="display:flex;gap:.5rem;flex-wrap:wrap" id="pref-density-btns">' +
-              ['compact:Kompakt', 'normal:Normal', 'roomy:Romslig'].map(function(d) {
-                var parts = d.split(':');
-                var val = parts[0], lbl = parts[1];
-                var active = getPrefs().density === val ? " is-active-pref" : "";
-                return '<button type="button" class="btn btn--ghost btn--sm pref-density-btn' + active + '" data-density-val="' + val + '">' + lbl + '</button>';
-              }).join('') +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
+      /* Utseende-seksjonen er deaktivert — styrast sentralt av admin */
 
       /* --- Farlig sone ------------------------------------------------------- */
       '<div class="i-card" style="border-color:color-mix(in srgb,#c0392b 35%,transparent)">' +

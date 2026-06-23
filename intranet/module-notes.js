@@ -289,8 +289,8 @@
         notes.map(function (n) {
           var col     = colorById(n.color);
           var preview = bodyPreview(n.body);
-          return '<button class="notes-card" data-note-open="' + C.esc(n.id) + '" ' +
-            'style="background:' + col.bg + ';border-color:' + col.border + '">' +
+          return '<div class="notes-card" data-note-open="' + C.esc(n.id) + '" role="button" tabindex="0" ' +
+            'style="background:' + col.bg + ';border-color:' + col.border + ';cursor:pointer">' +
             (n.category ? '<div class="notes-card__cat">' + C.esc(n.category) + '</div>' : '') +
             '<div class="notes-card__title">' + C.esc(n.title || "Uten tittel") + '</div>' +
             (preview ? '<div class="notes-card__preview">' + C.esc(preview) + '</div>' : '') +
@@ -298,10 +298,10 @@
               '<span class="notes-card__date">' + formatDate(n.updatedAt) + '</span>' +
               '<span>' + tagsHtml(n.tags) + '</span>' +
             '</div>' +
-            '<button class="notes-card__del" data-note-del="' + C.esc(n.id) + '" title="Slett notat" onclick="event.stopPropagation()">' +
+            '<button class="notes-card__del" data-note-del="' + C.esc(n.id) + '" title="Slett notat">' +
               '<i class="ti ti-trash"></i>' +
             '</button>' +
-          '</button>';
+          '</div>';
         }).join("") +
       '</div>';
     }
@@ -310,9 +310,13 @@
   }
 
   function bindGrid(root, grid) {
-    grid.querySelectorAll("[data-note-open]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        openNoteModal(btn.getAttribute("data-note-open"), root);
+    grid.querySelectorAll("[data-note-open]").forEach(function (card) {
+      card.addEventListener("click", function (e) {
+        if (e.target.closest("[data-note-del]")) return; // sletteknapp handtert separat
+        openNoteModal(card.getAttribute("data-note-open"), root);
+      });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); card.click(); }
       });
     });
     grid.querySelectorAll("[data-note-del]").forEach(function (btn) {

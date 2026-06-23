@@ -167,7 +167,7 @@
       ".od-muted{margin:0;color:var(--color-muted);font-size:.9rem}",
       ".od-help{border:1px solid var(--color-border);border-radius:var(--radius);padding:.7rem .85rem;background:rgba(148,163,184,.08);color:var(--color-muted);font-size:.88rem;margin:-.2rem 0 1rem}",
       ".od-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem}",
-      ".od-stat{border:1px solid var(--color-border);border-radius:var(--radius);padding:.75rem;background:var(--color-surface)}",
+      ".od-stat{border:1.5px solid var(--color-border);border-radius:var(--radius);padding:.75rem 1rem;background:var(--color-surface);display:flex;flex-direction:column;gap:.2rem}",
       ".od-stat span{display:block;color:var(--color-muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}",
       ".od-stat strong{font-size:1.35rem}",
       ".od-tabs{display:flex;flex-wrap:wrap;gap:.45rem;border-bottom:1px solid var(--color-border);padding-bottom:.7rem;margin-bottom:1rem}",
@@ -227,7 +227,7 @@
 
     root.innerHTML =
       '<div class="od-head">' +
-        '<div><p class="i-section-label">Intranett</p><h2>Organisasjon & drift</h2><p class="od-muted">Praktisk styringsregister for personer, ansvar, leverandører, systemer og innkjøp.</p></div>' +
+        '<div><p class="i-section-label">Arbeidsområde</p><h2>Organisasjon & drift</h2><p class="od-muted">Praktisk styringsregister for personer, ansvar, leverandører, systemer og innkjøp.</p></div>' +
       '</div>' +
       stats(data) +
       tabs(tab) +
@@ -275,7 +275,7 @@
         '<button data-od-view="cards" class="' + (view === "cards" ? "is-active" : "") + '">Kort</button>' +
         '<button data-od-view="list" class="' + (view === "list" ? "is-active" : "") + '">Liste</button>' +
       '</div>' +
-      '<button class="btn btn--primary btn--sm" data-od-new>Ny</button>' +
+      '<button data-od-new class="od-view-toggle-btn od-new-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Ny</button>' +
     '</div>';
   }
 

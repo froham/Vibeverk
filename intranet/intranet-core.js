@@ -134,13 +134,13 @@ window.Intranet = (function () {
     var ctx = getContext();
     var tenantName = App.store.get("wsp-settings", {}).tenantName
                      || CFG.company && CFG.company.name
-                     || "Intranett";
+                     || "Arbeidsområde";
 
     root.innerHTML =
       '<aside class="i-sidebar" id="intranet-sidebar">' +
         '<div class="i-sidebar__brand">' +
           '<span class="i-sidebar__name">' + C.esc(tenantName) + '</span>' +
-          '<span class="i-sidebar__label">Business OS</span>' +
+          '<span class="i-sidebar__label">Workspace</span>' +
         '</div>' +
         '<nav class="i-nav" id="intranet-nav"></nav>' +
         '<div class="i-sidebar__footer">' +
@@ -157,7 +157,7 @@ window.Intranet = (function () {
           '<button class="i-hamburger" id="intranet-hamburger" aria-label="Meny">' +
             '<i class="ti ti-menu-2"></i>' +
           '</button>' +
-          '<span class="i-topbar__title" id="intranet-topbar-title">Intranett</span>' +
+          '<span class="i-topbar__title" id="intranet-topbar-title">Arbeidsområde</span>' +
         '</div>' +
         '<main class="i-main" id="intranet-main"></main>' +
       '</div>';
@@ -339,7 +339,7 @@ window.Intranet = (function () {
     var brand = document.querySelector(".i-sidebar__name");
     if (brand) {
       var name = App.store.get("wsp-settings", {}).tenantName
-                 || (CFG.company && CFG.company.name) || "Intranett";
+                 || (CFG.company && CFG.company.name) || "Arbeidsområde";
       brand.textContent = name;
     }
   }
@@ -366,9 +366,9 @@ window.Intranet = (function () {
         '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2rem;width:min(380px,100%);box-shadow:0 8px 32px rgba(0,0,0,.1)">' +
           '<div style="margin-bottom:1.6rem">' +
             '<div style="font-family:var(--font-display);font-weight:700;font-size:1.15rem;margin-bottom:.2rem">' +
-              C.esc((CFG.company && CFG.company.name) || "Intranett") +
+              C.esc((CFG.company && CFG.company.name) || "Arbeidsområde") +
             '</div>' +
-            '<div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--color-muted)">Business OS</div>' +
+            '<div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--color-muted)">Workspace</div>' +
           '</div>' +
           '<div style="display:grid;gap:.8rem" id="login-form">' +
             '<div style="display:grid;gap:.3rem">' +
