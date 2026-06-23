@@ -114,18 +114,19 @@
     var bookings = getBookings();
     var assets   = getAssets();
 
-    // Grupper etter status
     var groups = [
-      { status: "ny",   label: "Nye",    items: [] },
-      { status: "lest", label: "Lest",   items: [] },
-      { status: "løst", label: "Løst",   items: [] }
+      { status: "ny",   label: "Nye",  items: [] },
+      { status: "lest", label: "Lest", items: [] },
+      { status: "løst", label: "Løst", items: [] }
     ];
     bookings.forEach(function (b) {
       var g = groups.find(function (g) { return g.status === (b.status || "ny"); });
       if (g) g.items.push(b);
     });
 
-    var activeGroups = groups.filter(function (g) { return g.status !== "løst" || g.items.length; });
+    var activeGroups = groups.filter(function (g) {
+      return g.status !== "løst" || g.items.length;
+    });
 
     root.innerHTML =
       '<div class="i-page-head">' +
@@ -138,21 +139,33 @@
             return '<div style="margin-bottom:1.2rem">' +
               '<p class="i-section-label">' + C.esc(g.label) + ' (' + g.items.length + ')</p>' +
               '<ul class="admin-list">' + g.items.map(function (b) {
-                var asset = assets.find(function (a) { return a.id === b.assetId; });
+                var asset   = assets.find(function (a) { return a.id === b.assetId; });
+                var dateStr = b.date
+                  ? new Date(b.date + "T00:00:00").toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" })
+                  : "";
+                var preview = [
+                  asset ? asset.name : "",
+                  dateStr,
+                  b.time || "",
+                  b.message ? b.message.slice(0, 80) : ""
+                ].filter(Boolean).join(" · ");
+
                 return '<li class="admin-row" data-bk-open="' + C.esc(b.id) + '" style="cursor:pointer">' +
                   '<div class="admin-row__main">' +
-                    '<strong>' + C.esc(b.name || "(ukjent)") + '</strong>' +
-                    '<span class="admin-row__meta">' +
-                      C.esc(b.email || "") +
-                      (asset ? ' · ' + C.esc(asset.name) : "") +
-                      (b.date ? ' · ' + C.esc(b.date) : "") +
-                    '</span>' +
-                    (b.message ? '<span class="admin-row__meta">' + C.esc(b.message.slice(0, 80)) + (b.message.length > 80 ? "…" : "") + '</span>' : "") +
+                    '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">' +
+                      '<strong>' + C.esc(b.name || "(ukjent)") + '</strong>' +
+                      (b.email ? '<a href="mailto:' + C.esc(b.email) + '" style="color:var(--color-primary);font-size:.88rem">' + C.esc(b.email) + '</a>' : '') +
+                      statusBadge(b.status || "ny") +
+                      (b.referenceNumber ? '<span style="font-size:.75rem;color:var(--color-muted)">#' + C.esc(String(b.referenceNumber)) + '</span>' : '') +
+                    '</div>' +
+                    (preview ? '<span class="admin-row__meta">' + C.esc(preview) + '</span>' : '') +
                     '<span class="admin-row__meta">' + formatDate(b.createdAt) + '</span>' +
                   '</div>' +
                   '<div class="admin-row__actions" style="flex-direction:column;align-items:flex-end;gap:.3rem">' +
-                    statusBadge(b.status || "ny") +
-                    '<select class="i-field select" data-bk-status="' + C.esc(b.id) + '" style="font-size:.8rem;padding:.3rem .5rem;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg)">' +
+                    (b.email
+                      ? '<button class="btn btn--primary btn--sm" data-bk-reply="' + C.esc(b.id) + '"><i class="ti ti-mail-forward"></i> Svar</button>'
+                      : '') +
+                    '<select data-bk-status="' + C.esc(b.id) + '" style="font-size:.8rem;padding:.3rem .5rem;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg)">' +
                       STATUS_ORDER.map(function (s) {
                         return '<option value="' + C.esc(s) + '"' + ((b.status || "ny") === s ? " selected" : "") + '>' + C.esc(STATUS_LABELS[s] || s) + '</option>';
                       }).join("") +
@@ -164,36 +177,61 @@
           }).join("")
       );
 
-    // Klikk på rad — opne popup
+    /* Klikk på rad — opne popup */
     root.querySelectorAll("[data-bk-open]").forEach(function (row) {
       row.addEventListener("click", function (e) {
         if (e.target.closest("button,select,a")) return;
-        var id     = row.getAttribute("data-bk-open");
-        var assets = getAssets();
-        var bk     = getBookings().find(function (b) { return b.id === id; });
+        var id = row.getAttribute("data-bk-open");
+        var bk = getBookings().find(function (b) { return b.id === id; });
         if (!bk) return;
-        var asset  = assets.find(function (a) { return a.id === bk.assetId; });
-        var lead   = {
-          name: bk.name, email: bk.email, phone: bk.phone,
-          status: bk.status, time: bk.createdAt,
-          referenceNumber: bk.referenceNumber,
-          message: (asset ? "Ressurs: " + asset.name + "\n" : "") + (bk.date ? "Dato: " + bk.date + "\n" : "") + (bk.message || "")
-        };
-        openLeadDetail(lead, "Booking", function (newStatus) {
-          updateStatus(id, newStatus);
-          renderList(root);
-        });
+        var asset = getAssets().find(function (a) { return a.id === bk.assetId; });
+        openLeadDetail(
+          Object.assign({}, bk, {
+            message: [
+              asset ? ("Ressurs: " + asset.name) : "",
+              bk.date ? ("Dato: " + bk.date) : "",
+              bk.time ? ("Tid: " + bk.time) : "",
+              bk.message || ""
+            ].filter(Boolean).join("\n")
+          }),
+          "Booking",
+          function (newStatus) { setStatus(id, newStatus); renderList(root); }
+        );
       });
     });
 
-    // Statusendring
+    /* Svar-knapp */
+    root.querySelectorAll("[data-bk-reply]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-bk-reply");
+        var bk = getBookings().find(function (b) { return b.id === id; });
+        if (!bk) return;
+        setStatus(id, "løst");
+        if (App.openReplyModal) {
+          var asset = getAssets().find(function (a) { return a.id === bk.assetId; });
+          App.openReplyModal({
+            name: bk.name, email: bk.email,
+            subject: "Re: Bookingforespørsel fra " + (bk.name || ""),
+            templateKey: "booking",
+            defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+            vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" }
+          });
+        } else {
+          window.location.href = "mailto:" + bk.email;
+        }
+        renderList(root);
+      });
+    });
+
+    /* Status-nedtrekk */
     root.querySelectorAll("[data-bk-status]").forEach(function (sel) {
       sel.addEventListener("change", function () {
-        updateStatus(sel.getAttribute("data-bk-status"), sel.value);
+        setStatus(sel.getAttribute("data-bk-status"), sel.value);
         renderList(root);
       });
     });
   }
+
 
   /* =========================================================================
      REGISTRERING

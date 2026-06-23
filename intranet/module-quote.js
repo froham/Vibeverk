@@ -123,7 +123,9 @@
       if (g) g.items.push(q);
     });
 
-    var activeGroups = groups.filter(function (g) { return g.status !== "løst" || g.items.length; });
+    var activeGroups = groups.filter(function (g) {
+      return g.status !== "løst" || g.items.length;
+    });
 
     root.innerHTML =
       '<div class="i-page-head">' +
@@ -136,26 +138,32 @@
             return '<div style="margin-bottom:1.2rem">' +
               '<p class="i-section-label">' + C.esc(g.label) + ' (' + g.items.length + ')</p>' +
               '<ul class="admin-list">' + g.items.map(function (q) {
-                var preview = (q.message || "").split("\n")
-                  .filter(function (ln) { return ln.trim() && ln.indexOf("===") === -1 && ln !== "Tilbudsforespørsel"; })
+                // Bygg forhåndsvisning frå meldinga (strip "Tilbudsforesp..."-prefix og hent jobbeskrivelse)
+                var raw = (q.message || "").replace(/^Tilbudsforesp[^\n]*\n?/i, "");
+                var preview = raw.replace(/<[^>]+>/g, "")
+                  .split("\n").filter(function (ln) { return ln.trim(); })
                   .slice(0, 2).join(" · ").slice(0, 120);
+
                 return '<li class="admin-row" data-quote-open="' + C.esc(q.id) + '" style="cursor:pointer">' +
                   '<div class="admin-row__main">' +
-                    '<strong>' + C.esc(q.name || "(ukjent)") + '</strong>' +
-                    '<span class="admin-row__meta">' +
-                      '<a href="mailto:' + C.esc(q.email) + '" style="color:var(--color-primary)">' + C.esc(q.email) + '</a>' +
-                    '</span>' +
-                    (preview ? '<span class="admin-row__meta">' + C.esc(preview) + (preview.length >= 120 ? "…" : "") + '</span>' : "") +
-                    '<span class="admin-row__meta">' + formatDate(q.time) + '</span>' +
+                    '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">' +
+                      '<strong>' + C.esc(q.name || "(ukjent)") + '</strong>' +
+                      (q.email ? '<a href="mailto:' + C.esc(q.email) + '" style="color:var(--color-primary);font-size:.88rem">' + C.esc(q.email) + '</a>' : '') +
+                      statusBadge(q.status || "ny") +
+                      (q.referenceNumber ? '<span style="font-size:.75rem;color:var(--color-muted)">#' + C.esc(String(q.referenceNumber)) + '</span>' : '') +
+                    '</div>' +
+                    (preview ? '<span class="admin-row__meta">' + C.esc(preview) + (preview.length >= 120 ? "…" : "") + '</span>' : '') +
+                    '<span class="admin-row__meta">' + formatDate(q.time || q.createdAt) + '</span>' +
                   '</div>' +
                   '<div class="admin-row__actions" style="flex-direction:column;align-items:flex-end;gap:.3rem">' +
-                    statusBadge(q.status || "ny") +
-                    '<select data-qt-status="' + C.esc(q.id) + '" style="font-size:.8rem;padding:.3rem .5rem;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg)">' +
+                    (q.email
+                      ? '<button class="btn btn--primary btn--sm" data-quote-reply="' + C.esc(q.id) + '"><i class="ti ti-mail-forward"></i> Svar</button>'
+                      : '') +
+                    '<select data-quote-status="' + C.esc(q.id) + '" style="font-size:.8rem;padding:.3rem .5rem;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg)">' +
                       STATUS_ORDER.map(function (s) {
                         return '<option value="' + C.esc(s) + '"' + ((q.status || "ny") === s ? " selected" : "") + '>' + C.esc(STATUS_LABELS[s] || s) + '</option>';
                       }).join("") +
                     '</select>' +
-                    '<a href="mailto:' + C.esc(q.email) + '" class="btn btn--ghost btn--sm"><i class="ti ti-mail"></i> Svar</a>' +
                   '</div>' +
                 '</li>';
               }).join("") + '</ul>' +
@@ -163,27 +171,50 @@
           }).join("")
       );
 
-    // Klikk på rad — opne popup
+    /* Klikk på rad — opne popup */
     root.querySelectorAll("[data-quote-open]").forEach(function (row) {
       row.addEventListener("click", function (e) {
         if (e.target.closest("button,select,a")) return;
-        var id   = row.getAttribute("data-quote-open");
-        var lead = (App.getLeads ? App.getLeads() : []).find(function (l) { return l.id === id; });
-        if (lead) openLeadDetail(lead, "Tilbud", function (newStatus) {
+        var id    = row.getAttribute("data-quote-open");
+        var quote = getQuotes().find(function (q) { return q.id === id; });
+        if (quote) openLeadDetail(quote, "Tilbud", function (newStatus) {
           setLeadStatus(id, newStatus);
           renderList(root);
         });
       });
     });
 
-    // Statusendring
-    root.querySelectorAll("[data-qt-status]").forEach(function (sel) {
+    /* Svar-knapp */
+    root.querySelectorAll("[data-quote-reply]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id    = btn.getAttribute("data-quote-reply");
+        var quote = getQuotes().find(function (q) { return q.id === id; });
+        if (!quote) return;
+        setLeadStatus(id, "løst");
+        if (App.openReplyModal) {
+          App.openReplyModal({
+            name: quote.name, email: quote.email,
+            subject: "Re: Tilbudsforespørsel fra " + (quote.name || ""),
+            templateKey: "tilbud",
+            defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+            vars: { navn: quote.name || "", epost: quote.email || "", dato: formatDate(quote.time), referanse: quote.referenceNumber || "" }
+          });
+        } else {
+          window.location.href = "mailto:" + quote.email;
+        }
+        renderList(root);
+      });
+    });
+
+    /* Status-nedtrekk */
+    root.querySelectorAll("[data-quote-status]").forEach(function (sel) {
       sel.addEventListener("change", function () {
-        setLeadStatus(sel.getAttribute("data-qt-status"), sel.value);
+        setLeadStatus(sel.getAttribute("data-quote-status"), sel.value);
         renderList(root);
       });
     });
   }
+
 
   /* =========================================================================
      REGISTRERING
