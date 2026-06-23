@@ -344,10 +344,7 @@
      ADMIN  – viser innsendte tilbudsforespørsler direkte i fanen
      ====================================================================== */
   function renderAdminInfo(body) {
-    var intraLink = (CFG.intranettFeatures && CFG.intranettFeatures.quote !== false)
-      ? '<a href="../intranet/#/quote" target="_blank" class="btn btn--ghost" style="font-size:.82rem;padding:.4rem .8rem;margin-bottom:.8rem;display:inline-flex"><i class="ti ti-external-link"></i> Åpne i intranett</a>'
-      : "";
-    if (intraLink) { var lw = document.createElement("div"); lw.innerHTML = intraLink; body.insertBefore(lw, body.firstChild); }
+    // intraLink fjerna — bruk «Åpne i arbeidsområde» i admin-menyen under Kontakt
     var allLeads = App.getLeads ? App.getLeads() : [];
     var allQuotes = allLeads.filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
     var active = App.getActiveStatuses("tilbud");

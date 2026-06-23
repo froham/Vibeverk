@@ -1982,8 +1982,13 @@ window.App = (function () {
         </li>`;
     }).join("") : '<li class="prose prose--muted" style="padding:.5rem 0">Ingen henvendingar med valgt status.</li>';
 
+    const hasWorkspace = CFG.intranettFeatures && Object.keys(CFG.intranettFeatures).length > 0;
+    const workspaceLink = hasWorkspace
+      ? '<a href="../intranet/#/" target="_blank" class="btn btn--ghost" style="font-size:.82rem;padding:.4rem .8rem;margin-bottom:.8rem;display:inline-flex;gap:.4rem"><i class="ti ti-external-link"></i> Åpne i arbeidsområde</a>'
+      : '';
+
     body.innerHTML =
-      `${emailTemplateCard("kontakt", "E-postmal for svar", DEFAULT_REPLY_TEMPLATE)}
+      `${workspaceLink}${emailTemplateCard("kontakt", "E-postmal for svar", DEFAULT_REPLY_TEMPLATE)}
        <div style="margin-bottom:1rem">${C.button({ label: "Eksporter henvendelser (CSV)", icon: "table-export", variant: "ghost", attrs: 'data-export-leads' })}</div>
        ${statusFilterBar("kontakt", counts)}
        <ul class="admin-list">${rows}</ul>

@@ -213,10 +213,10 @@
 
     return '' +
       '<article class="bk-asset" data-asset="' + esc(a.id) + '">' +
-        (img.src ? C.coverImg(img, "bk-asset__img") : '') +
         '<div class="bk-asset__body">' +
           '<h3 class="bk-asset__title">' + esc(a.name) + '</h3>' +
           (a.description ? '<p class="bk-asset__desc">' + esc(a.description) + '</p>' : '') +
+          (img.src ? '<img src="' + esc(img.src) + '" alt="" class="bk-asset__img bk-asset__img--inline">' : '') +
           picker +
           '<div class="bk-confirm" data-confirm></div>' +
           '<button type="button" class="btn btn--ghost bk-request" data-book="' + esc(a.id) + '">Forespør annet tidspunkt</button>' +
@@ -396,11 +396,8 @@
   function renderAdmin(root) {
     if (!root) return;
     var assets = getAssets();
-    var intraLink = (CFG.intranettFeatures && CFG.intranettFeatures.booking !== false)
-      ? '<a href="../intranet/#/booking" target="_blank" class="btn btn--ghost" style="font-size:.82rem;padding:.4rem .8rem;margin-bottom:.8rem;display:inline-flex"><i class="ti ti-external-link"></i> Åpne i intranett</a>'
-      : "";
     var activeFane = root.getAttribute("data-bk-fane") || "bookinger";
-    root.innerHTML = (intraLink ? intraLink : '') +
+    root.innerHTML =
       '<div class="bk-adm">' +
         '<div style="display:flex;gap:.4rem;margin-bottom:1rem;border-bottom:1px solid var(--color-border);padding-bottom:.75rem">' +
           ['bookinger','ressursar','malar'].map(function(f){
@@ -590,28 +587,67 @@
 
     // --- Faste stengninger: gjentakende vekedager + tidsrom (lunsj, halv dag …) ---
     var recurringBlocks = (a && a.recurringBlocks ? a.recurringBlocks.slice() : []);
+    var editingRecIdx = -1; // -1 = legg til ny, >=0 = rediger eksisterande
+
     function renderRecList() {
       var list = ed.querySelector("[data-rec-list]");
       list.innerHTML = recurringBlocks.length ? recurringBlocks.map(function (r, i) {
         var lbl = (r.label ? esc(r.label) + " — " : "") + esc(weekdaysLabel(r.weekdays)) + " kl. " + esc(r.from) + "–" + esc(r.to);
-        return '<li class="bk-blockitem">' + lbl + '<button type="button" class="bk-blockx" data-rec-del="'+i+'" aria-label="Fjern">×</button></li>';
+        return '<li class="bk-blockitem">' + lbl +
+          '<button type="button" class="bk-blockx" data-rec-edit="'+i+'" title="Rediger" aria-label="Rediger" style="margin-right:.2rem;font-size:.85rem">✎</button>' +
+          '<button type="button" class="bk-blockx" data-rec-del="'+i+'" aria-label="Fjern">×</button>' +
+        '</li>';
       }).join("") : '<li class="prose prose--muted" style="padding:.2rem 0">Ingen faste stengninger.</li>';
+
       list.querySelectorAll("[data-rec-del]").forEach(function (b) {
         b.addEventListener("click", function () {
-          recurringBlocks.splice(parseInt(b.getAttribute("data-rec-del"), 10), 1);
+          var idx = parseInt(b.getAttribute("data-rec-del"), 10);
+          recurringBlocks.splice(idx, 1);
+          if (editingRecIdx === idx) { editingRecIdx = -1; resetRecForm(); }
+          renderRecList();
+        });
+      });
+
+      list.querySelectorAll("[data-rec-edit]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var idx = parseInt(b.getAttribute("data-rec-edit"), 10);
+          var r = recurringBlocks[idx];
+          editingRecIdx = idx;
+          // Fyll feltene med eksisterande verdiar
+          ed.querySelectorAll(".bk-rec-wd").forEach(function (c) {
+            c.checked = (r.weekdays || []).indexOf(parseInt(c.value, 10)) > -1;
+          });
+          ed.querySelector("[data-rec-from]").value  = r.from  || "";
+          ed.querySelector("[data-rec-to]").value    = r.to    || "";
+          ed.querySelector("[data-rec-label]").value = r.label || "";
+          ed.querySelector("[data-rec-add]").textContent = "Lagre endring";
           renderRecList();
         });
       });
     }
+
+    function resetRecForm() {
+      ed.querySelectorAll(".bk-rec-wd").forEach(function (c) { c.checked = false; });
+      ed.querySelector("[data-rec-from]").value  = "12:00";
+      ed.querySelector("[data-rec-to]").value    = "13:00";
+      ed.querySelector("[data-rec-label]").value = "";
+      ed.querySelector("[data-rec-add]").textContent = "Legg til";
+    }
+
     renderRecList();
     ed.querySelector("[data-rec-add]").addEventListener("click", function () {
-      var wds = Array.prototype.slice.call(ed.querySelectorAll(".bk-rec-wd:checked")).map(function (c) { return parseInt(c.value, 10); });
+      var wds  = Array.prototype.slice.call(ed.querySelectorAll(".bk-rec-wd:checked")).map(function (c) { return parseInt(c.value, 10); });
       var from = ed.querySelector("[data-rec-from]").value;
       var to   = ed.querySelector("[data-rec-to]").value;
       if (!wds.length || !from || !to || from >= to) return;
-      recurringBlocks.push({ weekdays: wds, from: from, to: to, label: ed.querySelector("[data-rec-label]").value.trim() });
-      ed.querySelectorAll(".bk-rec-wd").forEach(function (c) { c.checked = false; });
-      ed.querySelector("[data-rec-label]").value = "";
+      var entry = { weekdays: wds, from: from, to: to, label: ed.querySelector("[data-rec-label]").value.trim() };
+      if (editingRecIdx >= 0) {
+        recurringBlocks[editingRecIdx] = entry;
+        editingRecIdx = -1;
+      } else {
+        recurringBlocks.push(entry);
+      }
+      resetRecForm();
       renderRecList();
     });
 
@@ -820,7 +856,7 @@
       ".bk-cal__month{font-weight:700;font-size:.95rem;text-transform:capitalize}",
       ".bk-cal__grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}",
       ".bk-cal__header{text-align:center;font-size:.72rem;font-weight:700;color:var(--color-muted);padding:.25rem 0;text-transform:uppercase}",
-      ".bk-cal__cell{border-radius:8px;padding:.3rem .2rem;text-align:center;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:background .12s,border-color .12s;border:1.5px solid transparent}",
+      ".bk-cal__cell{border-radius:8px;padding:.4rem .2rem;text-align:center;min-height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:background .12s,border-color .12s;border:1.5px solid transparent}",
       ".bk-cal__cell--empty{pointer-events:none}",
       ".bk-cal__cell--disabled{color:var(--color-muted);opacity:.45;cursor:not-allowed}",
       ".bk-cal__cell--available{cursor:pointer;border-color:var(--color-border);background:var(--color-surface)}",
@@ -842,6 +878,7 @@
       ".bk-assets{display:grid;gap:1.6rem;margin-top:.5rem}",
       ".bk-asset{border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;background:var(--color-surface)}",
       ".bk-asset__img{width:100%;aspect-ratio:21/9;object-fit:cover;display:block}",
+      ".bk-asset__img--inline{border-radius:10px;margin-bottom:1.1rem;max-height:260px}",
       ".bk-asset__body{padding:1.2rem 1.4rem 1.4rem}",
       ".bk-asset__title{font-size:1.3rem;margin:.1rem 0 .3rem}",
       ".bk-asset__desc{color:var(--color-muted);margin:0 0 1rem}",
