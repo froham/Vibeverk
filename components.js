@@ -514,7 +514,7 @@ window.Components = (function () {
     { key: "linkedin",  label: "LinkedIn",  icon: "brand-linkedin" },
     { key: "tiktok",    label: "TikTok",    icon: "brand-tiktok" },
     { key: "youtube",   label: "YouTube",   icon: "brand-youtube" },
-    { key: "x",         label: "X.com",     icon: "brand-x" }
+    { key: "x",         label: "",         icon: "brand-x" }
   ];
 
   // Kontakt (skjema + info)
