@@ -514,7 +514,7 @@ window.Components = (function () {
     { key: "linkedin",  label: "LinkedIn",  icon: "brand-linkedin" },
     { key: "tiktok",    label: "TikTok",    icon: "brand-tiktok" },
     { key: "youtube",   label: "YouTube",   icon: "brand-youtube" },
-    { key: "x",         label: "",         icon: "brand-x" }
+    { key: "x",         label: "X",         icon: "brand-x" }
   ];
 
   // Kontakt (skjema + info)
@@ -525,7 +525,7 @@ window.Components = (function () {
     delete socialData.twitter;
     const social = SOCIAL_PLATFORMS
       .filter(function (p) { return socialData[p.key]; })
-      .map(function (p) { return `<a href="${esc(socialData[p.key])}" target="_blank" rel="noopener">${icon(p.icon)} ${esc(p.label)}</a>`; });
+      .map(function (p) { return `<a href="${esc(socialData[p.key])}" target="_blank" rel="noopener" title="${esc(p.label)}" aria-label="${esc(p.label)}" class="contact__social-link">${icon(p.icon)}</a>`; });
     // Egendefinerte felter (overskrift + innhold), f.eks. fakturainfo, styremedlemmer
     const extra = (info.extra || []).map(function (f) {
       if (!f || (!f.label && !f.value)) return "";

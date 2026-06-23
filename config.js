@@ -141,7 +141,7 @@ window.SITE_CONFIG = {
 
     // Valgfritt andre passord med begrenset adgang (kun Kontakt/Tilbud/Booking/Kunder).
     // Tomt = ingen ansatt-tilgang. Settes via super-admin.
-    employeePassword: "",
+    employeePassword: "gjest",                 // ← TESTFASE: gjestepassord. Tomt = ingen ansatt-tilgang. Settes via super-admin.
 
     // Hvordan man åpner panelet:
     //   1) Trippelklikk på footeren, eller

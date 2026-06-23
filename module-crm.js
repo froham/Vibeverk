@@ -160,12 +160,7 @@
 
     var customers = getCustomers();
 
-    var intraLink = (CFG.intranettFeatures && CFG.intranettFeatures.crm !== false)
-      ? '<a href="../intranet/#/crm" target="_blank" class="btn btn--ghost" style="font-size:.82rem;padding:.4rem .8rem"><i class="ti ti-external-link"></i> Åpne i intranett</a>'
-      : "";
-
     root.innerHTML =
-      (intraLink ? '<div style="margin-bottom:.8rem">' + intraLink + '</div>' : '') +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.8rem;flex-wrap:wrap">' +
         '<h4 style="margin:0">Kunder (' + customers.length + ')</h4>' +
         '<div style="display:flex;gap:.5rem">' +

@@ -849,7 +849,7 @@
     var s = document.createElement("style");
     s.id  = "bk-cal-styles";
     s.textContent = [
-      ".bk-cal{width:100%;max-width:420px;margin:1rem 0}",
+      ".bk-cal{width:100%;margin:1rem 0}",
       ".bk-cal__nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}",
       ".bk-cal__nav-btn{background:none;border:1.5px solid var(--color-border);border-radius:8px;width:2rem;height:2rem;cursor:pointer;font-size:1.1rem;color:var(--color-text);display:flex;align-items:center;justify-content:center;transition:background .15s}",
       ".bk-cal__nav-btn:hover{background:var(--color-tint);border-color:var(--color-primary)}",

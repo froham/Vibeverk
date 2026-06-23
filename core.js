@@ -826,10 +826,18 @@ window.App = (function () {
       label: "Adminpanel",
       wide: true,
       body: catBarHtml +
-            C.tabbar(tabsInCat, activeTab) +
-            (activeCategory === "henvendelser" && CFG.intranettFeatures && Object.keys(CFG.intranettFeatures).length > 0
-              ? '<div style="padding:.4rem 0 .8rem"><a href="../intranet/#/" target="_blank" class="btn btn--ghost" style="font-size:.82rem;padding:.4rem .8rem;display:inline-flex;gap:.4rem"><i class="ti ti-external-link"></i> Åpne i arbeidsområde</a></div>'
-              : '') +
+            (function () {
+              var hasWs = activeCategory === "henvendelser" && CFG.intranettFeatures && Object.keys(CFG.intranettFeatures).length > 0;
+              if (!hasWs) return C.tabbar(tabsInCat, activeTab);
+              // Tab-rad med «Åpne i arbeidsområde» som siste element, høgrejustert
+              return '<div class="tabs" role="tablist" style="display:flex;align-items:center">' +
+                tabsInCat.map(function (t) {
+                  var active = t.id === activeTab ? "is-active" : "";
+                  return '<button class="tab ' + active + '" role="tab" data-tab="' + C.esc(t.id) + '">' + C.esc(t.label) + '</button>';
+                }).join("") +
+                '<a href="../intranet/#/" target="_blank" class="btn btn--ghost btn--sm" style="margin-left:auto;font-size:.8rem;padding:.35rem .7rem;display:inline-flex;gap:.35rem;align-items:center;white-space:nowrap"><i class="ti ti-external-link"></i> Åpne i arbeidsområde</a>' +
+              '</div>';
+            })() +
             `<div class="admin-tabbody" data-tabbody></div>
              <div class="admin-foot">
                ${role === "owner" ? '<span class="admin-vibeverk" data-vibeverk-click>Levert av Vibeverk</span>' : '<span class="admin-vibeverk">Levert av Vibeverk</span>'}
@@ -1562,7 +1570,7 @@ window.App = (function () {
     const settings = getNavSettings();
 
     function renderNavTable() {
-      const mods = getNavOrderedMods();
+      const mods = getNavOrderedMods().filter(function (m) { return !m.navHidden; });
       const currentSettings = getNavSettings();
       const rows = mods.filter(function (m) { return m.label; }).map(function (m, i, arr) {
         const s = currentSettings[m.id] || {};
@@ -3160,7 +3168,16 @@ window.App = (function () {
       bindImageFields: bindImageFields,
       readImageField:  readImageField,
       attachField:     function (id, existing) {   // vedleggsfelt-HTML
-        return C.attachField({ id: id, value: JSON.stringify(existing || []) });
+        return '<div class="field attach-field" data-attach>' +
+          '<label>Vedlegg (valgfritt)</label>' +
+          '<ul class="attach-list" data-attach-list></ul>' +
+          '<label class="btn btn--ghost attach-add">' +
+            C.icon("upload") + ' Last opp vedlegg' +
+            '<input type="file" multiple hidden data-attach-file>' +
+          '</label>' +
+          '<p class="imgfield__hint">Maks ' + Media.MAX_FILE_MB + ' MB per fil i demo (lagres lokalt).</p>' +
+          '<input type="hidden" id="' + C.esc(id) + '" value="' + C.esc(JSON.stringify(existing || [])) + '">' +
+        '</div>';
       },
       bindAttachField:  bindAttachField,            // kobler opp vedleggsfelt
       readAttachments:  readAttachments,            // (scope, id) → []

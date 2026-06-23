@@ -283,8 +283,9 @@
     .contact__list { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: .8rem; }
     .contact__list li { display: flex; align-items: center; gap: .7rem; color: var(--color-text); }
     .contact__list .ti { color: var(--color-primary); font-size: 1.2rem; }
-    .contact__social { display: flex; gap: 1rem; margin-top: 1.2rem; }
-    .contact__social a { display: inline-flex; align-items: center; gap: .4rem; color: var(--color-muted); font-size: .92rem; }
+    .contact__social { display: grid; grid-template-columns: repeat(3, auto); gap: 1rem 1.4rem; margin-top: 1.2rem; justify-content: start; }
+    .contact__social a { display: inline-flex; align-items: center; justify-content: center; color: var(--color-muted); font-size: 1.5rem; transition: color .15s; }
+    .contact__social a:hover { color: var(--color-primary); }
     .contact__extra { margin-top: 1.1rem; }
     .contact__extra-title { font-size: 1rem; margin-bottom: .15rem; }
     .contact__extra-text { margin: 0; color: color-mix(in srgb, var(--color-text) 85%, transparent); font-size: .95rem; white-space: pre-wrap; }
