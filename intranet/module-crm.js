@@ -186,7 +186,7 @@
     var bed      = bedriftFor(c);
     var history  = getHistory(customerEmails(c));
     var openCount = history.filter(function (h) { return h.status !== "løst"; }).length;
-    return '<li class="admin-row" style="flex-direction:column;align-items:stretch;gap:.3rem">' +
+    return '<li class="admin-row" data-crm-open="' + C.esc(c.id) + '" style="flex-direction:column;align-items:stretch;gap:.3rem;cursor:pointer">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">' +
         '<div style="min-width:0;flex:1">' +
           '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.15rem">' +
@@ -242,6 +242,15 @@
           return [c.name||"", c.email||"", c.customerNumber||"", b?b.name:"", c.note||"", c.created||""];
         })
       );
+    });
+
+    root.querySelectorAll("[data-crm-open]").forEach(function (row) {
+      row.addEventListener("click", function (e) {
+        if (e.target.closest("[data-crm-del],button,select")) return;
+        var id = row.getAttribute("data-crm-open");
+        Intranet.navigate("crm", id);
+        renderDetail(root, id);
+      });
     });
 
     root.querySelectorAll("[data-crm-del]").forEach(function (btn) {

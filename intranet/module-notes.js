@@ -5,7 +5,7 @@
    - Fast kortstorleik, pastelfargar (post-it)
    - Slett-ikon nede i høgre hjørne på kvart kort
    - Popup-modal: ingen backdrop-klikk, berre X / Lagre og lukk / Escape
-   - Autosave + tydeleg "Lagre og lukk"-knapp
+   - Lagre og lukk-knapp; X og Escape lukkar utan å lagre
    Lagring:  App.store("wsp-notes")
    Ruter:    #/notes, #/notes/<id>
    ========================================================================== */
@@ -315,9 +315,13 @@
         if (e.target.closest("[data-note-del]")) return; // sletteknapp handtert separat
         openNoteModal(card.getAttribute("data-note-open"), root);
       });
-      card.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); card.click(); }
-      });
+      /* Berre div-kort (kortvisning) treng keydown — button-element (listevisning)
+         aktiverer nativt på Enter/mellomrom og ville opna to modalvindaugar. */
+      if (card.tagName !== "BUTTON") {
+        card.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); card.click(); }
+        });
+      }
     });
     grid.querySelectorAll("[data-note-del]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
@@ -397,7 +401,6 @@
           '<input id="nm-title" type="text" value="' + C.esc(note ? note.title || "" : "") + '" ' +
             'placeholder="Tittelaus…" ' +
             'style="flex:1;font:inherit;font-family:var(--font-display);font-size:1.05rem;font-weight:700;border:0;background:transparent;color:var(--color-text);outline:none;min-width:0">' +
-          '<span id="nm-save-status" style="font-size:.72rem;color:var(--color-muted);white-space:nowrap"></span>' +
         '</div>' +
         '<button id="nm-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;margin-left:.5rem" title="Lukk">&times;</button>' +
       '</div>' +
@@ -446,7 +449,6 @@
         selectedColor = sw.getAttribute("data-color-id");
         modal.querySelectorAll("[data-color-id]").forEach(function (s) { s.classList.remove("is-active"); });
         sw.classList.add("is-active");
-        scheduleAutosave();
       });
     });
 
@@ -454,7 +456,6 @@
     var catInp     = modal.querySelector("#nm-category");
     var tagsInp    = modal.querySelector("#nm-tags");
     var summaryInp = modal.querySelector("#nm-summary");
-    var statusEl   = modal.querySelector("#nm-save-status");
 
     if (isNew) { titleInp.focus(); }
     else {
@@ -463,7 +464,6 @@
     }
 
     var currentId = note ? note.id : null;
-    var saveTimer;
 
     function readData() {
       return {
@@ -484,55 +484,32 @@
       } else {
         updateNote(currentId, data);
       }
-      // Merk: teiknar IKKJE om lista her — det stel klikk medan modalen er open.
-      // Lista oppdaterast når modalen lukkar (closeModal/Lagre og lukk).
     }
 
-    function scheduleAutosave() {
-      clearTimeout(saveTimer);
-      if (statusEl) statusEl.textContent = "Lagrer…";
-      saveTimer = setTimeout(function () {
-        doSave();
-        if (statusEl) {
-          statusEl.textContent = "Lagret";
-          setTimeout(function () { if (statusEl) statusEl.textContent = ""; }, 1500);
-        }
-      }, 800);
-    }
-
-    [titleInp, catInp, tagsInp, summaryInp].forEach(function (el) {
-      if (el) el.addEventListener("input", scheduleAutosave);
-    });
-    var rtEditor = modal.querySelector(".rtfield__editor");
-    if (rtEditor) rtEditor.addEventListener("input", scheduleAutosave);
-
-    function closeModal() {
-      clearTimeout(saveTimer);
-      /* Rydd Escape-lyttar */
+    function closeModal(save) {
+      if (save) doSave();
       if (_activeEscHandler) {
         document.removeEventListener("keydown", _activeEscHandler);
         _activeEscHandler = null;
       }
       bd.remove();
-      if (currentId) Intranet.navigate("notes", currentId);
-      else           Intranet.navigate("notes");
+      Intranet.navigate("notes");
       if (root) renderGrid(root);
     }
 
     /* Lagre og lukk */
     modal.querySelector("#nm-save-close").addEventListener("click", function () {
-      clearTimeout(saveTimer);
-      doSave();
-      if (statusEl) statusEl.textContent = "Lagret!";
-      setTimeout(closeModal, 300);
+      closeModal(true);
     });
 
-    /* X — berre lukk, autosave har alt lagra */
-    modal.querySelector("#nm-close").addEventListener("click", closeModal);
+    /* X — lukk utan å lagre */
+    modal.querySelector("#nm-close").addEventListener("click", function () {
+      closeModal(false);
+    });
 
-    /* Escape */
+    /* Escape — lukk utan å lagre */
     _activeEscHandler = function (e) {
-      if (e.key === "Escape") { closeModal(); }
+      if (e.key === "Escape") { closeModal(false); }
     };
     document.addEventListener("keydown", _activeEscHandler);
 
@@ -541,7 +518,6 @@
     if (delBtn) {
       delBtn.addEventListener("click", function () {
         if (!confirm('Slett "' + (note ? note.title : "notat") + '"?')) return;
-        clearTimeout(saveTimer);
         if (currentId) deleteNote(currentId);
         if (_activeEscHandler) {
           document.removeEventListener("keydown", _activeEscHandler);

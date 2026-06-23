@@ -94,7 +94,7 @@
     var s = document.createElement("style");
     s.id = "tasks-styles";
     s.textContent = [
-      ".task-row{background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:.7rem 1rem;display:flex;align-items:flex-start;gap:.75rem}",
+      ".task-row{background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:.7rem 1rem;display:flex;align-items:flex-start;gap:.75rem;cursor:pointer}",
       ".task-row__main{flex:1;min-width:0}",
       ".task-row__title{font-weight:600;font-size:.92rem;margin-bottom:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".task-row__body{font-size:.8rem;color:var(--color-muted);margin-bottom:.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -209,11 +209,19 @@
       renderList(root);
     });
 
-    /* Rediger-knapp */
+    /* Klikkbar rad (heile raden) + rediger-knapp */
     root.addEventListener("click", function (e) {
       var editBtn = e.target.closest("[data-task-edit]");
       if (editBtn) {
         var id = editBtn.getAttribute("data-task-edit");
+        openTaskModal(id, root);
+        Intranet.navigate("tasks", id);
+        return;
+      }
+      if (e.target.closest("button,select,a")) return;
+      var row = e.target.closest("[data-task-id]");
+      if (row) {
+        var id = row.getAttribute("data-task-id");
         openTaskModal(id, root);
         Intranet.navigate("tasks", id);
       }

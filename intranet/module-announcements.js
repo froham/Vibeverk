@@ -46,7 +46,7 @@
     var unread = getItems().filter(function (a) { return a.important; });
     if (!unread.length) { banner.style.display = "none"; return; }
     var ann = unread[0];
-    banner.style.display = "";
+    banner.style.display = "flex";
     banner.innerHTML =
       '<i class="ti ti-speakerphone" style="font-size:1.1rem;flex-shrink:0"></i>' +
       '<strong style="flex-shrink:0">' + C.esc(ann.title) + '</strong>' +
@@ -57,9 +57,13 @@
       (unread.length > 1
         ? '<span style="opacity:.7;font-size:.78rem">' + (unread.length - 1) + ' til</span>'
         : '') +
-      '<a href="#/announcements" style="color:#fff;font-weight:700;text-decoration:underline;white-space:nowrap;font-size:.82rem">Les mer</a>' +
+      '<button id="wsp-ann-lesmer" style="background:none;border:0;color:#fff;font-weight:700;text-decoration:underline;white-space:nowrap;font-size:.82rem;cursor:pointer;padding:0">Les mer</button>' +
       '<button id="wsp-ann-close" style="background:none;border:0;color:#fff;cursor:pointer;font-size:1.2rem;line-height:1;padding:.2rem .3rem;opacity:.8" aria-label="Lukk">&times;</button>';
 
+    var lesMer = banner.querySelector("#wsp-ann-lesmer");
+    if (lesMer) {
+      lesMer.addEventListener("click", function () { openReaderModal(ann); });
+    }
     var closeBtn = banner.querySelector("#wsp-ann-close");
     if (closeBtn) {
       closeBtn.addEventListener("click", function () { banner.style.display = "none"; });
@@ -99,7 +103,7 @@
 
       (items.length === 0
         ? '<p style="color:var(--color-muted);font-size:.9rem">Ingen saker ennå.</p>'
-        : '<div style="display:grid;gap:1rem">' +
+        : '<div class="i-card-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;align-items:stretch">' +
             items.map(function (a) { return annCard(a, admin); }).join("") +
           '</div>'
       );
@@ -147,32 +151,35 @@
   function annCard(a, admin) {
     var img = a.image ? App.media.resolveImage(a.image) : null;
     var preview = C.stripHtml(a.body || "").slice(0, 160);
-    return '<div class="i-card ann-card" style="cursor:pointer" data-ann-open="' + C.esc(a.id) + '">' +
+    return '<div class="i-card ann-card" style="cursor:pointer;display:flex;flex-direction:column" data-ann-open="' + C.esc(a.id) + '">' +
       (a.important
         ? '<span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:700;' +
           'text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary);margin-bottom:.5rem">' +
-          '<i class="ti ti-speakerphone"></i> Viktig</span><br>'
+          '<i class="ti ti-speakerphone"></i> Viktig</span>'
         : '') +
       (img && img.src
-        ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:8px;margin-bottom:.8rem;display:block">'
+        ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin-bottom:.8rem;display:block">'
         : '') +
       '<strong style="font-size:1rem;display:block;margin-bottom:.2rem">' + C.esc(a.title) + '</strong>' +
       '<div style="font-size:.78rem;color:var(--color-muted);margin-bottom:.5rem">' + formatDate(a.createdAt) + '</div>' +
       (preview
-        ? '<div style="font-size:.88rem;color:var(--color-muted);line-height:1.55;margin-bottom:.5rem">' +
+        ? '<div style="font-size:.88rem;color:var(--color-muted);line-height:1.55;margin-bottom:.5rem;flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical">' +
             C.esc(preview + (C.stripHtml(a.body || "").length > 160 ? "…" : "")) +
           '</div>'
-        : '') +
+        : '<div style="flex:1"></div>') +
       (a.attachments && a.attachments.length
-        ? '<div style="font-size:.78rem;color:var(--color-muted)"><i class="ti ti-paperclip"></i> ' +
+        ? '<div style="font-size:.78rem;color:var(--color-muted);margin-bottom:.5rem"><i class="ti ti-paperclip"></i> ' +
             a.attachments.length + ' vedlegg</div>'
         : '') +
-      (admin
-        ? '<div style="display:flex;gap:.4rem;margin-top:.8rem;padding-top:.6rem;border-top:1px solid var(--color-border)">' +
-            '<button class="btn btn--ghost btn--sm" data-ann-edit="' + C.esc(a.id) + '">Rediger</button>' +
-            '<button class="btn btn--ghost btn--sm" style="color:#c0392b;border-color:#c0392b" data-ann-del="' + C.esc(a.id) + '">Slett</button>' +
-          '</div>'
-        : '') +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:.6rem;border-top:1px solid var(--color-border)">' +
+        (admin
+          ? '<div style="display:flex;gap:.4rem">' +
+              '<button class="btn btn--ghost btn--sm" data-ann-edit="' + C.esc(a.id) + '">Rediger</button>' +
+              '<button class="btn btn--ghost btn--sm" style="color:#c0392b;border-color:#c0392b" data-ann-del="' + C.esc(a.id) + '">Slett</button>' +
+            '</div>'
+          : '<span></span>') +
+        '<span style="font-size:.78rem;font-weight:600;color:var(--color-primary);display:inline-flex;align-items:center;gap:.25rem">Les mer <i class="ti ti-arrow-right" style="font-size:.78rem"></i></span>' +
+      '</div>' +
     '</div>';
   }
 

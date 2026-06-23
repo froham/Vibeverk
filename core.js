@@ -1068,7 +1068,14 @@ window.App = (function () {
       }
       credRadios.forEach(function (r) {
         r.addEventListener("change", function () {
-          if (r.checked && credTx && !credTx.value.trim()) credTx.value = defaultTextFor(r.value);
+          if (r.checked && credTx) {
+            if (r.value === "ai") {
+              credTx.placeholder = DEFAULT_CREDIT_AI;
+            } else {
+              credTx.placeholder = "";
+              if (!credTx.value.trim()) credTx.value = defaultTextFor(r.value);
+            }
+          }
           syncCredit();
         });
       });

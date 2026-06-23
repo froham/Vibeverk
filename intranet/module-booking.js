@@ -229,7 +229,7 @@
             ].filter(Boolean).join("\n")
           }),
           "Booking",
-          function (newStatus) { setStatus(id, newStatus); renderList(root); }
+          function (newStatus) { updateStatus(id, newStatus); renderList(root); }
         );
       });
     });
@@ -240,15 +240,15 @@
         var id = btn.getAttribute("data-bk-reply");
         var bk = getBookings().find(function (b) { return b.id === id; });
         if (!bk) return;
-        setStatus(id, "løst");
+        updateStatus(id, "løst");
         if (App.openReplyModal) {
           var asset = getAssets().find(function (a) { return a.id === bk.assetId; });
           App.openReplyModal({
             name: bk.name, email: bk.email,
             subject: "Re: Bookingforespørsel fra " + (bk.name || ""),
-            templateKey: "booking",
-            defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
-            vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" }
+            templateKey: "booking-svar",
+            defaultTemplate: DEFAULT_SVAR_TEMPLATE,
+            vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", klokkeslett: bk.time || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" }
           });
         } else {
           window.location.href = "mailto:" + bk.email;
@@ -260,7 +260,7 @@
     /* Status-nedtrekk */
     root.querySelectorAll("[data-bk-status]").forEach(function (sel) {
       sel.addEventListener("change", function () {
-        setStatus(sel.getAttribute("data-bk-status"), sel.value);
+        updateStatus(sel.getAttribute("data-bk-status"), sel.value);
         renderList(root);
       });
     });

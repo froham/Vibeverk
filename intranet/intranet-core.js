@@ -159,6 +159,7 @@ window.Intranet = (function () {
           '</button>' +
           '<span class="i-topbar__title" id="intranet-topbar-title">Arbeidsområde</span>' +
         '</div>' +
+        '<div id="wsp-ann-banner" style="display:none;background:var(--color-primary);color:#fff;padding:.65rem 1.4rem;align-items:center;gap:.8rem;font-size:.88rem;line-height:1.4;flex-shrink:0"></div>' +
         '<main class="i-main" id="intranet-main"></main>' +
       '</div>';
 
