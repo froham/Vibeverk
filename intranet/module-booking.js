@@ -103,22 +103,53 @@
   /* =========================================================================
      RENDER
      ====================================================================== */
+  var DEFAULT_AVBOOK_TEMPLATE = "Hei {navn},\n\nDin booking (referanse #{referanse}) for {ressurs} den {dato} kl. {klokkeslett} er dessverre avbooket.\n\nTa kontakt om du har spørsmål.\n\nMed vennlig hilsen";
+  var DEFAULT_SVAR_TEMPLATE   = "Hei {navn},\n\nDette gjelder din booking (referanse #{referanse}) — {ressurs}, {dato} kl. {klokkeslett}.\n\n";
+
   function render() { return '<div id="booking-root"></div>'; }
+
+  var _activeFane = "bookingar";
 
   function mount(outlet) {
     var root = outlet.querySelector("#booking-root") || outlet;
-    renderList(root);
+    renderPage(root);
+  }
+
+  function renderPage(root) {
+    root.innerHTML =
+      '<div class="i-page-head">' +
+        '<h2>Booking</h2>' +
+      '</div>' +
+      '<div style="display:flex;gap:.35rem;margin-bottom:1.2rem;border-bottom:1px solid var(--color-border);padding-bottom:.75rem">' +
+        '<button class="btn btn--' + (_activeFane === "bookingar" ? "primary" : "ghost") + ' btn--sm" data-bk-fane="bookingar">Bookingar</button>' +
+        '<button class="btn btn--' + (_activeFane === "malar" ? "primary" : "ghost") + ' btn--sm" data-bk-fane="malar">E-postmalar</button>' +
+      '</div>' +
+      '<div id="bk-fane-content"></div>';
+
+    root.querySelectorAll("[data-bk-fane]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        _activeFane = btn.getAttribute("data-bk-fane");
+        renderPage(root);
+      });
+    });
+
+    var fc = root.querySelector("#bk-fane-content");
+    if (_activeFane === "malar") {
+      fc.innerHTML =
+        App.emailTemplateCard("booking-avbook", "E-postmal for avbooking", DEFAULT_AVBOOK_TEMPLATE,
+          "Variablar: {navn}, {referanse}, {ressurs}, {dato}, {klokkeslett}") +
+        App.emailTemplateCard("booking-svar", "E-postmal for svar", DEFAULT_SVAR_TEMPLATE,
+          "Variablar: {navn}, {referanse}, {ressurs}, {dato}, {klokkeslett}");
+      App.bindEmailTemplateCard(fc, "booking-avbook", DEFAULT_AVBOOK_TEMPLATE);
+      App.bindEmailTemplateCard(fc, "booking-svar", DEFAULT_SVAR_TEMPLATE);
+    } else {
+      renderList(fc);
+    }
   }
 
   function renderList(root) {
     var bookings = getBookings();
     var assets   = getAssets();
-
-    var groups = [
-      { status: "ny",   label: "Nye",  items: [] },
-      { status: "lest", label: "Lest", items: [] },
-      { status: "løst", label: "Løst", items: [] }
-    ];
     bookings.forEach(function (b) {
       var g = groups.find(function (g) { return g.status === (b.status || "ny"); });
       if (g) g.items.push(b);
@@ -129,9 +160,6 @@
     });
 
     root.innerHTML =
-      '<div class="i-page-head">' +
-        '<h2>Booking <span style="font-size:1rem;font-weight:400;color:var(--color-muted)">(' + bookings.length + ')</span></h2>' +
-      '</div>' +
       (bookings.length === 0
         ? '<p style="color:var(--color-muted);font-size:.9rem">Ingen bookingforespørsler ennå.</p>'
         : activeGroups.map(function (g) {
