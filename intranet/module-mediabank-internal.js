@@ -313,6 +313,7 @@
     return '<div class="wsp-media-grid">' +
       files.map(function (f) {
         var imgSrc  = isImage(f) ? App.media.resolve(f.ref) : null;
+        var fileUrl = imgSrc || App.media.resolveFile(f.ref);
         var thumb   = imgSrc
           ? '<img src="' + C.esc(imgSrc) + '" alt="' + C.esc(f.name) + '" loading="lazy">'
           : '<i class="ti ti-' + fileIcon(f) + ' wsp-file-icon"></i>';
@@ -325,7 +326,7 @@
             (f.category ? '<div class="wsp-media-card__meta" style="color:var(--color-primary)">' + C.esc(f.category) + '</div>' : '') +
             '<div class="wsp-media-card__actions">' +
               '<button class="wsp-media-card__btn" data-wsp-copy="' + C.esc(f.id) + '" title="Kopier referanse"><i class="ti ti-copy"></i></button>' +
-              (img ? '<a class="wsp-media-card__btn" href="' + C.esc(img) + '" download="' + C.esc(f.name) + '" title="Last ned"><i class="ti ti-download"></i></a>' : '') +
+              (fileUrl ? '<a class="wsp-media-card__btn" href="' + C.esc(fileUrl) + '" download="' + C.esc(f.name) + '" title="Last ned"><i class="ti ti-download"></i></a>' : '') +
               '<button class="wsp-media-card__btn" data-wsp-del="' + C.esc(f.id) + '" title="Slett" style="margin-left:auto;color:#c0392b"><i class="ti ti-trash"></i></button>' +
             '</div>' +
           '</div>' +
