@@ -170,8 +170,12 @@
       e.preventDefault();
       Intranet.navigate("notes");
       setTimeout(function () {
-        var noteNewBtn = document.querySelector("#notes-new-btn");
-        if (noteNewBtn) noteNewBtn.click();
+        if (typeof window._notesOpenModal === "function") {
+          window._notesOpenModal();
+        } else {
+          var btn = document.querySelector("#notes-new-btn");
+          if (btn) btn.click();
+        }
       }, 100);
     });
     var newAnnBtn = root.querySelector("[data-dash-new-ann]");

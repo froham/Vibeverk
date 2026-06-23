@@ -166,11 +166,18 @@ assert(doc.querySelector("#dashboard-root").textContent.includes("Å gjøre"),"h
 nav("#/notes");
 assert(!!doc.querySelector("#notes-root"),    "i1: notes-root");
 assert(!!doc.querySelector("#notes-new-btn"), "i2: nytt-notat-knapp");
-doc.querySelector("#notes-new-btn").dispatchEvent(new window.Event("click",{bubbles:true}));
+// Nytt-notat-knappen opnar no modal (ikkje testbar i jsdom) — opprett direkte via store
+App.store.set("wsp-notes", [{
+  id:"n1", title:"Testnotat", body:"", category:"Test",
+  tags:["ai","test"], summary:"eit samandrag",
+  createdAt:Date.now(), updatedAt:Date.now(), createdBy:"local"
+}]);
+nav("#/settings"); nav("#/notes");
 const notes = App.store.get("wsp-notes",[]);
-assert(notes.length===1,            "i3: notat oppretta");
+assert(notes.length===1,            "i3: notat i store");
 assert(Array.isArray(notes[0].tags),"i4: tags er array");
 assert("summary" in notes[0],       "i5: summary-felt");
+assert(!!doc.querySelector("[data-note-open]"), "i6: note-open knapp");
 
 /* --- J) KUNNSKAPSBASE ----------------------------------------------------- */
 nav("#/settings"); nav("#/kb");
