@@ -894,6 +894,7 @@
      REGISTRERING  (selve modulkontrakten)
      ====================================================================== */
   injectStyles();
+  injectCalendarStyles();
   App.registerModule({
     id: "booking",
     label: (CFG.booking && CFG.booking.heading) || "Booking",
