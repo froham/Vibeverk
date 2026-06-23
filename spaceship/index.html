@@ -40,7 +40,8 @@ body.immersive #stage{position:fixed;inset:56px 0 0 0;padding:max(.45rem,env(saf
   body.immersive .bar{height:44px;padding:calc(.18rem + env(safe-area-inset-top)) max(.45rem,env(safe-area-inset-right)) .18rem max(.45rem,env(safe-area-inset-left))}
   body.immersive #stage{inset:44px 0 0 0;padding:2px max(2px,env(safe-area-inset-right)) max(2px,env(safe-area-inset-bottom)) max(2px,env(safe-area-inset-left))}
   body.immersive .game-shell{display:flex;position:relative;align-items:center;justify-content:center;width:100%;height:100%}
-  body.immersive .scorebar{position:fixed;left:max(.55rem,env(safe-area-inset-left));top:0;z-index:40;width:auto;height:44px;min-height:0;padding:0;gap:.7rem;align-items:center;pointer-events:none;font-size:.72rem}
+  body.immersive .scorebar{position:fixed;left:max(.55rem,env(safe-area-inset-left));top:0;z-index:40;width:auto;height:44px;min-height:0;padding:0 .35rem;gap:.7rem;align-items:center;pointer-events:none;font-size:.75rem;font-weight:700;color:#dbeafe;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+  body.immersive .scorebar b{color:var(--cyan);font-size:.9rem}
   body.immersive .canvas-wrap{border-radius:4px;box-shadow:none;flex:0 0 auto;margin:auto}
 }
 </style>
@@ -95,21 +96,33 @@ function stopGameBrowserAction(e){
   if(e.cancelable)e.preventDefault();
   clearSelection();
 }
-canvas.addEventListener("pointerdown",function(e){
+/* Hele spillflaten, også lufta rundt lerretet, fungerer som kontrollområde.
+   Dette gjør at trykk i sidemargene i mobil-landscape fortsatt starter/holder spillet. */
+function stagePos(e){
+  var r=canvas.getBoundingClientRect();
+  var x=(e.clientX-r.left)*W/r.width;
+  return {x:Math.max(0,Math.min(W,x)),y:0};
+}
+function stagePointerDown(e){
+  if(e.target&&e.target.closest&&e.target.closest("button,a,input,select,textarea"))return;
   stopGameBrowserAction(e);
   pointerDown=true;
-  canvas.setPointerCapture&&canvas.setPointerCapture(e.pointerId);
-  var p=pos(e);
+  stage.setPointerCapture&&stage.setPointerCapture(e.pointerId);
+  var p=stagePos(e);
   if(mode==="portrait"){targetX=p.x;begin()}else begin();
-},{passive:false});
-canvas.addEventListener("pointermove",function(e){
+}
+function stagePointerMove(e){
+  if(!pointerDown)return;
   stopGameBrowserAction(e);
-  if(mode==="portrait"&&(pointerDown||running)){targetX=pos(e).x;begin()}
-},{passive:false});
-canvas.addEventListener("pointerup",function(e){stopGameBrowserAction(e);end()},{passive:false});
-canvas.addEventListener("pointercancel",end);
-canvas.addEventListener("lostpointercapture",end);
-canvas.addEventListener("pointerleave",function(){if(mode==="classic")end()});
+  if(mode==="portrait"){targetX=stagePos(e).x;begin()}
+}
+function stagePointerUp(e){stopGameBrowserAction(e);end()}
+stage.addEventListener("pointerdown",stagePointerDown,{passive:false});
+stage.addEventListener("pointermove",stagePointerMove,{passive:false});
+stage.addEventListener("pointerup",stagePointerUp,{passive:false});
+stage.addEventListener("pointercancel",end);
+stage.addEventListener("lostpointercapture",end);
+stage.addEventListener("pointerleave",function(){if(mode==="classic")end()});
 window.addEventListener("pointerup",end,{passive:true});
 window.addEventListener("pointercancel",end,{passive:true});
 window.addEventListener("blur",end);
