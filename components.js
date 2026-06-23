@@ -204,7 +204,16 @@ window.Components = (function () {
   // Fjerner all HTML — brukes i korte forhåndsvisninger/utdrag og søkeindeks,
   // der formatert tekst ikke skal vises (kun selve sammendraget).
   function stripHtml(html) {
-    return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    return String(html || "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#(\d+);/g, function (_, n) { return String.fromCharCode(+n); })
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   // Skjemafelt med verktøylinje (fet/kursiv/understrek/gjennomstrek, lister,
@@ -510,9 +519,10 @@ window.Components = (function () {
 
   // Kontakt (skjema + info)
   function contact(d, info) {
-    // Normaliser social: migrer gammal "twitter"-nøkkel til "x"
+    // Normaliser social: migrer gammal "twitter"-nøkkel til "x", fjern alltid twitter
     const socialData = Object.assign({}, info.social || {});
     if (socialData.twitter && !socialData.x) { socialData.x = socialData.twitter; }
+    delete socialData.twitter;
     const social = SOCIAL_PLATFORMS
       .filter(function (p) { return socialData[p.key]; })
       .map(function (p) { return `<a href="${esc(socialData[p.key])}" target="_blank" rel="noopener">${icon(p.icon)} ${esc(p.label)}</a>`; });
