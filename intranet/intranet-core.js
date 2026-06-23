@@ -377,6 +377,13 @@ window.Intranet = (function () {
             '</div>' +
             '<button id="intranet-login-btn" class="btn btn--primary" style="width:100%">Logg inn</button>' +
             '<p id="intranet-login-err" style="font-size:.85rem;color:#c0392b;margin:0;min-height:1.2rem"></p>' +
+            (CFG.admin && (CFG.admin.password === "test" || CFG.admin.employeePassword === "gjest")
+              ? '<div style="border-top:1px dashed var(--color-border);margin-top:.4rem;padding-top:.8rem;display:grid;gap:.4rem">' +
+                  '<p style="font-size:.72rem;color:var(--color-muted);margin:0;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Testinnlogging</p>' +
+                  (CFG.admin.password ? '<button class="btn btn--ghost btn--sm" data-test-login="admin" style="width:100%;font-size:.82rem">Logg inn som admin</button>' : '') +
+                  (CFG.admin.employeePassword ? '<button class="btn btn--ghost btn--sm" data-test-login="gjest" style="width:100%;font-size:.82rem">Logg inn som gjest</button>' : '') +
+                '</div>'
+              : '') +
           '</div>' +
         '</div>' +
       '</div>';
@@ -398,6 +405,13 @@ window.Intranet = (function () {
     }
 
     root.querySelector("#intranet-login-btn").addEventListener("click", attempt);
+    root.querySelectorAll("[data-test-login]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var role = btn.getAttribute("data-test-login");
+        if (role === "admin") { setAuthed("owner"); init(); }
+        else                  { setAuthed("employee"); init(); }
+      });
+    });
     root.querySelector("#intranet-pass").addEventListener("keydown", function(e) {
       if (e.key === "Enter") attempt();
     });

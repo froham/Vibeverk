@@ -484,7 +484,8 @@
       } else {
         updateNote(currentId, data);
       }
-      if (root) renderGrid(root);
+      // Merk: teiknar IKKJE om lista her — det stel klikk medan modalen er open.
+      // Lista oppdaterast når modalen lukkar (closeModal/Lagre og lukk).
     }
 
     function scheduleAutosave() {
