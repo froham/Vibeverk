@@ -13,6 +13,9 @@
   var activeRoot = null;
   var triggerElement = null;
   var triggerHandler = null;
+  var delegatedClickHandler = null;
+  var tripleClickTimes = [];
+  var configuredSelector = null;
 
   var STORE_KEY = "wsp-workspaceship";
   var STYLE_ID = "workspaceship-module-styles";
@@ -790,26 +793,88 @@
     mountGame(activeHost, close);
   }
 
+  function findLogoCandidate(node) {
+    var el = node && node.nodeType === 1 ? node : (node && node.parentElement);
+    var candidate;
+    var depth = 0;
+
+    if (!el) return null;
+
+    candidate = el.closest && el.closest("[data-workspaceship-trigger]");
+    if (candidate) return candidate;
+
+    if (configuredSelector) {
+      try {
+        candidate = el.closest && el.closest(configuredSelector);
+        if (candidate) return candidate;
+      } catch (ignore) {}
+    }
+
+    /* Fallback for the existing Vibeverk brand. This survives sidebar re-renders
+       because the listener is delegated from document rather than bound once to
+       a logo node that may later be replaced. */
+    while (el && el !== document.body && depth < 7) {
+      var label = (el.getAttribute && (el.getAttribute("aria-label") || el.getAttribute("title"))) || "";
+      var text = (el.textContent || "").replace(/\s+/g, " ").trim();
+      var classes = typeof el.className === "string" ? el.className : "";
+      if (/vibeverk/i.test(label) || (/vibeverk/i.test(text) && /(?:logo|brand|workspace|sidebar|header|identity)/i.test(classes + " " + (el.id || "")))) {
+        return el;
+      }
+      /* The current logo has visible text 'Vibeverk' above 'Workspace'. */
+      if (/^vibeverk\s*workspace$/i.test(text) || /^vibeverk$/i.test(text)) return el;
+      el = el.parentElement;
+      depth++;
+    }
+    return null;
+  }
+
+  function registerLogoClick(event) {
+    var candidate = findLogoCandidate(event.target);
+    var now;
+    if (!candidate) return;
+
+    now = Date.now();
+    tripleClickTimes = tripleClickTimes.filter(function (t) { return now - t < 780; });
+    tripleClickTimes.push(now);
+
+    if (tripleClickTimes.length >= 3) {
+      tripleClickTimes = [];
+      event.preventDefault();
+      event.stopPropagation();
+      launch();
+    }
+  }
+
   function attach(selector) {
     var target;
+    configuredSelector = typeof selector === "string" ? selector : null;
+
     if (triggerElement && triggerHandler) triggerElement.removeEventListener("click", triggerHandler);
     triggerElement = null;
     triggerHandler = null;
 
-    if (typeof selector === "string") target = document.querySelector(selector);
-    else if (selector && selector.nodeType === 1) target = selector;
-    else target = document.querySelector("[data-workspaceship-trigger]");
+    if (typeof selector === "string") {
+      try { target = document.querySelector(selector); } catch (ignore) { target = null; }
+    } else if (selector && selector.nodeType === 1) {
+      target = selector;
+    } else {
+      target = document.querySelector("[data-workspaceship-trigger]");
+    }
 
-    if (!target) return false;
-    triggerElement = target;
-    triggerHandler = function (event) {
-      if (event.detail === 3) {
-        event.preventDefault();
-        launch();
-      }
-    };
-    target.addEventListener("click", triggerHandler);
-    return true;
+    /* Keep an explicit binding where possible, but rely on the delegated handler
+       as well so it still works after the intranet replaces the sidebar/logo DOM. */
+    if (target) {
+      triggerElement = target;
+      triggerHandler = registerLogoClick;
+      target.addEventListener("click", triggerHandler);
+    }
+
+    if (!delegatedClickHandler) {
+      delegatedClickHandler = registerLogoClick;
+      document.addEventListener("click", delegatedClickHandler, true);
+    }
+
+    return !!target;
   }
 
   window.WorkspaceshipEasterEgg = {
