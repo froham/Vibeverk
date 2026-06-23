@@ -2,17 +2,20 @@
 <html lang="no">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#061528">
 <title>Spaceship</title>
 <style>
 :root{--space-0:#061528;--space-1:#101827;--space-2:#1e1b4b;--cyan:#7dd3fc;--ink:#e5e7eb;--muted:#94a3b8;--line:rgba(125,211,252,.22);--hud:ui-monospace,SFMono-Regular,Menlo,"Cascadia Mono","Roboto Mono",monospace;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none}
-html,body{height:100%;margin:0;overscroll-behavior:none;overflow:hidden;touch-action:none}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;overscroll-behavior:none;overflow:hidden;touch-action:none;-webkit-text-size-adjust:100%}
 body{font-family:var(--sans);color:var(--ink);background:linear-gradient(180deg,var(--space-0),var(--space-1) 55%,var(--space-2));min-height:100dvh;display:flex;flex-direction:column}
 .bar{height:64px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.65rem max(.75rem,env(safe-area-inset-left)) .65rem max(.75rem,env(safe-area-inset-left));border-bottom:1px solid var(--line);background:rgba(6,21,40,.92)}
 .left{display:flex;align-items:center;gap:.75rem;min-width:0}.wordmark{font-family:var(--hud);font-weight:700;letter-spacing:.24em;text-transform:uppercase;white-space:nowrap}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px var(--cyan),0 0 4px #fff;margin-right:.55rem}.mode{display:flex;gap:.35rem}.ctl,.mode button{appearance:none;cursor:pointer;font-family:var(--hud);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);background:rgba(125,211,252,.08);border:1px solid var(--line);border-radius:999px;padding:.48rem .68rem;display:inline-flex;align-items:center;gap:.35rem}.mode button[aria-pressed="true"]{background:rgba(125,211,252,.22);border-color:rgba(125,211,252,.7);color:#fff}.controls{display:flex;gap:.4rem}.ctl svg{width:15px;height:15px}@media(max-width:640px){.bar{height:56px}.wordmark{font-size:.78rem;letter-spacing:.16em}.mode button,.ctl{font-size:.64rem;padding:.45rem .52rem}.ctl .label{display:none}}
 #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:.6rem;touch-action:none}.game-shell{height:100%;width:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:.45rem;align-items:center;justify-items:center}.scorebar{width:min(100%,920px);display:flex;justify-content:space-between;gap:.75rem;font-family:var(--hud);font-size:.8rem;color:var(--muted);padding:0 .15rem}.scorebar b{color:var(--cyan)}.canvas-wrap{position:relative;max-width:100%;max-height:100%;border:1px solid var(--line);border-radius:14px;background:#07111f;overflow:hidden;box-shadow:0 18px 60px rgba(2,8,20,.55),inset 0 0 60px rgba(125,211,252,.05)}canvas{display:block;width:100%;height:100%;touch-action:none;cursor:pointer}.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:rgba(0,0,0,.35);color:white;gap:.35rem;pointer-events:none;padding:1rem}.overlay.is-hidden{display:none}.overlay strong{font-size:clamp(1.45rem,5vw,2.2rem)}.overlay span{font-size:clamp(.9rem,3vw,1.05rem);opacity:.92}.hint{font-family:var(--hud);font-size:.75rem;color:var(--muted);text-align:center;min-height:1em}.toast{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%) translateY(16px);background:rgba(6,21,40,.95);border:1px solid var(--line);color:var(--ink);font-family:var(--hud);font-size:.78rem;padding:.55rem .9rem;border-radius:999px;z-index:60;opacity:0;transition:.18s;pointer-events:none;max-width:90vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* Avgrenset beskyttelse mot mobilens tekstmarkering/menyer i selve spillflaten. */
+#stage,.game-shell,.canvas-wrap,canvas{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none!important;user-select:none!important;-webkit-user-drag:none}
+canvas{-ms-touch-action:none}
 /* Fullskjerm: behold avslutt-knappen i en egen stripe utenfor spillflaten. */
 body.immersive .bar{display:flex;position:fixed;inset:0 0 auto 0;height:56px;z-index:30;justify-content:flex-end;padding:calc(.45rem + env(safe-area-inset-top)) max(.55rem,env(safe-area-inset-right)) .45rem max(.55rem,env(safe-area-inset-left));border-bottom:1px solid rgba(125,211,252,.16);background:rgba(6,21,40,.94)}
 body.immersive .bar .left,body.immersive #shareBtn{display:none}
@@ -21,6 +24,25 @@ body.immersive .ctl{min-width:42px;min-height:38px;justify-content:center;backgr
 body.immersive .ctl .label{display:inline}
 body.immersive #stage{position:fixed;inset:56px 0 0 0;padding:max(.45rem,env(safe-area-inset-top)) max(.45rem,env(safe-area-inset-right)) max(.45rem,env(safe-area-inset-bottom)) max(.45rem,env(safe-area-inset-left));z-index:10;background:linear-gradient(180deg,var(--space-0),var(--space-1) 55%,var(--space-2))}
 @media(max-width:640px){body.immersive .ctl .label{display:none}}
+/* Telefon i liggende format: bruk nesten all tilgjengelig høyde, uten å endre PC-layouten. */
+@media (pointer:coarse) and (orientation:landscape) and (max-height:540px){
+  .bar{height:46px;padding:.25rem max(.45rem,env(safe-area-inset-right)) .25rem max(.45rem,env(safe-area-inset-left));gap:.35rem}
+  .left{gap:.4rem}
+  .wordmark{font-size:.72rem;letter-spacing:.13em}
+  .dot{width:7px;height:7px;margin-right:.35rem}
+  .mode{gap:.24rem}
+  .mode button,.ctl{font-size:.61rem;padding:.34rem .46rem;min-height:32px}
+  #stage{padding:3px}
+  .game-shell{grid-template-rows:auto minmax(0,1fr);gap:3px}
+  .scorebar{width:100%;min-height:17px;align-items:center;padding:0 .2rem;font-size:.7rem;line-height:1}
+  .hint{display:none}
+  .canvas-wrap{border-radius:7px;box-shadow:none}
+  body.immersive .bar{height:44px;padding:calc(.18rem + env(safe-area-inset-top)) max(.45rem,env(safe-area-inset-right)) .18rem max(.45rem,env(safe-area-inset-left))}
+  body.immersive #stage{inset:44px 0 0 0;padding:2px max(2px,env(safe-area-inset-right)) max(2px,env(safe-area-inset-bottom)) max(2px,env(safe-area-inset-left))}
+  body.immersive .game-shell{display:block;position:relative}
+  body.immersive .scorebar{position:fixed;left:max(.55rem,env(safe-area-inset-left));top:0;z-index:40;width:auto;height:44px;min-height:0;padding:0;gap:.7rem;align-items:center;pointer-events:none;font-size:.72rem}
+  body.immersive .canvas-wrap{border-radius:4px;box-shadow:none}
+}
 </style>
 </head>
 <body>
@@ -33,24 +55,78 @@ body.immersive #stage{position:fixed;inset:56px 0 0 0;padding:max(.45rem,env(saf
 <script>
 (function(){"use strict";
 var STORE="wsp-spaceship-modes-v1";
-var body=document.body,canvas=document.getElementById("game"),ctx=canvas.getContext("2d"),wrap=document.getElementById("wrap"),overlay=document.getElementById("overlay"),ovTitle=document.getElementById("ovTitle"),ovText=document.getElementById("ovText"),scoreEl=document.getElementById("scoreEl"),bestEl=document.getElementById("bestEl"),hint=document.getElementById("hint"),modeClassic=document.getElementById("modeClassic"),modePortrait=document.getElementById("modePortrait"),fsBtn=document.getElementById("fsBtn"),fsLabel=document.getElementById("fsLabel"),fsIcon=document.getElementById("fsIcon"),shareBtn=document.getElementById("shareBtn"),toastEl=document.getElementById("toast");
+var body=document.body,stage=document.getElementById("stage"),canvas=document.getElementById("game"),ctx=canvas.getContext("2d"),wrap=document.getElementById("wrap"),overlay=document.getElementById("overlay"),ovTitle=document.getElementById("ovTitle"),ovText=document.getElementById("ovText"),scoreEl=document.getElementById("scoreEl"),bestEl=document.getElementById("bestEl"),hint=document.getElementById("hint"),modeClassic=document.getElementById("modeClassic"),modePortrait=document.getElementById("modePortrait"),fsBtn=document.getElementById("fsBtn"),fsLabel=document.getElementById("fsLabel"),fsIcon=document.getElementById("fsIcon"),shareBtn=document.getElementById("shareBtn"),toastEl=document.getElementById("toast");
 var mode=load().mode||"classic",W=720,H=420,ship,obstacles=[],stars=[],particles=[],score=0,best=0,running=false,dead=false,frame=0,thrusting=false,lastInput=0,nextAt=70,pointerDown=false,targetX=210,keys={left:false,right:false};
 function load(){try{return JSON.parse(localStorage.getItem(STORE)||"{}")}catch(e){return {}}}function save(v){try{localStorage.setItem(STORE,JSON.stringify(Object.assign(load(),v)))}catch(e){}}
 function modeKey(){return mode==="portrait"?"bestPortrait":"bestClassic"}function getBest(){return load()[modeKey()]||0}function setBest(v){var o={};o[modeKey()]=v;save(o)}
 function setMode(m){mode=m;save({mode:m});modeClassic.setAttribute("aria-pressed",m==="classic");modePortrait.setAttribute("aria-pressed",m==="portrait");reset(true);fit();}
 function reset(wait){W=mode==="portrait"?420:720;H=mode==="portrait"?720:420;canvas.width=W;canvas.height=H;ship=mode==="portrait"?{x:W/2,y:H-88,vy:0,r:15,rot:0}:{x:120,y:H/2,vy:0,r:15,rot:0};targetX=ship.x;obstacles=[];particles=[];stars=makeStars();score=0;frame=0;running=!wait;dead=false;thrusting=false;nextAt=mode==="portrait"?38:70;best=getBest();scoreEl.textContent="0";bestEl.textContent=String(best);overlay.classList.toggle("is-hidden",!wait);ovTitle.textContent=mode==="portrait"?"Stående modus":"Spaceship";ovText.textContent=mode==="portrait"?"Swipe sidelengs for å starte":"Hold inne for thrust";hint.textContent=mode==="portrait"?"Mobil: swipe/drag sidelengs. PC: piltaster eller mus.":"Mobil/PC: hold inne for thrust. Space fungerer på PC.";}
-function fit(){var vw=wrap.parentElement.clientWidth;var vh=wrap.parentElement.clientHeight;var ratio=W/H;var w=Math.min(vw,vh*ratio);var h=w/ratio;if(h>vh){h=vh;w=h*ratio}wrap.style.width=Math.floor(w)+"px";wrap.style.height=Math.floor(h)+"px";}
+function compactLandscape(){
+  if(window.matchMedia){return window.matchMedia("(pointer: coarse) and (orientation: landscape) and (max-height: 540px)").matches}
+  return window.innerWidth>window.innerHeight&&Math.min(window.innerWidth,window.innerHeight)<=540
+}
+function fit(){
+  var shell=wrap.parentElement;
+  var vw=shell.clientWidth;
+  var vh=shell.clientHeight;
+  /* I vanlig mobil-landscape ligger scorelinjen over canvas-raden. I fullskjerm
+     flyttes den til toppstripen, slik at canvas kan bruke hele resten av høyden. */
+  if(compactLandscape()&&!body.classList.contains("immersive")){
+    var gap=parseFloat(window.getComputedStyle(shell).rowGap)||0;
+    vh-=scoreEl.parentElement.offsetHeight+gap;
+  }
+  var ratio=W/H;
+  var w=Math.min(vw,vh*ratio);
+  var h=w/ratio;
+  if(h>vh){h=vh;w=h*ratio}
+  wrap.style.width=Math.max(1,Math.floor(w))+"px";
+  wrap.style.height=Math.max(1,Math.floor(h))+"px";
+}
 function makeStars(){var a=[];for(var i=0;i<110;i++)a.push({x:Math.random()*W,y:Math.random()*H,s:Math.random()*1.8+.4,v:Math.random()*.8+.2,a:Math.random()*.5+.35});return a}
 function begin(){if(dead){reset(false);return}if(!running){running=true;overlay.classList.add("is-hidden")}if(mode==="classic"){var now=Date.now();thrusting=true;if(now-lastInput>140){ship.vy=Math.min(ship.vy,-2.45);addThrust()}lastInput=now}}
 function end(){thrusting=false;pointerDown=false}
 function pos(e){var r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
-canvas.addEventListener("pointerdown",function(e){e.preventDefault();pointerDown=true;canvas.setPointerCapture&&canvas.setPointerCapture(e.pointerId);var p=pos(e);if(mode==="portrait"){targetX=p.x;begin()}else begin();},{passive:false});
-canvas.addEventListener("pointermove",function(e){e.preventDefault();if(mode==="portrait"&&(pointerDown||running)){targetX=pos(e).x;begin()}},{passive:false});
-canvas.addEventListener("pointerup",function(e){e.preventDefault();end()},{passive:false});canvas.addEventListener("pointercancel",end);canvas.addEventListener("pointerleave",function(){if(mode==="classic")end()});
+function clearSelection(){
+  var sel=window.getSelection&&window.getSelection();
+  if(sel&&sel.removeAllRanges)sel.removeAllRanges();
+}
+function isGameArea(target){return !!(target&&stage&&stage.contains(target))}
+function stopGameBrowserAction(e){
+  if(e.cancelable)e.preventDefault();
+  clearSelection();
+}
+canvas.addEventListener("pointerdown",function(e){
+  stopGameBrowserAction(e);
+  pointerDown=true;
+  canvas.setPointerCapture&&canvas.setPointerCapture(e.pointerId);
+  var p=pos(e);
+  if(mode==="portrait"){targetX=p.x;begin()}else begin();
+},{passive:false});
+canvas.addEventListener("pointermove",function(e){
+  stopGameBrowserAction(e);
+  if(mode==="portrait"&&(pointerDown||running)){targetX=pos(e).x;begin()}
+},{passive:false});
+canvas.addEventListener("pointerup",function(e){stopGameBrowserAction(e);end()},{passive:false});
+canvas.addEventListener("pointercancel",end);
+canvas.addEventListener("lostpointercapture",end);
+canvas.addEventListener("pointerleave",function(){if(mode==="classic")end()});
+window.addEventListener("pointerup",end,{passive:true});
+window.addEventListener("pointercancel",end,{passive:true});
+window.addEventListener("blur",end);
+document.addEventListener("visibilitychange",function(){if(document.hidden)end()});
 document.addEventListener("keydown",function(e){if(e.code==="Space"&&mode==="classic"){e.preventDefault();begin()}if(e.code==="ArrowLeft"){e.preventDefault();keys.left=true;begin()}if(e.code==="ArrowRight"){e.preventDefault();keys.right=true;begin()}if(e.key==="Escape"&&body.classList.contains("immersive"))leaveFs()});
 document.addEventListener("keyup",function(e){if(e.code==="Space"){e.preventDefault();end()}if(e.code==="ArrowLeft")keys.left=false;if(e.code==="ArrowRight")keys.right=false});
-["contextmenu","selectstart","dragstart"].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault()},{passive:false})});
-document.addEventListener("touchmove",function(e){if(body.classList.contains("immersive")||e.target===canvas)e.preventDefault()},{passive:false});
+["contextmenu","selectstart","dragstart"].forEach(function(n){
+  document.addEventListener(n,function(e){if(isGameArea(e.target))stopGameBrowserAction(e)},{passive:false});
+});
+["gesturestart","gesturechange","gestureend"].forEach(function(n){
+  document.addEventListener(n,function(e){if(isGameArea(e.target))stopGameBrowserAction(e)},{passive:false});
+});
+document.addEventListener("touchstart",function(e){if(isGameArea(e.target))clearSelection()},{passive:false});
+document.addEventListener("touchmove",function(e){
+  /* Spillet eier alle swipes i sceneområdet, men toppknappene beholder vanlige trykk. */
+  if(isGameArea(e.target))stopGameBrowserAction(e);
+},{passive:false});
 function addThrust(){for(var i=0;i<7;i++)particles.push({x:ship.x-23,y:ship.y+(Math.random()*10-5),vx:-1.5-Math.random()*2.4,vy:Math.random()*1.8-.9,life:18+Math.random()*8,size:2+Math.random()*3})}
 function availableLanes(count, used){var out=[];for(var i=0;i<count;i++)if(!used[i])out.push(i);return out}
 function takeLane(count, used){var lanes=availableLanes(count,used);if(!lanes.length)return null;var lane=lanes[Math.floor(Math.random()*lanes.length)];used[lane]=true;return lane}
