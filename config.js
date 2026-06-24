@@ -167,6 +167,17 @@ window.SITE_CONFIG = {
     scrollbanner:  true   // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js (bildegalleri + grafisk profil). Krever module-mediabank.js
   },
 
+  /* --- Native Chat -----------------------------------------------------------
+     Krever module-chat.js. Legg til <script src="module-chat.js"> i index.html.
+     Alle verdiar kan overstyres frå admin-panelet (Innstillinger → Chat). */
+  chat: {
+    enabled:      true,
+    position:     "right",          // "right" | "left"
+    welcomeMsg:   "Hei! Korleis kan vi hjelpe deg?",
+    operatorName: "Oss",
+    askName:      true
+  },
+
 
   /* --- Intranett-funksjoner (skru av/på) ------------------------------------
      Styrer hvilke gjenspeilde moduler som vises i intranettet.

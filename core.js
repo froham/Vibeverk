@@ -12,6 +12,7 @@
 window.App = (function () {
 
   const CFG = window.SITE_CONFIG;   // ← all kundekonfig
+  const OPT_CHAT = Object.assign({ enabled: true }, (CFG && CFG.chat) || {});
   const C   = window.Components;    // ← gjenbrukbare komponenter
   const NS  = CFG.storageKey || "site";   // ← localStorage-prefiks fra config
 
@@ -738,6 +739,9 @@ window.App = (function () {
       if (m) tabs.push({ id: "mod-" + m.id, label: modLabel(m), category: "henvendelser" });
     });
     tabs.push({ id: "leads", label: "Kontakt", category: "henvendelser" });
+    if (window.VwChatAdmin && (OPT_CHAT.enabled !== false)) {
+      tabs.push({ id: "chat-admin", label: "Chat", category: "henvendelser" });
+    }
     // Eigar ser full sikkerhetskopi (med per-modul-eksport)
     // Tilsette/andre roller ser forenkla versjon
     const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "owner") : "owner";
@@ -889,6 +893,11 @@ window.App = (function () {
     if (activeTab === "navigasjon") return adminNavigation(body);
     if (activeTab === "analyse")    return adminAnalyse(body);
     if (activeTab === "leads")      return adminLeads(body);
+    if (activeTab === "chat-admin" && window.VwChatAdmin) {
+      body.innerHTML = "";
+      window.VwChatAdmin.render(body);
+      return;
+    }
     if (activeTab === "sikkerhetskopi") return adminBackup(body);
     if (activeTab === "admin-backup")   return adminBackupCustomer(body);
     if (activeTab.indexOf("mod-") === 0) {
@@ -1068,14 +1077,7 @@ window.App = (function () {
       }
       credRadios.forEach(function (r) {
         r.addEventListener("change", function () {
-          if (r.checked && credTx) {
-            if (r.value === "ai") {
-              credTx.placeholder = DEFAULT_CREDIT_AI;
-            } else {
-              credTx.placeholder = "";
-              if (!credTx.value.trim()) credTx.value = defaultTextFor(r.value);
-            }
-          }
+          if (r.checked && credTx && !credTx.value.trim()) credTx.value = defaultTextFor(r.value);
           syncCredit();
         });
       });
