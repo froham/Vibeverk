@@ -7,17 +7,30 @@
   <title>Laster…</title>
 
   <!-- Content-Security-Policy: tillater eksplisitt alle eksterne tjenester denne
-       kodebasen bruker (Google Fonts, Tabler Icons, Plausible).
+       kodebasen bruker (Google Fonts, Tabler Icons, Plausible, Tidio).
        Dersom hosting-plattformen (f.eks. Cloudflare) også setter en CSP-header,
        gjelder den STRENGESTE av de to — oppdater begge steder ved behov. -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' https://plausible.io;
-    connect-src 'self' https://plausible.io;
-    frame-src https://plausible.io;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net;
-    font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:;
-    img-src 'self' data: https:;
+    script-src  'self'
+                https://plausible.io
+                https://code.tidio.co;
+    connect-src 'self'
+                https://plausible.io
+                https://code.tidio.co
+                https://*.tidio.co
+                wss://*.tidio.co
+                https://cdn.jsdelivr.net;
+    frame-src   https://plausible.io
+                https://*.tidio.co;
+    style-src   'self' 'unsafe-inline'
+                https://fonts.googleapis.com
+                https://cdn.jsdelivr.net;
+    font-src    'self'
+                https://fonts.gstatic.com
+                https://cdn.jsdelivr.net
+                data:;
+    img-src     'self' data: https:;
   ">
 
   <!-- Eneste eksterne avhengigheter: Tabler Icons (Google Fonts injiseres av core.js) -->
