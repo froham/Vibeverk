@@ -8,11 +8,19 @@
   <meta name="robots" content="noindex, nofollow">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' https://plausible.io;
-    connect-src 'self' https://plausible.io;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net;
-    font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:;
-    img-src 'self' data: https:;
+    script-src  'self'
+                https://plausible.io;
+    connect-src 'self'
+                https://plausible.io
+                https://cdn.jsdelivr.net;
+    style-src   'self' 'unsafe-inline'
+                https://fonts.googleapis.com
+                https://cdn.jsdelivr.net;
+    font-src    'self'
+                https://fonts.gstatic.com
+                https://cdn.jsdelivr.net
+                data:;
+    img-src     'self' data: https:;
   ">
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.0.0/dist/tabler-icons.min.css">
@@ -197,8 +205,6 @@
     }
     .i-card + .i-card { margin-top: .6rem; }
     .i-card-grid > .i-card { margin-top: 0; }
-    .ann-card { transition: box-shadow .15s, transform .15s; }
-    .ann-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.10); transform: translateY(-1px); }
 
     .admin-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
     .admin-row {
@@ -209,18 +215,6 @@
     .admin-row__main { display: grid; gap: .15rem; min-width: 0; }
     .admin-row__meta { color: var(--color-muted); font-size: .8rem; }
     .admin-row__actions { display: flex; gap: .4rem; flex-shrink: 0; }
-
-    /* --- admin-form / email-tpl-card (frå core.js / hovudside) ----------- */
-    .admin-form { display: grid; gap: 1rem; align-items: start; }
-    .admin-form--card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.2rem; margin-top: 1rem; }
-    .email-tpl-card { margin-top: 0; margin-bottom: 1.2rem; }
-    .email-tpl-card summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: .5rem; list-style: none; }
-    .email-tpl-card summary::-webkit-details-marker { display: none; }
-    .email-tpl-card__body { margin-top: .8rem; }
-    .email-tpl-card__hint { font-size: .82rem; color: var(--color-muted); margin: 0 0 .6rem; }
-    .email-tpl-card textarea { width: 100%; font: inherit; font-size: .88rem; padding: .6rem .7rem; border-radius: 8px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); resize: vertical; box-sizing: border-box; }
-    .email-tpl-card textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent); }
-    .email-tpl-card__actions { display: flex; gap: .6rem; align-items: center; margin-top: .6rem; flex-wrap: wrap; }
 
     /* --- Skjema ----------------------------------------------------------- */
     .i-form { display: grid; gap: .9rem; align-items: start; }
@@ -248,51 +242,7 @@
     .form__status.is-ok  { color: #2a7a2a; }
     .form__status.is-err { color: #c0392b; }
 
-    /* --- Hjelpe-ikon (tooltip) -------------------------------------------- */
-    .help-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-border); color: var(--color-muted); font-size: .72rem; font-weight: 700; border: none; cursor: pointer; vertical-align: middle; margin-left: .35rem; padding: 0; line-height: 1; }
-    .help-icon__pop { display: none; position: absolute; bottom: 135%; left: 50%; transform: translateX(-50%); width: 230px; background: var(--color-text); color: #fff; font-size: .78rem; font-weight: 400; line-height: 1.45; padding: .65rem .75rem; border-radius: 8px; z-index: 20; text-align: left; pointer-events: none; }
-    .help-icon.is-open .help-icon__pop { display: block; }
-
-    /* --- .field (base for rtfield, imgfield frå components.js) ------------ */
-    .field { display: grid; gap: .35rem; }
-    .field label { font-size: .85rem; font-weight: 600; }
-
-    /* --- Vedlegg ---------------------------------------------------------- */
-    .attach-field { display: grid; gap: .5rem; }
-    .attach-add { justify-self: start; }
-    .attach-list:empty { display: none; }
-    .attach-item { display: flex; align-items: center; gap: .5rem; padding: .5rem .7rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); font-size: .9rem; }
-    .attach-item .ti { color: var(--color-primary); }
-    .attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .attach-size { color: var(--color-muted); font-size: .8rem; margin-left: auto; }
-    .attach-item .btn { padding: .3rem .5rem; }
-
-    /* --- Bildefelt -------------------------------------------------------- */
-    .imgfield__preview { position: relative; border: 1px solid var(--color-border); border-radius: 10px; background: #15171a; overflow: hidden; aspect-ratio: 16 / 9; display: grid; place-items: center; max-height: 220px; }
-    .imgfield__preview.is-set { cursor: grab; }
-    .imgfield__preview.is-grabbing { cursor: grabbing; }
-    .cropper__img { width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; -webkit-user-drag: none; touch-action: none; }
-    .cropper__window { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); border-radius: 2px; pointer-events: none; }
-    .imgfield__empty { color: var(--color-muted); font-size: .9rem; display: inline-flex; align-items: center; gap: .4rem; }
-    .imgfield__hint { margin: .4rem 0 0; font-size: .78rem; color: var(--color-muted); }
-    .imgfield__controls { display: flex; gap: .5rem; margin-top: .5rem; align-items: stretch; }
-    .imgfield__btn { white-space: nowrap; }
-    .imgfield__url { flex: 1; min-width: 0; font: inherit; font-size: .88rem; padding: .55rem .7rem; border-radius: 8px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); }
-    .imgfield__url:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent); }
-    .imgfield__clear { flex-shrink: 0; }
-    .imgfield__alt { margin-top: .7rem; }
-    .imgfield__altlabel { display: block; font-size: .82rem; color: var(--color-muted); margin-bottom: .35rem; }
-    .imgfield__altinput { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .55rem .7rem; border-radius: 8px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); }
-    .imgfield__altinput:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent); }
-    .imgfield__credit { display: flex; flex-direction: column; gap: .5rem; margin-top: .9rem; }
-    .imgfield__creditlabel { font-size: .82rem; color: var(--color-muted); margin: 0; }
-    .imgfield__creditradios { display: flex; flex-wrap: wrap; gap: .9rem; }
-    .imgfield__creditradios label { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; cursor: pointer; }
-    .imgfield__creditinput { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .55rem .7rem; border-radius: 8px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); }
-    .imgfield__creditinput:disabled { opacity: .45; }
-    .imgfield__creditinput:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent); }
-
-    /* Badge / status --------------------------------------------------- */
+    /* --- Badge / status --------------------------------------------------- */
     .i-badge {
       display: inline-flex; align-items: center;
       font-size: .72rem; font-weight: 700; padding: .2rem .6rem;
@@ -404,7 +354,6 @@
     }
     [data-theme="dark"] .admin-row { background: #262a3d; border-color: rgba(255,255,255,.08); }
     [data-theme="dark"] .admin-form--card { background: #262a3d; border-color: rgba(255,255,255,.08); }
-    [data-theme="dark"] .email-tpl-card textarea { background: #1e2130; color: #dde1f0; border-color: rgba(255,255,255,.18); }
     [data-theme="dark"] .kb-article-row { background: #262a3d; border-color: rgba(255,255,255,.08); }
     [data-theme="dark"] .kb-article-view { background: #262a3d; border-color: rgba(255,255,255,.08); }
     [data-theme="dark"] .kb-editor { background: #262a3d; border-color: rgba(255,255,255,.08); }
@@ -426,11 +375,6 @@
     /* Rtfield editor */
     [data-theme="dark"] .rtfield__editor { background: #1e2130; color: #dde1f0; }
     [data-theme="dark"] .rtfield__toolbar { background: #262a3d; }
-    /* Bildefelt mørk modus */
-    [data-theme="dark"] .imgfield__url,
-    [data-theme="dark"] .imgfield__altinput,
-    [data-theme="dark"] .imgfield__creditinput { background: #1e2130; color: #dde1f0; border-color: rgba(255,255,255,.18); }
-    [data-theme="dark"] .attach-item { background: #262a3d; border-color: rgba(255,255,255,.08); }
     /* --- Tetthet ---------------------------------------------------------- */
     [data-density="compact"] { --gap: .7rem; --section-y: 1.2rem; }
     [data-density="compact"] .i-main { padding: 1.2rem 1rem; }
@@ -459,9 +403,6 @@
       background: var(--color-surface); border-color: var(--color-border);
     }
     .rtfield__toolbar input[type="color"] { width:1.4rem;height:1.4rem;border:0;padding:0;cursor:pointer;background:none; }
-    .rtfield__colorlabel { display:inline-flex;align-items:center;gap:.25rem;padding:.3rem .4rem;border-radius:6px;cursor:pointer;position:relative; }
-    .rtfield__colorlabel:hover { background:var(--color-surface); }
-    .rtfield__colorlabel input[type="color"] { width:18px;height:18px;padding:0;border:0;cursor:pointer; }
     .rtfield__sep { width:1px;background:var(--color-border);margin:.2rem .15rem;align-self:stretch;display:inline-block; }
     .rtfield__editor {
       min-height: 160px;
@@ -551,6 +492,7 @@
   <script src="module-mediabank-internal.js"></script>
   <script src="module-kb.js"></script>
   <script src="module-links.js"></script>
+  <script src="module-orgdrift.js"></script>
   <script src="module-orgdrift.js"></script>
   <script src="module-contact.js"></script>
   <script src="module-crm.js"></script>
