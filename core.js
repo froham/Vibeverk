@@ -739,7 +739,7 @@ window.App = (function () {
       if (m) tabs.push({ id: "mod-" + m.id, label: modLabel(m), category: "henvendelser" });
     });
     tabs.push({ id: "leads", label: "Kontakt", category: "henvendelser" });
-    if (window.VwChatAdmin && (OPT_CHAT.enabled !== false)) {
+    if (window.VwChatAdmin && feat("chat") && OPT_CHAT.enabled !== false) {
       tabs.push({ id: "chat-admin", label: "Chat", category: "henvendelser" });
     }
     // Eigar ser full sikkerhetskopi (med per-modul-eksport)
@@ -2830,7 +2830,8 @@ window.App = (function () {
       newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg på innlegg",
       social:"Sosiale lenker", booking:"Booking", quote:"Tilbud",
       references:"Referanser", faq:"FAQ", siteSearch:"Søk i toppmeny",
-      crm:"Kunder", mediabank:"Mediebank", scrollbanner:"Banner"
+      crm:"Kunder", mediabank:"Mediebank", scrollbanner:"Banner",
+      chat:"Native Chat (chatboble)"
     };
     const IFEAT_LABELS = {
       announcements:"Aktuelt", notes:"Mine notatar", kb:"Kunnskapsbase",

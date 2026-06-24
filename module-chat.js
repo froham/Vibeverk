@@ -23,6 +23,7 @@
   "use strict";
 
   var CFG_CHAT = (window.SITE_CONFIG && window.SITE_CONFIG.chat) || {};
+  var CFG_FEAT = (window.SITE_CONFIG && window.SITE_CONFIG.features) || {};
   var OPT = Object.assign({
     enabled:      true,
     position:     "right",
@@ -35,7 +36,7 @@
     pollInterval: 5000
   }, CFG_CHAT);
 
-  if (!OPT.enabled) return;
+  if (!OPT.enabled || CFG_FEAT.chat === false) return;
 
   /* ── EMOJI-SETT ─────────────────────────────────────────────────────────── */
   var EMOJIS = [
@@ -451,12 +452,12 @@
         ".vwca-unread{background:var(--color-primary);color:#fff;border-radius:999px;font-size:.65rem;font-weight:700;padding:.1rem .38rem;min-width:16px;text-align:center}",
         ".vwca-conv__preview{font-size:.76rem;color:var(--color-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.1rem}",
         ".vwca-conv__ts{font-size:.68rem;color:var(--color-muted);margin-top:.1rem}",
-        ".vwca-view{display:flex;flex-direction:column;background:var(--color-bg)}",
+        ".vwca-view{display:flex;flex-direction:column;background:var(--color-bg);overflow:hidden}",
         ".vwca-view-head{padding:.7rem 1rem;border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:.6rem}",
         ".vwca-view-head-info{flex:1}",
         ".vwca-view-head-info strong{font-size:.9rem}",
         ".vwca-view-head-info span{font-size:.76rem;color:var(--color-muted);margin-left:.4rem}",
-        ".vwca-msgs{flex:1;overflow-y:auto;padding:.9rem;display:flex;flex-direction:column;gap:.5rem;background:#f8f9fa}",
+        ".vwca-msgs{flex:1;overflow-y:auto;min-height:0;padding:.9rem;display:flex;flex-direction:column;gap:.5rem;background:#f8f9fa}",
         ".vwca-msg{max-width:75%;padding:.55rem .8rem;border-radius:14px;font-size:.87rem;line-height:1.5;word-break:break-word}",
         ".vwca-msg--op{background:var(--color-primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}",
         ".vwca-msg--vis{background:#fff;color:#222;align-self:flex-start;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.07)}",

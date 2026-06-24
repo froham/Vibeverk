@@ -164,7 +164,8 @@ window.SITE_CONFIG = {
     siteSearch:  true,   // ← Søk på heile sida (søkikon i toppmenyen)
     crm:         true,   // ← Kunder-modul (lett CRM). Krever module-crm.js
     mediabank:     true,  // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
-    scrollbanner:  true   // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js (bildegalleri + grafisk profil). Krever module-mediabank.js
+    scrollbanner:  true,  // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js
+    chat:          true   // ← Native chat-boble. Krever module-chat.js
   },
 
   /* --- Native Chat -----------------------------------------------------------
