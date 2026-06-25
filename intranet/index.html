@@ -8,11 +8,14 @@
   <meta name="robots" content="noindex, nofollow">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src  'self'
-                https://plausible.io;
-    connect-src 'self'
+    script-src  'self' 'unsafe-inline'
                 https://plausible.io
                 https://cdn.jsdelivr.net;
+    connect-src 'self'
+                https://plausible.io
+                https://cdn.jsdelivr.net
+                https://clzczbyklgdtdhgjphup.supabase.co
+                wss://clzczbyklgdtdhgjphup.supabase.co;
     style-src   'self' 'unsafe-inline'
                 https://fonts.googleapis.com
                 https://cdn.jsdelivr.net;
@@ -479,6 +482,7 @@
        Alle intranett-ruter bruker #/-prefiks slik at de aldri matcher
        core.js sin route()-funksjon.
        ==================================================================== -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="../config.js"></script>
   <script src="../components.js"></script>
   <script src="../core.js"></script>
@@ -495,7 +499,9 @@
   <script src="module-orgdrift.js"></script>
   <script src="module-orgdrift.js"></script>
   <script src="module-contact.js"></script>
-  <script src="module-crm.js"></script>
+  <script src="../module-chat.js"></script>
+  <script src="../module-crm.js"></script>
+  <script src="../module-users.js"></script>
   <script src="module-booking.js"></script>
   <script src="module-quote.js"></script>
   <script src="module-dashboard.js"></script>

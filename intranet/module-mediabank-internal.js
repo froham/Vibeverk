@@ -230,11 +230,11 @@
       '<div class="i-card" style="margin-bottom:1rem;border-left:3px solid var(--color-primary)">' +
         '<p class="i-section-label" style="margin-bottom:.5rem">Om mediebanken</p>' +
         '<div style="font-size:.88rem;line-height:1.7;color:var(--color-muted);display:grid;gap:.4rem">' +
-          '<div>📁 Last opp bilete, PDF-ar, Word, Excel og andre filer til bedriftens interne mediebank.</div>' +
-          '<div>🏷️ Organiser filer med kategoriar — t.d. <em>Logoer</em>, <em>Bilete</em>, <em>Malar</em>, <em>Kontrakter</em>.</div>' +
-          '<div>📐 <strong>Grafisk profil:</strong> Last opp profilfiler under kategorien <em>Grafisk profil</em> — inkl. PowerPoint-malar, fontar, fargekodar og profilhandbok.</div>' +
-          '<div>🔗 Kopier lenkje til ei fil ved å klikke kopier-ikonet på filkortet.</div>' +
-          '<div>⚠️ Maks ' + (App.media.MAX_FILE_MB || 4) + ' MB per fil (lokal lagring). Større filer bør lagrast eksternt og leggast til som lenke.</div>' +
+          '<div>📁 Last opp bilder, PDF-er, Word, Excel og andre filer til bedriftens interne mediebank.</div>' +
+          '<div>🏷️ Organiser filer med kategorier — t.d. <em>Logoer</em>, <em>Bilder</em>, <em>Maler</em>, <em>Kontrakter</em>.</div>' +
+          '<div>📐 <strong>Grafisk profil:</strong> Last opp profilfiler under kategorien <em>Grafisk profil</em> — inkl. PowerPoint-maler, fonter, fargekoder og profilhåndbok.</div>' +
+          '<div>🔗 Kopier lenke til en fil ved å klikke kopier-ikonet på filkortet.</div>' +
+          '<div>⚠️ Maks ' + (App.media.MAX_FILE_MB || 4) + ' MB per fil (lokal lagring). Større filer bør lagres eksternt og legges til som lenke.</div>' +
         '</div>' +
         '<button id="wsp-media-info-toggle" style="background:none;border:0;cursor:pointer;font-size:.78rem;color:var(--color-primary);padding:.4rem 0 0;font-family:inherit">Skjul info ▲</button>' +
       '</div>' +

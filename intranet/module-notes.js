@@ -1,13 +1,11 @@
 /* =============================================================================
-   module-notes.js  —  NOTATER (intranett)  v3
+   module-notes.js  —  NOTATER (intranett)  v4
    -----------------------------------------------------------------------------
+   - Lagring: Supabase notes-tabell (per brukar, RLS: user_id = auth.uid())
+   - Fallback til App.store (localStorage) utan Supabase
+   - Eingongs-migrering: lokale notatar lastast opp til Supabase ved fyrste login
    - Kort-/listevisning med toggle
-   - Fast kortstorleik, pastelfargar (post-it)
-   - Slett-ikon nede i høgre hjørne på kvart kort
-   - Popup-modal: ingen backdrop-klikk, berre X / Lagre og lukk / Escape
-   - Lagre og lukk-knapp; X og Escape lukkar utan å lagre
-   Lagring:  App.store("wsp-notes")
-   Ruter:    #/notes, #/notes/<id>
+   - Popup-modal: X / Lagre og lukk / Escape
    ========================================================================== */
 (function () {
   "use strict";
@@ -19,8 +17,10 @@
   if (!Intranet || !App || !C) return;
   if (CFG.intranettFeatures && CFG.intranettFeatures.notes === false) return;
 
+  var _sb       = App.supabase;
   var STORE_KEY = "wsp-notes";
   var VIEW_KEY  = "wsp-notes-view";
+  var _notes    = [];   // in-memory cache, populert av loadNotes()
 
   var NOTE_COLORS = [
     { id: "none",   label: "Ingen",    bg: "var(--color-surface)",  border: "var(--color-border)" },
@@ -40,55 +40,116 @@
   /* =========================================================================
      LAGRING
      ====================================================================== */
-  function getNotes()  { return App.store.get(STORE_KEY, []) || []; }
-  function setNotes(v) { App.store.set(STORE_KEY, v); }
+  function uid() { return Intranet.getContext().userId; }
 
-  function newId() {
-    return "wsp-n-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+  function loadNotes(cb) {
+    if (!_sb || !uid()) {
+      _notes = App.store.get(STORE_KEY, []) || [];
+      cb && cb();
+      return;
+    }
+    _sb.from("notes")
+      .select("*")
+      .eq("user_id", uid())
+      .order("updated_at", { ascending: false })
+      .then(function (r) {
+        if (r.error) { cb && cb(); return; }
+        _notes = r.data || [];
+        // Eingongs-migrering: lokale notatar → Supabase
+        if (_notes.length === 0) {
+          var local = App.store.get(STORE_KEY, []) || [];
+          if (local.length > 0) { migrateLocal(local, cb); return; }
+        }
+        cb && cb();
+      });
   }
 
-  function createNote(data) {
-    var now  = Date.now();
-    var note = {
-      id:        newId(),
-      title:     data.title    || "Uten tittel",
-      body:      data.body     || "",
-      category:  data.category || "",
-      tags:      data.tags     || [],
-      summary:   data.summary  || "",
-      color:     data.color    || "none",
-      createdAt: now,
-      updatedAt: now,
-      createdBy: Intranet.getContext ? Intranet.getContext().userId : "local"
+  function migrateLocal(local, cb) {
+    var rows = local.map(function (n) {
+      return {
+        user_id:  uid(),
+        title:    n.title    || "Uten tittel",
+        content:  n.body     || n.content || "",
+        category: n.category || "",
+        tags:     n.tags     || [],
+        color:    n.color    || "none",
+        summary:  n.summary  || ""
+      };
+    });
+    _sb.from("notes").insert(rows).select().then(function (r) {
+      if (!r.error) {
+        _notes = r.data || [];
+        App.store.remove(STORE_KEY);
+      }
+      cb && cb();
+    });
+  }
+
+  function createNote(data, cb) {
+    var row = {
+      user_id:  uid(),
+      title:    data.title    || "Uten tittel",
+      content:  data.body     || "",
+      category: data.category || "",
+      tags:     data.tags     || [],
+      color:    data.color    || "none",
+      summary:  data.summary  || ""
     };
-    var list = getNotes();
-    list.unshift(note);
-    setNotes(list);
-    Intranet.logActivity({ type: "note_created", label: "Nytt notat: " + note.title });
-    return note;
+    if (!_sb || !uid()) {
+      var ls = Object.assign({}, row, { id: "wsp-n-" + Date.now(), updated_at: new Date().toISOString(), created_at: new Date().toISOString() });
+      _notes.unshift(ls);
+      App.store.set(STORE_KEY, _notes);
+      Intranet.logActivity({ type: "note_created", label: "Nytt notat: " + row.title });
+      cb && cb(ls);
+      return;
+    }
+    _sb.from("notes").insert(row).select().single().then(function (r) {
+      if (!r.error && r.data) {
+        _notes.unshift(r.data);
+        Intranet.logActivity({ type: "note_created", label: "Nytt notat: " + r.data.title });
+      }
+      cb && cb(r.data);
+    });
   }
 
-  function updateNote(id, changes) {
-    var list = getNotes();
-    var idx  = list.findIndex(function (n) { return n.id === id; });
-    if (idx < 0) return null;
-    Object.assign(list[idx], changes, { updatedAt: Date.now() });
-    setNotes(list);
-    return list[idx];
+  function updateNote(id, data, cb) {
+    var changes = {
+      title:    data.title    || "Uten tittel",
+      content:  data.body     || "",
+      category: data.category || "",
+      tags:     data.tags     || [],
+      color:    data.color    || "none",
+      summary:  data.summary  || ""
+    };
+    var idx = _notes.findIndex(function (n) { return n.id === id; });
+    if (idx >= 0) Object.assign(_notes[idx], changes, { updated_at: new Date().toISOString() });
+    if (!_sb || !uid()) {
+      App.store.set(STORE_KEY, _notes);
+      cb && cb();
+      return;
+    }
+    _sb.from("notes").update(changes).eq("id", id).eq("user_id", uid()).then(function () {
+      cb && cb();
+    });
   }
 
-  function deleteNote(id) {
-    var list = getNotes();
-    var note = list.find(function (n) { return n.id === id; });
-    setNotes(list.filter(function (n) { return n.id !== id; }));
+  function deleteNote(id, cb) {
+    var note = _notes.find(function (n) { return n.id === id; });
+    _notes = _notes.filter(function (n) { return n.id !== id; });
     if (note) Intranet.logActivity({ type: "note_deleted", label: "Notat slettet: " + note.title });
+    if (!_sb || !uid()) {
+      App.store.set(STORE_KEY, _notes);
+      cb && cb();
+      return;
+    }
+    _sb.from("notes").delete().eq("id", id).eq("user_id", uid()).then(function () {
+      cb && cb();
+    });
   }
 
   function getCategories() {
     var cats = {};
-    getNotes().forEach(function (n) {
-      if (n.category) cats[n.category] = (cats[n.category] || 0) + 1;
-    });
+    _notes.forEach(function (n) { if (n.category) cats[n.category] = 1; });
     return Object.keys(cats).sort();
   }
 
@@ -96,13 +157,13 @@
      SØK
      ====================================================================== */
   function searchNotes(query, category) {
-    var q     = (query || "").toLowerCase().trim();
-    var notes = getNotes();
+    var q = (query || "").toLowerCase().trim();
+    var notes = _notes;
     if (category) notes = notes.filter(function (n) { return n.category === category; });
     if (!q) return notes;
     return notes.filter(function (n) {
       return (n.title    || "").toLowerCase().indexOf(q) > -1 ||
-             (n.body     || "").toLowerCase().indexOf(q) > -1 ||
+             (n.content  || "").toLowerCase().indexOf(q) > -1 ||
              (n.category || "").toLowerCase().indexOf(q) > -1 ||
              (n.tags     || []).some(function (t) { return t.toLowerCase().indexOf(q) > -1; });
     });
@@ -136,8 +197,8 @@
     }).join(" ");
   }
 
-  function bodyPreview(body) {
-    return C.stripHtml(body || "").slice(0, 100);
+  function bodyPreview(content) {
+    return C.stripHtml(content || "").slice(0, 100);
   }
 
   /* =========================================================================
@@ -148,7 +209,6 @@
     var s = document.createElement("style");
     s.id  = "notes-styles";
     s.textContent = [
-      /* Kortgrid — fast storleik på alle kort */
       ".notes-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem}",
       ".notes-card{border-radius:var(--radius);padding:1rem;cursor:pointer;transition:border-color .15s,box-shadow .15s;",
         "text-align:left;width:100%;font:inherit;border-width:1.5px;border-style:solid;",
@@ -162,13 +222,11 @@
         "overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}",
       ".notes-card__foot{display:flex;align-items:center;justify-content:space-between;margin-top:.4rem}",
       ".notes-card__date{font-size:.7rem;color:var(--color-muted)}",
-      /* Slett-knapp nede i høgre hjørne */
       ".notes-card__del{position:absolute;bottom:.5rem;right:.5rem;background:none;border:0;",
         "cursor:pointer;color:var(--color-muted);font-size:.95rem;padding:.2rem;border-radius:6px;",
         "opacity:0;transition:opacity .15s,color .15s;line-height:1}",
       ".notes-card:hover .notes-card__del{opacity:1}",
       ".notes-card__del:hover{color:#c0392b}",
-      /* Listevisning */
       ".notes-list-row{background:var(--color-surface);border:1px solid var(--color-border);",
         "border-radius:10px;padding:.6rem 1rem;cursor:pointer;transition:border-color .15s;",
         "display:flex;align-items:center;gap:.75rem;width:100%;text-align:left;font:inherit;position:relative}",
@@ -182,17 +240,14 @@
         "font-size:.95rem;padding:.2rem;opacity:0;transition:opacity .15s,color .15s;line-height:1;flex-shrink:0}",
       ".notes-list-row:hover .notes-list-row__del{opacity:1}",
       ".notes-list-row__del:hover{color:#c0392b}",
-      /* Visning-toggle */
       ".notes-view-btn{background:none;border:1.5px solid var(--color-border);border-radius:8px;",
         "padding:.35rem .6rem;cursor:pointer;color:var(--color-muted);font-size:.85rem;",
         "transition:background .12s,border-color .12s}",
       ".notes-view-btn.is-active{background:var(--color-primary);border-color:var(--color-primary);color:#fff}",
-      /* Fargeveljar i modal */
       ".note-color-picker{display:flex;gap:.4rem;flex-wrap:wrap}",
       ".note-color-swatch{width:24px;height:24px;border-radius:50%;border:2px solid transparent;",
         "cursor:pointer;transition:transform .12s,border-color .12s;flex-shrink:0}",
       ".note-color-swatch.is-active{border-color:var(--color-text);transform:scale(1.2)}",
-      /* Mørkt modus: justér korttekst */
       "[data-theme='dark'] .notes-card__title{color:var(--color-text)}",
       "[data-theme='dark'] .notes-card__preview{color:var(--color-muted)}"
     ].join("");
@@ -207,8 +262,11 @@
   function mount(outlet, ctx, sub) {
     var root = outlet.querySelector("#notes-root") || outlet;
     injectStyles();
-    renderPage(root);
-    if (sub) openNoteModal(sub, root);
+    root.innerHTML = '<p style="color:var(--color-muted);font-size:.9rem;padding:1rem">Lastar notatar…</p>';
+    loadNotes(function () {
+      renderPage(root);
+      if (sub) openNoteModal(sub, root);
+    });
   }
 
   function getView() { return App.store.get(VIEW_KEY, "card") || "card"; }
@@ -273,7 +331,7 @@
                 '<div class="notes-list-row__title">' + C.esc(n.title || "Uten tittel") + '</div>' +
                 '<div class="notes-list-row__meta">' +
                   (n.category ? '<span style="color:var(--color-primary)">' + C.esc(n.category) + '</span> · ' : '') +
-                  formatDate(n.updatedAt) +
+                  formatDate(n.updated_at) +
                   (n.tags && n.tags.length ? ' · ' + tagsHtml(n.tags) : '') +
                 '</div>' +
               '</div>' +
@@ -288,14 +346,14 @@
       grid.innerHTML = '<div class="notes-card-grid">' +
         notes.map(function (n) {
           var col     = colorById(n.color);
-          var preview = bodyPreview(n.body);
+          var preview = bodyPreview(n.content);
           return '<div class="notes-card" data-note-open="' + C.esc(n.id) + '" role="button" tabindex="0" ' +
             'style="background:' + col.bg + ';border-color:' + col.border + ';cursor:pointer">' +
             (n.category ? '<div class="notes-card__cat">' + C.esc(n.category) + '</div>' : '') +
             '<div class="notes-card__title">' + C.esc(n.title || "Uten tittel") + '</div>' +
             (preview ? '<div class="notes-card__preview">' + C.esc(preview) + '</div>' : '') +
             '<div class="notes-card__foot">' +
-              '<span class="notes-card__date">' + formatDate(n.updatedAt) + '</span>' +
+              '<span class="notes-card__date">' + formatDate(n.updated_at) + '</span>' +
               '<span>' + tagsHtml(n.tags) + '</span>' +
             '</div>' +
             '<button class="notes-card__del" data-note-del="' + C.esc(n.id) + '" title="Slett notat">' +
@@ -312,11 +370,9 @@
   function bindGrid(root, grid) {
     grid.querySelectorAll("[data-note-open]").forEach(function (card) {
       card.addEventListener("click", function (e) {
-        if (e.target.closest("[data-note-del]")) return; // sletteknapp handtert separat
+        if (e.target.closest("[data-note-del]")) return;
         openNoteModal(card.getAttribute("data-note-open"), root);
       });
-      /* Berre div-kort (kortvisning) treng keydown — button-element (listevisning)
-         aktiverer nativt på Enter/mellomrom og ville opna to modalvindaugar. */
       if (card.tagName !== "BUTTON") {
         card.addEventListener("keydown", function (e) {
           if (e.key === "Enter") { e.preventDefault(); card.click(); }
@@ -327,10 +383,9 @@
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         var id   = btn.getAttribute("data-note-del");
-        var note = getNotes().find(function (n) { return n.id === id; });
+        var note = _notes.find(function (n) { return n.id === id; });
         if (!confirm('Slett "' + (note ? note.title : "notat") + '"?')) return;
-        deleteNote(id);
-        renderPage(root);
+        deleteNote(id, function () { renderPage(root); });
       });
     });
   }
@@ -359,16 +414,13 @@
 
   /* =========================================================================
      POPUP-MODAL
-     — Ingen backdrop-klikk. Berre X, Lagre og lukk, eller Escape.
-     — Eitt globalt Escape-lyttar-objekt for å unngå opphoping.
      ====================================================================== */
   var _activeEscHandler = null;
 
   function openNoteModal(id, root) {
-    var note  = id ? getNotes().find(function (n) { return n.id === id; }) : null;
+    var note  = id ? _notes.find(function (n) { return n.id === id; }) : null;
     var isNew = !note;
 
-    /* Rydd opp tidlegare Escape-lyttar */
     if (_activeEscHandler) {
       document.removeEventListener("keydown", _activeEscHandler);
       _activeEscHandler = null;
@@ -384,7 +436,7 @@
     var modal = document.createElement("div");
     modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(680px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3);display:flex;flex-direction:column";
 
-    var cats       = getCategories();
+    var cats        = getCategories();
     var activeColor = note ? (note.color || "none") : "none";
 
     var colorSwatches = NOTE_COLORS.map(function (col) {
@@ -395,7 +447,6 @@
     }).join("");
 
     modal.innerHTML =
-      /* Topplinje */
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
         '<div style="display:flex;align-items:center;gap:.7rem;flex:1;min-width:0">' +
           '<input id="nm-title" type="text" value="' + C.esc(note ? note.title || "" : "") + '" ' +
@@ -405,7 +456,6 @@
         '<button id="nm-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;margin-left:.5rem" title="Lukk">&times;</button>' +
       '</div>' +
 
-      /* Innhald */
       '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;flex:1">' +
         '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
           '<input id="nm-category" type="text" list="nm-cat-list" value="' + C.esc(note ? note.category || "" : "") + '" ' +
@@ -417,13 +467,12 @@
             'style="flex:2;min-width:160px;font:inherit;font-size:.85rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text)">' +
         '</div>' +
 
-        /* Fargeveljar */
         '<div>' +
           '<p style="font-size:.78rem;font-weight:600;color:var(--color-muted);margin:0 0 .4rem">Farge</p>' +
           '<div class="note-color-picker">' + colorSwatches + '</div>' +
         '</div>' +
 
-        C.richTextField({ id: "nm-body", label: "", value: note ? note.body || "" : "" }) +
+        C.richTextField({ id: "nm-body", label: "", value: note ? note.content || "" : "" }) +
 
         '<input id="nm-summary" type="text" value="' + C.esc(note ? note.summary || "" : "") + '" ' +
           'placeholder="Kort AI-sammendrag (valgfritt)…" ' +
@@ -441,7 +490,6 @@
     document.body.appendChild(bd);
     App.ui.bindRichTextFields(modal);
 
-    /* Fargeveljar interaksjon */
     var selectedColor = activeColor;
     modal.querySelectorAll("[data-color-id]").forEach(function (sw) {
       sw.addEventListener("click", function (e) {
@@ -469,63 +517,59 @@
       return {
         title:    titleInp.value.trim() || "Uten tittel",
         body:     App.ui.readRichTextField(modal, "nm-body"),
-        category: catInp    ? catInp.value.trim()      : "",
-        tags:     tagsInp   ? parseTags(tagsInp.value) : [],
-        summary:  summaryInp ? summaryInp.value.trim() : "",
+        category: catInp     ? catInp.value.trim()      : "",
+        tags:     tagsInp    ? parseTags(tagsInp.value) : [],
+        summary:  summaryInp ? summaryInp.value.trim()  : "",
         color:    selectedColor
       };
     }
 
-    function doSave() {
-      var data = readData();
-      if (!currentId) {
-        var created = createNote(data);
-        currentId = created.id;
-      } else {
-        updateNote(currentId, data);
-      }
-    }
-
-    function closeModal(save) {
-      if (save) doSave();
+    function closeModal(save, cb) {
       if (_activeEscHandler) {
         document.removeEventListener("keydown", _activeEscHandler);
         _activeEscHandler = null;
       }
-      bd.remove();
-      Intranet.navigate("notes");
-      if (root) renderGrid(root);
+      if (!save) { bd.remove(); Intranet.navigate("notes"); if (root) renderGrid(root); cb && cb(); return; }
+      var data = readData();
+      if (!currentId) {
+        createNote(data, function (created) {
+          if (created) currentId = created.id;
+          bd.remove();
+          Intranet.navigate("notes");
+          if (root) renderGrid(root);
+          cb && cb();
+        });
+      } else {
+        updateNote(currentId, data, function () {
+          bd.remove();
+          Intranet.navigate("notes");
+          if (root) renderGrid(root);
+          cb && cb();
+        });
+      }
     }
 
-    /* Lagre og lukk */
-    modal.querySelector("#nm-save-close").addEventListener("click", function () {
-      closeModal(true);
-    });
+    modal.querySelector("#nm-save-close").addEventListener("click", function () { closeModal(true); });
+    modal.querySelector("#nm-close").addEventListener("click", function () { closeModal(false); });
 
-    /* X — lukk utan å lagre */
-    modal.querySelector("#nm-close").addEventListener("click", function () {
-      closeModal(false);
-    });
-
-    /* Escape — lukk utan å lagre */
-    _activeEscHandler = function (e) {
-      if (e.key === "Escape") { closeModal(false); }
-    };
+    _activeEscHandler = function (e) { if (e.key === "Escape") { closeModal(false); } };
     document.addEventListener("keydown", _activeEscHandler);
 
-    /* Slett */
     var delBtn = modal.querySelector("#nm-delete");
     if (delBtn) {
       delBtn.addEventListener("click", function () {
         if (!confirm('Slett "' + (note ? note.title : "notat") + '"?')) return;
-        if (currentId) deleteNote(currentId);
-        if (_activeEscHandler) {
-          document.removeEventListener("keydown", _activeEscHandler);
-          _activeEscHandler = null;
+        if (currentId) {
+          deleteNote(currentId, function () {
+            if (_activeEscHandler) {
+              document.removeEventListener("keydown", _activeEscHandler);
+              _activeEscHandler = null;
+            }
+            bd.remove();
+            Intranet.navigate("notes");
+            if (root) renderPage(root);
+          });
         }
-        bd.remove();
-        Intranet.navigate("notes");
-        if (root) renderPage(root);
       });
     }
   }

@@ -104,13 +104,14 @@
       '<div class="wsp-toast" data-wsp-toast role="status" aria-live="polite"></div>'
     ].join("");
 
-    startGame(root);
+    startGame(root, onClose);
   }
 
-  function startGame(root) {
+  function startGame(root, onClose) {
     var canvas = root.querySelector("[data-wsp-canvas]");
     var ctx = canvas.getContext("2d");
     var wrap = root.querySelector("[data-wsp-wrap]");
+    var stage = root.querySelector(".wsp-stage");
     var overlay = root.querySelector("[data-wsp-overlay]");
     var overlayTitle = root.querySelector("[data-wsp-overlay-title]");
     var overlayText = root.querySelector("[data-wsp-overlay-text]");
@@ -800,7 +801,6 @@
   function findLogoCandidate(node) {
     var el = node && node.nodeType === 1 ? node : (node && node.parentElement);
     var candidate;
-    var depth = 0;
 
     if (!el) return null;
 
@@ -814,21 +814,6 @@
       } catch (ignore) {}
     }
 
-    /* Fallback for the existing Vibeverk brand. This survives sidebar re-renders
-       because the listener is delegated from document rather than bound once to
-       a logo node that may later be replaced. */
-    while (el && el !== document.body && depth < 7) {
-      var label = (el.getAttribute && (el.getAttribute("aria-label") || el.getAttribute("title"))) || "";
-      var text = (el.textContent || "").replace(/\s+/g, " ").trim();
-      var classes = typeof el.className === "string" ? el.className : "";
-      if (/vibeverk/i.test(label) || (/vibeverk/i.test(text) && /(?:logo|brand|workspace|sidebar|header|identity)/i.test(classes + " " + (el.id || "")))) {
-        return el;
-      }
-      /* The current logo has visible text 'Vibeverk' above 'Workspace'. */
-      if (/^vibeverk\s*workspace$/i.test(text) || /^vibeverk$/i.test(text)) return el;
-      el = el.parentElement;
-      depth++;
-    }
     return null;
   }
 

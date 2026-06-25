@@ -145,7 +145,7 @@
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:.8rem;margin-bottom:.8rem">' +
         '<div>' +
           '<h4 style="margin:0">Scrollbanner-seksjonar</h4>' +
-          '<p class="prose prose--muted" style="margin:.2rem 0 0;font-size:.82rem">Kvar seksjon kan plasserast fritt i Navigasjon-fanen. Vises ikkje i toppmeny.</p>' +
+          '<p class="prose prose--muted" style="margin:.2rem 0 0;font-size:.82rem">Hver seksjon kan plasseres fritt i Navigasjon-fanen. Vises ikke i toppmenyen.</p>' +
         '</div>' +
         C.button({ label:"Ny seksjon", icon:"plus", variant:"primary", attrs:"data-sb-new" }) +
       '</div>' +

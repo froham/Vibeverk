@@ -1,11 +1,8 @@
 /* =============================================================================
-   module-links.js  —  EKSTERNE LENKER (intranett)
+   module-links.js  —  EKSTERNE LENKER (intranett)  v2
    -----------------------------------------------------------------------------
-   Kuratert samling av lenker til verktøy og system bedrifta brukar.
-   Admin legg til, tilsette navigerer.
-
-   Lagring:  App.store("wsp-links")
-   Ruter:    #/links
+   Lagring: Supabase links-tabell. Fallback til App.store (localStorage).
+   Eingongs-migrering frå localStorage ved fyrste innlogging.
    ========================================================================== */
 (function () {
   "use strict";
@@ -17,34 +14,106 @@
   if (!Intranet || !App || !C) return;
   if (CFG.intranettFeatures && CFG.intranettFeatures.links === false) return;
 
+  var _sb       = App.supabase;
   var STORE_KEY = "wsp-links";
+  var _links    = [];
 
   /* =========================================================================
-     LAGRING
+     TILGANG
      ====================================================================== */
-  function getLinks()  { return App.store.get(STORE_KEY, []) || []; }
-  function setLinks(v) { App.store.set(STORE_KEY, v); }
+  function uid() { return Intranet.getContext().userId; }
 
-  function newId() {
-    return "wsp-l-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+  function isAdmin(ctx) {
+    var role = (ctx && ctx.role) || Intranet.getContext().role;
+    return role === "owner" || role === "admin";
   }
 
   function getCategories() {
     var cats = {};
-    getLinks().forEach(function (l) { cats[l.category || "Generelt"] = 1; });
+    _links.forEach(function (l) { cats[l.category || "Generelt"] = 1; });
     return Object.keys(cats).sort();
   }
 
   /* =========================================================================
-     ADMIN-SJEKK
+     LAGRING
      ====================================================================== */
-  function isAdmin(ctx) {
-    if (ctx && (ctx.role === "owner" || ctx.role === "admin")) return true;
-    try {
-      var ns = (window.SITE_CONFIG && window.SITE_CONFIG.storageKey) || "site";
-      var r  = sessionStorage.getItem(ns + ":intranet-auth");
-      return r === "owner" || r === "admin";
-    } catch (e) { return false; }
+  function loadLinks(cb) {
+    if (!_sb) {
+      _links = App.store.get(STORE_KEY, []) || [];
+      cb && cb();
+      return;
+    }
+    _sb.from("links").select("*").order("sort_order", { ascending: true }).then(function (r) {
+      if (r.error) { cb && cb(); return; }
+      _links = r.data || [];
+      if (_links.length === 0) {
+        var local = App.store.get(STORE_KEY, []) || [];
+        if (local.length > 0) { migrateLocal(local, cb); return; }
+      }
+      cb && cb();
+    });
+  }
+
+  function migrateLocal(local, cb) {
+    var rows = local.map(function (l, i) {
+      return {
+        title: l.title || "Lenke", url: l.url || "#",
+        description: l.description || "",
+        category: l.category || "Generelt",
+        icon: l.icon || "link",
+        created_by: uid(), sort_order: i
+      };
+    }).filter(function (r) { return !!uid(); });
+    if (!rows.length) { cb && cb(); return; }
+    _sb.from("links").insert(rows).select().then(function (r) {
+      if (!r.error) { _links = r.data || []; App.store.remove(STORE_KEY); }
+      cb && cb();
+    });
+  }
+
+  function saveLink(item, data, cb) {
+    var row = {
+      title: data.title, url: data.url,
+      description: data.description || "",
+      category: data.category || "Generelt",
+      icon: data.icon || "link"
+    };
+    if (!_sb) {
+      if (item) {
+        var idx = _links.findIndex(function (l) { return l.id === item.id; });
+        if (idx >= 0) _links[idx] = Object.assign({}, _links[idx], row);
+      } else {
+        _links.push(Object.assign({ id: "wsp-l-" + Date.now() }, row));
+      }
+      App.store.set(STORE_KEY, _links);
+      cb && cb();
+      return;
+    }
+    if (item) {
+      _sb.from("links").update(row).eq("id", item.id).select().single().then(function (r) {
+        if (!r.error && r.data) {
+          var idx = _links.findIndex(function (l) { return l.id === item.id; });
+          if (idx >= 0) _links[idx] = r.data;
+        }
+        Intranet.logActivity({ type: "link_updated", label: "Lenke oppdatert: " + row.title });
+        cb && cb();
+      });
+    } else {
+      var insert = Object.assign({ created_by: uid(), sort_order: _links.length }, row);
+      _sb.from("links").insert(insert).select().single().then(function (r) {
+        if (!r.error && r.data) _links.push(r.data);
+        Intranet.logActivity({ type: "link_created", label: "Ny lenke: " + row.title });
+        cb && cb();
+      });
+    }
+  }
+
+  function deleteLink(id, cb) {
+    var link = _links.find(function (l) { return l.id === id; });
+    _links = _links.filter(function (l) { return l.id !== id; });
+    Intranet.logActivity({ type: "link_deleted", label: "Lenke slettet: " + (link ? link.title : "") });
+    if (!_sb) { App.store.set(STORE_KEY, _links); cb && cb(); return; }
+    _sb.from("links").delete().eq("id", id).then(function () { cb && cb(); });
   }
 
   /* =========================================================================
@@ -54,17 +123,16 @@
 
   function mount(outlet, ctx) {
     var root = outlet.querySelector("#links-root") || outlet;
-    renderPage(root, ctx);
+    root.innerHTML = '<p style="color:var(--color-muted);padding:1rem">Lastar…</p>';
+    loadLinks(function () { renderPage(root, ctx); });
   }
 
   function renderPage(root, ctx) {
-    var links = getLinks();
     var cats  = getCategories();
     var admin = isAdmin(ctx);
 
-    // Grupper etter kategori
     var grouped = {};
-    links.forEach(function (l) {
+    _links.forEach(function (l) {
       var c = l.category || "Generelt";
       if (!grouped[c]) grouped[c] = [];
       grouped[c].push(l);
@@ -76,7 +144,7 @@
         (admin ? '<button class="btn btn--primary btn--sm" id="links-new-btn"><i class="ti ti-plus"></i> Legg til</button>' : '') +
       '</div>' +
       '<div id="links-editor"></div>' +
-      (links.length === 0
+      (_links.length === 0
         ? '<div style="text-align:center;padding:2.5rem;color:var(--color-muted)">' +
             '<i class="ti ti-link" style="font-size:2.5rem;display:block;margin-bottom:.5rem;opacity:.3"></i>' +
             '<p style="font-size:.9rem">' + (admin ? 'Ingen lenker ennå. Klikk «Legg til».' : 'Ingen lenker er lagt til ennå.') + '</p>' +
@@ -91,7 +159,7 @@
                 '</div>';
               }).join("")
             : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.6rem">' +
-                links.map(function (l) { return linkCard(l, admin); }).join("") +
+                _links.map(function (l) { return linkCard(l, admin); }).join("") +
               '</div>'
           )
       );
@@ -103,8 +171,7 @@
       root.querySelectorAll("[data-link-edit]").forEach(function (btn) {
         btn.addEventListener("click", function (e) {
           e.preventDefault();
-          var id   = btn.getAttribute("data-link-edit");
-          var link = getLinks().find(function (l) { return l.id === id; });
+          var link = _links.find(function (l) { return l.id === btn.getAttribute("data-link-edit"); });
           if (link) openEditor(root, link, ctx);
         });
       });
@@ -113,11 +180,9 @@
         btn.addEventListener("click", function (e) {
           e.preventDefault();
           var id   = btn.getAttribute("data-link-del");
-          var link = getLinks().find(function (l) { return l.id === id; });
+          var link = _links.find(function (l) { return l.id === id; });
           if (!confirm('Slett "' + (link ? link.title : "") + '"?')) return;
-          setLinks(getLinks().filter(function (l) { return l.id !== id; }));
-          Intranet.logActivity({ type: "link_deleted", label: "Lenke slettet: " + (link ? link.title : "") });
-          renderPage(root, ctx);
+          deleteLink(id, function () { renderPage(root, ctx); });
         });
       });
     }
@@ -200,15 +265,12 @@
         '</div>' +
       '</div>';
 
-    /* Ikonveljar */
     ed.querySelectorAll("[data-pick-icon]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         ed.querySelector("#link-icon").value = btn.getAttribute("data-pick-icon");
-        ed.querySelectorAll("[data-pick-icon]").forEach(function (b) {
-          b.style.borderColor = ""; b.style.color = "";
-        });
+        ed.querySelectorAll("[data-pick-icon]").forEach(function (b) { b.style.borderColor = ""; b.style.color = ""; });
         btn.style.borderColor = "var(--color-primary)";
-        btn.style.color = "var(--color-primary)";
+        btn.style.color       = "var(--color-primary)";
       });
     });
 
@@ -219,8 +281,6 @@
       var url   = ed.querySelector("#link-url").value.trim();
       var st    = ed.querySelector("#link-status");
       if (!title || !url) { st.textContent = "Tittel og URL er påkrevd."; st.className = "form__status is-err"; return; }
-
-      // Normaliser URL — legg til https:// om ikkje intern (#) eller protokoll
       if (url && !url.startsWith("http") && !url.startsWith("#") && !url.startsWith("mailto:") && !url.startsWith("/")) {
         url = "https://" + url;
       }
@@ -231,21 +291,20 @@
         category:    ed.querySelector("#link-category").value.trim() || "Generelt",
         icon:        ed.querySelector("#link-icon").value.trim() || "link"
       };
-
-      var list = getLinks();
-      if (item) {
-        var idx = list.findIndex(function (l) { return l.id === item.id; });
-        list[idx] = Object.assign({}, item, data);
-        Intranet.logActivity({ type: "link_updated", label: "Lenke oppdatert: " + title });
-      } else {
-        list.push(Object.assign({ id: newId() }, data));
-        Intranet.logActivity({ type: "link_created", label: "Ny lenke: " + title });
-      }
-      setLinks(list);
-      ed.innerHTML = "";
-      renderPage(root, ctx);
+      st.textContent = "Lagrar…";
+      saveLink(item || null, data, function () {
+        ed.innerHTML = "";
+        renderPage(root, ctx);
+      });
     });
   }
+
+  /* =========================================================================
+     EKSPONERT API  (brukt av module-dashboard.js sin snarvei-picker)
+     ====================================================================== */
+  window._linksLoad = function (cb) {
+    loadLinks(function () { cb(_links.slice()); });
+  };
 
   /* =========================================================================
      REGISTRERING

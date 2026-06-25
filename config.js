@@ -194,7 +194,7 @@ window.SITE_CONFIG = {
     links:         true,  // ← Lenker
 
     /* --- Standard AV (aktiverast per kunde) --- */
-    crm:           false, // ← Kunder (frå nettsida)
+    crm:           true,  // ← Kunder (frå nettsida)
     booking:       false, // ← Booking (frå nettsida)
     quote:         false, // ← Tilbud (frå nettsida)
     contact:       false, // ← Kontakthenvendingar (frå nettsida)
@@ -202,6 +202,17 @@ window.SITE_CONFIG = {
     mediaInternal: false  // ← Mediebank (intern)
   },
 
+
+  /* --- Chat (modul) --------------------------------------------------------- */
+  chat: {
+    enabled:      true,
+    position:     "right",
+    welcomeMsg:   "Hei! Korleis kan vi hjelpe deg?",
+    operatorName: "Oss",
+    askName:      true,
+    termsText:    "Eg godtek at denne samtalen lagrast",
+    termsUrl:     ""
+  },
 
   /* --- FAQ (modul) ---------------------------------------------------------- */
   faq: {
@@ -265,6 +276,13 @@ window.SITE_CONFIG = {
   // Fyll inn domenenavn når det er oppe. Tomt felt = ingenting lastes.
   analytics: {
     plausible: ""   // domenenavn, f.eks. "nordpunkt.no"
+  },
+
+  /* --- Supabase ------------------------------------------------------------- */
+  // anon-nøkkelen er trygg å eksponere i klienten — sikkerhet kjem frå RLS.
+  supabase: {
+    url:     "https://clzczbyklgdtdhgjphup.supabase.co",
+    anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNsemN6YnlrbGdkdGRoZ2pwaHVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMTQ0NDUsImV4cCI6MjA5Nzg5MDQ0NX0.3LA63yD_Dshpw4FgM40kkSALA0mBbFomT3L_TeC_nnw"
   },
 
   /* --- Lagring -------------------------------------------------------------- */

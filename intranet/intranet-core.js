@@ -19,6 +19,7 @@ window.Intranet = (function () {
      ====================================================================== */
   var App = window.App;
   var C   = window.Components;
+  var _sb = App && App.supabase;
   // App og C må være klare (core.js laster dem). Sikkerhetsnett:
   if (!App || !C) {
     console.error("[Intranet] Mangler App/Components — sørg for at core.js og components.js laster FØR intranet-core.js");
@@ -34,14 +35,15 @@ window.Intranet = (function () {
   // Henter sesjon-rolle fra samme nøkkel som core.js bruker.
   // Utvides til Supabase-sesjon uten endring her.
   function getRole() {
-    try { return sessionStorage.getItem(NS + ":admin") || "guest"; }
+    try { return sessionStorage.getItem(NS + ":admin") || localStorage.getItem(NS + ":admin-persist") || "guest"; }
     catch (e) { return "guest"; }
   }
 
   var context = {
-    tenantId: NS,          // i dag = storageKey = én deploy; senere: org-claim i Supabase
-    userId:   "local",     // stub; senere: auth.uid()
-    role:     getRole()    // "owner" | "employee" | "guest"
+    tenantId:    NS,
+    userId:      null,
+    displayName: null,
+    role:        getRole()
   };
 
   function getContext() {
@@ -58,11 +60,9 @@ window.Intranet = (function () {
 
   function registerModule(def) {
     if (!def || !def.id) {
-      console.warn("[Intranet] Ugyldig modul ignorert:", def);
       return;
     }
     if (modules.some(function (m) { return m.id === def.id; })) {
-      console.warn("[Intranet] Modul finnes allerede:", def.id);
       return;
     }
     def.order = (typeof def.order === "number") ? def.order : 60;
@@ -138,13 +138,13 @@ window.Intranet = (function () {
 
     root.innerHTML =
       '<aside class="i-sidebar" id="intranet-sidebar">' +
-        '<div class="i-sidebar__brand">' +
+        '<div class="i-sidebar__brand" data-workspaceship-trigger>' +
           '<span class="i-sidebar__name">' + C.esc(tenantName) + '</span>' +
           '<span class="i-sidebar__label">Workspace</span>' +
         '</div>' +
         '<nav class="i-nav" id="intranet-nav"></nav>' +
         '<div class="i-sidebar__footer">' +
-          '<div class="i-sidebar__user">' + C.esc(ctx.userId === "local" ? "Lokal bruker" : ctx.userId) + '</div>' +
+          '<div class="i-sidebar__user">' + C.esc(ctx.displayName || ctx.userId || "Bruker") + '</div>' +
           '<div style="display:flex;align-items:center;justify-content:space-between">' +
             '<span style="font-size:.78rem;color:var(--color-muted)">' + C.esc(ctx.role) + '</span>' +
             '<button id="intranet-logout" style="background:none;border:0;cursor:pointer;font-size:.75rem;color:var(--color-muted);padding:.2rem .4rem;border-radius:4px" title="Logg ut">Logg ut</button>' +
@@ -191,14 +191,20 @@ window.Intranet = (function () {
     // Logg ut
     var logoutBtn = document.getElementById("intranet-logout");
     if (logoutBtn) logoutBtn.addEventListener("click", function() {
-      try { sessionStorage.removeItem(NS + ":intranet-auth"); } catch(e) {}
+      try { sessionStorage.removeItem(NS + ":admin"); localStorage.removeItem(NS + ":admin-persist"); } catch(e) {}
       started = false;
       context.role = "guest";
-      renderLogin();
+      context.userId = null;
+      context.displayName = null;
+      if (_sb) {
+        _sb.auth.signOut().then(function() { renderLogin(); });
+      } else {
+        renderLogin();
+      }
     });
   }
 
-  var HENVENDELSER_IDS = ["contact", "quote", "booking"];
+  var HENVENDELSER_IDS = ["chat", "contact", "quote", "booking", "crm"];
 
   function countNewHenvendelser() {
     var leads = App.getLeads ? App.getLeads() : [];
@@ -211,8 +217,9 @@ window.Intranet = (function () {
     var bookingNew = (App.store.get("booking-bookings", []) || []).filter(function (b) {
       return (b.status || "ny") === "ny";
     }).length;
-    return { contact: contactNew, quote: quoteNew, booking: bookingNew,
-             total: contactNew + quoteNew + bookingNew };
+    var chatNew = window.VwChat ? window.VwChat.totalUnread() : 0;
+    return { contact: contactNew, quote: quoteNew, booking: bookingNew, chat: chatNew,
+             total: contactNew + quoteNew + bookingNew + chatNew };
   }
 
   function renderNav() {
@@ -346,87 +353,125 @@ window.Intranet = (function () {
   }
 
   /* =========================================================================
-     10) INIT
+     10) INIT / INNLOGGING
      ====================================================================== */
-  /* =========================================================================
-     INNLOGGING (midlertidig — erstattes av Supabase-auth)
-     ====================================================================== */
-  function isAuthed() {
-    try { return !!sessionStorage.getItem(NS + ":intranet-auth"); } catch(e) { return false; }
-  }
-
-  function setAuthed(role) {
-    try { sessionStorage.setItem(NS + ":intranet-auth", role); } catch(e) {}
-  }
-
   function renderLogin() {
     var root = document.getElementById("intranet");
     if (!root) return;
     root.innerHTML =
-      '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--color-bg);padding:1rem">' +
-        '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2rem;width:min(380px,100%);box-shadow:0 8px 32px rgba(0,0,0,.1)">' +
-          '<div style="margin-bottom:1.6rem">' +
-            '<div style="font-family:var(--font-display);font-weight:700;font-size:1.15rem;margin-bottom:.2rem">' +
+      '<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--color-bg);padding:1.5rem">' +
+        '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2.5rem;width:min(460px,100%);box-shadow:0 8px 40px rgba(0,0,0,.12)">' +
+          '<div style="margin-bottom:2rem">' +
+            '<div style="font-family:var(--font-display);font-weight:700;font-size:1.5rem;margin-bottom:.3rem">' +
               C.esc((CFG.company && CFG.company.name) || "Arbeidsområde") +
             '</div>' +
-            '<div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--color-muted)">Workspace</div>' +
+            '<div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--color-muted)">Logg inn på arbeidsområdet</div>' +
           '</div>' +
-          '<div style="display:grid;gap:.8rem" id="login-form">' +
-            '<div style="display:grid;gap:.3rem">' +
-              '<label for="intranet-pass" style="font-size:.85rem;font-weight:600">Passord</label>' +
-              '<input id="intranet-pass" type="password" style="width:100%;font:inherit;padding:.6rem .8rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" placeholder="Admin-passord" autocomplete="current-password">' +
-            '</div>' +
-            '<button id="intranet-login-btn" class="btn btn--primary" style="width:100%">Logg inn</button>' +
-            '<p id="intranet-login-err" style="font-size:.85rem;color:#c0392b;margin:0;min-height:1.2rem"></p>' +
-            (CFG.admin && (CFG.admin.password === "test" || CFG.admin.employeePassword === "gjest")
-              ? '<div style="border-top:1px dashed var(--color-border);margin-top:.4rem;padding-top:.8rem;display:grid;gap:.4rem">' +
-                  '<p style="font-size:.72rem;color:var(--color-muted);margin:0;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Testinnlogging</p>' +
-                  (CFG.admin.password ? '<button class="btn btn--ghost btn--sm" data-test-login="admin" style="width:100%;font-size:.82rem">Logg inn som admin</button>' : '') +
-                  (CFG.admin.employeePassword ? '<button class="btn btn--ghost btn--sm" data-test-login="gjest" style="width:100%;font-size:.82rem">Logg inn som gjest</button>' : '') +
-                '</div>'
+          '<div style="display:grid;gap:1rem">' +
+            (_sb
+              ? '<div style="display:grid;gap:.35rem"><label for="intranet-email" style="font-size:.85rem;font-weight:600">E-post</label>' +
+                '<input id="intranet-email" type="email" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="username"></div>'
               : '') +
+            '<div style="display:grid;gap:.35rem">' +
+              '<div style="display:flex;align-items:center;justify-content:space-between">' +
+                '<label for="intranet-pass" style="font-size:.85rem;font-weight:600">Passord</label>' +
+                (_sb ? '<button id="intranet-forgot" type="button" style="background:none;border:0;cursor:pointer;font:inherit;font-size:.82rem;color:var(--color-primary);padding:0;text-decoration:underline">Glemt passord?</button>' : '') +
+              '</div>' +
+              '<input id="intranet-pass" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="current-password">' +
+            '</div>' +
+            '<label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem;cursor:pointer;user-select:none">' +
+              '<input id="intranet-remember" type="checkbox" style="width:16px;height:16px;accent-color:var(--color-primary);cursor:pointer;flex-shrink:0">' +
+              'Husk meg' +
+            '</label>' +
+            '<button id="intranet-login-btn" class="btn btn--primary" style="width:100%;padding:.8rem;font-size:.95rem;margin-top:.25rem">Logg inn</button>' +
+            '<p id="intranet-login-err" style="font-size:.85rem;color:#c0392b;margin:0;min-height:1.2rem;text-align:center"></p>' +
           '</div>' +
         '</div>' +
       '</div>';
 
     function attempt() {
-      var pass = root.querySelector("#intranet-pass").value;
-      var err  = root.querySelector("#intranet-login-err");
-      var adminPass = CFG.admin && CFG.admin.password;
-      var empPass   = CFG.admin && CFG.admin.employeePassword;
-      if (pass === adminPass) {
-        setAuthed("owner"); init();
-      } else if (empPass && pass === empPass) {
-        setAuthed("employee"); init();
+      var pass     = root.querySelector("#intranet-pass").value.trim();
+      var err      = root.querySelector("#intranet-login-err");
+      var remember = root.querySelector("#intranet-remember").checked;
+      err.style.color = "#c0392b";
+      if (_sb) {
+        var emailEl = root.querySelector("#intranet-email");
+        var email = emailEl ? emailEl.value.trim() : "";
+        if (!email) { err.textContent = "Skriv inn e-post."; return; }
+        err.style.color = "var(--color-muted)";
+        err.textContent = "Logger inn…";
+        _sb.auth.signInWithPassword({ email: email, password: pass }).then(function(result) {
+          if (result.error) {
+            err.style.color = "#c0392b";
+            err.textContent = "Feil e-post eller passord.";
+            root.querySelector("#intranet-pass").value = "";
+            return;
+          }
+          _sb.from("users").select("role, display_name").eq("id", result.data.user.id).single().then(function(r) {
+            var role = (r.data && r.data.role) || "owner";
+            context.userId      = result.data.user.id;
+            context.displayName = (r.data && r.data.display_name) || result.data.user.email;
+            context.role        = role;
+            sessionStorage.setItem(NS + ":admin", role);
+            init();
+          });
+        });
       } else {
-        err.textContent = "Feil passord.";
-        root.querySelector("#intranet-pass").value = "";
-        root.querySelector("#intranet-pass").focus();
+        var adminPass = CFG.admin && CFG.admin.password;
+        var empPass   = CFG.admin && CFG.admin.employeePassword;
+        if (pass === adminPass) {
+          context.role = "owner";
+          sessionStorage.setItem(NS + ":admin", "owner");
+          if (remember) localStorage.setItem(NS + ":admin-persist", "owner");
+          init();
+        } else if (empPass && pass === empPass) {
+          context.role = "member";
+          sessionStorage.setItem(NS + ":admin", "member");
+          if (remember) localStorage.setItem(NS + ":admin-persist", "member");
+          init();
+        } else {
+          err.textContent = "Feil passord.";
+          root.querySelector("#intranet-pass").value = "";
+          root.querySelector("#intranet-pass").focus();
+        }
       }
     }
 
     root.querySelector("#intranet-login-btn").addEventListener("click", attempt);
-    root.querySelectorAll("[data-test-login]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var role = btn.getAttribute("data-test-login");
-        if (role === "admin") { setAuthed("owner"); init(); }
-        else                  { setAuthed("employee"); init(); }
-      });
-    });
     root.querySelector("#intranet-pass").addEventListener("keydown", function(e) {
       if (e.key === "Enter") attempt();
     });
+
+    var forgotBtn = root.querySelector("#intranet-forgot");
+    if (forgotBtn) {
+      forgotBtn.addEventListener("click", function() {
+        var emailEl = root.querySelector("#intranet-email");
+        var email   = emailEl ? emailEl.value.trim() : "";
+        var err     = root.querySelector("#intranet-login-err");
+        if (!email) { err.style.color = "#c0392b"; err.textContent = "Skriv inn e-post først."; return; }
+        err.style.color = "var(--color-muted)";
+        err.textContent = "Sender tilbakestillingslenke…";
+        _sb.auth.resetPasswordForEmail(email).then(function(result) {
+          if (result.error) {
+            err.style.color = "#c0392b";
+            err.textContent = "Noe gikk galt — prøv igjen.";
+          } else {
+            err.style.color = "#2a7a2a";
+            err.textContent = "Sjekk e-posten din for tilbakestillingslenke.";
+          }
+        });
+      });
+    }
+
     setTimeout(function() {
-      var inp = root.querySelector("#intranet-pass");
-      if (inp) inp.focus();
+      var first = root.querySelector("#intranet-email") || root.querySelector("#intranet-pass");
+      if (first) first.focus();
     }, 50);
   }
 
   function init() {
     if (started) return;
-    // Oppdater context med faktisk rolle (les live)
     context.role = getRole();
-
     buildShell();
     started = true;
     window.addEventListener("hashchange", handleRoute);
@@ -437,12 +482,38 @@ window.Intranet = (function () {
     }
   }
 
+  function boot() {
+    if (_sb) {
+      _sb.auth.getSession().then(function(result) {
+        var session = result.data && result.data.session;
+        if (session) {
+          _sb.from("users").select("role, display_name").eq("id", session.user.id).single().then(function(r) {
+            var role = (r.data && r.data.role) || "owner";
+            context.userId      = session.user.id;
+            context.displayName = (r.data && r.data.display_name) || session.user.email;
+            context.role        = role;
+            sessionStorage.setItem(NS + ":admin", role);
+            init();
+          });
+        } else {
+          renderLogin();
+        }
+      });
+    } else {
+      var storedRole = sessionStorage.getItem(NS + ":admin") || localStorage.getItem(NS + ":admin-persist");
+      if (storedRole) {
+        if (!sessionStorage.getItem(NS + ":admin")) sessionStorage.setItem(NS + ":admin", storedRole);
+        context.role = storedRole;
+        init();
+      } else { renderLogin(); }
+    }
+  }
+
   // Start når DOM er klar
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", boot);
   } else {
-    // core.js sin DOMContentLoaded har allerede kjørt — vi starter direkte
-    init();
+    boot();
   }
 
   /* =========================================================================

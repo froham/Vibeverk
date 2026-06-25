@@ -1,12 +1,9 @@
 /* =============================================================================
-   module-tasks.js  —  OPPGAVER (intranett)  v2
+   module-tasks.js  —  OPPGÅVER (intranett)  v2
    -----------------------------------------------------------------------------
-   - Opprett / rediger / slett oppgaver
-   - Tittel + beskriving + status + tildelt person
-   - Status som nedtrekksmeny direkte i rada
-   - Aktive oppgåver (Å gjøre / Pågår) synlege; Ferdige i kollapsbar seksjon
-   - Lagring: App.store("wsp-tasks")
-   - Ruter: #/tasks, #/tasks/<id>
+   Lagring: Supabase tasks-tabell. Fallback til App.store.
+   Feltmapping: body → description, assignee (string) → assigned_to (uuid).
+   Brukarar hentast frå users-tabellen (erstattar wsp-people).
    ========================================================================== */
 (function () {
   "use strict";
@@ -14,52 +11,115 @@
   var Intranet = window.Intranet;
   var App      = window.App;
   var C        = window.Components;
+  var CFG      = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
 
+  var _sb    = App.supabase;
   var STORE_KEY = "wsp-tasks";
+  var _tasks = [];
+  var _users = [];   // brukarar frå users-tabellen
 
   /* =========================================================================
      LAGRING
      ====================================================================== */
-  function getTasks() { return App.store.get(STORE_KEY, []) || []; }
-  function setTasks(v) { App.store.set(STORE_KEY, v); }
+  function uid() { return Intranet.getContext().userId; }
 
-  function newId() {
-    return "wsp-t-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+  function loadTasks(cb) {
+    if (!_sb) {
+      _tasks = App.store.get(STORE_KEY, []) || [];
+      _users = [];
+      cb && cb();
+      return;
+    }
+    var pending = 2;
+    function done() { if (--pending === 0) cb && cb(); }
+
+    _sb.from("users").select("id, display_name, role").then(function (r) {
+      if (!r.error) _users = r.data || [];
+      done();
+    });
+
+    _sb.from("tasks").select("*").order("updated_at", { ascending: false }).then(function (r) {
+      if (r.error) { done(); return; }
+      _tasks = r.data || [];
+      if (_tasks.length === 0) {
+        var local = App.store.get(STORE_KEY, []) || [];
+        if (local.length > 0) {
+          migrateLocal(local, done);
+          return;
+        }
+      }
+      done();
+    });
   }
 
-  function createTask(data) {
-    var now  = Date.now();
-    var task = {
-      id:         newId(),
-      title:      data.title      || "Ny oppgave",
-      body:       data.body       || "",
-      status:     data.status     || "todo",
-      assignee:   data.assignee   || "",
-      createdAt:  now,
-      updatedAt:  now
+  function migrateLocal(local, cb) {
+    if (!uid()) { cb && cb(); return; }
+    var rows = local.map(function (t) {
+      return {
+        title:       t.title  || "Oppgave",
+        description: t.body   || t.description || "",
+        status:      t.status || "todo",
+        assigned_to: null,
+        created_by:  uid()
+      };
+    });
+    _sb.from("tasks").insert(rows).select().then(function (r) {
+      if (!r.error) { _tasks = r.data || []; App.store.remove(STORE_KEY); }
+      cb && cb();
+    });
+  }
+
+  function createTask(data, cb) {
+    var row = {
+      title:       data.title       || "Ny oppgave",
+      description: data.body        || "",
+      status:      data.status      || "todo",
+      assigned_to: data.assigned_to || null,
+      created_by:  uid()
     };
-    var list = getTasks();
-    list.unshift(task);
-    setTasks(list);
-    Intranet.logActivity({ type: "task_created", label: "Ny oppgave: " + task.title });
-    return task;
+    if (!_sb || !uid()) {
+      var ls = Object.assign({ id: "wsp-t-" + Date.now(), updated_at: new Date().toISOString(), created_at: new Date().toISOString() }, row);
+      _tasks.unshift(ls);
+      App.store.set(STORE_KEY, _tasks);
+      Intranet.logActivity({ type: "task_created", label: "Ny oppgave: " + row.title });
+      cb && cb(ls);
+      return;
+    }
+    _sb.from("tasks").insert(row).select().single().then(function (r) {
+      if (!r.error && r.data) {
+        _tasks.unshift(r.data);
+        Intranet.logActivity({ type: "task_created", label: "Ny oppgave: " + r.data.title });
+      }
+      cb && cb(r.data);
+    });
   }
 
-  function updateTask(id, changes) {
-    var list = getTasks();
-    var idx  = list.findIndex(function (t) { return t.id === id; });
-    if (idx < 0) return null;
-    Object.assign(list[idx], changes, { updatedAt: Date.now() });
-    setTasks(list);
-    return list[idx];
+  function updateTask(id, changes, cb) {
+    var row = {};
+    if (changes.title       !== undefined) row.title       = changes.title;
+    if (changes.body        !== undefined) row.description = changes.body;
+    if (changes.description !== undefined) row.description = changes.description;
+    if (changes.status      !== undefined) row.status      = changes.status;
+    if (changes.assigned_to !== undefined) row.assigned_to = changes.assigned_to;
+
+    var idx = _tasks.findIndex(function (t) { return t.id === id; });
+    if (idx >= 0) Object.assign(_tasks[idx], row, { updated_at: new Date().toISOString() });
+
+    if (!_sb) {
+      App.store.set(STORE_KEY, _tasks);
+      cb && cb();
+      return;
+    }
+    _sb.from("tasks").update(row).eq("id", id).then(function () { cb && cb(); });
   }
 
-  function deleteTask(id) {
-    var list = getTasks();
-    var task = list.find(function (t) { return t.id === id; });
-    setTasks(list.filter(function (t) { return t.id !== id; }));
-    if (task) Intranet.logActivity({ type: "task_deleted", label: "Slettet oppgave: " + task.title });
+  function deleteTask(id, cb) {
+    var task = _tasks.find(function (t) { return t.id === id; });
+    _tasks = _tasks.filter(function (t) { return t.id !== id; });
+    Intranet.logActivity({ type: "task_deleted", label: "Slettet oppgave: " + (task ? task.title : "") });
+    if (!_sb) { App.store.set(STORE_KEY, _tasks); cb && cb(); return; }
+    _sb.from("tasks").delete().eq("id", id).then(function () { cb && cb(); });
   }
 
   /* =========================================================================
@@ -73,9 +133,10 @@
     return new Date(ts).toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
   }
 
-  function getPeople() {
-    var people = App.store.get("wsp-people", []) || [];
-    return people.map(function (p) { return p.name || ""; }).filter(Boolean);
+  function userDisplayName(userId) {
+    if (!userId) return "";
+    var u = _users.find(function (u) { return u.id === userId; });
+    return u ? (u.display_name || u.id) : userId;
   }
 
   function statusSelect(currentStatus, taskId) {
@@ -118,15 +179,16 @@
   function mount(outlet, ctx, sub) {
     var root = outlet.querySelector("#tasks-root") || outlet;
     injectStyles();
-    renderList(root);
-    if (sub) openTaskModal(sub, root);
+    root.innerHTML = '<p style="color:var(--color-muted);padding:1rem">Lastar…</p>';
+    loadTasks(function () {
+      renderList(root);
+      if (sub) openTaskModal(sub, root);
+    });
   }
 
   function renderList(root) {
-    var tasks = getTasks();
-    var active = tasks.filter(function (t) { return t.status !== "done"; });
-    var done   = tasks.filter(function (t) { return t.status === "done"; });
-
+    var active   = _tasks.filter(function (t) { return t.status !== "done"; });
+    var done     = _tasks.filter(function (t) { return t.status === "done"; });
     var todoTasks = active.filter(function (t) { return t.status === "todo"; });
     var inpTasks  = active.filter(function (t) { return t.status === "in_progress"; });
 
@@ -135,9 +197,7 @@
       return '<div class="task-group">' +
         '<p class="i-section-label">' + C.esc(label) +
           ' <span style="font-weight:400;opacity:.6">(' + list.length + ')</span></p>' +
-        '<div class="task-group__list">' +
-          list.map(taskRow).join("") +
-        '</div>' +
+        '<div class="task-group__list">' + list.map(taskRow).join("") + '</div>' +
       '</div>';
     }
 
@@ -148,9 +208,7 @@
             'Ferdig <span style="font-weight:400;opacity:.6">(' + done.length + ')</span>' +
           '</button>' +
           '<div id="task-done-list" style="display:none">' +
-            '<div class="task-group__list">' +
-              done.map(taskRow).join("") +
-            '</div>' +
+            '<div class="task-group__list">' + done.map(taskRow).join("") + '</div>' +
           '</div>' +
         '</div>'
       : "";
@@ -158,14 +216,10 @@
     root.innerHTML =
       '<div class="i-page-head">' +
         '<h2>Oppgaver</h2>' +
-        '<button class="btn btn--primary btn--sm" id="tasks-new-btn">' +
-          '<i class="ti ti-plus"></i> Ny oppgave' +
-        '</button>' +
+        '<button class="btn btn--primary btn--sm" id="tasks-new-btn"><i class="ti ti-plus"></i> Ny oppgave</button>' +
       '</div>' +
-      (tasks.length
-        ? groupHtml("Å gjøre",  todoTasks) +
-          groupHtml("Pågår",    inpTasks)  +
-          doneHtml
+      (_tasks.length
+        ? groupHtml("Å gjøre", todoTasks) + groupHtml("Pågår", inpTasks) + doneHtml
         : '<p style="color:var(--color-muted);font-size:.9rem">Ingen oppgaver ennå.</p>'
       );
 
@@ -173,13 +227,14 @@
   }
 
   function taskRow(t) {
+    var assigneeName = userDisplayName(t.assigned_to);
     return '<div class="task-row" data-task-id="' + C.esc(t.id) + '">' +
       '<div class="task-row__main">' +
         '<div class="task-row__title">' + C.esc(t.title) + '</div>' +
-        (t.body ? '<div class="task-row__body">' + C.esc(t.body.slice(0, 100)) + '</div>' : '') +
+        (t.description ? '<div class="task-row__body">' + C.esc(t.description.slice(0, 100)) + '</div>' : '') +
         '<div class="task-row__meta">' +
-          formatDate(t.createdAt) +
-          (t.assignee ? '<span><i class="ti ti-user" style="font-size:.75rem"></i> ' + C.esc(t.assignee) + '</span>' : '') +
+          formatDate(t.created_at) +
+          (assigneeName ? '<span><i class="ti ti-user" style="font-size:.75rem"></i> ' + C.esc(assigneeName) + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div class="task-row__actions">' +
@@ -192,24 +247,21 @@
   }
 
   function bindList(root) {
-    /* Ny oppgave */
     var newBtn = root.querySelector("#tasks-new-btn");
     if (newBtn) newBtn.addEventListener("click", function () { openTaskModal(null, root); });
 
-    /* Status-dropdown direkte i rada */
     root.addEventListener("change", function (e) {
       var sel = e.target.closest("[data-task-status-select]");
       if (!sel) return;
       var id     = sel.getAttribute("data-task-status-select");
       var status = sel.value;
-      var task   = getTasks().find(function (t) { return t.id === id; });
+      var task   = _tasks.find(function (t) { return t.id === id; });
       if (!task) return;
-      updateTask(id, { status: status });
+      updateTask(id, { status: status }, function () {});
       Intranet.logActivity({ type: "task_status", label: task.title + " → " + STATUS_LABELS[status] });
       renderList(root);
     });
 
-    /* Klikkbar rad (heile raden) + rediger-knapp */
     root.addEventListener("click", function (e) {
       var editBtn = e.target.closest("[data-task-edit]");
       if (editBtn) {
@@ -227,10 +279,9 @@
       }
     });
 
-    /* Kollapsbar ferdig-seksjon */
-    var toggle  = root.querySelector("#task-done-toggle");
+    var toggle   = root.querySelector("#task-done-toggle");
     var doneList = root.querySelector("#task-done-list");
-    var chevron = root.querySelector("#task-done-chevron");
+    var chevron  = root.querySelector("#task-done-chevron");
     if (toggle && doneList) {
       toggle.addEventListener("click", function () {
         var open = doneList.style.display !== "none";
@@ -241,12 +292,11 @@
   }
 
   /* =========================================================================
-     MODAL (opprett / rediger)
+     MODAL
      ====================================================================== */
   function openTaskModal(id, root) {
-    var task     = id ? getTasks().find(function (t) { return t.id === id; }) : null;
-    var isNew    = !task;
-    var people   = getPeople();
+    var task  = id ? _tasks.find(function (t) { return t.id === id; }) : null;
+    var isNew = !task;
 
     var existing = document.getElementById("task-modal-bd");
     if (existing) existing.remove();
@@ -263,15 +313,19 @@
         STATUS_LABELS[s] + '</option>';
     }).join("");
 
-    var assigneeField = people.length
-      ? '<select id="tm-assignee" style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-surface);color:var(--color-text);width:100%">' +
-          '<option value="">— Ingen —</option>' +
-          people.map(function (p) {
-            return '<option value="' + C.esc(p) + '"' + (task && task.assignee === p ? " selected" : "") + '>' + C.esc(p) + '</option>';
-          }).join("") +
-        '</select>'
-      : '<input id="tm-assignee" type="text" value="' + C.esc(task ? task.assignee || "" : "") +
-          '" placeholder="Namn på person…" style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-surface);color:var(--color-text);width:100%">';
+    var assigneeField;
+    if (_users.length > 0) {
+      assigneeField = '<select id="tm-assignee" style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-surface);color:var(--color-text);width:100%">' +
+        '<option value="">— Ingen —</option>' +
+        _users.map(function (u) {
+          return '<option value="' + C.esc(u.id) + '"' + (task && task.assigned_to === u.id ? " selected" : "") + '>' +
+            C.esc(u.display_name || u.id) + '</option>';
+        }).join("") +
+      '</select>';
+    } else {
+      assigneeField = '<input id="tm-assignee" type="text" value="" placeholder="Ingen brukarar funne" disabled ' +
+        'style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-surface);color:var(--color-text);width:100%">';
+    }
 
     modal.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border)">' +
@@ -281,11 +335,11 @@
       '<div style="padding:1.2rem;display:grid;gap:.9rem">' +
         '<div class="i-field">' +
           '<label for="tm-title">Tittel *</label>' +
-          '<input id="tm-title" type="text" value="' + C.esc(task ? task.title : "") + '" placeholder="Kva skal gjerast?" autocomplete="off">' +
+          '<input id="tm-title" type="text" value="' + C.esc(task ? task.title : "") + '" placeholder="Hva skal gjøres?" autocomplete="off">' +
         '</div>' +
         '<div class="i-field">' +
           '<label for="tm-body">Beskriving</label>' +
-          '<textarea id="tm-body" rows="3" placeholder="Utfyllande info (valgfritt)…" style="resize:vertical">' + C.esc(task ? task.body || "" : "") + '</textarea>' +
+          '<textarea id="tm-body" rows="3" placeholder="Utfyllande info (valgfritt)…" style="resize:vertical">' + C.esc(task ? task.description || "" : "") + '</textarea>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">' +
           '<div class="i-field">' +
@@ -308,10 +362,7 @@
     bd.appendChild(modal);
     document.body.appendChild(bd);
 
-    function closeModal() {
-      bd.remove();
-      Intranet.navigate("tasks");
-    }
+    function closeModal() { bd.remove(); Intranet.navigate("tasks"); }
 
     modal.querySelector("#tm-close").addEventListener("click", closeModal);
     modal.querySelector("#tm-cancel").addEventListener("click", closeModal);
@@ -321,43 +372,44 @@
     });
 
     modal.querySelector("#tm-save").addEventListener("click", function () {
-      var title    = modal.querySelector("#tm-title").value.trim();
-      var body     = modal.querySelector("#tm-body").value.trim();
-      var status   = modal.querySelector("#tm-status").value;
-      var assignee = modal.querySelector("#tm-assignee").value.trim();
-      var msg      = modal.querySelector("#tm-status-msg");
+      var title       = modal.querySelector("#tm-title").value.trim();
+      var body        = modal.querySelector("#tm-body").value.trim();
+      var status      = modal.querySelector("#tm-status").value;
+      var assigneeEl  = modal.querySelector("#tm-assignee");
+      var assigned_to = assigneeEl && !assigneeEl.disabled ? (assigneeEl.value || null) : null;
+      var msg         = modal.querySelector("#tm-status-msg");
 
-      if (!title) {
-        msg.textContent = "Tittel er påkrevd.";
-        msg.className   = "form__status is-err";
-        return;
-      }
+      if (!title) { msg.textContent = "Tittel er påkrevd."; msg.className = "form__status is-err"; return; }
 
+      msg.textContent = "Lagrar…";
       if (isNew) {
-        createTask({ title: title, body: body, status: status, assignee: assignee });
+        createTask({ title: title, body: body, status: status, assigned_to: assigned_to }, function () {
+          closeModal();
+          if (root) renderList(root);
+        });
       } else {
-        updateTask(id, { title: title, body: body, status: status, assignee: assignee });
-        Intranet.logActivity({ type: "task_updated", label: "Oppdatert: " + title });
+        updateTask(id, { title: title, body: body, status: status, assigned_to: assigned_to }, function () {
+          Intranet.logActivity({ type: "task_updated", label: "Oppdatert: " + title });
+          closeModal();
+          if (root) renderList(root);
+        });
       }
-
-      closeModal();
-      if (root) renderList(root);
     });
 
     var delBtn = modal.querySelector("#tm-delete");
     if (delBtn) {
       delBtn.addEventListener("click", function () {
         if (!confirm('Slett oppgaven "' + (task ? task.title : "") + '"?')) return;
-        deleteTask(id);
-        closeModal();
-        if (root) renderList(root);
+        deleteTask(id, function () {
+          closeModal();
+          if (root) renderList(root);
+        });
       });
     }
 
     modal.querySelector("#tm-title").focus();
   }
 
-  /* Eksporter openTaskModal så Dashboard kan kalle den direkte */
   window._tasksOpenModal = function (root) {
     openTaskModal(null, root || document.getElementById("intranet-main"));
   };

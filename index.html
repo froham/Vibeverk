@@ -12,15 +12,18 @@
        gjelder den STRENGESTE av de to — oppdater begge steder ved behov. -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src  'self'
+    script-src  'self' 'unsafe-inline'
                 https://plausible.io
-                https://code.tidio.co;
+                https://code.tidio.co
+                https://cdn.jsdelivr.net;
     connect-src 'self'
                 https://plausible.io
                 https://code.tidio.co
                 https://*.tidio.co
                 wss://*.tidio.co
-                https://cdn.jsdelivr.net;
+                https://cdn.jsdelivr.net
+                https://clzczbyklgdtdhgjphup.supabase.co
+                wss://clzczbyklgdtdhgjphup.supabase.co;
     frame-src   https://plausible.io
                 https://*.tidio.co;
     style-src   'self' 'unsafe-inline'
@@ -532,6 +535,7 @@
        Modulen kaller App.registerModule({...}) og dukker opp i meny + side
        uten at noen basefil endres.
        ====================================================================== -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
   <script src="components.js"></script>
   <script src="core.js"></script>
@@ -544,5 +548,9 @@
   <script src="module-crm.js"></script>
   <script src="module-mediabank.js"></script>
   <script src="module-chat.js"></script>
+<<<<<<< HEAD
+=======
+  <script src="module-users.js"></script>
+>>>>>>> ba91968 (Steg 6d + 5b: Chat Realtime og brukaradministrasjon)
 </body>
 </html>

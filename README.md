@@ -1,95 +1,205 @@
-# Bedriftsside — modulær basekodebase
+# Vibeverk
 
-Én kodebase, mange kunder. Alt kundespesifikt bor i `config.js`.
-`core.js` og `components.js` skal aldri endres per kunde.
+**Business OS for norske småbedrifter** — én kodebase, mange kunder.
 
-## Filer
-| Fil | Ansvar | Endres per kunde? |
-|-----|--------|-------------------|
-| `index.html` | Skjelett + strukturell CSS (kun CSS-variabler) | Nei |
-| `config.js` | Firmanavn, farger, fonter, tekster, kontaktinfo, admin-passord, funksjoner | **Ja — kun her** |
-| `core.js` | All logikk: tema, ruting, skjema, admin, modulregister, media | Nei |
-| `components.js` | Gjenbrukbare HTML-komponenter | Nei |
+Vibeverk er en modulær webplattform som kombinerer en offentlig bedriftsside med et internt arbeidsområde (intranett). All kundespesifikk konfigurasjon bor i `config.js`; selve plattformen røres ikke per kunde.
 
-## Sette opp en ny kunde
-1. Kopier mappa.
-2. Åpne `config.js` og bytt verdiene (firmanavn, `colors`, `fonts`, tekster, `contact`, `admin.password`, `storageKey`).
-3. Skru funksjoner av/på i `config.features`.
-4. Ferdig.
+---
 
-## Funksjoner (ja/nei-brytere)
-I `config.features` slår du funksjoner av/på. Mangler et flagg, regnes det som på.
+## Mappestruktur
 
-```js
-features: {
-  newsArchive: true,  // «Les mer» + «Se alle saker» + arkivside
-  search:      true,  // søkefelt i arkivet (krever newsArchive)
-  attachments: true,  // vedlegg på aktuelt-innlegg
-  social:      true   // sosiale lenker i kontakt
-}
+```
+Vibeverk/
+├── index.html              # Offentlig bedriftsside (skjelett + CSS-variabler)
+├── config.js               # Kundekonfigurasjon (farger, tekster, passord, funksjoner)
+├── core.js                 # Kjernemotor: ruting, admin, lagring, modulregister
+├── components.js           # Gjenbrukbare HTML-komponenter (knapper, felt, kort, ikoner)
+├── module-booking.js       # Bookingmodul (ressurser, kalender, forespørsler)
+├── module-chat.js          # Native chat (widget for besøkende + admin-panel)
+├── module-crm.js           # CRM (kundekort, historikk, GDPR-sletting)
+├── module-faq.js           # FAQ-seksjon
+├── module-mediabank.js     # Offentlig mediebank
+├── module-quote.js         # Tilbudsforespørsel
+├── module-references.js    # Referanser / kundeuttalelser
+├── module-scrollbanner.js  # Scrollbanner-seksjon
+├── test.js                 # Testsuiten for den offentlige siden
+├── test-intranet.js        # Testsuiten for intranettet (rot-kopi)
+│
+└── intranet/
+    ├── index.html              # Arbeidsområde (intranett)
+    ├── intranet-core.js        # Intranett-motor: ruting, auth, modulregister, aktivitetslogg
+    ├── module-announcements.js # Aktuelt (intern)
+    ├── module-booking.js       # Booking-administrasjon
+    ├── module-contact.js       # Henvendelser / tilbud / leads (intern visning)
+    ├── module-crm.js           # CRM (intern)
+    ├── module-dashboard.js     # Dashboard med statistikk og aktivitetslogg
+    ├── module-kb.js            # Kunnskapsbase
+    ├── module-links.js         # Lenkesamling med Tabler-ikoner
+    ├── module-mediabank-internal.js  # Intern mediebank
+    ├── module-notes.js         # Personlige notater
+    ├── module-orgdrift.js      # Organisasjonsdrift (leverandører, systemer, HMS)
+    ├── module-quote.js         # Tilbudsbehandling
+    ├── module-settings.js      # Innstillinger (tema, språk, tilbakestilling)
+    ├── module-tasks.js         # Oppgaveliste
+    └── test-intranet.js        # Testsuiten for intranettet
 ```
 
-Settes en til `false`, skjules funksjonen både på siden og i admin. `news.frontCount`
-styrer hvor mange saker som vises på forsiden (resten havner i arkivet).
+---
 
-## Ruting (fortsatt én fil)
-Hash-ruting gir delbare adresser og fungerende tilbake-knapp uten flere HTML-filer:
+## Teknisk stack
 
-| Adresse | Visning |
-|---------|---------|
-| `…` / `…#kontakt` | Forsiden (one-pager), scroller til seksjonen |
-| `…#sak/<id>` | Ett aktuelt-innlegg i full lengde |
-| `…#aktuelt/alle` | Arkiv: alle saker + søk |
-| `…#admin` | Adminpanel |
+- **Vanilla JS** — ingen rammeverk, ingen byggsteg, ingen pakkebehandler
+- **IIFE-moduler** — hvert `module-*.js` er en selvforsynt IIFE; ingen ES-moduler
+- **LocalStorage** — all data lagres lokalt via `App.store` / `App.media` (Supabase-klar)
+- **Hash-ruting** — `#seksjon`, `#sak/<id>`, `#admin` — ingen server-side ruting nødvendig
+- **Tabler Icons** (CDN) og **Google Fonts** (fra `config.js`) er eneste eksterne avhengigheter
+- **GitHub Pages** — deployment via GitHub Actions
 
-## Admin
-- Åpne: trippelklikk på footeren, eller gå til `…#admin`.
-- Logg inn med passordet i `config.admin.password`.
-- Rediger hero/om-oss/kontaktinfo (inkl. egendefinerte kontaktfelt og bilder),
-  CRUD på tjenestekort og aktuelt-innlegg (med bilde + vedlegg), se innsendte leads.
-- Bilder: dra det lyse utsnittet i forhåndsvisningen for å velge beskjæring.
-- Alt lagres i `localStorage` (byttes til Supabase senere — kun `Store`/`Media`-laget endres).
+---
 
-> Merk (demo): admin-passordet er klient-side og ikke ekte sikkerhet. Bilder/vedlegg
-> lagres lokalt; `localStorage` er ~5 MB, så bilder skaleres ned og filer har en
-> størrelsesgrense. For kunder med mye innhold er dette argumentet for Supabase.
+## Kjøre lokalt
 
-## Legge til en ny modul (uten å røre basekoden)
-Lag en egen fil og last den inn etter `core.js` i `index.html`:
+Åpne `index.html` direkte i nettleseren — **ikke** via `file://` (localStorage krever HTTP-kontekst). Bruk en enkel lokal server:
 
-```html
-<script src="module-booking.js"></script>
+```bash
+# Python (innebygd)
+python -m http.server 8080
+
+# Node (npx)
+npx serve .
 ```
+
+Gå til `http://localhost:8080`. Intranettet er tilgjengelig på `http://localhost:8080/intranet/`.
+
+---
+
+## Testoppsett
+
+Testene kjøres med Node og krever [jsdom](https://github.com/jsdom/jsdom):
+
+```bash
+npm install          # installerer jsdom (eneste avhengighet)
+node test.js         # tester den offentlige siden (398 tester)
+node test-intranet.js  # tester intranettet (62 tester)
+```
+
+Alle tester skal gi **0 FEIL**. Én pre-eksisterende feil (`o3: workspaceship via direkterute`) er kjent og akseptert.
+
+---
+
+## Modularkitektur
+
+### Offentlig side
 
 ```js
 App.registerModule({
-  id: "booking", label: "Booking", order: 45,
-  page: true,                          // egen side på #booking (utelat for inline-seksjon)
-  render: () => `<section id="booking" class="section reveal">…</section>`,
-  mount: (root) => {},                 // valgfri, kjøres etter innsetting
-  admin: { label: "Booking", render: () => `…`, mount: (b) => {} }  // valgfri admin-fane
+  id:         "booking",
+  label:      "Booking",
+  order:      45,            // plassering i toppmeny og admin
+  page:       true,          // egen side på #booking (utelat for inline-seksjon)
+  inline:     false,         // vis også på forsiden (kombineres med page: true)
+  render:     () => `<section>…</section>`,   // forsiden
+  renderPage: (root) => {},  // kjøres når #booking er aktiv
+  mount:      (root) => {},  // kjøres etter innsetting
+  admin: {
+    label:  "Booking",
+    render: () => `…`,
+    mount:  (body) => {}
+  }
 });
 ```
 
-`page: true` gir modulen egen toppmeny-lenke og en rutet visning (`#<id>`) i stedet
-for å vises som en seksjon på forsiden. Standardseksjonene er registrert på samme måte.
+### Intranett
 
-### Verktøy moduler kan gjenbruke (via `window.App`)
-- `App.store` — namespacet localStorage (`get/set/remove`)
-- `App.media` — bilder/filer (`resolveImage`, `put`, `putFile`, `free`)
-- `App.feature(name)` — les feature-flagg
-- `App.prefillContact(msg)` — forhåndsutfyll kontaktskjemaet og hopp dit
-- `App.ui.imageField / bindImageFields / readImageField` — bildefelt med beskjæring
-- `window.Components` — alle HTML-komponenter (knapper, felt, kort, ikoner …)
+```js
+Intranet.registerModule({
+  id:     "tasks",
+  label:  "Oppgaver",
+  icon:   "checklist",
+  order:  20,
+  render: (root) => {}   // kalt med container-elementet
+});
+```
 
-### Eksempel: `module-booking.js`
-En komplett booking-modul som egen side. Admin oppretter «ressurser» (bil, frisørtime,
-møterom, artist) med bilde, åpningstider/ukedager og en bryter **intern/offentlig**.
-Offentlige ressurser vises med ledige/opptatte tider; besøkende sender en **forespørsel**
-(kontaktskjemaet forhåndsutfylles), og admin legger inn selve bookingen — som markerer
-tiden opptatt. Slås av/på med `features.booking`. Modulen tar med seg sine egne stiler
-og rører ikke basekoden.
+---
 
-## Avhengigheter
-Kun Google Fonts (fra `config.fonts`) og Tabler Icons (CDN). Ingen byggesteg.
-Må serveres via webserver (ikke `file://`) for at `localStorage` skal virke.
+## Lagringslag
+
+```js
+// Lese og skrive (namespacet per kunde via config.storageKey)
+App.store.get("nøkkel", standardverdi)
+App.store.set("nøkkel", verdi)
+App.store.remove("nøkkel")
+
+// Bilder og filer (skaleres ned, base64 i localStorage)
+App.media.put(file)         // → Promise<dataUrl>
+App.media.putFile(file)     // → Promise<{ name, type, data }>
+App.media.resolveImage(url) // håndterer både eksterne URL-er og lagrede data-URL-er
+App.media.free(url)         // sletter et lagret bilde
+```
+
+Bytting til Supabase (steg 6 i roadmap) krever kun endringer i `App.store` og `App.media` — all modulkode forblir uendret.
+
+---
+
+## Konfigurasjon (`config.js`)
+
+`config.js` er den **eneste filen som endres per kunde**. Den inneholder:
+
+| Nøkkel | Beskrivelse |
+|--------|-------------|
+| `company` | Firmanavn, slagord, beskrivelse |
+| `colors` | Primær- og sekundærfarger, bakgrunn, tekst |
+| `fonts` | Google Fonts-familie for overskrift og brødtekst |
+| `contact` | Adresse, telefon, e-post, åpningstider, sosiale lenker |
+| `admin.password` | Admin-passord (klient-side, ikke produksjonssikkerhet) |
+| `storageKey` | Unik nøkkel for localStorage-namespace (aldri endre etter oppstart) |
+| `features` | Feature-flagg (av/på per funksjon) |
+| `locale` | Språkinnstilling (`no` / `en`) — separat for nettside og intranett |
+| `modules` | Aktiverte moduler og deres konfigurasjon |
+
+Passordet og andre sensitive verdier skal **aldri** committes til et offentlig repo.
+
+---
+
+## Deployering
+
+1. Push til `main`-grenen på GitHub.
+2. GitHub Actions bygger og deployer automatisk til **GitHub Pages**.
+3. DNS-peker (A-record / CNAME) settes opp via **Domeneshop** mot GitHub Pages sin IP.
+4. HTTPS håndteres av GitHub Pages (Let's Encrypt).
+
+Ingen byggsteg eller CI/CD-konfigurasjon utover `.github/workflows/`-filen.
+
+---
+
+## Kjente begrensninger
+
+| Begrensning | Forklaring |
+|-------------|------------|
+| **LocalStorage ~5 MB** | Bilder skaleres ned automatisk; store filer bør lagres eksternt |
+| **Ingen ekte auth** | Admin-passordet er klient-side og gir ikke reell tilgangskontroll |
+| **Single-tenant** | Én `config.js` per deployment; ingen felles database ennå |
+| **Ingen realtime** | Chat og dashboard poller ikke; siden må lastes på nytt for nye meldinger |
+| **Ingen RLS** | Alle brukere med passordet har full lesetilgang til localStorage |
+
+Alle disse begrensningene løses i **steg 6 (Supabase-migrering)**.
+
+---
+
+## Roadmap
+
+| Steg | Status | Innhold |
+|------|--------|---------|
+| 1 — Kjernefunksjonalitet | ✅ Ferdig | Nettside, intranett, admin, chat, superadmin |
+| 2 — Evaluering | ⏳ Pågår | Test på ekte kundesituasjon, friksjonspunkter |
+| 3 — Kodeopprydding | 🔄 Pågår | console.log, CSS-duplikater, README, i18n |
+| 4 — Backup-gjennomgang | ⏳ | Verifiser alle moduler i backup, kunde-admin-tilgang |
+| 5 — Tilgangsstyring | ⏳ | Roller: Eier / Admin / Medlem, tilgangsmatrise |
+| 6 — Supabase-migrering | ⏳ | Database, auth, RLS, realtime |
+| 7 — Kundedokumentasjon | ⏳ | Kontrakt, DPA (GDPR), brukerguide |
+| 8 — Teknisk dokumentasjon | ⏳ | Arkitektur, onboarding, migreringsdokument |
+| 9 — Kvalitetssjekkar | ⏳ | Cross-device, WCAG, Lighthouse, sikkerhet |
+| 10 — AI-native chat | 🔜 | RAG, Claude API, pgvector, hybrid operator/AI |
+
+Se `VIBEVERK-ROADMAP.MD` for detaljert beskrivelse av hvert steg.

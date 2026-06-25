@@ -1,19 +1,8 @@
 /* =============================================================================
-   module-kb.js  —  INTERN KUNNSKAPSBASE (intranett)
+   module-kb.js  —  KUNNSKAPSBASE (intranett)  v2
    -----------------------------------------------------------------------------
-   Bedriftens interne kunnskap: prosedyrar, rutinar, onboarding, produktinfo.
-   Skilt frå Notes ved at KB-artiklar er "offisielle" og godkjende av admin.
-
-   Funksjonar:
-   - Opprett / rediger / slett artiklar
-   - Kategoriar med eige landingsside
-   - Offisiell-flagg (admin-godkjend kunnskap vs. utkast)
-   - Fritekstsøk på tvers av tittel, innhald, kategori og tags
-   - Sist oppdatert / av kven
-   - AI-klar struktur (summary + tags)
-
-   Lagring:  App.store("wsp-kb")
-   Ruter:    #/kb, #/kb/<id>
+   Lagring: Supabase kb_articles-tabell. Fallback til App.store.
+   Feltmapping: body → content, official → published, updatedAt → updated_at.
    ========================================================================== */
 (function () {
   "use strict";
@@ -25,78 +14,123 @@
   if (!Intranet || !App || !C) return;
   if (CFG.intranettFeatures && CFG.intranettFeatures.kb === false) return;
 
+  var _sb       = App.supabase;
   var STORE_KEY = "wsp-kb";
+  var _articles = [];
+
+  /* =========================================================================
+     TILGANG
+     ====================================================================== */
+  function uid() { return Intranet.getContext().userId; }
+
+  function isAdmin(ctx) {
+    var role = (ctx && ctx.role) || Intranet.getContext().role;
+    return role === "owner" || role === "admin";
+  }
 
   /* =========================================================================
      LAGRING
      ====================================================================== */
-  function getArticles()  { return App.store.get(STORE_KEY, []) || []; }
-  function setArticles(v) { App.store.set(STORE_KEY, v); }
-
-  function newId() {
-    return "wsp-kb-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+  function loadArticles(cb) {
+    if (!_sb) {
+      _articles = App.store.get(STORE_KEY, []) || [];
+      cb && cb();
+      return;
+    }
+    _sb.from("kb_articles").select("*").order("updated_at", { ascending: false }).then(function (r) {
+      if (r.error) { cb && cb(); return; }
+      _articles = r.data || [];
+      if (_articles.length === 0) {
+        var local = App.store.get(STORE_KEY, []) || [];
+        if (local.length > 0) { migrateLocal(local, cb); return; }
+      }
+      cb && cb();
+    });
   }
 
-  function createArticle(data) {
-    var now = Date.now();
-    var ctx = Intranet.getContext ? Intranet.getContext() : { userId: "local" };
-    var art = {
-      id:         newId(),
-      title:      data.title    || "Ny artikkel",
-      body:       data.body     || "",
-      category:   data.category || "Generelt",
-      tags:       data.tags     || [],
-      summary:    data.summary  || "",
-      official:   data.official !== undefined ? data.official : false,
-      createdAt:  now,
-      updatedAt:  now,
-      updatedBy:  ctx.userId || "local"
+  function migrateLocal(local, cb) {
+    if (!uid()) { cb && cb(); return; }
+    var rows = local.map(function (a) {
+      return {
+        title:     a.title    || "Artikkel",
+        content:   a.body     || a.content || "",
+        category:  a.category || "Generelt",
+        tags:      a.tags     || [],
+        summary:   a.summary  || "",
+        published: !!a.official || !!a.published,
+        author_id: uid()
+      };
+    });
+    _sb.from("kb_articles").insert(rows).select().then(function (r) {
+      if (!r.error) { _articles = r.data || []; App.store.remove(STORE_KEY); }
+      cb && cb();
+    });
+  }
+
+  function saveArticle(item, data, cb) {
+    var row = {
+      title:     data.title    || "Ny artikkel",
+      content:   data.body     || "",
+      category:  data.category || "Generelt",
+      tags:      data.tags     || [],
+      summary:   data.summary  || "",
+      published: !!data.official
     };
-    var list = getArticles();
-    list.unshift(art);
-    setArticles(list);
-    Intranet.logActivity({ type: "kb_created", label: "Ny KB-artikkel: " + art.title });
-    return art;
+    if (!_sb) {
+      if (item && item.id) {
+        var idx = _articles.findIndex(function (a) { return a.id === item.id; });
+        if (idx >= 0) _articles[idx] = Object.assign({}, _articles[idx], row, { updated_at: new Date().toISOString() });
+        Intranet.logActivity({ type: "kb_updated", label: "KB oppdatert: " + row.title });
+      } else {
+        _articles.unshift(Object.assign({ id: "wsp-kb-" + Date.now(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, row));
+        Intranet.logActivity({ type: "kb_created", label: "Ny KB-artikkel: " + row.title });
+      }
+      App.store.set(STORE_KEY, _articles);
+      cb && cb(item && item.id ? item.id : _articles[0].id);
+      return;
+    }
+    if (item && item.id) {
+      _sb.from("kb_articles").update(row).eq("id", item.id).select().single().then(function (r) {
+        if (!r.error && r.data) {
+          var idx = _articles.findIndex(function (a) { return a.id === item.id; });
+          if (idx >= 0) _articles[idx] = r.data;
+        }
+        Intranet.logActivity({ type: "kb_updated", label: "KB oppdatert: " + row.title });
+        cb && cb(item.id);
+      });
+    } else {
+      var insert = Object.assign({ author_id: uid() }, row);
+      _sb.from("kb_articles").insert(insert).select().single().then(function (r) {
+        if (!r.error && r.data) _articles.unshift(r.data);
+        Intranet.logActivity({ type: "kb_created", label: "Ny KB-artikkel: " + row.title });
+        cb && cb(r.data ? r.data.id : null);
+      });
+    }
   }
 
-  function updateArticle(id, changes) {
-    var list = getArticles();
-    var idx  = list.findIndex(function (a) { return a.id === id; });
-    if (idx < 0) return null;
-    var ctx = Intranet.getContext ? Intranet.getContext() : { userId: "local" };
-    Object.assign(list[idx], changes, { updatedAt: Date.now(), updatedBy: ctx.userId || "local" });
-    setArticles(list);
-    return list[idx];
-  }
-
-  function deleteArticle(id) {
-    var list = getArticles();
-    var art  = list.find(function (a) { return a.id === id; });
-    setArticles(list.filter(function (a) { return a.id !== id; }));
-    if (art) Intranet.logActivity({ type: "kb_deleted", label: "KB-artikkel slettet: " + art.title });
+  function deleteArticle(id, cb) {
+    var art = _articles.find(function (a) { return a.id === id; });
+    _articles = _articles.filter(function (a) { return a.id !== id; });
+    Intranet.logActivity({ type: "kb_deleted", label: "KB-artikkel slettet: " + (art ? art.title : "") });
+    if (!_sb) { App.store.set(STORE_KEY, _articles); cb && cb(); return; }
+    _sb.from("kb_articles").delete().eq("id", id).then(function () { cb && cb(); });
   }
 
   function getCategories() {
     var cats = {};
-    getArticles().forEach(function (a) {
-      var c = a.category || "Generelt";
-      cats[c] = (cats[c] || 0) + 1;
-    });
+    _articles.forEach(function (a) { var c = a.category || "Generelt"; cats[c] = (cats[c] || 0) + 1; });
     return Object.keys(cats).sort();
   }
 
-  /* =========================================================================
-     SØK
-     ====================================================================== */
   function searchArticles(query, category, officialOnly) {
     var q    = (query || "").toLowerCase().trim();
-    var list = getArticles();
+    var list = _articles;
     if (category)    list = list.filter(function (a) { return (a.category || "Generelt") === category; });
-    if (officialOnly) list = list.filter(function (a) { return a.official; });
+    if (officialOnly) list = list.filter(function (a) { return a.published; });
     if (!q) return list;
     return list.filter(function (a) {
       return (a.title    || "").toLowerCase().indexOf(q) > -1 ||
-             (a.body     || "").toLowerCase().indexOf(q) > -1 ||
+             (a.content  || "").toLowerCase().indexOf(q) > -1 ||
              (a.category || "").toLowerCase().indexOf(q) > -1 ||
              (a.tags     || []).some(function (t) { return t.toLowerCase().indexOf(q) > -1; }) ||
              (a.summary  || "").toLowerCase().indexOf(q) > -1;
@@ -163,29 +197,22 @@
   }
 
   /* =========================================================================
-     RENDER — HOVUDSIDE (kategorioversikt)
+     RENDER
      ====================================================================== */
   function render() { return '<div id="kb-root"></div>'; }
 
   function mount(outlet, ctx, sub) {
     var root = outlet.querySelector("#kb-root") || outlet;
     injectStyles();
-    if (sub) renderArticleView(root, sub, ctx);
-    else     renderHome(root, ctx);
-  }
-
-  function isAdmin(ctx) {
-    // Sjekk både ctx og sessionStorage (ctx kan vere stale)
-    if (ctx && (ctx.role === "owner" || ctx.role === "admin")) return true;
-    try {
-      var ns   = (window.SITE_CONFIG && window.SITE_CONFIG.storageKey) || "site";
-      var role = sessionStorage.getItem(ns + ":intranet-auth");
-      return role === "owner" || role === "admin";
-    } catch (e) { return false; }
+    root.innerHTML = '<p style="color:var(--color-muted);padding:1rem">Lastar…</p>';
+    loadArticles(function () {
+      if (sub) renderArticleView(root, sub, ctx);
+      else     renderHome(root, ctx);
+    });
   }
 
   function renderHome(root, ctx) {
-    var articles = getArticles();
+    var articles = _articles;
     var cats     = getCategories();
     var admin    = isAdmin(ctx);
 
@@ -200,17 +227,12 @@
         '<h2>Kunnskapsbase</h2>' +
         (admin ? '<button class="btn btn--primary btn--sm" id="kb-new-btn"><i class="ti ti-plus"></i> Ny artikkel</button>' : '') +
       '</div>' +
-
-      /* Søk */
       '<div style="position:relative;margin-bottom:1.2rem">' +
         '<i class="ti ti-search" style="position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:var(--color-muted)"></i>' +
         '<input id="kb-search" type="search" placeholder="Søk i kunnskapsbasen…" ' +
           'style="width:100%;padding:.6rem .9rem .6rem 2.3rem;border:1.5px solid var(--color-border);border-radius:9px;font:inherit;font-size:.9rem;background:var(--color-bg);color:var(--color-text)">' +
       '</div>' +
-
       '<div id="kb-search-results" style="display:none;margin-bottom:1.2rem"></div>' +
-
-      /* Kategorikort */
       (cats.length
         ? '<p class="i-section-label">Kategoriar</p>' +
           '<div class="kb-cat-grid">' +
@@ -224,10 +246,7 @@
               '</a>';
             }).join("") +
           '</div>'
-        : ''
-      ) +
-
-      /* Siste artiklar */
+        : '') +
       (articles.length
         ? '<p class="i-section-label">Siste artiklar</p>' +
           '<div class="kb-article-list">' +
@@ -236,9 +255,7 @@
         : '<div style="text-align:center;padding:2rem;color:var(--color-muted)">' +
             '<i class="ti ti-book-off" style="font-size:2.5rem;display:block;margin-bottom:.5rem;opacity:.3"></i>' +
             '<p style="font-size:.9rem">Ingen artiklar ennå.' + (admin ? ' Klikk «Ny artikkel» for å starte.' : '') + '</p>' +
-          '</div>'
-      ) +
-
+          '</div>') +
       '<div id="kb-editor-area"></div>';
 
     bindHome(root, ctx);
@@ -247,13 +264,13 @@
   function articleRow(a) {
     return '<div class="kb-article-row" data-kb-open="' + C.esc(a.id) + '">' +
       '<div class="kb-article-row__title">' +
-        (a.official ? officialBadge() + ' ' : '') +
+        (a.published ? officialBadge() + ' ' : '') +
         C.esc(a.title) +
       '</div>' +
       '<div class="kb-article-row__meta">' +
         '<span>' + C.esc(a.category || "Generelt") + '</span>' +
         '<span>·</span>' +
-        '<span>Oppdatert ' + formatDate(a.updatedAt) + '</span>' +
+        '<span>Oppdatert ' + formatDate(a.updated_at) + '</span>' +
         (a.tags && a.tags.length ? '<span>· ' + tagsHtml(a.tags) + '</span>' : '') +
       '</div>' +
     '</div>';
@@ -262,7 +279,6 @@
   function bindHome(root, ctx) {
     var admin = isAdmin(ctx);
 
-    /* Søk */
     var searchInp = root.querySelector("#kb-search");
     var searchRes = root.querySelector("#kb-search-results");
     if (searchInp) {
@@ -280,27 +296,19 @@
       searchInp.addEventListener("input", doSearch);
     }
 
-    /* Kategorikort */
     root.querySelectorAll("[data-kb-cat]").forEach(function (card) {
       card.addEventListener("click", function (e) {
         e.preventDefault();
-        var cat = card.getAttribute("data-kb-cat");
-        renderCategory(root, cat, ctx);
+        renderCategory(root, card.getAttribute("data-kb-cat"), ctx);
       });
     });
 
-    /* Ny artikkel */
     var newBtn = root.querySelector("#kb-new-btn");
-    if (newBtn) newBtn.addEventListener("click", function () {
-      openEditor(root, null, ctx);
-    });
+    if (newBtn) newBtn.addEventListener("click", function () { openEditor(root, null, ctx); });
 
     bindArticleRows(root, ctx);
   }
 
-  /* =========================================================================
-     KATEGORISIDE
-     ====================================================================== */
   function renderCategory(root, category, ctx) {
     var articles = searchArticles(null, category, false);
     var admin    = isAdmin(ctx);
@@ -313,25 +321,17 @@
       '<h3 style="margin:0 0 1rem">' + C.esc(category) + ' <span style="font-size:1rem;font-weight:400;color:var(--color-muted)">(' + articles.length + ')</span></h3>' +
       (articles.length
         ? '<div class="kb-article-list">' + articles.map(articleRow).join("") + '</div>'
-        : '<p style="color:var(--color-muted);font-size:.9rem">Ingen artiklar i denne kategorien.</p>'
-      ) +
+        : '<p style="color:var(--color-muted);font-size:.9rem">Ingen artiklar i denne kategorien.</p>') +
       '<div id="kb-editor-area"></div>';
 
-    root.querySelector("#kb-back").addEventListener("click", function () {
-      renderHome(root, ctx);
-    });
+    root.querySelector("#kb-back").addEventListener("click", function () { renderHome(root, ctx); });
     var newBtn = root.querySelector("#kb-new-btn");
-    if (newBtn) newBtn.addEventListener("click", function () {
-      openEditor(root, { category: category }, ctx);
-    });
+    if (newBtn) newBtn.addEventListener("click", function () { openEditor(root, { category: category }, ctx); });
     bindArticleRows(root, ctx);
   }
 
-  /* =========================================================================
-     ARTIKKELVISNING
-     ====================================================================== */
   function renderArticleView(root, id, ctx) {
-    var art   = getArticles().find(function (a) { return a.id === id; });
+    var art   = _articles.find(function (a) { return a.id === id; });
     var admin = isAdmin(ctx);
     if (!art) { renderHome(root, ctx); return; }
 
@@ -347,14 +347,11 @@
       '</div>' +
       '<div class="kb-article-view">' +
         '<div style="display:flex;align-items:flex-start;gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem">' +
-          (art.official ? officialBadge() : '') +
+          (art.published ? officialBadge() : '') +
           '<span style="font-size:.78rem;color:var(--color-primary);font-weight:600">' + C.esc(art.category || "Generelt") + '</span>' +
         '</div>' +
         '<h2 style="margin:0 0 .5rem;font-size:1.5rem">' + C.esc(art.title) + '</h2>' +
-        '<div style="font-size:.78rem;color:var(--color-muted);margin-bottom:.8rem">' +
-          'Sist oppdatert ' + formatDate(art.updatedAt) +
-          (art.updatedBy && art.updatedBy !== "local" ? ' av ' + C.esc(art.updatedBy) : '') +
-        '</div>' +
+        '<div style="font-size:.78rem;color:var(--color-muted);margin-bottom:.8rem">Sist oppdatert ' + formatDate(art.updated_at) + '</div>' +
         (art.tags && art.tags.length
           ? '<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:1rem">' + tagsHtml(art.tags) + '</div>'
           : '') +
@@ -364,7 +361,7 @@
               C.esc(art.summary) +
             '</div>'
           : '') +
-        '<div class="kb-article-view__body">' + (C.sanitizeRichHtml ? C.sanitizeRichHtml(art.body || "") : C.esc(art.body || "")) + '</div>' +
+        '<div class="kb-article-view__body">' + (C.sanitizeRichHtml ? C.sanitizeRichHtml(art.content || "") : C.esc(art.content || "")) + '</div>' +
       '</div>' +
       '<div id="kb-editor-area"></div>';
 
@@ -374,14 +371,10 @@
     });
 
     if (admin) {
-      root.querySelector("#kb-edit-btn").addEventListener("click", function () {
-        openEditor(root, art, ctx);
-      });
+      root.querySelector("#kb-edit-btn").addEventListener("click", function () { openEditor(root, art, ctx); });
       root.querySelector("#kb-del-btn").addEventListener("click", function () {
         if (!confirm('Slett "' + art.title + '"?')) return;
-        deleteArticle(id);
-        Intranet.navigate("kb");
-        renderHome(root, ctx);
+        deleteArticle(id, function () { Intranet.navigate("kb"); renderHome(root, ctx); });
       });
     }
   }
@@ -417,10 +410,10 @@
             '<label for="kb-summary">Samandrag (valgfritt · AI-kontekst)</label>' +
             '<input id="kb-summary" type="text" value="' + C.esc(item && item.id ? (item.summary || "") : "") + '" placeholder="Kort beskriving av artikkelen…">' +
           '</div>' +
-          C.richTextField({ id: "kb-body", label: "Innhald", value: item && item.id ? (item.body || "") : "" }) +
+          C.richTextField({ id: "kb-body", label: "Innhald", value: item && item.id ? (item.content || "") : "" }) +
           '<div class="i-field">' +
             '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500">' +
-              '<input type="checkbox" id="kb-official"' + (item && item.official ? " checked" : "") + '>' +
+              '<input type="checkbox" id="kb-official"' + (item && item.published ? " checked" : "") + '>' +
               '<i class="ti ti-circle-check" style="color:#2a7a2a"></i>' +
               'Merk som offisiell (godkjend av admin)' +
             '</label>' +
@@ -436,14 +429,13 @@
     ed.scrollIntoView({ behavior: "smooth", block: "start" });
     App.ui.bindRichTextFields(ed);
 
-    function closeEditor() { ed.innerHTML = ""; }
-
-    ed.querySelector("#kb-cancel-btn").addEventListener("click", closeEditor);
+    ed.querySelector("#kb-cancel-btn").addEventListener("click", function () { ed.innerHTML = ""; });
 
     ed.querySelector("#kb-save-btn").addEventListener("click", function () {
-      var title    = ed.querySelector("#kb-title").value.trim();
-      var st       = ed.querySelector("#kb-save-status");
+      var title = ed.querySelector("#kb-title").value.trim();
+      var st    = ed.querySelector("#kb-save-status");
       if (!title) { st.textContent = "Tittel er påkrevd."; st.className = "form__status is-err"; return; }
+      st.textContent = "Lagrar…";
 
       var data = {
         title:    title,
@@ -454,21 +446,20 @@
         official: ed.querySelector("#kb-official").checked
       };
 
-      closeEditor();
-      if (item && item.id) {
-        updateArticle(item.id, data);
-        Intranet.navigate("kb", item.id);
-        renderArticleView(root, item.id, ctx);
-      } else {
-        var art = createArticle(data);
-        Intranet.navigate("kb", art.id);
-        renderArticleView(root, art.id, ctx);
-      }
+      saveArticle(item && item.id ? item : null, data, function (savedId) {
+        ed.innerHTML = "";
+        if (savedId) {
+          Intranet.navigate("kb", savedId);
+          renderArticleView(root, savedId, ctx);
+        } else {
+          renderHome(root, ctx);
+        }
+      });
     });
   }
 
   /* =========================================================================
-     BINDING (artikkelrader)
+     BINDING
      ====================================================================== */
   function bindArticleRows(root, ctx) {
     root.querySelectorAll("[data-kb-open]").forEach(function (row) {

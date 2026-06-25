@@ -55,6 +55,94 @@ window.App = (function () {
     remove: function (name) { try { localStorage.removeItem(this._key(name)); } catch (e) {} }
   };
 
+  /* ── SUPABASE SYNC ─────────────────────────────────────────────────────────
+     Write-through cache: localStorage er arbeidskopi, Supabase er persistent
+     lager. Lesing: alltid frå localStorage (synkron, rask). Skriving: til
+     localStorage + batcha upsert til Supabase kvart 300 ms. Oppstart: hent
+     alle nøklar for dette tenant-ID-et frå Supabase → skriv til localStorage
+     → start appen. Ved offline / feil: fall tilbake til localStorage.         */
+  var _sb = null;
+  (function () {
+    var cfg = CFG.supabase;
+    if (!cfg || !cfg.url || !cfg.anonKey) return;
+    if (typeof window.supabase === "undefined") return;
+    try { _sb = window.supabase.createClient(cfg.url, cfg.anonKey); } catch (e) {}
+  })();
+
+  // Auth-status — oppdaterast av onAuthStateChange, brukast av _flushSync
+  var _isAuthed = false;
+
+  // Synk Supabase-session til sessionStorage slik at getAuthRole() alltid er oppdatert
+  if (_sb) {
+    _sb.auth.onAuthStateChange(function (event, session) {
+      _isAuthed = !!session;
+      if (session && session.user) {
+        _sb.from("users").select("role").eq("id", session.user.id).single().then(function (r) {
+          var role = (r.data && r.data.role) || "owner";
+          sessionStorage.setItem(NS + ":admin", role);
+        });
+      } else if (event === "SIGNED_OUT") {
+        sessionStorage.removeItem(NS + ":admin");
+      }
+    });
+  }
+
+  var _syncQueue = {};
+  var _syncTimer = null;
+
+  function _flushSync() {
+    if (!_sb || !_isAuthed) return;
+    var queue = _syncQueue;
+    _syncQueue = {};
+    var upserts = [];
+    var delKeys = [];
+    Object.keys(queue).forEach(function (k) {
+      if (queue[k] === null) { delKeys.push(k); }
+      else { upserts.push({ tenant_id: NS, key: k, value: queue[k] }); }
+    });
+    if (upserts.length) _sb.from("store").upsert(upserts, { onConflict: "tenant_id,key" }).then(function(r) { if (r.error) console.error("[sync] upsert feil:", r.status, r.error); });
+    if (delKeys.length) _sb.from("store").delete().eq("tenant_id", NS).in("key", delKeys).then(function(r) { if (r.error) console.error("[sync] delete feil:", r.status, r.error); });
+  }
+
+  function _queueSync(key, value) {
+    _syncQueue[key] = value !== undefined ? value : null;
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(_flushSync, 300);
+  }
+
+  const _lsSet    = Store.set.bind(Store);
+  const _lsRemove = Store.remove.bind(Store);
+
+  Store.set = function (name, value) {
+    var ok = _lsSet(name, value);
+    _queueSync(name, value);
+    return ok;
+  };
+
+  Store.remove = function (name) {
+    _lsRemove(name);
+    _queueSync(name, null);
+  };
+
+  function hydrateFromSupabase(done) {
+    if (!_sb) { done(); return; }
+    _sb.from("store").select("key, value").eq("tenant_id", NS)
+      .then(function (result) {
+        if (result.data) {
+          result.data.forEach(function (row) {
+            var lsKey = NS + ":" + row.key;
+            if (row.value === null) {
+              localStorage.removeItem(lsKey);
+            } else {
+              try { localStorage.setItem(lsKey, JSON.stringify(row.value)); } catch (e) {}
+            }
+          });
+        }
+        done();
+      })
+      .catch(function () { done(); });
+  }
+
   /* ===========================================================================
      1b) MEDIA-LAG  (bilder)
      ---------------------------------------------------------------------------
@@ -227,9 +315,17 @@ window.App = (function () {
       name: lead.name || "", email: lead.email || "", message: lead.message || "",
       time: new Date().toISOString(),
       status: "ny",   // ny → lest → løst
-      referenceNumber: generateUniqueNumber(refNums)
+      referenceNumber: generateUniqueNumber(refNums),
+      source: lead.source || null,
+      chatId: lead.chatId || null
     });
     saveLeads(leads);
+  }
+
+  function updateLead(id, changes) {
+    const leads = getLeads();
+    const lead = leads.find(function (l) { return l.id === id; });
+    if (lead) { Object.assign(lead, changes); saveLeads(leads); }
   }
 
   /* ===========================================================================
@@ -258,11 +354,9 @@ window.App = (function () {
 
   function registerModule(def) {
     if (!def || !def.id || (typeof def.render !== "function" && typeof def.renderPage !== "function")) {
-      console.warn("[App] Ugyldig modul ignorert:", def);
       return;
     }
     if (modules.some(function (m) { return m.id === def.id; })) {
-      console.warn("[App] Modul med id finnes allerede:", def.id);
       return;
     }
     def.order = (typeof def.order === "number") ? def.order : 60; // nye moduler etter kontakt som standard
@@ -702,8 +796,12 @@ window.App = (function () {
   function isAuthed() { return !!getAuthRole(); }
   function setAuthed(role) {
     // role: "owner" | "employee" | falsy (logg ut)
-    if (role) sessionStorage.setItem(NS + ":admin", role);
-    else sessionStorage.removeItem(NS + ":admin");
+    if (role) {
+      sessionStorage.setItem(NS + ":admin", role);
+    } else {
+      sessionStorage.removeItem(NS + ":admin");
+      if (_sb) _sb.auth.signOut().then(function () {});
+    }
   }
 
   // Admin-faner gruppert i tre kategorier, slik at panelet ikke blir uoversiktlig
@@ -765,43 +863,124 @@ window.App = (function () {
     else renderAdminLogin(root);
   }
   function closeAdmin() {
+    stopAdminBadgeRefresh();
     const root = document.getElementById("admin-root");
     if (root) root.remove();
     if (location.hash === "#admin") history.replaceState(null, "", location.pathname + location.search);
   }
 
+  /* ── Tab-badge-system ────────────────────────────────────────────────────
+     Polls every 4 s while the admin panel is open.
+     Any module can call App.setTabBadge(tabId, count) directly.           */
+  let _adminBadgeTimer = null;
+
+  function startAdminBadgeRefresh(root) {
+    stopAdminBadgeRefresh();
+    injectTabBadgeCss();
+    doAdminBadgeRefresh(root);
+    _adminBadgeTimer = setInterval(function () {
+      const r = document.getElementById("admin-root");
+      if (!r) { stopAdminBadgeRefresh(); return; }
+      doAdminBadgeRefresh(r);
+    }, 4000);
+  }
+  function stopAdminBadgeRefresh() {
+    if (_adminBadgeTimer) { clearInterval(_adminBadgeTimer); _adminBadgeTimer = null; }
+  }
+  function doAdminBadgeRefresh(root) {
+    if (!root) return;
+    // Chat unread (VwChat.totalUnread() is always safe to call)
+    const chatCount = window.VwChat ? window.VwChat.totalUnread() : 0;
+    setTabBadge(root, "chat-admin", chatCount);
+    // New contact submissions
+    const leads = getLeads();
+    const newContacts = leads.filter(function (l) {
+      return !(l.message && l.message.indexOf("Tilbudsforesp") === 0) && (l.status || "ny") === "ny";
+    }).length;
+    setTabBadge(root, "leads", newContacts);
+    // New quotes
+    const newQuotes = leads.filter(function (l) {
+      return (l.message && l.message.indexOf("Tilbudsforesp") === 0) && (l.status || "ny") === "ny";
+    }).length;
+    setTabBadge(root, "quotes", newQuotes);
+  }
+  function setTabBadge(root, tabId, count) {
+    const btn = root && root.querySelector("[data-tab='" + tabId + "']");
+    if (!btn) return;
+    let badge = btn.querySelector(".tab-badge");
+    if (count > 0) {
+      if (!badge) { badge = document.createElement("span"); badge.className = "tab-badge"; btn.appendChild(badge); }
+      badge.textContent = count > 99 ? "99+" : String(count);
+    } else {
+      if (badge) badge.remove();
+    }
+  }
+  function injectTabBadgeCss() {
+    if (document.getElementById("tab-badge-css")) return;
+    const s = document.createElement("style"); s.id = "tab-badge-css";
+    s.textContent = ".tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 .25rem;margin-left:.3rem;background:#c0392b;color:#fff;border-radius:999px;font-size:.6rem;font-weight:700;line-height:1;vertical-align:middle}";
+    document.head.appendChild(s);
+  }
+
   // Innlogging
   function renderAdminLogin(root) {
+    const useSupabase = !!_sb;
     root.innerHTML = C.modal({
       title: "Logg inn",
       label: "Admin innlogging",
-      body: `
-        <form data-login class="admin-form">
-          <p class="prose prose--muted">Skriv inn admin-passordet for å redigere innhold.</p>
-          ${C.field({ id: "admin-pass", label: "Passord", type: "password", required: true })}
-          ${C.button({ label: "Logg inn", type: "submit", variant: "primary" })}
-          <p class="form__status" data-login-status role="status" aria-live="polite"></p>
-        </form>`
+      body:
+        '<form data-login class="admin-form">' +
+          '<p class="prose prose--muted">' + (useSupabase ? "Logg inn med e-post og passord." : "Skriv inn admin-passordet for å redigere innhold.") + '</p>' +
+          (useSupabase ? C.field({ id: "admin-email", label: "E-post", type: "email", required: true }) : "") +
+          C.field({ id: "admin-pass", label: "Passord", type: "password", required: true }) +
+          C.button({ label: "Logg inn", type: "submit", variant: "primary" }) +
+          '<p class="form__status" data-login-status role="status" aria-live="polite"></p>' +
+        '</form>'
     });
     bindModalClose(root);
     const form = root.querySelector("[data-login]");
+    const statusEl = root.querySelector("[data-login-status]");
+
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       const pass = root.querySelector("#admin-pass").value;
-      const empPass = CFG.admin && CFG.admin.employeePassword;
-      // ← felles passord fra config.admin.password (eller valgfritt ansattpassord, med begrenset adgang)
-      if (pass === (CFG.admin && CFG.admin.password)) {
-        setAuthed("owner");
-        renderAdminPanel(root);
-      } else if (empPass && pass === empPass) {
-        setAuthed("employee");
-        activeCategory = "henvendelser";
-        renderAdminPanel(root);
+
+      if (useSupabase) {
+        const email = root.querySelector("#admin-email").value;
+        setStatus(statusEl, "Logger inn…", "");
+        _sb.auth.signInWithPassword({ email: email, password: pass }).then(function (result) {
+          if (result.error) {
+            setStatus(statusEl, "Feil e-post eller passord.", "error");
+            return;
+          }
+          _sb.from("users").select("role").eq("id", result.data.user.id).single().then(function (r) {
+            const role = (r.data && r.data.role) || "owner";
+            setAuthed(role);
+            hydrateFromSupabase(function () {
+              if (role === "member") activeCategory = "henvendelser";
+              renderAdminPanel(root);
+            });
+          });
+        });
       } else {
-        setStatus(root.querySelector("[data-login-status]"), "Feil passord.", "error");
+        // Fallback: config-passord (testmiljø / lokal køyring utan Supabase)
+        const empPass = CFG.admin && CFG.admin.employeePassword;
+        if (pass === (CFG.admin && CFG.admin.password)) {
+          setAuthed("owner");
+          renderAdminPanel(root);
+        } else if (empPass && pass === empPass) {
+          setAuthed("employee");
+          activeCategory = "henvendelser";
+          renderAdminPanel(root);
+        } else {
+          setStatus(statusEl, "Feil passord.", "error");
+        }
       }
     });
-    setTimeout(function () { const i = root.querySelector("#admin-pass"); if (i) i.focus(); }, 50);
+    setTimeout(function () {
+      const i = root.querySelector("#admin-email") || root.querySelector("#admin-pass");
+      if (i) i.focus();
+    }, 50);
   }
 
   // Selve panelet
@@ -883,6 +1062,7 @@ window.App = (function () {
     }
 
     renderAdminTab(root.querySelector("[data-tabbody]"));
+    startAdminBadgeRefresh(root);
   }
 
   function renderAdminTab(body) {
@@ -1679,7 +1859,7 @@ window.App = (function () {
         <p class="form__status" data-nav-status style="margin-top:.8rem"></p>
 
         <h4 style="margin:1.8rem 0 .4rem">Framsida</h4>
-        <p class="prose prose--muted" style="margin-bottom:.9rem">Styr kva seksjoner som vises på framsida og i kva rekkefølge. Side-moduler (Booking, Tilbud, FAQ) er eigne sider og kan ikkje leggjast inn her.</p>
+        <p class="prose prose--muted" style="margin-bottom:.9rem">Styr hvilke seksjoner som vises på forsiden og i hvilken rekkefølge. Side-moduler (Booking, Tilbud, FAQ) er egne sider og kan ikke legges inn her.</p>
         <table style="width:100%;border-collapse:collapse;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
           <thead>
             <tr style="background:var(--color-alt)">
@@ -1960,6 +2140,13 @@ window.App = (function () {
     const custAfter = customers.filter(function (c) { return (c.email || "").toLowerCase() !== email; });
     Store.set("crm-customers", custAfter);
     count += customers.length - custAfter.length;
+    // Chat-samtalar
+    if (window.VwChat && window.VwChat.getConvs && window.VwChat.deleteConv) {
+      const chats = window.VwChat.getConvs()
+        .filter(function (c) { return (c.email || "").toLowerCase() === email; });
+      chats.forEach(function (c) { window.VwChat.deleteConv(c.id); });
+      count += chats.length;
+    }
     return count;
   }
 
@@ -1972,9 +2159,17 @@ window.App = (function () {
     const counts = { ny: 0, lest: 0, løst: 0 };
     allLeads.forEach(function (l) { counts[l.status || "ny"]++; });
 
+    const VwChat = window.VwChat;
     const rows = leads.length ? leads.map(function (l) {
       const st = l.status || "ny";
       const preview = (l.message || "").split("\n").filter(function (ln) { return ln.trim(); }).slice(0, 1).join("").slice(0, 90);
+      const chatConv = (l.source === "chat" && l.chatId && VwChat) ? VwChat.getConv(l.chatId) : null;
+      const unread   = chatConv ? (chatConv.unread || 0) : 0;
+      const chatLabel = "Svar i chat" + (unread > 0 ? " (" + unread + ")" : (st === "ny" ? " ●" : ""));
+      const chatVariant = (unread > 0 || st === "ny") ? "secondary" : "ghost";
+      const chatBtn = chatConv
+        ? C.button({ label: chatLabel, icon: "message-circle", variant: chatVariant, attrs: 'data-chat-lead="' + C.esc(l.chatId) + '"' })
+        : "";
       return `
         <li class="admin-row admin-row--lead" data-id="${C.esc(l.id)}">
           <div class="admin-row__main">
@@ -1991,8 +2186,9 @@ window.App = (function () {
             <span class="admin-row__meta">${formatDateTime(l.time)}</span>
           </div>
           <div class="admin-row__actions" style="flex-direction:column;align-items:flex-end;gap:.4rem">
-            <div style="display:flex;gap:.4rem">
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap">
               ${C.button({ label: "Svar i e-post", icon: "mail-forward", variant: "primary", attrs: 'data-reply-lead="' + C.esc(l.id) + '"' })}
+              ${chatBtn}
               ${C.button({ label: "Slett", variant: "ghost", attrs: 'data-del-lead="' + C.esc(l.id) + '"' })}
             </div>
             <select class="stat-select" data-status-select="${C.esc(l.id)}">
@@ -2008,8 +2204,8 @@ window.App = (function () {
        ${statusFilterBar("kontakt", counts)}
        <ul class="admin-list">${rows}</ul>
        <div class="crm-gdpr-box">
-         <h4 class="crm-gdpr-title">${C.icon("shield")} Slett alle data på ein person</h4>
-         <p class="crm-gdpr-desc">Skriv inn e-postadresse for å slette alle henvendingar, tilbod og bookingar knytt til denne personen (GDPR §17).</p>
+         <h4 class="crm-gdpr-title">${C.icon("shield")} Slett alle data for en person</h4>
+         <p class="crm-gdpr-desc">Skriv inn e-postadresse for å slette alle henvendelser, tilbud og bookinger knyttet til denne personen (GDPR §17).</p>
          <form data-gdpr-form style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
            <div class="field" style="flex:1;min-width:220px;margin:0">
              <label for="gdpr-email">E-postadresse</label>
@@ -2053,10 +2249,21 @@ window.App = (function () {
             subject: "Re: Henvendelse fra " + (lead.name || ""),
             templateKey: "kontakt", defaultTemplate: DEFAULT_REPLY_TEMPLATE,
             vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDateTime(lead.time), melding: cleanMessageText(lead.message), referanse: lead.referenceNumber || "" },
-            previewHtml: messageToHtml(lead.message)
+            previewHtml: messageToHtml(lead.message),
+            chatId: (lead.source === "chat" && lead.chatId) ? lead.chatId : null
           });
           adminLeads(body);
         }
+      });
+    });
+    body.querySelectorAll("[data-chat-lead]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        const chatId = b.getAttribute("data-chat-lead");
+        if (window.VwChatAdmin && window.VwChatAdmin.openConv) window.VwChatAdmin.openConv(chatId);
+        activeTab = "chat-admin";
+        activeCategory = "henvendelser";
+        const root = document.getElementById("admin-root");
+        if (root) renderAdminPanel(root);
       });
     });
     body.querySelectorAll("[data-status-select]").forEach(function (sel) {
@@ -2076,7 +2283,7 @@ window.App = (function () {
       e.preventDefault();
       const email = body.querySelector("#gdpr-email").value.trim();
       const st    = body.querySelector("[data-gdpr-status]");
-      if (!confirm("Slett ALL data knytt til «" + email + "»? Dette kan ikkje angrast.")) return;
+      if (!confirm("Slett ALL data knyttet til «" + email + "»? Dette kan ikke angres.")) return;
       const n = deleteByEmail(email);
       body.querySelector("#gdpr-email").value = "";
       if (n > 0) {
@@ -2167,6 +2374,7 @@ window.App = (function () {
     const refs      = Store.get("ref-items",         []) || [];
     const faqs      = Store.get("faq-items",         []) || [];
     const images    = Store.get("mediabank-images",  []) || [];
+    const convs     = Store.get("chat:convs",        []) || [];
     const mediaCount = allStoreKeys().filter(function (k) { return k.indexOf("media:") === 0 || k.indexOf("file:") === 0; }).length;
 
     const usedBytes = storageUsageBytes();
@@ -2186,6 +2394,7 @@ window.App = (function () {
     if (hasModule("referanser")) rows.push(["Referanser", refs.length]);
     if (hasModule("faq"))        rows.push(["FAQ-spørsmål", faqs.length]);
     if (hasModule("mediabank"))  rows.push(["Bilder i Mediebank", images.length]);
+    if (window.VwChat)           rows.push(["Chat-samtaler", convs.length]);
     rows.push(["Opplastede bilder/filer totalt", mediaCount]);
 
     body.innerHTML = `
@@ -2211,6 +2420,7 @@ window.App = (function () {
           ${hasModule("tilbud")  ? C.button({ label:"Tilbud (JSON)",       icon:"download",     variant:"ghost", attrs:'data-mod-export="quotes-json"'   }) : ""}
           ${hasModule("booking") ? C.button({ label:"Bookinger (JSON)",    icon:"download",     variant:"ghost", attrs:'data-mod-export="bookings-json"' }) : ""}
           ${C.button({ label:"Henvendelser (JSON)", icon:"download", variant:"ghost", attrs:'data-mod-export="leads-json"' })}
+          ${window.VwChat        ? C.button({ label:"Chat (JSON)",          icon:"download",     variant:"ghost", attrs:'data-mod-export="chat-json"'      }) : ""}
         </div>
 
         <h4 class="an-heading" style="margin-top:2rem">Importer sikkerhetskopi</h4>
@@ -2245,6 +2455,11 @@ window.App = (function () {
         } else if (type === "leads-json") {
           const data = getLeads().filter(function(l){return !l.message||l.message.indexOf("Tilbudsforesp")!==0;});
           downloadBlob("henvendelser-" + stamp + ".json", JSON.stringify(data, null, 2), "application/json");
+        } else if (type === "chat-json") {
+          const chatConvs = Store.get("chat:convs", []) || [];
+          const chatMsgs = {};
+          chatConvs.forEach(function(c) { chatMsgs[c.id] = Store.get("chat:msgs:" + c.id, []) || []; });
+          downloadBlob("chat-" + stamp + ".json", JSON.stringify({ convs: chatConvs, msgs: chatMsgs }, null, 2), "application/json");
         }
       });
     });
@@ -2286,6 +2501,7 @@ window.App = (function () {
     const leads    = getLeads ? getLeads() : [];
     const bookings = Store.get("booking-bookings", []) || [];
     const customers= Store.get("crm-customers",    []) || [];
+    const custConvs= Store.get("chat:convs",       []) || [];
 
     body.innerHTML = `
       <div class="bk-wrap">
@@ -2303,6 +2519,7 @@ window.App = (function () {
           <li><span>Tilbud</span><strong>${leads.filter(function(l){return l.message&&l.message.indexOf("Tilbudsforesp")===0;}).length}</strong></li>
           <li><span>Bookinger</span><strong>${bookings.length}</strong></li>
           <li><span>Kunder</span><strong>${customers.length}</strong></li>
+          ${window.VwChat ? `<li><span>Chat-samtaler</span><strong>${custConvs.length}</strong></li>` : ""}
         </ul>
         ${C.button({ label:"Last ned sikkerhetskopi", icon:"download", variant:"primary", attrs:"data-cust-backup-export" })}
 
@@ -2523,6 +2740,7 @@ window.App = (function () {
           '<div style="padding:1rem 1.3rem;display:flex;gap:.7rem;flex-wrap:wrap;align-items:center">' +
             C.button({ label: "Åpne i Outlook", icon: "mail-forward", variant: "primary", href: mailtoFull }) +
             C.button({ label: "Åpne uten mal", variant: "ghost", href: mailtoBlank }) +
+            (opts.chatId ? C.button({ label: "Svar i chat", icon: "message-circle", variant: "secondary", attrs: 'data-goto-chat="' + C.esc(opts.chatId) + '"' }) : "") +
           '</div>' +
         '</div>' +
       '</div>';
@@ -2532,6 +2750,18 @@ window.App = (function () {
     document.addEventListener("keydown", function escClose(e) {
       if (e.key === "Escape") { root.remove(); document.removeEventListener("keydown", escClose); }
     });
+    const gotoChat = root.querySelector("[data-goto-chat]");
+    if (gotoChat) {
+      gotoChat.addEventListener("click", function () {
+        const chatId = gotoChat.getAttribute("data-goto-chat");
+        root.remove();
+        if (window.VwChatAdmin && window.VwChatAdmin.openConv) window.VwChatAdmin.openConv(chatId);
+        activeTab = "chat-admin";
+        activeCategory = "henvendelser";
+        const adminRoot = document.getElementById("admin-root");
+        if (adminRoot) renderAdminPanel(adminRoot);
+      });
+    }
   }
 
   /* ===========================================================================
@@ -2769,7 +2999,7 @@ window.App = (function () {
 
     function closeSuperAdmin() {
       if (saHasUnsaved) {
-        const choice = confirm("Du har ulagra endringar. Lagre før du lukkar?");
+        const choice = confirm("Du har ulagrede endringer. Lagre før du lukker?");
         if (choice) {
           const form = wrap.querySelector("[data-sa-form]");
           if (form) form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
@@ -2938,7 +3168,7 @@ window.App = (function () {
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + featFields + '</div>' +
           '</fieldset>' +
           '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Intranett</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Låste modular (Dashboard, Oppgåver, Innstillingar) er alltid på og visast ikkje her. Skrur du av alle, kan kunden framleis logge inn men ser berre tomme modular.</p>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Låste moduler (Dashboard, Oppgaver, Innstillinger) er alltid på og vises ikke her. Skrur du av alle, kan kunden fortsatt logge inn men ser bare tomme moduler.</p>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + intranettFeatFields + '</div>' +
           '</fieldset>'
         ) +
@@ -2948,7 +3178,7 @@ window.App = (function () {
             C.field({ id:"sa-emp-pass", label:"Ansattpassord (valgfritt)", value: (CFG.admin && CFG.admin.employeePassword) || "", hint:"Gir adgang til kun Kontakt/Tilbud/Booking/Kunder — ikke innhold eller innstillinger. La stå tomt for å skru av." }) +
           '</fieldset>' +
           '<fieldset class="admin-group"><legend>Vibeverk-referanse</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre for internt bruk — ikkje synleg for kunden noko sted.</p>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Bare for internt bruk — ikke synlig for kunden noe sted.</p>' +
             C.field({ id:"sa-github", label:"GitHub-repo URL", value: meta.githubUrl || "", placeholder:"https://github.com/brukernavn/repo" }) +
           '</fieldset>' +
           '<fieldset class="admin-group"><legend>Faresone</legend>' +
@@ -3142,7 +3372,9 @@ window.App = (function () {
     getContent: function () { return content; },
     getLeads: getLeads,
     addLead: addLead,                  // lagre en henvendelse (lead)
+    updateLead: updateLead,            // oppdater felt på eksisterande lead
     openAdmin: openAdmin,
+    setTabBadge: function (tabId, count) { setTabBadge(document.getElementById("admin-root"), tabId, count); },
     prefillContact: prefillContact,
     openReplyModal: openReplyModal,
     // E-postmaler (delt mellom Kontakt/Tilbud/Booking)
@@ -3194,8 +3426,10 @@ window.App = (function () {
       bindTerms:        bindTerms,                  // (container, idPrefix) — kobler opp vilkår-popup
       termsAccepted:    termsAccepted,               // (container, idPrefix) → bool
       bindRichTextFields: bindRichTextFields,        // kobler opp verktøylinje for alle rik-tekst-felt i et område
-      readRichTextField: readRichTextField           // (scope, id) → sanert HTML-streng
-    }
+      readRichTextField: readRichTextField,           // (scope, id) → sanert HTML-streng
+      hydrateFromSupabase: hydrateFromSupabase        // kall ved innlogging (6b) for cross-device sync
+    },
+    supabase: _sb                                     // delt Supabase-klient (intranet brukar same instans)
   };
 })();
 

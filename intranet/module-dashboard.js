@@ -74,6 +74,103 @@
   }
 
   /* =========================================================================
+     SNARVEIER
+     ====================================================================== */
+  function scKey() {
+    var ctx = Intranet.getContext();
+    return "wsp-shortcuts" + (ctx.userId ? "-" + ctx.userId : "");
+  }
+
+  function getShortcuts() { return App.store.get(scKey(), []) || []; }
+  function saveShortcuts(list) { App.store.set(scKey(), list); }
+
+  var SC_ICONS = [
+    "link","external-link","home","mail","file-text","folder-open",
+    "calendar","clock","chart-bar","users","building","settings",
+    "tool","code","database","cloud","phone","message-circle",
+    "search","star","bookmark","key","shield-check","rocket",
+    "brand-google-drive","brand-slack","brand-github","globe",
+    "currency-dollar","truck","checklist","notes"
+  ];
+
+  function iconPickerHtml(selected) {
+    var sel = selected || "link";
+    var btnStyle = "border-radius:7px;padding:.3rem .4rem;cursor:pointer;font-size:1.05rem;" +
+                   "line-height:1;display:inline-flex;align-items:center;justify-content:center;" +
+                   "transition:border-color .1s,color .1s,background .1s";
+    return '<div style="display:grid;gap:.3rem">' +
+      '<label style="font-size:.8rem;font-weight:600">Ikon</label>' +
+      '<div id="dash-sc-icon-grid" style="display:flex;flex-wrap:wrap;gap:.3rem">' +
+        SC_ICONS.map(function (ic) {
+          var active = ic === sel;
+          return '<button type="button" data-pick-sc-icon="' + C.esc(ic) + '" title="' + C.esc(ic) + '" ' +
+            'style="background:' + (active ? 'var(--color-tint)' : 'transparent') + ';' +
+                   'border:1.5px solid ' + (active ? 'var(--color-primary)' : 'var(--color-border)') + ';' +
+                   'color:' + (active ? 'var(--color-primary)' : 'var(--color-muted)') + ';' + btnStyle + '">' +
+            '<i class="ti ti-' + C.esc(ic) + '"></i>' +
+          '</button>';
+        }).join("") +
+      '</div>' +
+      '<input type="hidden" id="dash-sc-icon" value="' + C.esc(sel) + '">' +
+    '</div>';
+  }
+
+  function renderShortcutBtn(sc) {
+    var isInternal = sc.url && sc.url.charAt(0) === "#";
+    return '<div style="display:inline-flex;align-items:center;gap:.1rem">' +
+      '<a href="' + C.esc(sc.url) + '"' + (isInternal ? "" : ' target="_blank" rel="noopener"') +
+        ' class="btn btn--ghost btn--sm" style="gap:.4rem;text-decoration:none">' +
+        '<i class="ti ti-' + C.esc(sc.icon || "link") + '"></i>' +
+        C.esc(sc.label) +
+      '</a>' +
+      '<button data-sc-del="' + C.esc(sc.id) + '" ' +
+        'style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.25rem;line-height:1;' +
+               'border-radius:4px;display:inline-flex;align-items:center" title="Fjern snarvei">' +
+        '<i class="ti ti-x" style="font-size:.75rem"></i>' +
+      '</button>' +
+    '</div>';
+  }
+
+  function renderShortcutForm(links) {
+    var pickHtml = links.length
+      ? '<div style="display:grid;gap:.25rem">' +
+          '<label style="font-size:.8rem;font-weight:600;color:var(--color-muted)">Velg fra lenker (valgfritt)</label>' +
+          '<select id="dash-sc-pick" style="font:inherit;font-size:.85rem;padding:.5rem .65rem;' +
+            'border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)">' +
+            '<option value="">— Egendefinert —</option>' +
+            links.map(function (l) {
+              return '<option value="' + C.esc(l.id || l.url) + '" ' +
+                'data-url="' + C.esc(l.url) + '" ' +
+                'data-label="' + C.esc(l.title || l.url) + '" ' +
+                'data-icon="' + C.esc(l.icon || "link") + '">' +
+                C.esc(l.title || l.url) + '</option>';
+            }).join("") +
+          '</select>' +
+        '</div>'
+      : "";
+    return '<div style="display:grid;gap:.65rem">' +
+      pickHtml +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">' +
+        '<div style="display:grid;gap:.25rem">' +
+          '<label for="dash-sc-label" style="font-size:.8rem;font-weight:600">Navn</label>' +
+          '<input id="dash-sc-label" type="text" placeholder="Min snarvei" ' +
+            'style="font:inherit;font-size:.88rem;padding:.5rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)">' +
+        '</div>' +
+        '<div style="display:grid;gap:.25rem">' +
+          '<label for="dash-sc-url" style="font-size:.8rem;font-weight:600">URL</label>' +
+          '<input id="dash-sc-url" type="text" placeholder="https://…" ' +
+            'style="font:inherit;font-size:.88rem;padding:.5rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)">' +
+        '</div>' +
+      '</div>' +
+      iconPickerHtml("link") +
+      '<div style="display:flex;gap:.5rem">' +
+        '<button id="dash-sc-save" class="btn btn--primary btn--sm">Lagre snarvei</button>' +
+        '<button id="dash-sc-cancel" class="btn btn--ghost btn--sm">Avbryt</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* =========================================================================
      RENDER
      ====================================================================== */
   function render() { return '<div id="dashboard-root"></div>'; }
@@ -84,9 +181,10 @@
   }
 
   function renderDashboard(root) {
-    var tasks    = App.store.get("wsp-tasks", []) || [];
-    var activity = Intranet.getActivity ? Intranet.getActivity() : [];
-    var henv     = getHenvendelser();
+    var tasks     = App.store.get("wsp-tasks", []) || [];
+    var activity  = Intranet.getActivity ? Intranet.getActivity() : [];
+    var henv      = getHenvendelser();
+    var shortcuts = getShortcuts();
 
     var taskCounts = { todo:0, in_progress:0, done:0 };
     tasks.forEach(function (t) { if (taskCounts[t.status] !== undefined) taskCounts[t.status]++; });
@@ -126,6 +224,26 @@
         '</div>' +
       '</div>' +
 
+      /* --- Snarveier ------------------------------------------------------- */
+      '<div class="i-card" style="margin-bottom:1rem">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;' +
+             (shortcuts.length > 0 ? 'margin-bottom:.65rem' : '') + '">' +
+          '<p class="i-section-label" style="margin:0">Snarveier</p>' +
+          '<button id="dash-add-shortcut" class="btn btn--ghost btn--sm" style="gap:.35rem">' +
+            '<i class="ti ti-plus"></i> Legg til' +
+          '</button>' +
+        '</div>' +
+        (shortcuts.length > 0
+          ? '<div id="dash-shortcuts-list" style="display:flex;gap:.4rem;flex-wrap:wrap">' +
+              shortcuts.map(renderShortcutBtn).join("") +
+            '</div>'
+          : '<p id="dash-shortcuts-empty" style="font-size:.82rem;color:var(--color-muted);margin:.4rem 0 0">' +
+              'Ingen snarveier ennå — klikk «Legg til» for å legge til.' +
+            '</p>') +
+        '<div id="dash-shortcut-form" style="display:none;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--color-border)">' +
+        '</div>' +
+      '</div>' +
+
       /* --- Aktivitetslogg: gardin (minimert som standard) ----------------- */
       '<div class="i-card" id="dash-act-card">' +
         '<button id="dash-act-toggle" style="width:100%;background:none;border:0;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:0;font:inherit">' +
@@ -151,7 +269,95 @@
         '</div>' +
       '</div>';
 
-    /* Bind hurtighandlingar som triggar popup direkte */
+    /* --- Snarveier: event-binding --------------------------------------- */
+    var addBtn = root.querySelector("#dash-add-shortcut");
+    var form   = root.querySelector("#dash-shortcut-form");
+
+    if (addBtn && form) {
+      addBtn.addEventListener("click", function () {
+        if (form.style.display !== "none") {
+          form.style.display = "none";
+          return;
+        }
+        form.innerHTML = '<p style="font-size:.85rem;color:var(--color-muted)">Laster lenker…</p>';
+        form.style.display = "";
+
+        function populateForm(links) {
+          form.innerHTML = renderShortcutForm(links);
+
+          /* Velg eksisterende lenke → fyll inn felt + oppdater ikon */
+          var pick = form.querySelector("#dash-sc-pick");
+          var iconInput = form.querySelector("#dash-sc-icon");
+          var iconGrid  = form.querySelector("#dash-sc-icon-grid");
+
+          function highlightIcon(ic) {
+            if (!iconGrid) return;
+            iconGrid.querySelectorAll("[data-pick-sc-icon]").forEach(function (b) {
+              var active = b.getAttribute("data-pick-sc-icon") === ic;
+              b.style.background  = active ? "var(--color-tint)"    : "transparent";
+              b.style.borderColor = active ? "var(--color-primary)"  : "var(--color-border)";
+              b.style.color       = active ? "var(--color-primary)"  : "var(--color-muted)";
+            });
+          }
+
+          if (pick) {
+            pick.addEventListener("change", function () {
+              var opt = pick.options[pick.selectedIndex];
+              if (!opt || !opt.value) return;
+              var labelEl = form.querySelector("#dash-sc-label");
+              var urlEl   = form.querySelector("#dash-sc-url");
+              if (labelEl) labelEl.value = opt.dataset.label || "";
+              if (urlEl)   urlEl.value   = opt.dataset.url   || "";
+              var ic = opt.dataset.icon || "link";
+              if (iconInput) iconInput.value = ic;
+              highlightIcon(ic);
+            });
+          }
+
+          if (iconGrid) {
+            iconGrid.addEventListener("click", function (e) {
+              var btn = e.target.closest("[data-pick-sc-icon]");
+              if (!btn) return;
+              var ic = btn.getAttribute("data-pick-sc-icon");
+              if (iconInput) iconInput.value = ic;
+              highlightIcon(ic);
+            });
+          }
+
+          form.querySelector("#dash-sc-save").addEventListener("click", function () {
+            var label = (form.querySelector("#dash-sc-label") || {}).value;
+            var url   = (form.querySelector("#dash-sc-url")   || {}).value;
+            if (!label || !label.trim() || !url || !url.trim()) return;
+            var icon  = (form.querySelector("#dash-sc-icon")  || {}).value || "link";
+            var list  = getShortcuts();
+            list.push({ id: "sc-" + Date.now(), label: label.trim(), url: url.trim(), icon: icon });
+            saveShortcuts(list);
+            renderDashboard(root);
+          });
+
+          form.querySelector("#dash-sc-cancel").addEventListener("click", function () {
+            form.style.display = "none";
+          });
+        }
+
+        if (typeof window._linksLoad === "function") {
+          window._linksLoad(populateForm);
+        } else {
+          populateForm([]);
+        }
+      });
+    }
+
+    root.querySelectorAll("[data-sc-del]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id   = this.getAttribute("data-sc-del");
+        var list = getShortcuts().filter(function (s) { return s.id !== id; });
+        saveShortcuts(list);
+        renderDashboard(root);
+      });
+    });
+
+    /* --- Hurtighandlingar: event-binding ------------------------------- */
     var newTaskBtn = root.querySelector("[data-dash-new-task]");
     if (newTaskBtn) newTaskBtn.addEventListener("click", function (e) {
       e.preventDefault();
@@ -197,7 +403,7 @@
       }, 100);
     });
 
-    /* Bind gardin-toggle */
+    /* --- Aktivitetslogg: gardin-toggle --------------------------------- */
     var toggle  = root.querySelector("#dash-act-toggle");
     var body    = root.querySelector("#dash-act-body");
     var chevron = root.querySelector("#dash-act-chevron");
