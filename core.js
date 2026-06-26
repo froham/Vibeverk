@@ -3076,8 +3076,8 @@ window.App = (function () {
             '<form data-sa-otp>' +
               '<p style="margin:0 0 1rem;font-size:.92rem;color:var(--color-muted)">Kode sendt til <strong>' + C.esc(email) + '</strong>. Sjekk innboksen.</p>' +
               '<div class="i-field" style="margin-bottom:.8rem">' +
-                '<label for="sa-otp" style="font-size:.85rem;font-weight:600">Eingongskode (6 siffer)</label>' +
-                '<input id="sa-otp" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="width:100%;font:inherit;font-size:1.3rem;letter-spacing:.25em;text-align:center;padding:.6rem .8rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)">' +
+                '<label for="sa-otp" style="font-size:.85rem;font-weight:600">Eingongskode (8 siffer)</label>' +
+                '<input id="sa-otp" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" placeholder="00000000" style="width:100%;font:inherit;font-size:1.3rem;letter-spacing:.25em;text-align:center;padding:.6rem .8rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)">' +
               '</div>' +
               '<div style="display:flex;gap:.6rem;align-items:center">' +
                 C.button({ label: "Bekreft", type: "submit", variant: "primary" }) +
