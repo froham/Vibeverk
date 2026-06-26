@@ -97,7 +97,7 @@
     },
 
     getConvs: function ()    { return Chat.store.get("chat:convs",[]); },
-    setConvs: function (v)   { Chat.store.set("chat:convs",v); },
+    setConvs: function (v)   { console.log("[chat setConvs]", v ? v.length : null, "ids:", v ? v.map(function(c){return c.id;}).join(",") : ""); Chat.store.set("chat:convs",v); },
     getConv:  function (id)  { return Chat.getConvs().find(function(c){return c.id===id;})||null; },
 
     createConv: function (name, email) {
@@ -186,6 +186,7 @@
     },
 
     hydrateFromSupabase: function (cb) {
+      console.log("[chat hydrateFromSupabase] called");
       if (!_sb) { if (cb) cb(); return; }
       _sb.from("chat_conversations").select("*").order("last_at", { ascending: false })
         .then(function (r) {
@@ -452,6 +453,7 @@
 
     /* ── RENDER ── */
     function render() {
+      console.log("[vw-render] convId:", convId, "isOpen:", isOpen);
       var avail = Chat.getAvailability();
       btn.classList.toggle("is-online", avail.online);
       var headSub = panel.querySelector(".vw-head-sub");
@@ -475,6 +477,8 @@
       }
 
       if (!convId || !conv) {
+        console.warn("[vw-render] → startform. convId:", convId, "conv:", conv, "convs i ls:", Chat.getConvs().length);
+        console.trace();
         renderStartForm();
         return;
       }
@@ -718,6 +722,7 @@
 
     /* Realtime-abonnement for besøkande — mottar operatørsvar umiddelbart */
     function subscribeVisitorRt(cid) {
+      console.log("[vw-rt] subscribeVisitorRt cid:", cid, "_sb:", !!_sb, "_vrtCh:", !!_vrtCh);
       if (!_sb || !cid || _vrtCh) return;
       _vrtCh = _sb.channel("vis-" + cid)
         .on("postgres_changes", {
@@ -760,6 +765,7 @@
         _sb.from("chat_messages").select("id,text,sender,at,created_at")
           .eq("conversation_id", convId).gt("at", lastAt || 0)
           .then(function (res) {
+            console.log("[chat-poll visitor] res:", res.data, "error:", res.error, "lastAt:", lastAt);
             if (!res.data || !res.data.length) return;
             var changed = false;
             res.data.forEach(function (m) {
@@ -1479,6 +1485,7 @@
         if (_sb) {
           _sb.from("chat_conversations").select("*").order("last_at", { ascending: false, nullsFirst: false })
             .then(function (res) {
+              console.log("[chat-poll admin] convs:", res.data, "error:", res.error);
               if (!res.data) return;
               var mapped = res.data.map(function (c) {
                 return { id: c.id, name: c.visitor_name || "Gjest", email: c.visitor_email || "",
