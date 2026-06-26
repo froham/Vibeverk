@@ -754,13 +754,39 @@
 
     setInterval(function () {
       if (!convId) return;
-      var msgs = Chat.getMsgs(convId);
-      if (msgs.length !== lastMsgCount) {
-        lastMsgCount = msgs.length;
-        if (isOpen) { render(); }
-        else {
-          var unread = msgs.filter(function(m){ return m.sender === "operator" && m.at > lastReadAt; }).length;
-          if (unread > 0) showUnreadBadge(unread);
+      if (_sb) {
+        var local = Chat.getMsgs(convId);
+        var lastAt = local.reduce(function (t, m) { return Math.max(t, m.at || 0); }, 0);
+        _sb.from("chat_messages").select("id,text,sender,at,created_at")
+          .eq("conversation_id", convId).gt("at", lastAt || 0)
+          .then(function (res) {
+            if (!res.data || !res.data.length) return;
+            var changed = false;
+            res.data.forEach(function (m) {
+              if (!local.find(function (x) { return x.id === m.id; })) {
+                local.push({ id: m.id, convId: convId, text: m.text, sender: m.sender,
+                            at: m.at || new Date(m.created_at).getTime() });
+                changed = true;
+              }
+            });
+            if (!changed) return;
+            Chat.setMsgs(convId, local);
+            lastMsgCount = local.length;
+            if (isOpen) { render(); }
+            else {
+              var unread = local.filter(function (m) { return m.sender === "operator" && m.at > lastReadAt; }).length;
+              if (unread > 0) showUnreadBadge(unread);
+            }
+          });
+      } else {
+        var msgs = Chat.getMsgs(convId);
+        if (msgs.length !== lastMsgCount) {
+          lastMsgCount = msgs.length;
+          if (isOpen) { render(); }
+          else {
+            var unread = msgs.filter(function (m) { return m.sender === "operator" && m.at > lastReadAt; }).length;
+            if (unread > 0) showUnreadBadge(unread);
+          }
         }
       }
     }, OPT.pollInterval);
@@ -1445,19 +1471,62 @@
       setTimeout(function(){ if(inp) inp.focus(); }, 50);
     }
 
-    /* Poll — fallback for offline / non-Realtime omgjevnader */
+    /* Poll — hentar frå Supabase (eller localStorage som fallback) */
     if (!container._pollId) {
       container._pollId = setInterval(function () {
         if (!document.body.contains(container)) { clearInterval(container._pollId); return; }
-        if (showSettings) return; // ikkje overskriv innstillingspanelet
-        var fresh = Chat.getConvs();
-        if (JSON.stringify(fresh) !== JSON.stringify(convs)) {
-          convs = fresh;
-          buildUI();
-        } else if (activeId) {
-          var msgs = Chat.getMsgs(activeId);
-          var msgList = container.querySelector("#vwca-msg-list");
-          if (msgList && msgList.children.length !== msgs.length) renderView();
+        if (showSettings) return;
+        if (_sb) {
+          _sb.from("chat_conversations").select("*").order("last_at", { ascending: false, nullsFirst: false })
+            .then(function (res) {
+              if (!res.data) return;
+              var mapped = res.data.map(function (c) {
+                return { id: c.id, name: c.visitor_name || "Gjest", email: c.visitor_email || "",
+                         status: c.status || "open", unread: c.unread || 0,
+                         lastMsg: c.last_msg || "", lastAt: c.last_at || new Date(c.created_at).getTime(),
+                         createdAt: new Date(c.created_at).getTime(),
+                         pageUrl: c.page_url || null, referrer: c.referrer || null,
+                         language: c.language || null, browser: c.browser || null,
+                         os: c.os || null, screen: c.screen || null,
+                         visitorActive: c.visitor_active || false,
+                         lastSeenAt: c.last_seen_at || null, visitorReadAt: c.visitor_read_at || null };
+              });
+              var latestLocal = convs.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
+              var latestSb    = mapped.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
+              if (mapped.length !== convs.length || latestSb > latestLocal) {
+                Chat.setConvs(mapped); convs = mapped; buildUI();
+              } else if (activeId) {
+                var localMsgs = Chat.getMsgs(activeId);
+                var lastAt = localMsgs.reduce(function (t, m) { return Math.max(t, m.at || 0); }, 0);
+                _sb.from("chat_messages").select("id,text,sender,at,created_at")
+                  .eq("conversation_id", activeId).gt("at", lastAt || 0)
+                  .then(function (mres) {
+                    if (!mres.data || !mres.data.length) return;
+                    var changed = false;
+                    mres.data.forEach(function (m) {
+                      if (!localMsgs.find(function (x) { return x.id === m.id; })) {
+                        localMsgs.push({ id: m.id, convId: activeId, text: m.text, sender: m.sender,
+                                        at: m.at || new Date(m.created_at).getTime() });
+                        changed = true;
+                      }
+                    });
+                    if (changed) {
+                      Chat.setMsgs(activeId, localMsgs);
+                      var msgList = container.querySelector("#vwca-msg-list");
+                      if (msgList) renderView();
+                    }
+                  });
+              }
+            });
+        } else {
+          var fresh = Chat.getConvs();
+          if (JSON.stringify(fresh) !== JSON.stringify(convs)) {
+            convs = fresh; buildUI();
+          } else if (activeId) {
+            var msgs = Chat.getMsgs(activeId);
+            var msgList = container.querySelector("#vwca-msg-list");
+            if (msgList && msgList.children.length !== msgs.length) renderView();
+          }
         }
       }, OPT.pollInterval);
     }
