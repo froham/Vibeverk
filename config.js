@@ -130,20 +130,16 @@ window.SITE_CONFIG = {
     successMessage: "Takk! Vi tar kontakt så snart vi kan."
   },
 
-  /* --- Admin ---------------------------------------------------------------- */
+  /* --- Admin (Vibeverk superadmin) ------------------------------------------ */
+  // Passordet beskyttar nettside-adminen (#admin) — KUN for Vibeverk.
+  // Kunden har ikkje tilgang til dette panelet. Intranet-tilgang styrast av
+  // Supabase-brukarar og roller, ikkje av desse passorda.
+  // MERK: Fila er offentleg på GitHub Pages — bruk eit sterkt, unikt passord per kunde.
   admin: {
-    // Felles passord for redigeringspanelet.
-    // MERK: Dette er klient-side beskyttelse (passordet ligger i denne filen og
-    // kan ses av tekniske brukere). Det holder skjult innhold unna vanlige
-    // besøkende, men er ikke ekte sikkerhet. Ekte autentisering kommer med
-    // Supabase-backenden senere.
-    password: "test",                          // ← Admin-passord (TESTFASE — bytt via super-admin)
+    password: "test",                          // ← BYTT før produksjon (Vibeverk sitt passord)
+    employeePassword: "",                      // ← ikkje i bruk (intranet-roller handterer dette)
 
-    // Valgfritt andre passord med begrenset adgang (kun Kontakt/Tilbud/Booking/Kunder).
-    // Tomt = ingen ansatt-tilgang. Settes via super-admin.
-    employeePassword: "gjest",                 // ← TESTFASE: gjestepassord. Tomt = ingen ansatt-tilgang. Settes via super-admin.
-
-    // Hvordan man åpner panelet:
+    // Korleis ein opnar panelet:
     //   1) Trippelklikk på footeren, eller
     //   2) Gå til  ...#admin  i adresselinja
     tripleClickFooter: true
@@ -167,18 +163,6 @@ window.SITE_CONFIG = {
     scrollbanner:  true,  // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js
     chat:          true   // ← Native chat-boble. Krever module-chat.js
   },
-
-  /* --- Native Chat -----------------------------------------------------------
-     Krever module-chat.js. Legg til <script src="module-chat.js"> i index.html.
-     Alle verdiar kan overstyres frå admin-panelet (Innstillinger → Chat). */
-  chat: {
-    enabled:      true,
-    position:     "right",          // "right" | "left"
-    welcomeMsg:   "Hei! Korleis kan vi hjelpe deg?",
-    operatorName: "Oss",
-    askName:      true
-  },
-
 
   /* --- Intranett-funksjoner (skru av/på) ------------------------------------
      Styrer hvilke gjenspeilde moduler som vises i intranettet.

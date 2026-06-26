@@ -157,7 +157,7 @@
             (img.caption    ? '<p class="mb-lightbox__credit">' + esc(img.caption) + '</p>' : '') +
             '<p class="mb-lightbox__meta" data-mb-dims></p>' +
             '<div style="display:flex;gap:.6rem;flex-wrap:wrap">' +
-              (img.src ? C.button({ label:"Last ned", icon:"download", variant:"primary", attrs:'data-mb-download="' + esc(img.src) + '"' }) : '') +
+              (img.src && img.creditType !== "copyright" ? C.button({ label:"Last ned", icon:"download", variant:"primary", attrs:'data-mb-download="' + esc(img.src) + '"' }) : '') +
               C.button({ label: "Lukk", variant: "ghost", attrs: "data-mb-close" }) +
             '</div>' +
           '</div>' +

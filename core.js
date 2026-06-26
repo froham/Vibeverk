@@ -159,7 +159,7 @@ window.App = (function () {
     MAX_DIM: 1400,        // største kant i piksler etter nedskalering
     QUALITY: 0.82,        // JPEG-kvalitet
 
-    // file (File) → Promise<string ref "media:...">
+    // file (File) → Promise<URL (Supabase Storage) | "media:"-ref (localStorage fallback)>
     put: function (file) {
       const self = this;
       return new Promise(function (resolve, reject) {
@@ -175,10 +175,22 @@ window.App = (function () {
             const canvas = document.createElement("canvas");
             canvas.width = w; canvas.height = h;
             canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL("image/jpeg", self.QUALITY);
-            const ref = "media:" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-            if (!Store.set(ref, dataUrl)) { reject(new Error("quota")); return; }  // localStorage full
-            resolve(ref);
+            if (_sb) {
+              canvas.toBlob(function (blob) {
+                if (!blob) { reject(new Error("decode")); return; }
+                const path = Date.now() + "-" + Math.random().toString(36).slice(2, 7) + ".jpg";
+                _sb.storage.from("media").upload(path, blob, { contentType: "image/jpeg", upsert: false })
+                  .then(function (r) {
+                    if (r.error) { reject(r.error); return; }
+                    resolve(_sb.storage.from("media").getPublicUrl(path).data.publicUrl);
+                  });
+              }, "image/jpeg", self.QUALITY);
+            } else {
+              const dataUrl = canvas.toDataURL("image/jpeg", self.QUALITY);
+              const ref = "media:" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+              if (!Store.set(ref, dataUrl)) { reject(new Error("quota")); return; }
+              resolve(ref);
+            }
           };
           img.src = reader.result;
         };
@@ -197,7 +209,12 @@ window.App = (function () {
     // { src, pos }-objekt og ren streng.
     free: function (value) {
       const src = (value && typeof value === "object") ? value.src : value;
-      if (src && src.indexOf("media:") === 0) Store.remove(src);
+      if (!src) return;
+      if (src.indexOf("media:") === 0) { Store.remove(src); return; }
+      if (_sb && src.indexOf("/storage/v1/object/public/media/") > -1) {
+        const path = src.split("/storage/v1/object/public/media/")[1];
+        if (path) _sb.storage.from("media").remove([decodeURIComponent(path)]);
+      }
     },
 
     // Et bilde lagres som { src, pos, caption, creditType, alt } der pos er
@@ -229,17 +246,28 @@ window.App = (function () {
     putFile: function (file) {
       const self = this;
       return new Promise(function (resolve, reject) {
-        if (file.size > self.MAX_FILE_MB * 1024 * 1024) { reject(new Error("size")); return; }
-        const reader = new FileReader();
-        reader.onerror = function () { reject(new Error("read")); };
-        reader.onload = function () {
-          const ref = "file:" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-          if (!Store.set(ref, { name: file.name, type: file.type, dataUrl: reader.result })) {
-            reject(new Error("quota")); return;
-          }
-          resolve({ name: file.name, ref: ref, type: file.type, size: file.size });
-        };
-        reader.readAsDataURL(file);
+        if (_sb) {
+          if (file.size > 20 * 1024 * 1024) { reject(new Error("size")); return; }
+          const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+          const path = "files/" + Date.now() + "-" + Math.random().toString(36).slice(2, 7) + "." + ext;
+          _sb.storage.from("media").upload(path, file, { contentType: file.type, upsert: false })
+            .then(function (r) {
+              if (r.error) { reject(r.error); return; }
+              resolve({ name: file.name, ref: _sb.storage.from("media").getPublicUrl(path).data.publicUrl, type: file.type, size: file.size });
+            });
+        } else {
+          if (file.size > self.MAX_FILE_MB * 1024 * 1024) { reject(new Error("size")); return; }
+          const reader = new FileReader();
+          reader.onerror = function () { reject(new Error("read")); };
+          reader.onload = function () {
+            const ref = "file:" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+            if (!Store.set(ref, { name: file.name, type: file.type, dataUrl: reader.result })) {
+              reject(new Error("quota")); return;
+            }
+            resolve({ name: file.name, ref: ref, type: file.type, size: file.size });
+          };
+          reader.readAsDataURL(file);
+        }
       });
     },
     // Referanse → nedlastbar href (data-URL for opplastet fil, ellers URL-en selv).
@@ -248,7 +276,14 @@ window.App = (function () {
       if (ref.indexOf("file:") === 0) { const r = Store.get(ref, null); return r ? r.dataUrl : ""; }
       return ref;
     },
-    freeFile: function (ref) { if (ref && ref.indexOf("file:") === 0) Store.remove(ref); }
+    freeFile: function (ref) {
+      if (!ref) return;
+      if (ref.indexOf("file:") === 0) { Store.remove(ref); return; }
+      if (_sb && ref.indexOf("/storage/v1/object/public/media/files/") > -1) {
+        const path = ref.split("/storage/v1/object/public/media/")[1];
+        if (path) _sb.storage.from("media").remove([decodeURIComponent(path)]);
+      }
+    }
   };
 
   /* ===========================================================================
@@ -791,11 +826,13 @@ window.App = (function () {
      ======================================================================== */
   function getAuthRole() {
     const v = sessionStorage.getItem(NS + ":admin");
-    return (v === "owner" || v === "employee") ? v : null;
+    // Supabase-roller: owner | admin | editor | member
+    // Eldre fallback-rolle: employee (= member)
+    if (v === "owner" || v === "admin" || v === "editor" || v === "member" || v === "employee") return v;
+    return null;
   }
   function isAuthed() { return !!getAuthRole(); }
   function setAuthed(role) {
-    // role: "owner" | "employee" | falsy (logg ut)
     if (role) {
       sessionStorage.setItem(NS + ":admin", role);
     } else {
@@ -812,10 +849,14 @@ window.App = (function () {
     { id: "henvendelser",  label: "Henvendelser" },
     { id: "innstillinger", label: "Innstillinger" }
   ];
-  // «Ansatt»-rolle (valgfritt andre passord) ser kun Henvendelser — det er
-  // driftsfanene (Kontakt/Tilbud/Booking/Kunder), ikke innhold eller innstillinger.
+  // Kva faner kvar rolle ser i web-adminen:
+  //   owner/admin → alt (innhold + henvendelser + innstillinger)
+  //   editor      → innhald og henvendelser (ikkje innstillinger)
+  //   member/employee → berre henvendelser
   function allowedCategoriesForRole(role) {
-    return role === "employee" ? ["henvendelser"] : ["innhold", "henvendelser", "innstillinger"];
+    if (role === "member" || role === "employee") return ["henvendelser"];
+    if (role === "editor") return ["innhold", "henvendelser"];
+    return ["innhold", "henvendelser", "innstillinger"];
   }
   function buildAdminTabs() {
     const tabs = [
@@ -922,7 +963,7 @@ window.App = (function () {
     document.head.appendChild(s);
   }
 
-  // Innlogging
+  // Innlogging — Supabase for nivå 1–3, OTP for superadmin (nivå 4, sjå openSuperAdmin).
   function renderAdminLogin(root) {
     const useSupabase = !!_sb;
     root.innerHTML = C.modal({
@@ -3015,23 +3056,83 @@ window.App = (function () {
       if (e.key === "Escape") { closeSuperAdmin(); document.removeEventListener("keydown", saEsc); }
     });
 
-    // Passordsjekk
-    body.innerHTML =
-      '<form data-sa-login>' +
-        '<p style="margin:0 0 1rem;color:var(--color-muted);font-size:.92rem">Skriv inn super-admin-passord for å redigere konfigurasjon.</p>' +
-        C.field({ id:"sa-pass", label:"Passord", type:"password", required:true }) +
-        '<div style="margin-top:.8rem">' + C.button({ label:"Logg inn", type:"submit", variant:"primary" }) + '</div>' +
-        '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
-      '</form>';
-    body.querySelector("[data-sa-login]").addEventListener("submit", function (e) {
-      e.preventDefault();
-      if (body.querySelector("#sa-pass").value !== SUPER_PASS) {
-        const st = body.querySelector("[data-sa-status]");
-        st.textContent = "Feil passord."; st.className = "form__status is-error"; return;
-      }
-      renderSuperAdminForm(body);
-    });
-    setTimeout(function () { const i = body.querySelector("#sa-pass"); if (i) i.focus(); }, 50);
+    // OTP-autentisering via Supabase — ingen passord lagra nokon stad
+    if (_sb) {
+      _sb.auth.getUser().then(function (r) {
+        const email = r.data && r.data.user && r.data.user.email;
+        if (!email) {
+          body.innerHTML = '<p style="color:#c0392b;font-size:.92rem">Ikkje innlogga — logg inn att.</p>';
+          return;
+        }
+        body.innerHTML =
+          '<p style="margin:0 0 .5rem;font-size:.92rem;color:var(--color-muted)">Sender eingongskode til <strong>' + C.esc(email) + '</strong>…</p>' +
+          '<p class="form__status" data-sa-status></p>';
+        const stSend = body.querySelector("[data-sa-status]");
+        _sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function (res) {
+          if (res.error) {
+            stSend.textContent = "Feil: " + res.error.message; stSend.className = "form__status is-error"; return;
+          }
+          body.innerHTML =
+            '<form data-sa-otp>' +
+              '<p style="margin:0 0 1rem;font-size:.92rem;color:var(--color-muted)">Kode sendt til <strong>' + C.esc(email) + '</strong>. Sjekk innboksen.</p>' +
+              '<div class="i-field" style="margin-bottom:.8rem">' +
+                '<label for="sa-otp" style="font-size:.85rem;font-weight:600">Eingongskode (6 siffer)</label>' +
+                '<input id="sa-otp" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="width:100%;font:inherit;font-size:1.3rem;letter-spacing:.25em;text-align:center;padding:.6rem .8rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)">' +
+              '</div>' +
+              '<div style="display:flex;gap:.6rem;align-items:center">' +
+                C.button({ label: "Bekreft", type: "submit", variant: "primary" }) +
+                '<button type="button" data-sa-resend class="btn btn--ghost btn--sm">Send ny kode</button>' +
+              '</div>' +
+              '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
+            '</form>';
+          const stOtp = body.querySelector("[data-sa-status]");
+          setTimeout(function () { const i = body.querySelector("#sa-otp"); if (i) i.focus(); }, 50);
+          body.querySelector("[data-sa-resend]").addEventListener("click", function () {
+            _sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function () {
+              stOtp.textContent = "Ny kode sendt."; stOtp.className = "form__status is-ok";
+            });
+          });
+          body.querySelector("[data-sa-otp]").addEventListener("submit", function (e) {
+            e.preventDefault();
+            const token = body.querySelector("#sa-otp").value.trim();
+            stOtp.textContent = "Verifiserer…"; stOtp.className = "form__status";
+            _sb.auth.verifyOtp({ email: email, token: token, type: "email" }).then(function (vr) {
+              if (vr.error) {
+                stOtp.textContent = "Feil kode — prøv igjen."; stOtp.className = "form__status is-error";
+                body.querySelector("#sa-otp").value = "";
+                body.querySelector("#sa-otp").focus();
+                return;
+              }
+              _sb.from("users").select("role").eq("id", vr.data.user.id).single().then(function (ur) {
+                if (!ur.data || ur.data.role !== "owner") {
+                  stOtp.textContent = "Tilgang nekta — ikkje superadmin-konto."; stOtp.className = "form__status is-error";
+                  return;
+                }
+                renderSuperAdminForm(body);
+              });
+            });
+          });
+        });
+      });
+    } else {
+      // Fallback utan Supabase (lokal/testmiljø)
+      body.innerHTML =
+        '<form data-sa-login>' +
+          '<p style="margin:0 0 1rem;color:var(--color-muted);font-size:.92rem">Skriv inn super-admin-passord for å redigere konfigurasjon.</p>' +
+          C.field({ id:"sa-pass", label:"Passord", type:"password", required:true }) +
+          '<div style="margin-top:.8rem">' + C.button({ label:"Logg inn", type:"submit", variant:"primary" }) + '</div>' +
+          '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
+        '</form>';
+      body.querySelector("[data-sa-login]").addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (body.querySelector("#sa-pass").value !== SUPER_PASS) {
+          const st = body.querySelector("[data-sa-status]");
+          st.textContent = "Feil passord."; st.className = "form__status is-error"; return;
+        }
+        renderSuperAdminForm(body);
+      });
+      setTimeout(function () { const i = body.querySelector("#sa-pass"); if (i) i.focus(); }, 50);
+    }
   }
 
   let saActiveTab = "utseende";

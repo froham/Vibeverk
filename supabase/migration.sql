@@ -1,7 +1,7 @@
 -- =============================================================================
 -- VIBEVERK — Supabase Migration v1
 -- -----------------------------------------------------------------------------
--- Køyr dette scriptet éin gong per nytt kundeprosjekt i Supabase SQL Editor.
+-- Trygt å køyre fleire gonger (idempotent) — brukar IF NOT EXISTS / DROP IF EXISTS.
 -- Éin Supabase-prosjekt per kunde — ingen tenant_id nødvendig i nye tabellar
 -- (store-tabellen beheld tenant_id for bakoverkompatibilitet med eksisterande kode).
 --
@@ -41,13 +41,17 @@ CREATE TABLE IF NOT EXISTS users (
   id           uuid         PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name text,
   role         text         NOT NULL DEFAULT 'member'
-                            CHECK (role IN ('owner', 'admin', 'member')),
+                            CHECK (role IN ('owner', 'admin', 'editor', 'member')),
   email        text,
   avatar_url   text,
   created_at   timestamptz  NOT NULL DEFAULT now(),
   updated_at   timestamptz  NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
+-- Oppgrader CHECK-constraint til å inkludere editor-rolla
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check
+  CHECK (role IN ('owner', 'admin', 'editor', 'member'));
 
 -- Private notatar (berre eiga brukar)
 CREATE TABLE IF NOT EXISTS notes (
@@ -217,6 +221,15 @@ RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
   );
 $$;
 
+-- Editor + admin + owner kan opprette og redigere innhald (artiklar, KB, lenker, oppgåver)
+CREATE OR REPLACE FUNCTION can_edit_content()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND role IN ('owner', 'admin', 'editor')
+  );
+$$;
+
 
 -- ── 6. RLS ───────────────────────────────────────────────────────────────────
 
@@ -231,35 +244,56 @@ ALTER TABLE chat_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
 
 -- store: alle innlogga brukarar (nettsideinnhald redigerast av admin via app)
+DROP POLICY IF EXISTS store_auth        ON store;
 CREATE POLICY store_auth        ON store  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- users: alle les, kvar brukar oppdaterer seg sjølv, admin/owner endrar alle
+DROP POLICY IF EXISTS users_read         ON users;
+DROP POLICY IF EXISTS users_self_update  ON users;
+DROP POLICY IF EXISTS users_admin_update ON users;
+DROP POLICY IF EXISTS users_admin_delete ON users;
 CREATE POLICY users_read         ON users  FOR SELECT TO authenticated USING (true);
 CREATE POLICY users_self_update  ON users  FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 CREATE POLICY users_admin_update ON users  FOR UPDATE TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
 CREATE POLICY users_admin_delete ON users  FOR DELETE TO authenticated USING (is_admin_or_owner());
 
 -- notes: berre eiga brukar
+DROP POLICY IF EXISTS notes_own         ON notes;
 CREATE POLICY notes_own         ON notes  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
--- tasks: alle les, admin/owner skriv, tildelt brukar kan oppdatere status
+-- tasks: alle les, editor+ skriv, tildelt brukar kan oppdatere status
+DROP POLICY IF EXISTS tasks_read        ON tasks;
+DROP POLICY IF EXISTS tasks_admin       ON tasks;
+DROP POLICY IF EXISTS tasks_assignee    ON tasks;
 CREATE POLICY tasks_read        ON tasks  FOR SELECT TO authenticated USING (true);
-CREATE POLICY tasks_admin       ON tasks  FOR ALL    TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
+CREATE POLICY tasks_admin       ON tasks  FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
 CREATE POLICY tasks_assignee    ON tasks  FOR UPDATE TO authenticated USING (assigned_to = auth.uid()) WITH CHECK (assigned_to = auth.uid());
 
--- announcements: alle les, admin/owner skriv
+-- announcements: alle les, editor+ skriv
+DROP POLICY IF EXISTS ann_read          ON announcements;
+DROP POLICY IF EXISTS ann_admin         ON announcements;
 CREATE POLICY ann_read          ON announcements FOR SELECT TO authenticated USING (true);
-CREATE POLICY ann_admin         ON announcements FOR ALL    TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
+CREATE POLICY ann_admin         ON announcements FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
 
--- kb_articles: alle les, admin/owner skriv
+-- kb_articles: alle les, editor+ skriv
+DROP POLICY IF EXISTS kb_read           ON kb_articles;
+DROP POLICY IF EXISTS kb_admin          ON kb_articles;
 CREATE POLICY kb_read           ON kb_articles FOR SELECT TO authenticated USING (true);
-CREATE POLICY kb_admin          ON kb_articles FOR ALL    TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
+CREATE POLICY kb_admin          ON kb_articles FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
 
--- links: alle les, admin/owner skriv
+-- links: alle les, editor+ skriv
+DROP POLICY IF EXISTS links_read        ON links;
+DROP POLICY IF EXISTS links_admin       ON links;
 CREATE POLICY links_read        ON links FOR SELECT TO authenticated USING (true);
-CREATE POLICY links_admin       ON links FOR ALL    TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
+CREATE POLICY links_admin       ON links FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
 
 -- chat: anon-besøkande kan skrive og lese samtalen sin, admin har full tilgang
+DROP POLICY IF EXISTS chat_conv_anon_insert ON chat_conversations;
+DROP POLICY IF EXISTS chat_conv_anon_select ON chat_conversations;
+DROP POLICY IF EXISTS chat_conv_auth        ON chat_conversations;
+DROP POLICY IF EXISTS chat_msg_anon_insert  ON chat_messages;
+DROP POLICY IF EXISTS chat_msg_anon_select  ON chat_messages;
+DROP POLICY IF EXISTS chat_msg_auth         ON chat_messages;
 CREATE POLICY chat_conv_anon_insert ON chat_conversations FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY chat_conv_anon_select ON chat_conversations FOR SELECT TO anon USING (true);
 CREATE POLICY chat_conv_auth        ON chat_conversations FOR ALL    TO authenticated USING (true) WITH CHECK (true);
@@ -285,4 +319,42 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO aut
 ALTER TABLE chat_messages      REPLICA IDENTITY FULL;
 ALTER TABLE chat_conversations REPLICA IDENTITY FULL;
 
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages, chat_conversations;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'chat_messages') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'chat_conversations') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE chat_conversations;
+  END IF;
+END $$;
+
+
+-- ── 9. STORAGE BUCKET ────────────────────────────────────────────────────────
+
+-- Public bucket for bilete og filer (serves via CDN, ingen 5 MB-grense)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'media', 'media', true,
+  20971520,  -- 20 MB per fil
+  ARRAY[
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ]
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Innlogga brukarar kan laste opp og slette eigne filer
+DROP POLICY IF EXISTS "media_insert" ON storage.objects;
+DROP POLICY IF EXISTS "media_delete" ON storage.objects;
+
+CREATE POLICY "media_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'media');
+
+CREATE POLICY "media_delete" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'media');

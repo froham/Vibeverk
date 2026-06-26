@@ -124,7 +124,7 @@
             var canEdit = isOwnerAdmin && !isSelf;
             var roleHtml = canEdit
               ? '<select class="vwu-role-sel" data-uid="' + esc(u.id) + '" data-cur-role="' + esc(u.role) + '">' +
-                  ['member', 'admin', 'owner'].map(function (r) {
+                  ['member', 'editor', 'admin', 'owner'].map(function (r) {
                     return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + r + '</option>';
                   }).join("") +
                 '</select>'
@@ -150,6 +150,7 @@
                   '<div class="vwu-field" style="flex:0 0 auto"><label>Rolle</label>' +
                     '<select id="vwu-role">' +
                       '<option value="member">member</option>' +
+                      '<option value="editor">editor</option>' +
                       '<option value="admin">admin</option>' +
                       (me_user.role === "owner" ? '<option value="owner">owner</option>' : '') +
                     '</select>' +
