@@ -413,7 +413,9 @@ window.Intranet = (function () {
             context.displayName = (r.data && r.data.display_name) || result.data.user.email;
             context.role        = role;
             sessionStorage.setItem(NS + ":admin", role);
-            init();
+            err.style.color = "var(--color-muted)";
+            err.textContent = "Synkroniserer data…";
+            App.store.hydrateFromSupabase(init);
           });
         });
       } else {
@@ -493,7 +495,7 @@ window.Intranet = (function () {
             context.displayName = (r.data && r.data.display_name) || session.user.email;
             context.role        = role;
             sessionStorage.setItem(NS + ":admin", role);
-            init();
+            App.store.hydrateFromSupabase(init);
           });
         } else {
           renderLogin();
