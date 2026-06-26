@@ -415,7 +415,7 @@ window.Intranet = (function () {
             sessionStorage.setItem(NS + ":admin", role);
             err.style.color = "var(--color-muted)";
             err.textContent = "Synkroniserer data…";
-            App.store.hydrateFromSupabase(init);
+            App.ui.hydrateFromSupabase(init);
           });
         });
       } else {
@@ -495,7 +495,7 @@ window.Intranet = (function () {
             context.displayName = (r.data && r.data.display_name) || session.user.email;
             context.role        = role;
             sessionStorage.setItem(NS + ":admin", role);
-            App.store.hydrateFromSupabase(init);
+            App.ui.hydrateFromSupabase(init);
           });
         } else {
           renderLogin();
