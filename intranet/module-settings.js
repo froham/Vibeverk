@@ -105,6 +105,18 @@
       /* --- E-postkonfigurasjon (CRM) ----------------------------------------- */
       emailProviderCard() +
 
+      /* --- Supabase-synkronisering ------------------------------------------ */
+      (App.supabase
+        ? '<div class="i-card" style="margin-bottom:1rem">' +
+            '<p class="i-section-label">Synkronisering</p>' +
+            '<p style="font-size:.88rem;color:var(--color-muted);margin:.3rem 0 .9rem">' +
+              'Last opp alle lokale data til Supabase — nødvendig første gang, eller om data kun finnes på denne enheten.' +
+            '</p>' +
+            '<button class="btn btn--primary btn--sm" id="settings-sync-up">Last opp til Supabase</button>' +
+            ' <span class="form__status" id="settings-sync-status"></span>' +
+          '</div>'
+        : '') +
+
       /* --- Farlig sone ------------------------------------------------------- */
       '<div class="i-card" style="border-color:color-mix(in srgb,#c0392b 35%,transparent)">' +
         '<p class="i-section-label" style="color:#c0392b">Farlig sone</p>' +
@@ -214,6 +226,22 @@
         var st = root.querySelector("#email-prov-status");
         st.textContent = "Valg lagret."; st.className = "form__status is-ok";
         setTimeout(function () { if (st) st.textContent = ""; }, 2000);
+      });
+    }
+
+    /* Bind synk-opp */
+    var syncUpBtn = root.querySelector("#settings-sync-up");
+    if (syncUpBtn) {
+      syncUpBtn.addEventListener("click", function () {
+        var st = root.querySelector("#settings-sync-status");
+        var keys = App.allStoreKeys ? App.allStoreKeys() : [];
+        var count = 0;
+        keys.forEach(function (k) {
+          var val = App.store.get(k, null);
+          if (val !== null) { App.store.set(k, val); count++; }
+        });
+        st.textContent = "Synkroniserer " + count + " nøklar…"; st.className = "form__status is-ok";
+        setTimeout(function () { if (st) st.textContent = "Ferdig — data er no tilgjengeleg på alle einingar."; }, 600);
       });
     }
 
