@@ -2805,18 +2805,29 @@ window.App = (function () {
      ======================================================================== */
   function init() {
     if (started) return;
-    applySuperConfig();   // superconfig overstyrer CFG før alt anna
+    applySuperConfig();
     loadContent();
     applyTheme();
-    initAnalytics();              // injiser analytics-script hvis ID er satt
+    initAnalytics();
     registerBuiltinSections();
-    currentView = route().view;
-    render();
-    started = true;
-    bindGlobalNav();
-    bindHelpIcons();
-    window.addEventListener("hashchange", handleRoute);
-    handleRoute();
+
+    function boot() {
+      currentView = route().view;
+      render();
+      started = true;
+      bindGlobalNav();
+      bindHelpIcons();
+      window.addEventListener("hashchange", handleRoute);
+      handleRoute();
+    }
+
+    // Last innhald frå Supabase før første render — sikrar at besøkande
+    // utan localStorage (inkognito, ny device) ser riktig innhald.
+    if (_sb) {
+      hydrateFromSupabase(boot);
+    } else {
+      boot();
+    }
   }
 
   // Delegert klikk-handtering for alle hjelpebobler (C.helpIcon) — bindes én gang

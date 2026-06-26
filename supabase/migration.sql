@@ -243,9 +243,11 @@ ALTER TABLE links             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
 
--- store: alle innlogga brukarar (nettsideinnhald redigerast av admin via app)
+-- store: anon kan lese (offentleg innhald), innlogga brukarar kan skrive
+DROP POLICY IF EXISTS store_anon_read   ON store;
 DROP POLICY IF EXISTS store_auth        ON store;
-CREATE POLICY store_auth        ON store  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY store_anon_read   ON store  FOR SELECT TO anon          USING (true);
+CREATE POLICY store_auth        ON store  FOR ALL    TO authenticated  USING (true) WITH CHECK (true);
 
 -- users: alle les, kvar brukar oppdaterer seg sjølv, admin/owner endrar alle
 DROP POLICY IF EXISTS users_read         ON users;
@@ -310,6 +312,7 @@ TO authenticated;
 
 GRANT USAGE, SELECT ON SEQUENCE store_id_seq TO authenticated;
 
+GRANT SELECT ON store TO anon;
 GRANT INSERT, SELECT ON chat_conversations, chat_messages TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO authenticated;
 
