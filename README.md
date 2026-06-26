@@ -22,8 +22,14 @@ Vibeverk/
 ├── module-quote.js         # Tilbudsforespørsel
 ├── module-references.js    # Referanser / kundeuttalelser
 ├── module-scrollbanner.js  # Scrollbanner-seksjon
+├── module-users.js         # Brukeradministrasjon (invite/remove/rolle via Edge Function)
 ├── test.js                 # Testsuiten for den offentlige siden
 ├── test-intranet.js        # Testsuiten for intranettet (rot-kopi)
+│
+├── supabase/
+│   ├── migration.sql               # Idempotent migrering — kjøres i Supabase SQL Editor
+│   └── functions/manage-user/
+│       └── index.ts                # Edge Function: invite + remove bruker (service_role)
 │
 └── intranet/
     ├── index.html              # Arbeidsområde (intranett)
@@ -50,10 +56,87 @@ Vibeverk/
 
 - **Vanilla JS** — ingen rammeverk, ingen byggsteg, ingen pakkebehandler
 - **IIFE-moduler** — hvert `module-*.js` er en selvforsynt IIFE; ingen ES-moduler
-- **LocalStorage** — all data lagres lokalt via `App.store` / `App.media` (Supabase-klar)
+- **Supabase** — database (PostgreSQL), auth (e-post + passord), Realtime (chat), Storage (media)
+- **LocalStorage** — brukes som write-through cache; synkroniseres mot Supabase ved innlogging
 - **Hash-ruting** — `#seksjon`, `#sak/<id>`, `#admin` — ingen server-side ruting nødvendig
 - **Tabler Icons** (CDN) og **Google Fonts** (fra `config.js`) er eneste eksterne avhengigheter
 - **GitHub Pages** — deployment via GitHub Actions
+
+---
+
+## Brukerstruktur og roller
+
+Vibeverk opererer med to separate brukerlag:
+
+### Superadmin (Vibeverk-plattform)
+Kun for Vibeverk-operatøren. Tilgang via OTP-innlogging (8-sifret kode sendt på e-post) fra Supabase Magic Link. Åpnes via skjult trippelklikk-meny på nettsiden (`#admin`-panelet). Brukerens e-post verifiseres mot `owner`-rollen i `users`-tabellen.
+
+### Kundebrukere (intranett)
+Alle kundeansatte logger inn med e-post + passord via Supabase. Rollen hentes fra `public.users`-tabellen etter autentisering.
+
+| Rolle | Hvem | Tilgang |
+|-------|------|---------|
+| `owner` | Bedriftseier (én per tenant) | Full tilgang: alt inkl. backup, brukeradmin, innstillinger |
+| `admin` | Utpekt ansattadmin | Nær full tilgang; kan ikke endre owner eller slette seg selv |
+| `editor` | Redaktør | Kan opprette og redigere innhold (artikler, KB, lenker, oppgaver) |
+| `member` | Vanlig ansatt | Les alt, egne notater, kan oppdatere tildelte oppgaver |
+
+Maks **50 brukere per tenant** (håndhevet av Edge Function).
+
+Rollen lagres i `sessionStorage` etter innlogging og synkroniseres av `onAuthStateChange` i `core.js`. `getAuthRole()` leses derfra av admin-panelet for å styre hvilke faner og funksjoner som vises.
+
+### Invitasjonsflyt
+1. Owner/admin fyller inn e-post og rolle i *Innstillinger → Brukere*
+2. `module-users.js` kaller Edge Function `manage-user` med `action: "invite"`
+3. Edge Function verifiserer kallerens rolle mot `users`-tabellen (service_role-nøkkel)
+4. Supabase sender invitasjonslenke til den nye brukeren
+5. Brukeren setter passord via lenken og får tilgang
+
+Fjerning skjer tilsvarende med `action: "remove"`.
+
+---
+
+## Sikkerhet
+
+### Database (Supabase RLS)
+Row Level Security er aktivert på alle tabeller. To hjelpefunksjoner i databasen:
+
+```sql
+is_admin_or_owner()   -- owner og admin
+can_edit_content()    -- owner, admin og editor
+```
+
+| Tabell | Lese | Skrive |
+|--------|------|--------|
+| `store` | Alle innloggede | Alle innloggede |
+| `users` | Alle innloggede | Selv (eget profil), admin/owner (alle) |
+| `notes` | Kun egen bruker | Kun egen bruker |
+| `tasks` | Alle innloggede | editor+ (opprette/slette), tildelt bruker (oppdatere status) |
+| `announcements` | Alle innloggede | editor+ |
+| `kb_articles` | Alle innloggede | editor+ |
+| `links` | Alle innloggede | editor+ |
+| `chat_conversations` | Alle (inkl. anon) | Anon: INSERT, autentisert: ALL |
+| `chat_messages` | Alle (inkl. anon) | Anon: INSERT, autentisert: ALL |
+
+### Edge Function (`manage-user`)
+- Kjøres server-side i Deno med Supabase service_role-nøkkel — aldri eksponert til klient
+- Verifiserer at kalleren har gyldig JWT og er `owner` eller `admin` før handling utføres
+- Blokkerer selvsletting
+- Håndhever maks 50 brukere per tenant
+
+### Superadmin OTP
+- Krever gyldig Supabase-konto med `role = 'owner'` i `users`-tabellen
+- 8-sifret OTP sendes per e-post; verifiseres av `_sb.auth.verifyOtp()`
+- Etter verifisering sjekkes rollen på nytt mot databasen — et gyldig token uten riktig rolle gir ikke tilgang
+
+### Klientsideadmin (`config.js`)
+Admin-panelet på nettsiden er beskyttet av passord fra `config.js`. Dette er **ikke** produksjonssikkerhet — passordet er synlig i kildekoden. Det er ment som en enkel skranke, ikke tilgangskontroll. For reell tilgangskontroll brukes Supabase-autentisering (intranettet).
+
+### Anbefalinger for produksjon
+- `config.js` skal **ikke** inneholde sensitive verdier i offentlig repo
+- Supabase `anon`-nøkkel er trygg å eksponere (RLS beskytter data)
+- Service_role-nøkkel eksponeres **aldri** til klient — kun i Edge Function via miljøvariabel
+- Chat-tabellene tillater anonym skriving — dette er bevisst for besøkende-chat, men bør overvåkes
 
 ---
 
@@ -71,6 +154,8 @@ npx serve .
 
 Gå til `http://localhost:8080`. Intranettet er tilgjengelig på `http://localhost:8080/intranet/`.
 
+Uten Supabase-konfigurasjon i `config.js` faller systemet tilbake til passord fra `config.js` og localStorage.
+
 ---
 
 ## Testoppsett
@@ -79,11 +164,11 @@ Testene kjøres med Node og krever [jsdom](https://github.com/jsdom/jsdom):
 
 ```bash
 npm install          # installerer jsdom (eneste avhengighet)
-node test.js         # tester den offentlige siden (398 tester)
-node test-intranet.js  # tester intranettet (62 tester)
+node test.js         # tester den offentlige siden
+node test-intranet.js  # tester intranettet
 ```
 
-Alle tester skal gi **0 FEIL**. Én pre-eksisterende feil (`o3: workspaceship via direkterute`) er kjent og akseptert.
+Alle tester skal gi **0 FEIL**.
 
 ---
 
@@ -131,14 +216,14 @@ App.store.get("nøkkel", standardverdi)
 App.store.set("nøkkel", verdi)
 App.store.remove("nøkkel")
 
-// Bilder og filer (skaleres ned, base64 i localStorage)
-App.media.put(file)         // → Promise<dataUrl>
+// Bilder og filer — Supabase Storage (public bucket "media", maks 20 MB/fil)
+App.media.put(file)         // → Promise<publicUrl>
 App.media.putFile(file)     // → Promise<{ name, type, data }>
-App.media.resolveImage(url) // håndterer både eksterne URL-er og lagrede data-URL-er
+App.media.resolveImage(url) // håndterer både eksterne URL-er og Supabase-URL-er
 App.media.free(url)         // sletter et lagret bilde
 ```
 
-Bytting til Supabase (steg 6 i roadmap) krever kun endringer i `App.store` og `App.media` — all modulkode forblir uendret.
+Skrive-gjennom til Supabase skjer automatisk. Hydratering (`hydrateFromSupabase()`) kjøres ved innlogging.
 
 ---
 
@@ -152,38 +237,30 @@ Bytting til Supabase (steg 6 i roadmap) krever kun endringer i `App.store` og `A
 | `colors` | Primær- og sekundærfarger, bakgrunn, tekst |
 | `fonts` | Google Fonts-familie for overskrift og brødtekst |
 | `contact` | Adresse, telefon, e-post, åpningstider, sosiale lenker |
-| `admin.password` | Admin-passord (klient-side, ikke produksjonssikkerhet) |
+| `admin.password` | Admin-passord for nettsiden (klient-side, ikke produksjonssikkerhet) |
 | `storageKey` | Unik nøkkel for localStorage-namespace (aldri endre etter oppstart) |
+| `supabase.url` | Supabase-prosjekt-URL |
+| `supabase.anonKey` | Supabase anon-nøkkel (trygg å eksponere; RLS beskytter data) |
 | `features` | Feature-flagg (av/på per funksjon) |
-| `locale` | Språkinnstilling (`no` / `en`) — separat for nettside og intranett |
+| `locale` | Språkinnstilling (`no` / `en`) |
 | `modules` | Aktiverte moduler og deres konfigurasjon |
-
-Passordet og andre sensitive verdier skal **aldri** committes til et offentlig repo.
 
 ---
 
 ## Deployering
 
+### Nettside
 1. Push til `main`-grenen på GitHub.
-2. GitHub Actions bygger og deployer automatisk til **GitHub Pages**.
-3. DNS-peker (A-record / CNAME) settes opp via **Domeneshop** mot GitHub Pages sin IP.
+2. GitHub Actions deployer automatisk til **GitHub Pages**.
+3. DNS-peker (A-record / CNAME) settes via **Domeneshop** mot GitHub Pages.
 4. HTTPS håndteres av GitHub Pages (Let's Encrypt).
 
-Ingen byggsteg eller CI/CD-konfigurasjon utover `.github/workflows/`-filen.
-
----
-
-## Kjente begrensninger
-
-| Begrensning | Forklaring |
-|-------------|------------|
-| **LocalStorage ~5 MB** | Bilder skaleres ned automatisk; store filer bør lagres eksternt |
-| **Ingen ekte auth** | Admin-passordet er klient-side og gir ikke reell tilgangskontroll |
-| **Single-tenant** | Én `config.js` per deployment; ingen felles database ennå |
-| **Ingen realtime** | Chat og dashboard poller ikke; siden må lastes på nytt for nye meldinger |
-| **Ingen RLS** | Alle brukere med passordet har full lesetilgang til localStorage |
-
-Alle disse begrensningene løses i **steg 6 (Supabase-migrering)**.
+### Supabase (én gang per kunde)
+1. Opprett nytt Supabase-prosjekt (én per kunde).
+2. Kjør `supabase/migration.sql` i **SQL Editor** — idempotent, trygt å kjøre på nytt.
+3. Deploy Edge Function: `supabase functions deploy manage-user`
+4. Sett `supabase.url` og `supabase.anonKey` i `config.js`.
+5. Opprett første `owner`-bruker manuelt i Supabase Authentication, og sett `role = 'owner'` i `users`-tabellen.
 
 ---
 
@@ -191,15 +268,17 @@ Alle disse begrensningene løses i **steg 6 (Supabase-migrering)**.
 
 | Steg | Status | Innhold |
 |------|--------|---------|
-| 1 — Kjernefunksjonalitet | ✅ Ferdig | Nettside, intranett, admin, chat, superadmin |
-| 2 — Evaluering | ⏳ Pågår | Test på ekte kundesituasjon, friksjonspunkter |
-| 3 — Kodeopprydding | 🔄 Pågår | console.log, CSS-duplikater, README, i18n |
-| 4 — Backup-gjennomgang | ⏳ | Verifiser alle moduler i backup, kunde-admin-tilgang |
-| 5 — Tilgangsstyring | ⏳ | Roller: Eier / Admin / Medlem, tilgangsmatrise |
-| 6 — Supabase-migrering | ⏳ | Database, auth, RLS, realtime |
+| 1 — Kjernefunksjonalitet | ✅ | Nettside, intranett, admin, chat, superadmin |
+| 2 — Evaluering | ✅ | Test på ekte kundesituasjon |
+| 3 — Kodeopprydding | ✅ | CSS-duplikater, i18n, README |
+| 4 — Backup-gjennomgang | ✅ | Alle moduler i backup, per-modul-eksport |
+| 5a — Tilgangsstyring (RLS) | ✅ | Roller: owner/admin/editor/member, RLS-policiar |
+| 5b — Brukeradministrasjon UI | ✅ | `module-users.js`, Edge Function invite/remove |
+| 6a — Supabase store | ✅ | Write-through, hydratering ved innlogging |
+| 6b — Intranett-moduler | ✅ | Notes, tasks, announcements, KB, links i Supabase |
+| 6c — Store write-through | ✅ | Alle store-metodar skriv til Supabase |
+| 6d — Chat Realtime | ✅ | Supabase Realtime for besøkende og admin |
 | 7 — Kundedokumentasjon | ⏳ | Kontrakt, DPA (GDPR), brukerguide |
-| 8 — Teknisk dokumentasjon | ⏳ | Arkitektur, onboarding, migreringsdokument |
-| 9 — Kvalitetssjekkar | ⏳ | Cross-device, WCAG, Lighthouse, sikkerhet |
-| 10 — AI-native chat | 🔜 | RAG, Claude API, pgvector, hybrid operator/AI |
-
-Se `VIBEVERK-ROADMAP.MD` for detaljert beskrivelse av hvert steg.
+| 8 — Betalingsintegrasjon | ⏳ | Stripe eller tilsvarende |
+| 9 — Statistikk / rapportar | ⏳ | Dashboard-rapportar, eksport |
+| 10 — AI-native chat | 🔜 | RAG, Claude API, pgvector (ad hoc seinare) |

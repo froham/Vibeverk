@@ -1005,13 +1005,8 @@ window.App = (function () {
         });
       } else {
         // Fallback: config-passord (testmiljø / lokal køyring utan Supabase)
-        const empPass = CFG.admin && CFG.admin.employeePassword;
         if (pass === (CFG.admin && CFG.admin.password)) {
           setAuthed("owner");
-          renderAdminPanel(root);
-        } else if (empPass && pass === empPass) {
-          setAuthed("employee");
-          activeCategory = "henvendelser";
           renderAdminPanel(root);
         } else {
           setStatus(statusEl, "Feil passord.", "error");
@@ -3002,7 +2997,6 @@ window.App = (function () {
     if (sc.intranettFeatures && CFG.intranettFeatures) Object.assign(CFG.intranettFeatures, sc.intranettFeatures);
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
-    if (sc.employeePassword !== undefined) CFG.admin.employeePassword = sc.employeePassword;
     applyTheme(); render();
   }
 
@@ -3016,7 +3010,6 @@ window.App = (function () {
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     else             CFG.privacy.text = computeDefaultPrivacyText();   // aldri lagra → modul-bevisst forslag
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
-    if (sc.employeePassword !== undefined) CFG.admin.employeePassword = sc.employeePassword;
   }
 
   function openSuperAdmin(adminRoot) {
@@ -3276,11 +3269,6 @@ window.App = (function () {
         pane("system",
           '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
             C.field({ id:"sa-apass", label:"Passord (full adgang)", value: CFG.admin && CFG.admin.password || "" }) +
-            C.field({ id:"sa-emp-pass", label:"Ansattpassord (valgfritt)", value: (CFG.admin && CFG.admin.employeePassword) || "", hint:"Gir adgang til kun Kontakt/Tilbud/Booking/Kunder — ikke innhold eller innstillinger. La stå tomt for å skru av." }) +
-          '</fieldset>' +
-          '<fieldset class="admin-group"><legend>Vibeverk-referanse</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Bare for internt bruk — ikke synlig for kunden noe sted.</p>' +
-            C.field({ id:"sa-github", label:"GitHub-repo URL", value: meta.githubUrl || "", placeholder:"https://github.com/brukernavn/repo" }) +
           '</fieldset>' +
           '<fieldset class="admin-group"><legend>Faresone</legend>' +
             C.button({ label:"Nullstill alt", variant:"ghost", attrs:'data-sa-reset style="border-color:#c0392b;color:#c0392b"' }) +
@@ -3369,10 +3357,8 @@ window.App = (function () {
           }
         },
         adminPassword: body.querySelector("#sa-apass").value,
-        employeePassword: body.querySelector("#sa-emp-pass").value,
         features: feats,
         intranettFeatures: ifeats,
-        meta: { githubUrl: body.querySelector("#sa-github").value.trim() },
         privacy: {
           heading: body.querySelector("#sa-priv-heading").value.trim(),
           text:    readRichTextField(body, "sa-priv-text")

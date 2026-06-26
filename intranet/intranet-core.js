@@ -420,16 +420,10 @@ window.Intranet = (function () {
         });
       } else {
         var adminPass = CFG.admin && CFG.admin.password;
-        var empPass   = CFG.admin && CFG.admin.employeePassword;
         if (pass === adminPass) {
           context.role = "owner";
           sessionStorage.setItem(NS + ":admin", "owner");
           if (remember) localStorage.setItem(NS + ":admin-persist", "owner");
-          init();
-        } else if (empPass && pass === empPass) {
-          context.role = "member";
-          sessionStorage.setItem(NS + ":admin", "member");
-          if (remember) localStorage.setItem(NS + ":admin-persist", "member");
           init();
         } else {
           err.textContent = "Feil passord.";

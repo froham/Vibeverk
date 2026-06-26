@@ -137,7 +137,6 @@ window.SITE_CONFIG = {
   // MERK: Fila er offentleg på GitHub Pages — bruk eit sterkt, unikt passord per kunde.
   admin: {
     password: "test",                          // ← BYTT før produksjon (Vibeverk sitt passord)
-    employeePassword: "",                      // ← ikkje i bruk (intranet-roller handterer dette)
 
     // Korleis ein opnar panelet:
     //   1) Trippelklikk på footeren, eller

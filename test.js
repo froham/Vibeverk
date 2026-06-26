@@ -843,14 +843,11 @@ window.Image = FakeImg;
   assert(!!doc.querySelector("#sa-an-pl"), "Plausible-felt finnes i super-admin");
   assert(!!doc.querySelector("#sa-an-plembed"), "Plausible embed-felt finnes i super-admin");
   assert(!doc.querySelector("#sa-an-ga") && !doc.querySelector("#sa-an-fa") && !doc.querySelector("#sa-an-gtm"), "GA4/Fathom/GTM-felt er fjernet (kun Plausible støttes)");
-  assert(!!doc.querySelector("#sa-github"), "GitHub-URL-felt finnes i super-admin");
+  assert(!doc.querySelector("#sa-github"), "GitHub-URL-felt er fjernet fra super-admin");
   doc.querySelector("#sa-an-pl").value = "nordpunkt.no";
-  doc.querySelector("#sa-github").value = "https://github.com/vibeverk/nordpunkt";
   fire(doc.querySelector("[data-sa-form]"), "submit");
   var savedAn = JSON.parse(window.localStorage.getItem("nordpunkt:analytics") || "{}");
   assert(savedAn.plausible === "nordpunkt.no", "Plausible-domene lagret via super-admin");
-  var savedSC = JSON.parse(window.localStorage.getItem("nordpunkt:superconfig") || "{}");
-  assert(savedSC.meta && savedSC.meta.githubUrl === "https://github.com/vibeverk/nordpunkt", "GitHub-URL lagret i superconfig");
   doc.getElementById("super-admin-root").remove();
 
   // Vanlig admin viser nå ekstern lenke (siden ingen embed er satt, bare Plausible)
