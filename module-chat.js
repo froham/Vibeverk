@@ -56,6 +56,7 @@
   /* ── SUPABASE KLIENT ────────────────────────────────────────────────────── */
   var _sb = (window.App && window.App.supabase) || null;
   var _adminHydrated = false;
+  var _adminConvs    = [];
 
   /* ── EMOJI-SETT ─────────────────────────────────────────────────────────── */
   var EMOJIS = [
@@ -97,7 +98,7 @@
     },
 
     getConvs: function ()    { return Chat.store.get("chat:convs",[]); },
-    setConvs: function (v)   { console.log("[chat setConvs]", v ? v.length : null, "ids:", v ? v.map(function(c){return c.id;}).join(",") : ""); Chat.store.set("chat:convs",v); },
+    setConvs: function (v)   { Chat.store.set("chat:convs",v); },
     getConv:  function (id)  { return Chat.getConvs().find(function(c){return c.id===id;})||null; },
 
     createConv: function (name, email) {
@@ -186,8 +187,7 @@
     },
 
     hydrateFromSupabase: function (cb) {
-      console.log("[chat hydrateFromSupabase] called");
-      if (!_sb) { if (cb) cb(); return; }
+      if (!_sb) { if (cb) cb([]); return; }
       _sb.from("chat_conversations").select("*").order("last_at", { ascending: false })
         .then(function (r) {
           if (r.error || !r.data) { if (cb) cb(); return; }
@@ -205,8 +205,7 @@
               lastSeenAt: c.last_seen_at || null, visitorReadAt: c.visitor_read_at || null
             };
           });
-          Chat.setConvs(convs);
-          if (!r.data.length) { if (cb) cb(); return; }
+          if (!r.data.length) { if (cb) cb(convs); return; }
           var ids = r.data.map(function (c) { return c.id; });
           _sb.from("chat_messages").select("*").in("conversation_id", ids)
             .order("at", { ascending: true })
@@ -223,7 +222,7 @@
                 });
                 Object.keys(byConv).forEach(function (cid) { Chat.setMsgs(cid, byConv[cid]); });
               }
-              if (cb) cb();
+              if (cb) cb(convs);
             });
         });
     },
@@ -453,7 +452,6 @@
 
     /* ── RENDER ── */
     function render() {
-      console.log("[vw-render] convId:", convId, "isOpen:", isOpen);
       var avail = Chat.getAvailability();
       btn.classList.toggle("is-online", avail.online);
       var headSub = panel.querySelector(".vw-head-sub");
@@ -477,8 +475,6 @@
       }
 
       if (!convId || !conv) {
-        console.warn("[vw-render] → startform. convId:", convId, "conv:", conv, "convs i ls:", Chat.getConvs().length);
-        console.trace();
         renderStartForm();
         return;
       }
@@ -722,7 +718,6 @@
 
     /* Realtime-abonnement for besøkande — mottar operatørsvar umiddelbart */
     function subscribeVisitorRt(cid) {
-      console.log("[vw-rt] subscribeVisitorRt cid:", cid, "_sb:", !!_sb, "_vrtCh:", !!_vrtCh);
       if (!_sb || !cid || _vrtCh) return;
       _vrtCh = _sb.channel("vis-" + cid)
         .on("postgres_changes", {
@@ -765,7 +760,6 @@
         _sb.from("chat_messages").select("id,text,sender,at,created_at")
           .eq("conversation_id", convId).gt("at", lastAt || 0)
           .then(function (res) {
-            console.log("[chat-poll visitor] res:", res.data, "error:", res.error, "lastAt:", lastAt);
             if (!res.data || !res.data.length) return;
             var changed = false;
             res.data.forEach(function (m) {
@@ -979,7 +973,7 @@
   }
 
   function renderAdmin(container) {
-    var convs    = Chat.getConvs();
+    var convs    = _adminConvs.slice();
     var activeId;
     if (_pendingConvId) {
       activeId = _pendingConvId;
@@ -1232,7 +1226,6 @@
 
     function buildUI() {
       if (showSettings) { renderSettingsPanel(); return; }
-      convs = Chat.getConvs();
       var open   = convs.filter(function(c){return c.status==="open";});
       var closed = convs.filter(function(c){return c.status==="closed";});
       var totalUnread = Chat.totalUnread();
@@ -1485,7 +1478,6 @@
         if (_sb) {
           _sb.from("chat_conversations").select("*").order("last_at", { ascending: false, nullsFirst: false })
             .then(function (res) {
-              console.log("[chat-poll admin] convs:", res.data, "error:", res.error);
               if (!res.data) return;
               var mapped = res.data.map(function (c) {
                 return { id: c.id, name: c.visitor_name || "Gjest", email: c.visitor_email || "",
@@ -1501,7 +1493,7 @@
               var latestLocal = convs.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
               var latestSb    = mapped.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
               if (mapped.length !== convs.length || latestSb > latestLocal) {
-                Chat.setConvs(mapped); convs = mapped; buildUI();
+                convs = mapped; _adminConvs = mapped; buildUI();
               } else if (activeId) {
                 var localMsgs = Chat.getMsgs(activeId);
                 var lastAt = localMsgs.reduce(function (t, m) { return Math.max(t, m.at || 0); }, 0);
@@ -1528,7 +1520,7 @@
         } else {
           var fresh = Chat.getConvs();
           if (JSON.stringify(fresh) !== JSON.stringify(convs)) {
-            convs = fresh; buildUI();
+            convs = fresh; _adminConvs = fresh; buildUI();
           } else if (activeId) {
             var msgs = Chat.getMsgs(activeId);
             var msgList = container.querySelector("#vwca-msg-list");
@@ -1544,7 +1536,8 @@
         .on("postgres_changes", { event: "*", schema: "public", table: "chat_conversations" },
           function (payload) {
             if (payload.eventType === "DELETE") {
-              Chat.setConvs(Chat.getConvs().filter(function (x) { return x.id !== payload.old.id; }));
+              convs = convs.filter(function (x) { return x.id !== payload.old.id; });
+              _adminConvs = convs;
             } else {
               var c = payload.new;
               var conv = {
@@ -1558,10 +1551,10 @@
                 visitorActive: c.visitor_active || false,
                 lastSeenAt: c.last_seen_at || null, visitorReadAt: c.visitor_read_at || null
               };
-              var convs2 = Chat.getConvs();
+              var convs2 = convs.slice();
               var idx = convs2.findIndex(function (x) { return x.id === c.id; });
               if (idx > -1) { Object.assign(convs2[idx], conv); } else { convs2.unshift(conv); }
-              Chat.setConvs(convs2);
+              convs = convs2; _adminConvs = convs;
             }
           })
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" },
@@ -1581,7 +1574,7 @@
     /* Hydrer frå Supabase første gong admin-panelet opnast */
     if (!_adminHydrated && _sb) {
       _adminHydrated = true;
-      Chat.hydrateFromSupabase(function () { buildUI(); });
+      Chat.hydrateFromSupabase(function (hc) { if (hc && hc.length) { convs = hc; _adminConvs = hc; } buildUI(); });
     } else {
       buildUI();
     }
