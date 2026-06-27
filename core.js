@@ -2805,13 +2805,13 @@ window.App = (function () {
      ======================================================================== */
   function init() {
     if (started) return;
-    applySuperConfig();
-    loadContent();
-    applyTheme();
-    initAnalytics();
     registerBuiltinSections();
 
     function boot() {
+      applySuperConfig();
+      loadContent();
+      applyTheme();
+      initAnalytics();
       currentView = route().view;
       render();
       started = true;
