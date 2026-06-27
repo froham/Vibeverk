@@ -54,12 +54,11 @@
   }
 
   /* ── SUPABASE KLIENT ────────────────────────────────────────────────────── */
-  var _sb = (window.App && window.App.supabase) || null;
-  var _adminHydrated     = false;
-  var _adminConvs        = [];
-  var _convCreatePromise = null; // await conv INSERT before first msg INSERT
-  var _heartbeatIv       = null; // setInterval handle for admin heartbeat
-  var _wStarted          = false; // prevent double widget init
+  var _sb            = (window.App && window.App.supabase) || null;
+  var _adminHydrated = false;
+  var _adminConvs    = [];
+  var _heartbeatIv   = null; // setInterval handle for admin heartbeat
+  var _wStarted      = false; // prevent double widget init
 
   function _startHeartbeat() {
     if (_heartbeatIv || !_sb) return;
@@ -121,22 +120,31 @@
     getConv:  function (id)  { return Chat.getConvs().find(function(c){return c.id===id;})||null; },
 
     createConv: function (name, email) {
+      var vid  = Chat.getVid(); // generate/retrieve stable visitor token before any async
       var conv = {
         id: Chat.newId(), name: name||"Gjest", email: email||"",
         status: "open", unread: 0, lastMsg: "", lastAt: Date.now(), createdAt: Date.now()
       };
-      var convs = Chat.getConvs(); convs.unshift(conv); Chat.setConvs(convs);
-      _convCreatePromise = null;
-      if (_sb) {
-        _convCreatePromise = _sb.from("chat_conversations").insert({
-          id: conv.id, visitor_name: conv.name, visitor_email: conv.email,
-          visitor_id: Chat.store.get("chat:vid", null),
-          status: "open", unread: 0, last_msg: "", last_at: conv.lastAt
-        }).then(function(r) {
-          if (r.error) console.warn("[chat] conv insert:", r.error.message);
-        });
+      if (!_sb) {
+        // No Supabase: write to localStorage immediately and resolve
+        var lc = Chat.getConvs(); lc.unshift(conv); Chat.setConvs(lc);
+        return Promise.resolve(conv);
       }
-      return conv;
+      // Optimistic write so updateConv calls during the same tick work against local cache
+      var lc2 = Chat.getConvs(); lc2.unshift(conv); Chat.setConvs(lc2);
+      return _sb.from("chat_conversations").insert({
+        id: conv.id, visitor_name: conv.name, visitor_email: conv.email,
+        visitor_id: vid,
+        status: "open", unread: 0, last_msg: "", last_at: conv.lastAt
+      }).then(function(r) {
+        if (r.error) {
+          // Roll back optimistic write
+          Chat.setConvs(Chat.getConvs().filter(function(c){return c.id!==conv.id;}));
+          console.error("[chat] conv insert failed:", r.error.message, r.error);
+          return Promise.reject(new Error(r.error.message));
+        }
+        return conv;
+      });
     },
 
     updateConv: function (id, changes) {
@@ -177,20 +185,16 @@
       });
       if (!_sb) return Promise.resolve(msg);
       var _row = { id: msg.id, conversation_id: convId, text: msg.text, sender: msg.sender, at: msg.at };
-      var _doInsert = function() {
-        _convCreatePromise = null;
-        return _sb.from("chat_messages").insert(_row).then(function(r) {
-          if (r.error) {
-            // Roll back the optimistic message on failure
-            var cur = Chat.getMsgs(convId).filter(function(m){return m.id!==msg.id;});
-            Chat.setMsgs(convId, cur);
-            return Promise.reject(new Error(r.error.message));
-          }
-          return msg;
-        });
-      };
-      if (_convCreatePromise) return _convCreatePromise.then(_doInsert, _doInsert);
-      return _doInsert();
+      return _sb.from("chat_messages").insert(_row).then(function(r) {
+        if (r.error) {
+          // Roll back the optimistic message on failure
+          var cur = Chat.getMsgs(convId).filter(function(m){return m.id!==msg.id;});
+          Chat.setMsgs(convId, cur);
+          console.error("[chat] msg insert failed:", r.error.message, r.error);
+          return Promise.reject(new Error(r.error.message));
+        }
+        return msg;
+      });
     },
 
     markRead:   function (id) { Chat.updateConv(id,{unread:0}); },
@@ -489,7 +493,6 @@
     var msgsEl = document.getElementById("vw-msgs");
     var bottom = document.getElementById("vw-bottom");
     var isOpen = false;
-    var _vrtCh = null;
 
     var convId  = Chat.getMyConv();
     var lastReadAt = convId ? ((Chat.getConv(convId) || {}).visitorReadAt || 0) : 0;
@@ -617,22 +620,42 @@
         vemail = email;
         Chat.setVname(vname);
         Chat.setVemail(vemail);
-        var conv = Chat.createConv(vname, vemail);
-        convId = conv.id;
-        var _bi = getBrowserInfo();
-        Chat.updateConv(convId, {
-          pageUrl:      location.href,
-          referrer:     document.referrer || null,
-          language:     navigator.language || null,
-          browser:      _bi.browser,
-          os:           _bi.os,
-          screen:       screen.width + "×" + screen.height,
-          visitorActive: true,
-          lastSeenAt:   Date.now()
+
+        startBtn.disabled = true;
+        startBtn.textContent = "Kobler til…";
+
+        Chat.createConv(vname, vemail).then(function(conv) {
+          convId = conv.id;
+          Chat.setMyConv(convId);
+          var _bi = getBrowserInfo();
+          Chat.updateConv(convId, {
+            pageUrl:       location.href,
+            referrer:      document.referrer || null,
+            language:      navigator.language || null,
+            browser:       _bi.browser,
+            os:            _bi.os,
+            screen:        screen.width + "×" + screen.height,
+            visitorActive: true,
+            lastSeenAt:    Date.now()
+          });
+          render();
+        }, function(err) {
+          console.error("[chat] createConv failed:", err.message);
+          startBtn.textContent = "Start samtale";
+          checkReady(); // restores disabled state based on field validity
+          var form = bottom.querySelector(".vw-start-form");
+          var errEl = bottom.querySelector("#vw-start-err");
+          if (!errEl && form) {
+            errEl = document.createElement("div");
+            errEl.id = "vw-start-err";
+            errEl.style.cssText = "color:#ef4444;font-size:.78rem;text-align:center;margin:.3rem 0";
+            form.insertBefore(errEl, startBtn);
+          }
+          if (errEl) {
+            errEl.textContent = "Klarte ikkje å starte samtalen. Prøv igjen.";
+            setTimeout(function(){ if(errEl) errEl.textContent = ""; }, 6000);
+          }
         });
-        Chat.setMyConv(convId);
-        subscribeVisitorRt(convId);
-        render();
       });
     }
 
@@ -683,16 +706,22 @@
           showSuccess();
         }
         if (_sb) {
-          var conv = Chat.createConv(name||email, email);
-          (_convCreatePromise || Promise.resolve()).then(function() {
-            _convCreatePromise = null;
+          Chat.createConv(name||email, email).then(function(conv) {
             return _sb.from("chat_messages").insert({
               id: Chat.newId(), conversation_id: conv.id,
               text: msg, sender: "visitor", at: Date.now()
             });
           }).then(function(r) {
-            if (r && r.error) { fallback(); } else { showSuccess(); }
-          }).catch(fallback);
+            if (r && r.error) {
+              console.error("[chat] offline msg insert failed:", r.error.message, r.error);
+              fallback();
+            } else {
+              showSuccess();
+            }
+          }).catch(function(err) {
+            console.error("[chat] offline form failed:", err.message);
+            fallback();
+          });
         } else {
           fallback();
         }
@@ -833,31 +862,38 @@
       if (!convId) return;
       if (_sb) {
         var local = Chat.getMsgs(convId);
-        var lastAt = local.reduce(function (t, m) { return Math.max(t, m.at || 0); }, 0);
-        // Use visitor-scoped RPC — anon has no direct SELECT grant on chat_messages
+        // Always fetch all messages (p_after_at=0) and deduplicate by id client-side.
+        // This avoids clock-skew between visitor and admin producing a cursor (client at)
+        // that permanently hides messages the server has already stored.
         _sb.rpc("get_visitor_msgs", {
           p_visitor_id: Chat.getVid(),
           p_conv_id:    convId,
-          p_after_at:   lastAt || 0
+          p_after_at:   0
         }).then(function (res) {
-            if (!res.data || !res.data.length) return;
-            var changed = false;
-            res.data.forEach(function (m) {
-              if (!local.find(function (x) { return x.id === m.id; })) {
-                local.push({ id: m.id, convId: convId, text: m.text, sender: m.sender,
-                            at: m.at || new Date(m.created_at).getTime() });
-                changed = true;
-              }
-            });
-            if (!changed) return;
-            Chat.setMsgs(convId, local);
-            lastMsgCount = local.length;
-            if (isOpen) { render(); }
-            else {
-              var unread = local.filter(function (m) { return m.sender === "operator" && m.at > lastReadAt; }).length;
-              if (unread > 0) showUnreadBadge(unread);
+          if (res.error) {
+            console.error("[chat] get_visitor_msgs RPC failed:", res.error.message, res.error);
+            return;
+          }
+          if (!res.data || !res.data.length) return;
+          var knownIds = {};
+          local.forEach(function(m){ knownIds[m.id] = true; });
+          var changed = false;
+          res.data.forEach(function (m) {
+            if (!knownIds[m.id]) {
+              local.push({ id: m.id, convId: convId, text: m.text, sender: m.sender,
+                          at: m.at || new Date(m.created_at).getTime() });
+              changed = true;
             }
           });
+          if (!changed) return;
+          Chat.setMsgs(convId, local);
+          lastMsgCount = local.length;
+          if (isOpen) { render(); }
+          else {
+            var unread = local.filter(function (m) { return m.sender === "operator" && m.at > lastReadAt; }).length;
+            if (unread > 0) showUnreadBadge(unread);
+          }
+        });
       } else {
         var msgs = Chat.getMsgs(convId);
         if (msgs.length !== lastMsgCount) {
@@ -1387,13 +1423,18 @@
           "Er dere åpne i helgene?",
           "Hva koster det å komme i gang?"
         ];
-        var n    = names[Math.floor(Math.random()*names.length)];
-        var m    = msgs[Math.floor(Math.random()*msgs.length)];
-        var conv = Chat.createConv(n, n.toLowerCase().replace(" ",".") + "@eksempel.no");
-        Chat.addMsg(conv.id, m, "visitor");
-        activeId = conv.id;
-        container._activeConvId = activeId;
-        buildUI();
+        var n = names[Math.floor(Math.random()*names.length)];
+        var m = msgs[Math.floor(Math.random()*msgs.length)];
+        Chat.createConv(n, n.toLowerCase().replace(" ",".") + "@eksempel.no").then(function(conv) {
+          Chat.addMsg(conv.id, m, "visitor");
+          activeId = conv.id;
+          container._activeConvId = activeId;
+          convs.unshift(conv);
+          _adminConvs = convs;
+          buildUI();
+        }, function(err) {
+          console.error("[chat] test conv failed:", err.message);
+        });
       });
 
       renderView();

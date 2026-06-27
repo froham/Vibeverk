@@ -39,28 +39,6 @@ END;
 $$;
 
 
--- Visitor-scoped RPCs — anon les eigne samtalar/meldingar via visitor_id-token.
--- SECURITY DEFINER: køyrer som eigaren (omgår RLS), men validerer visitor_id sjølv.
-CREATE OR REPLACE FUNCTION get_visitor_conv(p_visitor_id text, p_conv_id text)
-RETURNS SETOF chat_conversations SECURITY DEFINER STABLE LANGUAGE sql AS $$
-  SELECT * FROM chat_conversations
-  WHERE id = p_conv_id AND visitor_id = p_visitor_id
-  LIMIT 1;
-$$;
-
-CREATE OR REPLACE FUNCTION get_visitor_msgs(p_visitor_id text, p_conv_id text, p_after_at bigint DEFAULT 0)
-RETURNS SETOF chat_messages SECURITY DEFINER STABLE LANGUAGE sql AS $$
-  SELECT m.* FROM chat_messages m
-  WHERE m.conversation_id = p_conv_id
-    AND (p_after_at = 0 OR m.at > p_after_at)
-    AND EXISTS (
-      SELECT 1 FROM chat_conversations c
-      WHERE c.id = p_conv_id AND c.visitor_id = p_visitor_id
-    )
-  ORDER BY m.at;
-$$;
-
-
 -- ── 2. TABELLAR ──────────────────────────────────────────────────────────────
 
 -- Nettsideinnhald og innstillingar (delt nøkkel/verdi-lager)
@@ -271,6 +249,42 @@ RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
     WHERE id = auth.uid() AND role IN ('owner', 'admin', 'editor')
   );
 $$;
+
+
+-- ── 5b. VISITOR-SCOPED RPCs ──────────────────────────────────────────────────
+-- Desse må definerast ETTER chat_conversations og chat_messages-tabellane
+-- (PostgreSQL validerer tabellreferansar ved CREATE FUNCTION for LANGUAGE sql).
+-- SECURITY DEFINER: køyrer som eigaren (omgår RLS), men validerer visitor_id sjølv.
+-- SET search_path = public hindrar søk-path-injeksjon mot SECURITY DEFINER-funksjonar.
+-- REVOKE frå PUBLIC + eksplisitt GRANT til anon = minste privilegium.
+
+CREATE OR REPLACE FUNCTION get_visitor_conv(p_visitor_id text, p_conv_id text)
+RETURNS SETOF chat_conversations
+SECURITY DEFINER STABLE
+SET search_path = public
+LANGUAGE sql AS $$
+  SELECT * FROM chat_conversations
+  WHERE id = p_conv_id AND visitor_id = p_visitor_id
+  LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION get_visitor_msgs(p_visitor_id text, p_conv_id text, p_after_at bigint DEFAULT 0)
+RETURNS SETOF chat_messages
+SECURITY DEFINER STABLE
+SET search_path = public
+LANGUAGE sql AS $$
+  SELECT m.* FROM chat_messages m
+  WHERE m.conversation_id = p_conv_id
+    AND (p_after_at = 0 OR m.at > p_after_at)
+    AND EXISTS (
+      SELECT 1 FROM chat_conversations c
+      WHERE c.id = p_conv_id AND c.visitor_id = p_visitor_id
+    )
+  ORDER BY COALESCE(m.at, 0), m.created_at;
+$$;
+
+REVOKE EXECUTE ON FUNCTION get_visitor_conv FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION get_visitor_msgs FROM PUBLIC;
 
 
 -- ── 6. RLS ───────────────────────────────────────────────────────────────────
