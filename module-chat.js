@@ -776,14 +776,18 @@
     }
     if (convId) subscribeVisitorRt(convId);
 
-    /* Hent admin-tilgjengelegheit frå Supabase — oppdaterer localStorage slik at
-       render() viser riktig online/offline-status når brukaren opnar panelet */
+    /* Hent admin-tilgjengelegheit frå Supabase. Oppdaterer knapp og open panel
+       sjølv om fetchen kjem tilbake etter at brukaren allereie opna widgeten. */
     if (_sb) {
       _sb.from("store").select("value")
         .eq("tenant_id", _CHAT_NS || "site").eq("key", "chat-availability")
         .maybeSingle()
         .then(function(r) {
-          if (r.data && !r.error) { Chat.store.set("chat-availability", r.data.value); }
+          if (!r.data || r.error) return;
+          Chat.store.set("chat-availability", r.data.value);
+          var online = !!(r.data.value && r.data.value.online);
+          btn.classList.toggle("is-online", online);
+          if (isOpen) render();
         });
     }
 
