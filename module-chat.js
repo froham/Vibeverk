@@ -776,16 +776,19 @@
     }
     if (convId) subscribeVisitorRt(convId);
 
-    /* Hent admin-tilgjengelegheit frå Supabase. Oppdaterer knapp og open panel
-       sjølv om fetchen kjem tilbake etter at brukaren allereie opna widgeten. */
+    /* Hent admin-tilgjengelegheit frå Supabase. Forny since-tidspunktet ved
+       online-status slik at den lokale 8-timars utløpssjekken vert rekna frå
+       siste bekrefta fetch, ikkje frå tidspunktet admin opphavleg klikka Online. */
     if (_sb) {
       _sb.from("store").select("value")
         .eq("tenant_id", _CHAT_NS || "site").eq("key", "chat-availability")
         .maybeSingle()
         .then(function(r) {
           if (!r.data || r.error) return;
-          Chat.store.set("chat-availability", r.data.value);
-          var online = !!(r.data.value && r.data.value.online);
+          var val = r.data.value;
+          if (val && val.online) val = { online: true, since: Date.now() };
+          Chat.store.set("chat-availability", val);
+          var online = !!(val && val.online);
           btn.classList.toggle("is-online", online);
           if (isOpen) render();
         });
