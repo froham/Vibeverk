@@ -130,9 +130,9 @@
         if (changes.name !== undefined)          sb.visitor_name    = changes.name;
         if (changes.email !== undefined)         sb.visitor_email   = changes.email;
         if (changes.status !== undefined)        sb.status          = changes.status;
-        if (changes.unread !== undefined)        sb.unread          = changes.unread;
-        if (changes.lastMsg !== undefined)       sb.last_msg        = changes.lastMsg;
-        if (changes.lastAt !== undefined)        sb.last_at         = changes.lastAt;
+        // unread=0 er mark-as-read (admin-handling) — inkrement vert gjort av DB-triggaren
+        if (changes.unread === 0)                sb.unread          = 0;
+        // last_msg og last_at vert sett automatisk av triggaren _chat_conv_update_on_msg
         if (changes.pageUrl !== undefined)       sb.page_url        = changes.pageUrl;
         if (changes.referrer !== undefined)      sb.referrer        = changes.referrer;
         if (changes.language !== undefined)      sb.language        = changes.language;

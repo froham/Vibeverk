@@ -339,8 +339,10 @@ GRANT USAGE, SELECT ON SEQUENCE store_id_seq TO authenticated;
 
 GRANT SELECT ON store TO anon;
 GRANT INSERT, SELECT ON chat_conversations, chat_messages TO anon;
--- Presence-felt: anon kan oppdatere berre desse tre kolonnane (ikkje status, unread, last_msg osv.)
-GRANT UPDATE (last_seen_at, visitor_active, visitor_read_at) ON chat_conversations TO anon;
+-- Anon kan oppdatere eige namn/e-post, nettlesarmetadata og presence-felt.
+-- Status, unread, last_msg, last_at vert ekskludert — triggaren og autentiserte brukarar handterer desse.
+GRANT UPDATE (visitor_name, visitor_email, page_url, referrer, language, browser, os, screen,
+              last_seen_at, visitor_active, visitor_read_at) ON chat_conversations TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO authenticated;
 
 
