@@ -57,6 +57,7 @@
   var _sb = (window.App && window.App.supabase) || null;
   var _adminHydrated = false;
   var _adminConvs    = [];
+  var _convCreatePromise = null; // await conv INSERT before first msg INSERT
 
   /* ── EMOJI-SETT ─────────────────────────────────────────────────────────── */
   var EMOJIS = [
@@ -107,11 +108,14 @@
         status: "open", unread: 0, lastMsg: "", lastAt: Date.now(), createdAt: Date.now()
       };
       var convs = Chat.getConvs(); convs.unshift(conv); Chat.setConvs(convs);
+      _convCreatePromise = null;
       if (_sb) {
-        _sb.from("chat_conversations").insert({
+        _convCreatePromise = _sb.from("chat_conversations").insert({
           id: conv.id, visitor_name: conv.name, visitor_email: conv.email,
           visitor_id: Chat.store.get("chat:vid", null),
           status: "open", unread: 0, last_msg: "", last_at: conv.lastAt
+        }).then(function(r) {
+          if (r.error) console.warn("[chat] conv insert:", r.error.message);
         });
       }
       return conv;
@@ -154,10 +158,15 @@
         unread: sender==="visitor" ? ((conv?conv.unread:0)+1) : (conv?conv.unread:0)
       });
       if (_sb) {
-        _sb.from("chat_messages").insert({
-          id: msg.id, conversation_id: convId,
-          text: msg.text, sender: msg.sender, at: msg.at
-        });
+        var _row = { id: msg.id, conversation_id: convId, text: msg.text, sender: msg.sender, at: msg.at };
+        var _doInsert = function() {
+          _convCreatePromise = null;
+          _sb.from("chat_messages").insert(_row).then(function(r) {
+            if (r.error) console.warn("[chat] msg insert:", r.error.message);
+          });
+        };
+        if (_convCreatePromise) { _convCreatePromise.then(_doInsert, _doInsert); }
+        else { _doInsert(); }
       }
       return msg;
     },
@@ -243,7 +252,14 @@
       return d;
     },
     setAvailability: function (online) {
-      Chat.store.set("chat-availability", {online:!!online, since:online?Date.now():0});
+      var val = {online:!!online, since:online?Date.now():0};
+      Chat.store.set("chat-availability", val);
+      if (_sb) {
+        _sb.from("store").upsert(
+          {tenant_id: _CHAT_NS || "site", key: "chat-availability", value: val},
+          {onConflict: "tenant_id,key"}
+        );
+      }
     }
   };
 
@@ -622,17 +638,34 @@
         var email = emailInp.value.trim();
         var msg   = msgInp.value.trim();
         sendBtn.disabled = true; sendBtn.textContent = "Sender…";
-        var AppRef = window.App;
-        if (AppRef && AppRef.addLead) {
-          AppRef.addLead({ name:name||email, email:email, message:msg, source:"chat-offline" });
+        function showSuccess() {
+          msgsEl.style.display = "";
+          msgsEl.innerHTML =
+            '<div class="vw-msg vw-msg--op">Takk! Vi har mottatt meldingen din og svarer så snart vi kan.' +
+              '<div class="vw-msg-ts">'+Chat.ts(Date.now())+'</div>' +
+            '</div>';
+          bottom.innerHTML = "";
+          bottom.style.flex = ""; bottom.style.overflowY = "";
         }
-        msgsEl.style.display = "";
-        msgsEl.innerHTML =
-          '<div class="vw-msg vw-msg--op">Takk! Vi har mottatt meldingen din og svarer så snart vi kan.' +
-            '<div class="vw-msg-ts">'+Chat.ts(Date.now())+'</div>' +
-          '</div>';
-        bottom.innerHTML = "";
-        bottom.style.flex = ""; bottom.style.overflowY = "";
+        function fallback() {
+          var AppRef = window.App;
+          if (AppRef && AppRef.addLead) AppRef.addLead({ name:name||email, email:email, message:msg, source:"chat-offline" });
+          showSuccess();
+        }
+        if (_sb) {
+          var conv = Chat.createConv(name||email, email);
+          (_convCreatePromise || Promise.resolve()).then(function() {
+            _convCreatePromise = null;
+            return _sb.from("chat_messages").insert({
+              id: Chat.newId(), conversation_id: conv.id,
+              text: msg, sender: "visitor", at: Date.now()
+            });
+          }).then(function(r) {
+            if (r && r.error) { fallback(); } else { showSuccess(); }
+          }).catch(fallback);
+        } else {
+          fallback();
+        }
       });
     }
 
@@ -742,6 +775,17 @@
         .subscribe();
     }
     if (convId) subscribeVisitorRt(convId);
+
+    /* Hent admin-tilgjengelegheit frå Supabase — oppdaterer localStorage slik at
+       render() viser riktig online/offline-status når brukaren opnar panelet */
+    if (_sb) {
+      _sb.from("store").select("value")
+        .eq("tenant_id", _CHAT_NS || "site").eq("key", "chat-availability")
+        .maybeSingle()
+        .then(function(r) {
+          if (r.data && !r.error) { Chat.store.set("chat-availability", r.data.value); }
+        });
+    }
 
     /* Sjekk ulesne meldingar med ein gong (ikkje vent 5 sek) */
     setTimeout(function () {
@@ -1556,6 +1600,7 @@
               if (idx > -1) { Object.assign(convs2[idx], conv); } else { convs2.unshift(conv); }
               convs = convs2; _adminConvs = convs;
             }
+            if (!showSettings) buildUI();
           })
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" },
           function (payload) {
@@ -1566,6 +1611,10 @@
               msgs.push({ id: m.id, convId: cid, text: m.text, sender: m.sender,
                           at: m.at || new Date(m.created_at).getTime() });
               Chat.setMsgs(cid, msgs);
+            }
+            if (!showSettings) {
+              if (cid === activeId) { var _ml = container.querySelector("#vwca-msg-list"); if (_ml) renderView(); }
+              else { buildUI(); }
             }
           })
         .subscribe();

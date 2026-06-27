@@ -23,6 +23,21 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$;
 
+-- Hald chat_conversations oppdatert automatisk når ei melding vert sett inn.
+-- Anon-brukaren treng ikkje UPDATE-rettighet på last_msg/last_at/unread —
+-- triggaren tek seg av det server-side.
+CREATE OR REPLACE FUNCTION _chat_conv_update_on_msg()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE chat_conversations SET
+    last_msg = NEW.text,
+    last_at  = COALESCE(NEW.at, EXTRACT(EPOCH FROM now())::bigint * 1000),
+    unread   = unread + CASE WHEN NEW.sender = 'visitor' THEN 1 ELSE 0 END
+  WHERE id = NEW.conversation_id;
+  RETURN NEW;
+END;
+$$;
+
 
 -- ── 2. TABELLAR ──────────────────────────────────────────────────────────────
 
@@ -187,6 +202,11 @@ CREATE TRIGGER tasks_updated_at         BEFORE UPDATE ON tasks         FOR EACH 
 CREATE TRIGGER announcements_updated_at BEFORE UPDATE ON announcements FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER kb_articles_updated_at   BEFORE UPDATE ON kb_articles   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS chat_msg_update_conv ON chat_messages;
+CREATE TRIGGER chat_msg_update_conv
+  AFTER INSERT ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION _chat_conv_update_on_msg();
+
 
 -- ── 4. AUTO-OPPRETT BRUKAR VED SIGNUP ────────────────────────────────────────
 
@@ -299,6 +319,9 @@ DROP POLICY IF EXISTS chat_msg_anon_select  ON chat_messages;
 DROP POLICY IF EXISTS chat_msg_auth         ON chat_messages;
 CREATE POLICY chat_conv_anon_insert ON chat_conversations FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY chat_conv_anon_select ON chat_conversations FOR SELECT TO anon USING (true);
+-- Anon kan berre oppdatere presence-felt (last_seen_at, visitor_active, visitor_read_at).
+-- Kolonne-nivå GRANT under avgrensar kva felt som faktisk kan endrast.
+-- last_msg/last_at/unread vert handtert av triggaren _chat_conv_update_on_msg.
 CREATE POLICY chat_conv_anon_update ON chat_conversations FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY chat_conv_auth        ON chat_conversations FOR ALL    TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY chat_msg_anon_insert  ON chat_messages      FOR INSERT TO anon WITH CHECK (true);
@@ -316,6 +339,8 @@ GRANT USAGE, SELECT ON SEQUENCE store_id_seq TO authenticated;
 
 GRANT SELECT ON store TO anon;
 GRANT INSERT, SELECT ON chat_conversations, chat_messages TO anon;
+-- Presence-felt: anon kan oppdatere berre desse tre kolonnane (ikkje status, unread, last_msg osv.)
+GRANT UPDATE (last_seen_at, visitor_active, visitor_read_at) ON chat_conversations TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO authenticated;
 
 
