@@ -2805,12 +2805,13 @@ window.App = (function () {
      ======================================================================== */
   function init() {
     if (started) return;
+    applyTheme();           // tidleg: set --color-primary før chat-bobla initialiserer seg
     registerBuiltinSections();
 
     function boot() {
       applySuperConfig();
       loadContent();
-      applyTheme();
+      applyTheme();         // på nytt etter hydration: plukk opp Supabase-lagra fargar/fontar
       initAnalytics();
       currentView = route().view;
       render();

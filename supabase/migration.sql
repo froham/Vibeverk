@@ -292,12 +292,14 @@ CREATE POLICY links_admin       ON links FOR ALL    TO authenticated USING (can_
 -- chat: anon-besøkande kan skrive og lese samtalen sin, admin har full tilgang
 DROP POLICY IF EXISTS chat_conv_anon_insert ON chat_conversations;
 DROP POLICY IF EXISTS chat_conv_anon_select ON chat_conversations;
+DROP POLICY IF EXISTS chat_conv_anon_update ON chat_conversations;
 DROP POLICY IF EXISTS chat_conv_auth        ON chat_conversations;
 DROP POLICY IF EXISTS chat_msg_anon_insert  ON chat_messages;
 DROP POLICY IF EXISTS chat_msg_anon_select  ON chat_messages;
 DROP POLICY IF EXISTS chat_msg_auth         ON chat_messages;
 CREATE POLICY chat_conv_anon_insert ON chat_conversations FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY chat_conv_anon_select ON chat_conversations FOR SELECT TO anon USING (true);
+CREATE POLICY chat_conv_anon_update ON chat_conversations FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY chat_conv_auth        ON chat_conversations FOR ALL    TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY chat_msg_anon_insert  ON chat_messages      FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY chat_msg_anon_select  ON chat_messages      FOR SELECT TO anon USING (true);
