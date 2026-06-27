@@ -55,9 +55,27 @@
 
   /* ── SUPABASE KLIENT ────────────────────────────────────────────────────── */
   var _sb = (window.App && window.App.supabase) || null;
-  var _adminHydrated = false;
-  var _adminConvs    = [];
+  var _adminHydrated     = false;
+  var _adminConvs        = [];
   var _convCreatePromise = null; // await conv INSERT before first msg INSERT
+  var _heartbeatIv       = null; // setInterval handle for admin heartbeat
+  var _wStarted          = false; // prevent double widget init
+
+  function _startHeartbeat() {
+    if (_heartbeatIv || !_sb) return;
+    function hb() {
+      _sb.from("store").upsert(
+        {tenant_id: _CHAT_NS || "site", key: "chat-heartbeat", value: {ts: Date.now()}},
+        {onConflict: "tenant_id,key"}
+      );
+    }
+    hb();
+    _heartbeatIv = setInterval(hb, 60000);
+    window.addEventListener("beforeunload", _stopHeartbeat);
+  }
+  function _stopHeartbeat() {
+    if (_heartbeatIv) { clearInterval(_heartbeatIv); _heartbeatIv = null; }
+  }
 
   /* ── EMOJI-SETT ─────────────────────────────────────────────────────────── */
   var EMOJIS = [
@@ -157,18 +175,22 @@
         lastMsg: text.slice(0,60), lastAt: msg.at,
         unread: sender==="visitor" ? ((conv?conv.unread:0)+1) : (conv?conv.unread:0)
       });
-      if (_sb) {
-        var _row = { id: msg.id, conversation_id: convId, text: msg.text, sender: msg.sender, at: msg.at };
-        var _doInsert = function() {
-          _convCreatePromise = null;
-          _sb.from("chat_messages").insert(_row).then(function(r) {
-            if (r.error) console.warn("[chat] msg insert:", r.error.message);
-          });
-        };
-        if (_convCreatePromise) { _convCreatePromise.then(_doInsert, _doInsert); }
-        else { _doInsert(); }
-      }
-      return msg;
+      if (!_sb) return Promise.resolve(msg);
+      var _row = { id: msg.id, conversation_id: convId, text: msg.text, sender: msg.sender, at: msg.at };
+      var _doInsert = function() {
+        _convCreatePromise = null;
+        return _sb.from("chat_messages").insert(_row).then(function(r) {
+          if (r.error) {
+            // Roll back the optimistic message on failure
+            var cur = Chat.getMsgs(convId).filter(function(m){return m.id!==msg.id;});
+            Chat.setMsgs(convId, cur);
+            return Promise.reject(new Error(r.error.message));
+          }
+          return msg;
+        });
+      };
+      if (_convCreatePromise) return _convCreatePromise.then(_doInsert, _doInsert);
+      return _doInsert();
     },
 
     markRead:   function (id) { Chat.updateConv(id,{unread:0}); },
@@ -253,13 +275,18 @@
     },
     setAvailability: function (online) {
       var val = {online:!!online, since:online?Date.now():0};
-      Chat.store.set("chat-availability", val);
-      if (_sb) {
-        _sb.from("store").upsert(
-          {tenant_id: _CHAT_NS || "site", key: "chat-availability", value: val},
-          {onConflict: "tenant_id,key"}
-        );
+      if (!_sb) {
+        Chat.store.set("chat-availability", val);
+        return Promise.resolve(val);
       }
+      return _sb.from("store").upsert(
+        {tenant_id: _CHAT_NS || "site", key: "chat-availability", value: val},
+        {onConflict: "tenant_id,key"}
+      ).then(function(r) {
+        if (r.error) return Promise.reject(new Error(r.error.message));
+        Chat.store.set("chat-availability", val);
+        return val;
+      });
     }
   };
 
@@ -294,7 +321,8 @@
   }
 
   function saveConvAsLead(convId) {
-    var conv = Chat.getConv(convId);
+    // Fall back to in-memory _adminConvs when localStorage doesn't have this conv
+    var conv = Chat.getConv(convId) || _adminConvs.find(function(c){return c.id===convId;});
     if (!conv) return;
     var AppRef = window.App;
     if (!AppRef || !AppRef.addLead) return;
@@ -340,9 +368,11 @@
      A)  WIDGET
   ══════════════════════════════════════════════════════════════════════════ */
   function initWidget() {
+    if (_wStarted) return;
     if (!OPT.enabled) return;
     if (document.getElementById("admin-modal-root")) return;
     if (document.getElementById("intranet")) return;
+    _wStarted = true;
 
     var color    = OPT.color ||
       getComputedStyle(document.documentElement).getPropertyValue("--color-primary").trim() || "#1a6e5a";
@@ -708,9 +738,27 @@
       function doSend() {
         var txt = inp.value.trim();
         if (!txt || !convId) return;
+        sendBtn.disabled = true;
         inp.value = ""; inp.style.height = "auto";
-        Chat.addMsg(convId, txt, "visitor");
-        render();
+        Chat.addMsg(convId, txt, "visitor").then(function() {
+          render();
+        }, function(err) {
+          console.warn("[chat] visitor send failed:", err.message);
+          var errEl = document.getElementById("vw-send-err");
+          if (!errEl) {
+            errEl = document.createElement("div");
+            errEl.id = "vw-send-err";
+            errEl.style.cssText = "color:#ef4444;font-size:.75rem;text-align:center;padding:.2rem 0";
+            var replyEl = document.getElementById("vw-reply");
+            if (replyEl) replyEl.insertBefore(errEl, replyEl.firstChild);
+          }
+          errEl.textContent = "Sending mislyktes. Prøv igjen.";
+          inp.value = txt; // restore for retry
+          setTimeout(function(){if(errEl)errEl.textContent="";},4000);
+        }).finally(function() {
+          sendBtn.disabled = false;
+          if (inp) inp.focus();
+        });
       }
       sendBtn.addEventListener("click", doSend);
       inp.addEventListener("keydown", function (e) {
@@ -749,49 +797,27 @@
       startTitleNotify();
     }
 
-    /* Realtime-abonnement for besøkande — mottar operatørsvar umiddelbart */
-    function subscribeVisitorRt(cid) {
-      if (!_sb || !cid || _vrtCh) return;
-      _vrtCh = _sb.channel("vis-" + cid)
-        .on("postgres_changes", {
-          event: "INSERT", schema: "public", table: "chat_messages",
-          filter: "conversation_id=eq." + cid
-        }, function (payload) {
-          var m = payload.new;
-          if (m.sender !== "operator") return;
-          var msgs = Chat.getMsgs(cid);
-          if (msgs.find(function (x) { return x.id === m.id; })) return;
-          msgs.push({ id: m.id, convId: cid, text: m.text, sender: m.sender,
-                      at: m.at || new Date(m.created_at).getTime() });
-          Chat.setMsgs(cid, msgs);
-          lastMsgCount = msgs.length;
-          if (!isOpen) {
-            var unread = msgs.filter(function (x) { return x.sender === "operator" && x.at > lastReadAt; }).length;
-            if (unread > 0) showUnreadBadge(unread);
-          } else {
-            render();
-          }
-        })
-        .subscribe();
-    }
-    if (convId) subscribeVisitorRt(convId);
+    // Realtime requires anon SELECT on chat_messages which we intentionally don't grant.
+    // Visitor message delivery is handled by the poll below using get_visitor_msgs RPC.
 
-    /* Hent admin-tilgjengelegheit frå Supabase. Forny since-tidspunktet ved
-       online-status slik at den lokale 8-timars utløpssjekken vert rekna frå
-       siste bekrefta fetch, ikkje frå tidspunktet admin opphavleg klikka Online. */
+    /* Hent admin-tilgjengelegheit og heartbeat frå Supabase.
+       Heartbeat > 5 min gammalt betyr at admin-fana er stengd — vis offline. */
     if (_sb) {
-      _sb.from("store").select("value")
-        .eq("tenant_id", _CHAT_NS || "site").eq("key", "chat-availability")
-        .maybeSingle()
-        .then(function(r) {
-          if (!r.data || r.error) return;
-          var val = r.data.value;
-          if (val && val.online) val = { online: true, since: Date.now() };
-          Chat.store.set("chat-availability", val);
-          var online = !!(val && val.online);
-          btn.classList.toggle("is-online", online);
-          if (isOpen) render();
-        });
+      var ns = _CHAT_NS || "site";
+      Promise.all([
+        _sb.from("store").select("value").eq("tenant_id", ns).eq("key", "chat-availability").maybeSingle(),
+        _sb.from("store").select("value").eq("tenant_id", ns).eq("key", "chat-heartbeat").maybeSingle()
+      ]).then(function(results) {
+        var rAvail = results[0], rHb = results[1];
+        var val = (rAvail.data && !rAvail.error) ? rAvail.data.value : null;
+        var hb  = (rHb.data   && !rHb.error)    ? rHb.data.value   : null;
+        var heartbeatFresh = hb && hb.ts && (Date.now() - hb.ts < 5 * 60 * 1000);
+        var online = !!(val && val.online && heartbeatFresh);
+        if (val && val.online) val = { online: online, since: Date.now() };
+        if (val) Chat.store.set("chat-availability", val);
+        btn.classList.toggle("is-online", online);
+        if (isOpen) render();
+      });
     }
 
     /* Sjekk ulesne meldingar med ein gong (ikkje vent 5 sek) */
@@ -808,9 +834,12 @@
       if (_sb) {
         var local = Chat.getMsgs(convId);
         var lastAt = local.reduce(function (t, m) { return Math.max(t, m.at || 0); }, 0);
-        _sb.from("chat_messages").select("id,text,sender,at,created_at")
-          .eq("conversation_id", convId).gt("at", lastAt || 0)
-          .then(function (res) {
+        // Use visitor-scoped RPC — anon has no direct SELECT grant on chat_messages
+        _sb.rpc("get_visitor_msgs", {
+          p_visitor_id: Chat.getVid(),
+          p_conv_id:    convId,
+          p_after_at:   lastAt || 0
+        }).then(function (res) {
             if (!res.data || !res.data.length) return;
             var changed = false;
             res.data.forEach(function (m) {
@@ -1279,7 +1308,7 @@
       if (showSettings) { renderSettingsPanel(); return; }
       var open   = convs.filter(function(c){return c.status==="open";});
       var closed = convs.filter(function(c){return c.status==="closed";});
-      var totalUnread = Chat.totalUnread();
+      var totalUnread = convs.reduce(function(s,c){return s+(c.unread||0);},0);
 
       var isOnline = Chat.getAvailability().online;
 
@@ -1319,6 +1348,10 @@
           activeId = el.getAttribute("data-conv");
           container._activeConvId = activeId;
           Chat.markRead(activeId);
+          // Update in-memory convs so renderView reads correct data
+          var idx = convs.findIndex(function(c){return c.id===activeId;});
+          if (idx>-1) convs[idx].unread = 0;
+          _adminConvs = convs;
           buildUI();
         });
       });
@@ -1326,8 +1359,16 @@
       /* Tilgjengelegheit-toggle */
       var availBtn = container.querySelector("#vwca-avail-btn");
       if (availBtn) availBtn.addEventListener("click", function () {
-        Chat.setAvailability(!Chat.getAvailability().online);
-        buildUI();
+        var btn = this;
+        btn.disabled = true;
+        var goOnline = !Chat.getAvailability().online;
+        Chat.setAvailability(goOnline).then(function() {
+          if (goOnline) _startHeartbeat(); else _stopHeartbeat();
+          buildUI();
+        }, function(err) {
+          console.warn("[chat] setAvailability failed:", err.message);
+          btn.disabled = false;
+        });
       });
 
       /* Innstillingar-knapp */
@@ -1376,12 +1417,12 @@
       var view = container.querySelector("#vwca-view");
       if (!view) return;
 
-      if (!activeId || !Chat.getConv(activeId)) {
+      // Use in-memory convs (not localStorage) — admin convs may not be in localStorage
+      var conv = convs.find(function(c){return c.id===activeId;});
+      if (!activeId || !conv) {
         view.innerHTML = '<div class="vwca-empty">Velg en samtale til venstre</div>';
         return;
       }
-
-      var conv = Chat.getConv(activeId);
       var msgs = Chat.getMsgs(activeId);
       var isClosed = conv.status === "closed";
 
@@ -1444,6 +1485,10 @@
           }
         }
         Chat.setStatus(activeId, newStatus);
+        // Keep in-memory convs in sync so buildUI shows updated status
+        var sidx = convs.findIndex(function(c){return c.id===activeId;});
+        if (sidx>-1) convs[sidx].status = newStatus;
+        _adminConvs = convs;
         buildUI();
       });
 
@@ -1510,11 +1555,29 @@
         if (!txt) return;
         sendBtn.disabled = true;
         inp.value = ""; inp.style.height = "auto";
-        Chat.addMsg(activeId, txt, "operator");
-        Chat.markRead(activeId);
-        renderView();
-        sendBtn.disabled = false;
-        if (inp) inp.focus();
+        Chat.addMsg(activeId, txt, "operator").then(function() {
+          Chat.markRead(activeId);
+          // Update in-memory conv's lastMsg/lastAt
+          var midx = convs.findIndex(function(c){return c.id===activeId;});
+          if (midx>-1) { convs[midx].lastMsg=txt.slice(0,60); convs[midx].lastAt=Date.now(); }
+          renderView();
+        }, function(err) {
+          console.warn("[chat] send failed:", err.message);
+          var errEl = view.querySelector("#vwca-send-err");
+          if (!errEl) {
+            errEl = document.createElement("div");
+            errEl.id = "vwca-send-err";
+            errEl.style.cssText = "color:#ef4444;font-size:.78rem;margin-top:.25rem;padding:0 .5rem";
+            var replyDiv = view.querySelector(".vwca-reply");
+            if (replyDiv) replyDiv.appendChild(errEl);
+          }
+          errEl.textContent = "Sending mislyktes. Prøv igjen.";
+          setTimeout(function(){if(errEl&&errEl.parentNode)errEl.textContent="";},4000);
+          inp.value = txt; // restore text so admin can retry
+        }).finally(function() {
+          sendBtn.disabled = false;
+          if (inp) inp.focus();
+        });
       }
       sendBtn.addEventListener("click", doSend);
 
@@ -1634,10 +1697,35 @@
     } else {
       buildUI();
     }
+    // Start heartbeat if admin is already online (e.g., refreshed the page)
+    if (Chat.getAvailability().online) _startHeartbeat();
   }
 
   /* ── OPPSTART ── */
-  function boot() { initWidget(); initAdmin(); }
+  function boot() {
+    // If localStorage lacks chat-config and Supabase is available, fetch it first so
+    // initWidget gets the correct admin-saved settings (colors, messages, enabled flag).
+    var ns = _CHAT_NS || "site";
+    var cfgKey = (_CHAT_NS ? _CHAT_NS + ":" : "") + "chat-config";
+    var needsFetch = _sb && !localStorage.getItem(cfgKey);
+    if (needsFetch) {
+      _sb.from("store").select("value").eq("tenant_id", ns).eq("key", "chat-config").maybeSingle()
+        .then(function(r) {
+          if (r.data && !r.error && r.data.value) {
+            try { localStorage.setItem(cfgKey, JSON.stringify(r.data.value)); } catch(e) {}
+            Object.assign(OPT, r.data.value);
+          }
+          initWidget();
+          initAdmin();
+        }, function() {
+          initWidget();
+          initAdmin();
+        });
+    } else {
+      initWidget();
+      initAdmin();
+    }
+  }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else { boot(); }

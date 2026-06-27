@@ -39,6 +39,28 @@ END;
 $$;
 
 
+-- Visitor-scoped RPCs — anon les eigne samtalar/meldingar via visitor_id-token.
+-- SECURITY DEFINER: køyrer som eigaren (omgår RLS), men validerer visitor_id sjølv.
+CREATE OR REPLACE FUNCTION get_visitor_conv(p_visitor_id text, p_conv_id text)
+RETURNS SETOF chat_conversations SECURITY DEFINER STABLE LANGUAGE sql AS $$
+  SELECT * FROM chat_conversations
+  WHERE id = p_conv_id AND visitor_id = p_visitor_id
+  LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION get_visitor_msgs(p_visitor_id text, p_conv_id text, p_after_at bigint DEFAULT 0)
+RETURNS SETOF chat_messages SECURITY DEFINER STABLE LANGUAGE sql AS $$
+  SELECT m.* FROM chat_messages m
+  WHERE m.conversation_id = p_conv_id
+    AND (p_after_at = 0 OR m.at > p_after_at)
+    AND EXISTS (
+      SELECT 1 FROM chat_conversations c
+      WHERE c.id = p_conv_id AND c.visitor_id = p_visitor_id
+    )
+  ORDER BY m.at;
+$$;
+
+
 -- ── 2. TABELLAR ──────────────────────────────────────────────────────────────
 
 -- Nettsideinnhald og innstillingar (delt nøkkel/verdi-lager)
@@ -309,7 +331,10 @@ DROP POLICY IF EXISTS links_admin       ON links;
 CREATE POLICY links_read        ON links FOR SELECT TO authenticated USING (true);
 CREATE POLICY links_admin       ON links FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
 
--- chat: anon-besøkande kan skrive og lese samtalen sin, admin har full tilgang
+-- chat: anon-besøkande kan berre skrive (INSERT) og oppdatere presence.
+-- Les-tilgang skjer utelukkande via SECURITY DEFINER-RPC-ar (get_visitor_conv / get_visitor_msgs)
+-- slik at ein anon ikkje kan lese andre besøkande sine samtalar.
+-- Admin/owner-rollen har full tilgang; vanlege members/editors har ikkje chat-tilgang.
 DROP POLICY IF EXISTS chat_conv_anon_insert ON chat_conversations;
 DROP POLICY IF EXISTS chat_conv_anon_select ON chat_conversations;
 DROP POLICY IF EXISTS chat_conv_anon_update ON chat_conversations;
@@ -317,16 +342,24 @@ DROP POLICY IF EXISTS chat_conv_auth        ON chat_conversations;
 DROP POLICY IF EXISTS chat_msg_anon_insert  ON chat_messages;
 DROP POLICY IF EXISTS chat_msg_anon_select  ON chat_messages;
 DROP POLICY IF EXISTS chat_msg_auth         ON chat_messages;
-CREATE POLICY chat_conv_anon_insert ON chat_conversations FOR INSERT TO anon WITH CHECK (true);
-CREATE POLICY chat_conv_anon_select ON chat_conversations FOR SELECT TO anon USING (true);
--- Anon kan berre oppdatere presence-felt (last_seen_at, visitor_active, visitor_read_at).
--- Kolonne-nivå GRANT under avgrensar kva felt som faktisk kan endrast.
--- last_msg/last_at/unread vert handtert av triggaren _chat_conv_update_on_msg.
-CREATE POLICY chat_conv_anon_update ON chat_conversations FOR UPDATE TO anon USING (true) WITH CHECK (true);
-CREATE POLICY chat_conv_auth        ON chat_conversations FOR ALL    TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY chat_msg_anon_insert  ON chat_messages      FOR INSERT TO anon WITH CHECK (true);
-CREATE POLICY chat_msg_anon_select  ON chat_messages      FOR SELECT TO anon USING (true);
-CREATE POLICY chat_msg_auth         ON chat_messages      FOR ALL    TO authenticated USING (true) WITH CHECK (true);
+
+-- Anon INSERT: visitor_id må vere sett (eigarskapstoken)
+CREATE POLICY chat_conv_anon_insert ON chat_conversations FOR INSERT TO anon
+    WITH CHECK (visitor_id IS NOT NULL AND char_length(visitor_id) > 4);
+
+-- Anon UPDATE: berre presence-felt (kolonne-nivå GRANT under avgrensar ytterlegare)
+CREATE POLICY chat_conv_anon_update ON chat_conversations FOR UPDATE TO anon
+    USING (true) WITH CHECK (true);
+
+-- Anon INSERT på meldingar: berre visitor-meldingar, aldri operator
+CREATE POLICY chat_msg_anon_insert ON chat_messages FOR INSERT TO anon
+    WITH CHECK (sender = 'visitor');
+
+-- Auth (chat-admin): berre admin/owner — ikkje editor/member
+CREATE POLICY chat_conv_auth ON chat_conversations FOR ALL TO authenticated
+    USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
+CREATE POLICY chat_msg_auth  ON chat_messages      FOR ALL TO authenticated
+    USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
 
 
 -- ── 7. GRANTS ────────────────────────────────────────────────────────────────
@@ -338,11 +371,13 @@ TO authenticated;
 GRANT USAGE, SELECT ON SEQUENCE store_id_seq TO authenticated;
 
 GRANT SELECT ON store TO anon;
-GRANT INSERT, SELECT ON chat_conversations, chat_messages TO anon;
--- Anon kan oppdatere eige namn/e-post, nettlesarmetadata og presence-felt.
--- Status, unread, last_msg, last_at vert ekskludert — triggaren og autentiserte brukarar handterer desse.
+-- Anon INSERT + presence UPDATE (RPC-ar handterer SELECT; ingen direkte SELECT-grant til anon)
+GRANT INSERT ON chat_conversations, chat_messages TO anon;
 GRANT UPDATE (visitor_name, visitor_email, page_url, referrer, language, browser, os, screen,
               last_seen_at, visitor_active, visitor_read_at) ON chat_conversations TO anon;
+-- Visitor-RPC-ar: SECURITY DEFINER, men må eksplisitt grantast
+GRANT EXECUTE ON FUNCTION get_visitor_conv   TO anon;
+GRANT EXECUTE ON FUNCTION get_visitor_msgs   TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO authenticated;
 
 
