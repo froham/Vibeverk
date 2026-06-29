@@ -329,8 +329,9 @@
       '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;max-height:75vh;overflow-y:auto">'+(opts.bodyHtml||"")+'</div>' +
       (opts.footHtml?'<div style="padding:.8rem 1.2rem 1rem;display:flex;gap:.5rem;border-top:1px solid var(--color-border,#e5e7eb)">'+opts.footHtml+'</div>':"");
     document.body.appendChild(dl);
-    dl.showModal();
-    dl.querySelector(".crm-dlg-close").addEventListener("click",function(){dl.close();dl.remove();});
+    try { dl.showModal(); } catch(e) { dl.setAttribute("open",""); }
+    function closeDl() { try { dl.close(); } catch(e) {} if (dl.parentNode) dl.remove(); }
+    dl.querySelector(".crm-dlg-close").addEventListener("click", closeDl);
     dl.addEventListener("close",function(){if(dl.parentNode)dl.remove();});
     if (opts.onMount) opts.onMount(dl);
     return dl;
@@ -385,7 +386,7 @@
     var expBtn = body.querySelector("[data-crm-export]");
     if (expBtn) expBtn.addEventListener("click",function(){
       App.downloadCsv("kunder.csv",
-        ["Navn","E-post","Kundenr","Bedrift","Tlf","Adresse","Notat","Opprettet"],
+        ["Navn","E-post","Kundenummer","Bedrift","Tlf","Adresse","Notat","Opprettet"],
         getCustomers().map(function(c){var b=bedriftFor(c);return[c.name||"",c.email||"",c.customerNumber||"",b?b.name:"",c.phone||"",c.address||"",c.note||"",c.created||""];}));
     });
     var newBtn = body.querySelector("[data-crm-new]");
@@ -458,7 +459,7 @@
     container.querySelectorAll("[data-crm-open]").forEach(function(el){
       if (!el.matches("li,button[data-crm-open]")) return;
       el.addEventListener("click",function(e){
-        if (e.target.closest("[data-crm-del],[data-crm-merge-check]")) return;
+        if (e.target.closest("[data-crm-del],.crm-merge-check")) return;
         renderCustomer(body, el.getAttribute("data-crm-open"));
       });
     });
@@ -842,6 +843,7 @@
     if (item.type==="internal_note"&&item.tag&&item.tag!=="normal"){var tc={important:"#2980B9",followup:"#E8833A"},tl2={important:"Viktig",followup:"Oppfølging"};tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,'+(tc[item.tag]||"#999")+' 13%,transparent);color:'+(tc[item.tag]||"#999")+'">'+esc(tl2[item.tag]||item.tag)+'</span>';}
     if (item.type==="task"&&item.done) tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#27AE60 12%,transparent);color:#27AE60">Ferdig ✓</span>';
     if (threadCount>1) tagBadge+=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#2980B9 12%,transparent);color:#2980B9">'+threadCount+' i tråd</span>';
+    if (item.source==="legacy"&&item.status) tagBadge+=' <span class="stat-badge stat-badge--'+esc(item.status)+'">'+({"ny":"Ny","lest":"Lest","løst":"Løst"}[item.status]||esc(item.status))+'</span>';
     return '<div style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb)">' +
       '<div style="flex-shrink:0;margin-top:.1rem"><div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,'+conf.color+' 13%,white);border:1.5px solid color-mix(in srgb,'+conf.color+' 28%,transparent)"><i class="ti ti-'+conf.icon+'" style="font-size:.78rem;color:'+conf.color+'"></i></div></div>' +
       '<div style="flex:1;min-width:0">' +
@@ -886,7 +888,8 @@
         '</div>',
       footHtml: C.button({label:"Slå sammen",variant:"primary",attrs:'id="dlg-merge-ok"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-merge-cancel"'}),
       onMount:function(dl){
-        dl.querySelector("#dlg-merge-cancel").addEventListener("click",function(){dl.close();dl.remove();});
+        function closeDlg() { try{dl.close();}catch(e){} if(dl.parentNode)dl.remove(); }
+        dl.querySelector("#dlg-merge-cancel").addEventListener("click", closeDlg);
         dl.querySelectorAll("input[name='merge-primary']").forEach(function(radio){
           radio.closest("label").addEventListener("change",function(){
             dl.querySelectorAll("label").forEach(function(l){l.style.borderColor="var(--color-border,#d1d5db)";});
@@ -894,7 +897,6 @@
             if (checked) checked.closest("label").style.borderColor="var(--color-primary,#2980B9)";
           });
         });
-        // highlight initial selection
         var first=dl.querySelector("input[name='merge-primary']:checked");
         if (first) first.closest("label").style.borderColor="var(--color-primary,#2980B9)";
 
@@ -902,7 +904,7 @@
           var sel=dl.querySelector("input[name='merge-primary']:checked");
           if (!sel) return;
           doMerge(toMerge,sel.value);
-          dl.close(); dl.remove(); renderAdmin(body);
+          closeDlg(); renderAdmin(body);
         });
       }
     });

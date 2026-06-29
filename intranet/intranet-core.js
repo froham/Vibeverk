@@ -539,7 +539,84 @@ window.Intranet = (function () {
     }
   }
 
+  function renderSetPassword(email, type) {
+    var root = document.getElementById("intranet");
+    if (!root) return;
+    var heading = type === "invite" ? "Vel ditt passord" : "Nytt passord";
+    var desc    = type === "invite"
+      ? 'Du er invitert til <strong>' + C.esc((CFG.company && CFG.company.name) || "Arbeidsområdet") + '</strong>. Set eit passord for å fullføre registreringa.'
+      : 'Set eit nytt passord for kontoen din (' + C.esc(email) + ').';
+
+    root.innerHTML =
+      '<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--color-bg);padding:1.5rem">' +
+        '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2.5rem;width:min(460px,100%);box-shadow:0 8px 40px rgba(0,0,0,.12)">' +
+          '<div style="margin-bottom:1.8rem">' +
+            '<div style="font-family:var(--font-display);font-weight:700;font-size:1.5rem;margin-bottom:.5rem">' + heading + '</div>' +
+            '<div style="font-size:.88rem;color:var(--color-muted);line-height:1.5">' + desc + '</div>' +
+          '</div>' +
+          '<div style="display:grid;gap:.9rem">' +
+            '<div style="display:grid;gap:.35rem"><label for="sp-pass1" style="font-size:.85rem;font-weight:600">Passord</label>' +
+            '<input id="sp-pass1" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="new-password" placeholder="Minst 8 teikn"></div>' +
+            '<div style="display:grid;gap:.35rem"><label for="sp-pass2" style="font-size:.85rem;font-weight:600">Gjenta passord</label>' +
+            '<input id="sp-pass2" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="new-password"></div>' +
+            '<button id="sp-submit" class="btn btn--primary" style="width:100%;padding:.8rem;font-size:.95rem">Sett passord</button>' +
+            '<p id="sp-status" style="font-size:.85rem;margin:0;min-height:1.2rem;text-align:center"></p>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    var st = root.querySelector("#sp-status");
+    root.querySelector("#sp-submit").addEventListener("click", function() {
+      var p1 = root.querySelector("#sp-pass1").value;
+      var p2 = root.querySelector("#sp-pass2").value;
+      st.style.color = "#c0392b";
+      if (p1.length < 8) { st.textContent = "Passordet må vera minst 8 teikn."; return; }
+      if (p1 !== p2)     { st.textContent = "Passorda er ikkje like."; return; }
+      st.style.color = "var(--color-muted)";
+      st.textContent = "Lagrar…";
+      _sb.auth.updateUser({ password: p1 }).then(function(result) {
+        if (result.error) {
+          st.style.color = "#c0392b";
+          st.textContent = result.error.message || "Noko gjekk gale.";
+          return;
+        }
+        history.replaceState(null, "", location.pathname + location.search);
+        _sb.from("users").select("role, display_name").eq("id", result.data.user.id).single().then(function(r) {
+          var role = (r.data && r.data.role) || "admin";
+          context.userId      = result.data.user.id;
+          context.displayName = (r.data && r.data.display_name) || result.data.user.email;
+          context.role        = role;
+          sessionStorage.setItem(NS + ":admin", role);
+          App.ui.hydrateFromSupabase(init);
+        });
+      });
+    });
+    root.querySelector("#sp-pass1").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") root.querySelector("#sp-submit").click();
+    });
+    setTimeout(function() { root.querySelector("#sp-pass1").focus(); }, 50);
+  }
+
   function boot() {
+    // Invite/recovery-redirect: handsam FØR productMode-sjekk slik at web-only-kundar også kan setje passord.
+    if (_sb) {
+      var hashStr    = window.location.hash;
+      var isInvite   = hashStr.indexOf("type=invite")   !== -1;
+      var isRecovery = hashStr.indexOf("type=recovery") !== -1;
+      if (isInvite || isRecovery) {
+        _sb.auth.getSession().then(function(result) {
+          var session = result.data && result.data.session;
+          if (session) {
+            renderSetPassword(session.user.email, isInvite ? "invite" : "recovery");
+          } else {
+            history.replaceState(null, "", location.pathname + location.search);
+            renderLogin();
+          }
+        });
+        return;
+      }
+    }
+
     // productMode-blokkering: berre aktiv når operatøren HAR satt dette via Console.
     // config.js-standarden blokkerer ikkje — kun eksplisitt superconfig-override gjer det.
     var _pm = (App.store.get("superconfig", {}) || {}).productMode;

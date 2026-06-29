@@ -128,6 +128,21 @@
           '</div>'
         : '') +
 
+      /* --- Endre passord ----------------------------------------------------- */
+      (App.supabase
+        ? '<div class="i-card" style="margin-bottom:1rem">' +
+            '<p class="i-section-label">Endre passord</p>' +
+            '<div style="display:grid;gap:.6rem;max-width:320px">' +
+              field("settings-pass1", "Nytt passord",     "", "password", "Minst 8 teikn") +
+              field("settings-pass2", "Gjenta passord",   "", "password", "") +
+              '<div>' +
+                '<button class="btn btn--primary btn--sm" id="settings-change-pass">Endre passord</button>' +
+                ' <span class="form__status" id="settings-pass-status"></span>' +
+              '</div>' +
+            '</div>' +
+          '</div>'
+        : '') +
+
       /* --- Farlig sone ------------------------------------------------------- */
       '<div class="i-card" style="border-color:color-mix(in srgb,#c0392b 35%,transparent)">' +
         '<p class="i-section-label" style="color:#c0392b">Farlig sone</p>' +
@@ -196,6 +211,26 @@
         btn.style.borderColor = "var(--color-primary)";
       }
     });
+
+    /* Bind endre passord */
+    var changePsBtn = root.querySelector("#settings-change-pass");
+    if (changePsBtn) {
+      changePsBtn.addEventListener("click", function() {
+        var p1 = root.querySelector("#settings-pass1").value;
+        var p2 = root.querySelector("#settings-pass2").value;
+        var st = root.querySelector("#settings-pass-status");
+        st.className = "form__status";
+        if (p1.length < 8) { st.textContent = "Minst 8 teikn."; st.className = "form__status is-error"; return; }
+        if (p1 !== p2)     { st.textContent = "Passorda er ikkje like."; st.className = "form__status is-error"; return; }
+        App.supabase.auth.updateUser({ password: p1 }).then(function(r) {
+          if (r.error) { st.textContent = r.error.message; st.className = "form__status is-error"; return; }
+          st.textContent = "Passord endra."; st.className = "form__status is-ok";
+          root.querySelector("#settings-pass1").value = "";
+          root.querySelector("#settings-pass2").value = "";
+          setTimeout(function() { if (st) st.textContent = ""; }, 3000);
+        });
+      });
+    }
 
     /* Bind e-postleverandør */
     var epSaved = root.querySelector("#email-prov-save");

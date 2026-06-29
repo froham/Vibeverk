@@ -1034,17 +1034,17 @@ window.Image = FakeImg;
   var custB = preMergeList.find(c => c.email === "per@firma.no");
   assert(!!custA && !!custB, "begge testkundene finst før sammenslåing");
 
-  var checkA = doc.querySelector('.crm-merge-check[value="' + custA.id + '"]');
-  var checkB = doc.querySelector('.crm-merge-check[value="' + custB.id + '"]');
+  var checkA = doc.querySelector('.crm-merge-check[data-merge-id="' + custA.id + '"]');
+  var checkB = doc.querySelector('.crm-merge-check[data-merge-id="' + custB.id + '"]');
   assert(!!checkA && !!checkB, "sammenslåings-avhukingsbokser finst på kunderadene");
-  checkA.checked = true; fire(checkA, "change");
-  checkB.checked = true; fire(checkB, "change");
-  assert(doc.querySelector("[data-crm-merge-bar]").style.display !== "none", "sammenslåings-bar vises når 2+ kunder er valgt");
+  if (checkA) { fire(checkA, "click"); }
+  if (checkB) { fire(checkB, "click"); }
+  var mergeBarEl = doc.querySelector("[data-crm-merge-bar]");
+  assert(!!mergeBarEl && mergeBarEl.style.display !== "none", "sammenslåings-bar vises når 2+ kunder er valgt");
 
-  var origConfirm = window.confirm;
-  window.confirm = () => true;
   fire(doc.querySelector("[data-crm-merge-btn]"), "click");
-  window.confirm = origConfirm;
+  var dlgOk = doc.querySelector("#dlg-merge-ok");
+  if (dlgOk) fire(dlgOk, "click"); // stadfest sammanslåingsdialog
 
   var mergedList = JSON.parse(window.localStorage.getItem("nordpunkt:crm-customers") || "[]");
   assert(mergedList.filter(c => c.id === custA.id || c.id === custB.id).length === 1, "kun én kundepost igjen etter sammenslåing av to");
@@ -1054,8 +1054,8 @@ window.Image = FakeImg;
 
   // --- Bedrift-gruppering ---
   fire(doc.querySelector('[data-crm-open="' + merged.id + '"]'), "click");
-  doc.querySelector("#crm-bedrift").value = "Testbedrift AS";
-  fire(doc.querySelector("[data-crm-form]"), "submit");
+  doc.querySelector("#ce-bedrift").value = "Testbedrift AS";
+  fire(doc.querySelector("[data-crm-edit]"), "submit");
   var afterBedrift = JSON.parse(window.localStorage.getItem("nordpunkt:crm-customers") || "[]").find(c => c.id === merged.id);
   assert(!!afterBedrift.bedriftId, "bedrift knyttes til kunden ved lagring");
   var bedrifter = JSON.parse(window.localStorage.getItem("nordpunkt:crm-bedrifter") || "[]");
@@ -1063,12 +1063,11 @@ window.Image = FakeImg;
   assert(!!bed && bed.name === "Testbedrift AS" && typeof bed.customerNumber === "number", "ny bedrift opprettet med eget kundenummer");
 
   window.App.addLead({ name: "Kollega", email: "kollega@firma.no", message: "Hei" });
-  fire(doc.querySelector("[data-crm-import]"), "click");
-  clickAdminTab("mod-crm");
+  clickAdminTab("mod-crm"); // autoImport() køyrer ved re-render
   var kollegaCust = JSON.parse(window.localStorage.getItem("nordpunkt:crm-customers") || "[]").find(c => c.email === "kollega@firma.no");
   fire(doc.querySelector('[data-crm-open="' + kollegaCust.id + '"]'), "click");
-  doc.querySelector("#crm-bedrift").value = "Testbedrift AS";
-  fire(doc.querySelector("[data-crm-form]"), "submit");
+  doc.querySelector("#ce-bedrift").value = "Testbedrift AS";
+  fire(doc.querySelector("[data-crm-edit]"), "submit");
   var bedrifter2 = JSON.parse(window.localStorage.getItem("nordpunkt:crm-bedrifter") || "[]");
   assert(bedrifter2.filter(b => b.name === "Testbedrift AS").length === 1, "samme bedriftsnavn gjenbruker eksisterende bedrift (lager ikke duplikat)");
   var kollegaAfter = JSON.parse(window.localStorage.getItem("nordpunkt:crm-customers") || "[]").find(c => c.id === kollegaCust.id);
@@ -1175,7 +1174,7 @@ window.Image = FakeImg;
   assert(!!crmOpenBtn, "kunde med status@test.no finst i CRM-lista");
   if (crmOpenBtn) {
     fire(crmOpenBtn, "click");
-    assert(!!doc.querySelector(".crm-history .stat-badge"), "status-badge vises i kundens historikk");
+    assert(!!doc.querySelector("[data-tl-section] .stat-badge"), "status-badge vises i kundens historikk");
     assert(!doc.querySelector("#crm-status"), "kundestatus-felt (ny/aktiv/avslutta) er fjernet fra CRM");
   }
 
@@ -1527,6 +1526,7 @@ window.Image = FakeImg;
   assert(/Kunder/.test(backupSummaryText) && /Referanser/.test(backupSummaryText) && /FAQ/.test(backupSummaryText) && /Mediebank/.test(backupSummaryText), "oppsummeringen viser kunder/referanser/faq/mediebank (alle moduler aktive)");
 
   // buildBackupPayload: fanger opp alt under navnerommet, ikke bare enkelte deler
+  window.App.store.set("superconfig", { test: true }); // sikre at superconfig er i backup-testen
   var payload = window.App.buildBackupPayload();
   assert(payload.vibeverk_backup === true, "backup-payload har gjenkjenningsmerke");
   assert(Array.isArray(payload.data.leads), "henvendelser/tilbud er med i sikkerhetskopien");

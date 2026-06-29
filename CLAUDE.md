@@ -43,9 +43,9 @@ node test.js       # public site — must pass
 node test-intranet.js  # intranet — must pass
 ```
 
-CI runs both on every push. Two tests are currently known-failing and unrelated to chat/branding work:
-- `"henvendelses-fanen heter «Kontakt»"`
-- `"sammenslåings-avhukingsbokser finst på kunderadene"`
+CI runs both on every push. Known-failing tests (pre-existing, unrelated to current work):
+- `"henvendelses-fanen heter «Kontakt»"` (test.js — tab label mismatch)
+- `"o3: workspaceship via direkterute"` (test-intranet.js — workspace redirect test)
 
 All other tests must remain green. Do not silently remove or skip failing tests.
 

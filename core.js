@@ -882,13 +882,19 @@ window.App = (function () {
     if (window.VwChatAdmin && feat("chat") && OPT_CHAT.enabled !== false) {
       tabs.push({ id: "chat-admin", label: "Chat", category: "henvendelser" });
     }
-    // Eigar ser full sikkerhetskopi (med per-modul-eksport)
-    // Tilsette/andre roller ser forenkla versjon
-    const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "owner") : "owner";
-    if (_backupRole === "owner") {
+    // Admin ser full sikkerhetskopi (med per-modul-eksport)
+    // Andre roller ser forenkla versjon
+    const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "admin") : "admin";
+    if (_backupRole === "admin" || _backupRole === "owner") {
       tabs.push({ id: "sikkerhetskopi", label: "Sikkerhetskopi", category: "innstillinger" });
     } else {
       tabs.push({ id: "admin-backup",   label: "Sikkerhetskopi", category: "innstillinger" });
+    }
+    if (_sb) {
+      tabs.push({ id: "min-konto", label: "Min konto", category: "innstillinger" });
+    }
+    if (_sb && (_backupRole === "admin" || _backupRole === "owner")) {
+      tabs.push({ id: "brukarar",  label: "Brukarar",  category: "innstillinger" });
     }
     return tabs;
   }
@@ -996,7 +1002,7 @@ window.App = (function () {
             return;
           }
           _sb.from("users").select("role").eq("id", result.data.user.id).single().then(function (r) {
-            const role = (r.data && r.data.role) || "owner";
+            const role = (r.data && r.data.role) || "admin";
             setAuthed(role);
             hydrateFromSupabase(function () {
               if (role === "member") activeCategory = "henvendelser";
@@ -1007,7 +1013,7 @@ window.App = (function () {
       } else {
         // Fallback: config-passord (testmiljø / lokal køyring utan Supabase)
         if (pass === (CFG.admin && CFG.admin.password)) {
-          setAuthed("owner");
+          setAuthed("admin");
           renderAdminPanel(root);
         } else {
           setStatus(statusEl, "Feil passord.", "error");
@@ -1022,7 +1028,7 @@ window.App = (function () {
 
   // Selve panelet
   function renderAdminPanel(root) {
-    const role = getAuthRole() || "owner";
+    const role = getAuthRole() || "admin";
     const allowedCats = allowedCategoriesForRole(role);
     const allTabs = buildAdminTabs();
     const visibleTabs = allTabs.filter(function (t) { return allowedCats.indexOf(t.category) > -1; });
@@ -1106,6 +1112,8 @@ window.App = (function () {
     }
     if (activeTab === "sikkerhetskopi") return adminBackup(body);
     if (activeTab === "admin-backup")   return adminBackupCustomer(body);
+    if (activeTab === "brukarar")       return adminBrukarar(body);
+    if (activeTab === "min-konto")      return adminMinKonto(body);
     if (activeTab.indexOf("mod-") === 0) {
       const id = activeTab.slice(4);
       const mod = modules.find(function (m) { return m.id === id; });
@@ -2567,6 +2575,156 @@ window.App = (function () {
       importBackup(file, function (ok, msg) {
         if (ok) { st.textContent = msg + " Laster på nytt…"; st.className = "form__status is-ok"; setTimeout(function () { location.reload(); }, 700); }
         else    { st.textContent = msg; st.className = "form__status is-error"; e.target.value = ""; }
+      });
+    });
+  }
+
+  /* --- Web-admin: Brukarstyring --------------------------------------------- */
+  function _callManageUser(action, payload) {
+    const supaUrl = CFG.supabase && CFG.supabase.url;
+    if (!supaUrl || !_sb) return Promise.reject(new Error("Ingen Supabase-tilkopling"));
+    return _sb.auth.getSession().then(function(r) {
+      const token = r.data && r.data.session && r.data.session.access_token;
+      if (!token) throw new Error("Ikkje innlogga");
+      return fetch(supaUrl + "/functions/v1/manage-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(Object.assign({ action: action }, payload))
+      }).then(function(res) { return res.json(); });
+    });
+  }
+
+  function adminBrukarar(body) {
+    const ROLE_LABELS = { admin: "Admin", editor: "Redaktør", member: "Medlem" };
+    body.innerHTML = '<p style="color:var(--color-muted);padding:.5rem 0">Laster brukarar…</p>';
+    _sb.from("users").select("id, display_name, email, role, created_at").order("created_at")
+      .then(function(r) {
+        if (r.error) { body.innerHTML = '<p style="color:#c0392b">Feil: ' + C.esc(r.error.message) + '</p>'; return; }
+        renderBrukarar(body, r.data || [], ROLE_LABELS);
+      });
+  }
+
+  function renderBrukarar(body, users, ROLE_LABELS) {
+    const roleOpts = Object.keys(ROLE_LABELS).map(function(r) {
+      return '<option value="' + r + '">' + ROLE_LABELS[r] + '</option>';
+    }).join("");
+    const currentId = _sb._auth && _sb._auth.user && _sb._auth.user.id;
+
+    body.innerHTML =
+      '<div class="bk-wrap">' +
+        '<h4 class="an-heading">Inviter ny brukar</h4>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem">' +
+          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">E-post</label>' +
+          '<input id="bru-email" type="email" class="admin-input" placeholder="brukar@firma.no"></div>' +
+          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Namn (valfritt)</label>' +
+          '<input id="bru-name" type="text" class="admin-input" placeholder="Ola Nordmann"></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:1.6rem">' +
+          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Rolle</label>' +
+          '<select id="bru-role" class="admin-input">' + roleOpts + '</select></div>' +
+          C.button({ label: "Send invitasjon", variant: "primary", size: "sm", attrs: 'id="bru-invite-btn"' }) +
+          '<span id="bru-invite-status" style="font-size:.85rem;color:var(--color-muted)"></span>' +
+        '</div>' +
+        '<h4 class="an-heading">Brukarar (' + users.length + '/50)</h4>' +
+        '<ul class="admin-list">' +
+          users.map(function(u) {
+            const isSelf = u.id === currentId;
+            const roleSelectOpts = Object.keys(ROLE_LABELS).map(function(r) {
+              return '<option value="' + r + '"' + (u.role === r ? " selected" : "") + '>' + ROLE_LABELS[r] + '</option>';
+            }).join("");
+            return '<li class="admin-row">' +
+              '<div class="admin-row__main">' +
+                '<div style="font-weight:600">' + C.esc(u.display_name || u.email || "Ukjend") + '</div>' +
+                '<div class="admin-row__meta">' + C.esc(u.email || "") + '</div>' +
+              '</div>' +
+              '<div class="admin-row__actions">' +
+                (isSelf
+                  ? '<span style="font-size:.8rem;padding:.3rem .7rem;border-radius:999px;background:var(--color-tint);color:var(--color-primary);font-weight:600">' + (ROLE_LABELS[u.role] || u.role) + ' (deg)</span>'
+                  : '<select class="bru-role-sel admin-input" style="width:auto" data-uid="' + C.esc(u.id) + '">' + roleSelectOpts + '</select>' +
+                    C.button({ label: "Fjern", variant: "danger", size: "sm", attrs: 'class="bru-remove-btn" data-uid="' + C.esc(u.id) + '" data-name="' + C.esc(u.display_name || u.email || "Ukjend") + '"' })
+                ) +
+              '</div>' +
+            '</li>';
+          }).join("") +
+        '</ul>' +
+      '</div>';
+
+    const statusEl = body.querySelector("#bru-invite-status");
+    body.querySelector("#bru-invite-btn").addEventListener("click", function() {
+      const email = (body.querySelector("#bru-email").value || "").trim();
+      const name  = (body.querySelector("#bru-name").value  || "").trim();
+      const role  = body.querySelector("#bru-role").value;
+      if (!email) { statusEl.style.color = "#c0392b"; statusEl.textContent = "E-post er påkrevd."; return; }
+      statusEl.style.color = "var(--color-muted)"; statusEl.textContent = "Sender…";
+      const redirectTo = (CFG.supabase && CFG.supabase.url
+        ? window.location.origin + "/intranet/"
+        : window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "/intranet/"));
+      _callManageUser("invite", { email: email, display_name: name, role: role, redirect_to: redirectTo })
+        .then(function(res) {
+          if (res.error) { statusEl.style.color = "#c0392b"; statusEl.textContent = res.error; return; }
+          statusEl.style.color = "#16a34a"; statusEl.textContent = "Invitasjon sendt til " + email + "!";
+          body.querySelector("#bru-email").value = "";
+          body.querySelector("#bru-name").value  = "";
+          setTimeout(function() { adminBrukarar(body); }, 1500);
+        })
+        .catch(function(e) { statusEl.style.color = "#c0392b"; statusEl.textContent = e.message || "Nettverksfeil."; });
+    });
+
+    body.querySelectorAll(".bru-role-sel").forEach(function(sel) {
+      sel.addEventListener("change", function() {
+        const uid  = sel.getAttribute("data-uid");
+        const role = sel.value;
+        _sb.from("users").update({ role: role }).eq("id", uid).then(function(r) {
+          if (r.error) { alert("Kunne ikkje oppdatere rolle."); return; }
+          sel.style.outline = "2px solid var(--color-primary)";
+          setTimeout(function() { sel.style.outline = ""; }, 1200);
+        });
+      });
+    });
+
+    body.querySelectorAll(".bru-remove-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        const uid  = btn.getAttribute("data-uid");
+        const name = btn.getAttribute("data-name");
+        if (!confirm("Fjerne brukar «" + name + "»? Dette kan ikkje angras.")) return;
+        _callManageUser("remove", { user_id: uid })
+          .then(function(res) {
+            if (res.error) { alert("Feil: " + res.error); return; }
+            adminBrukarar(body);
+          })
+          .catch(function() { alert("Nettverksfeil."); });
+      });
+    });
+  }
+
+  function adminMinKonto(body) {
+    if (!_sb) { body.innerHTML = '<p style="color:var(--color-muted)">Krev Supabase-tilkopling.</p>'; return; }
+    body.innerHTML =
+      '<div class="bk-wrap">' +
+        '<h4 class="an-heading">Endre passord</h4>' +
+        '<div style="display:grid;gap:.6rem;max-width:320px">' +
+          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Nytt passord</label>' +
+          '<input id="mk-pass1" type="password" class="admin-input" placeholder="Minst 8 teikn" autocomplete="new-password"></div>' +
+          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Gjenta passord</label>' +
+          '<input id="mk-pass2" type="password" class="admin-input" autocomplete="new-password"></div>' +
+          '<div>' + C.button({ label: "Endre passord", variant: "primary", size: "sm", attrs: 'id="mk-save"' }) +
+          ' <span class="form__status" id="mk-status"></span></div>' +
+        '</div>' +
+      '</div>';
+
+    body.querySelector("#mk-save").addEventListener("click", function() {
+      const p1 = body.querySelector("#mk-pass1").value;
+      const p2 = body.querySelector("#mk-pass2").value;
+      const st = body.querySelector("#mk-status");
+      if (p1.length < 8) { st.className = "form__status is-error"; st.textContent = "Minst 8 teikn."; return; }
+      if (p1 !== p2)     { st.className = "form__status is-error"; st.textContent = "Passorda er ikkje like."; return; }
+      st.className = "form__status"; st.textContent = "Lagrar…";
+      _sb.auth.updateUser({ password: p1 }).then(function(r) {
+        if (r.error) { st.className = "form__status is-error"; st.textContent = r.error.message; return; }
+        st.className = "form__status is-ok"; st.textContent = "Passord endra.";
+        body.querySelector("#mk-pass1").value = "";
+        body.querySelector("#mk-pass2").value = "";
+        setTimeout(function() { if (st) st.textContent = ""; }, 3000);
       });
     });
   }
