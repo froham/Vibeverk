@@ -834,23 +834,20 @@ window.Image = FakeImg;
   assert(anCardTexts.some(function (t) { return /Bilder i Mediebank/.test(t); }), "antall bilder i mediebank vises");
   assert(anCardTexts.some(function (t) { return /Kunder/.test(t); }), "antall kunder (CRM) vises");
 
-  // Super-admin: analyse-innstillinger kan settes der
+  // Super-admin: forenkla form — berre passord og nullstilling (analyse flytta til /console/)
   doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
   doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
   doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
   doc.querySelector("#sa-pass").value = "Superadmin";
   fire(doc.querySelector("[data-sa-login]"), "submit");
-  assert(!!doc.querySelector("#sa-an-pl"), "Plausible-felt finnes i super-admin");
-  assert(!!doc.querySelector("#sa-an-plembed"), "Plausible embed-felt finnes i super-admin");
-  assert(!doc.querySelector("#sa-an-ga") && !doc.querySelector("#sa-an-fa") && !doc.querySelector("#sa-an-gtm"), "GA4/Fathom/GTM-felt er fjernet (kun Plausible støttes)");
-  assert(!doc.querySelector("#sa-github"), "GitHub-URL-felt er fjernet fra super-admin");
-  doc.querySelector("#sa-an-pl").value = "nordpunkt.no";
-  fire(doc.querySelector("[data-sa-form]"), "submit");
-  var savedAn = JSON.parse(window.localStorage.getItem("nordpunkt:analytics") || "{}");
-  assert(savedAn.plausible === "nordpunkt.no", "Plausible-domene lagret via super-admin");
+  assert(!!doc.querySelector("#sa-apass"), "admin-passord-felt finnes i forenkla super-admin");
+  assert(!doc.querySelector("#sa-an-pl"), "Plausible-felt er flytta til Konsollen (ikkje i super-admin)");
+  assert(!doc.querySelector("#sa-an-ga") && !doc.querySelector("#sa-an-fa") && !doc.querySelector("#sa-an-gtm"), "GA4/Fathom/GTM-felt er fjerna (analyseconfig berre i Konsollen)");
+  assert(!doc.querySelector("#sa-github"), "GitHub-URL-felt er fjerna frå super-admin");
   doc.getElementById("super-admin-root").remove();
 
-  // Vanlig admin viser nå ekstern lenke (siden ingen embed er satt, bare Plausible)
+  // Analyse-fanen: simuler konfigurert analyse direkte via localStorage
+  window.localStorage.setItem("nordpunkt:analytics", JSON.stringify({ plausible: "nordpunkt.no" }));
   clickAdminTab("analyse");
   assert(!!doc.querySelector(".an-ext-link"), "ekstern lenke til Plausible vises i Analyse-fanen");
 

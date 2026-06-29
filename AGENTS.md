@@ -68,3 +68,13 @@ node test-intranet.js # must pass
 Do not propose changes that cause new test failures. The two known-failing tests are:
 - `"henvendelses-fanen heter «Kontakt»"`
 - `"sammenslåings-avhukingsbokser finst på kunderadene"`
+
+## AI agent workflow
+
+- Run **Vibeverk Security Auditor** before considering security-sensitive changes ready for merge or deployment.
+- Run **Privacy and Compliance Advisor** before launch of any feature that collects, stores, shares, analyses or exposes personal data.
+- Run **UX and Mobile Reviewer** after meaningful UI, module, modal, layout or responsive changes.
+- Security-sensitive changes: authentication, roles, permissions, superadmin access, Supabase RLS, storage, file sharing, APIs, webhooks, third-party integrations, payment-related integrations and customer data.
+- Privacy drafts must match verified functionality and confirmed customer facts.
+- No agent may claim legal compliance or security assurance solely based on AI review.
+- No `git push`, Supabase SQL, deployment or production changes without explicit user approval.

@@ -193,7 +193,7 @@ kbEd.querySelector("#kb-official").checked = true;
 kbEd.querySelector("#kb-save-btn").dispatchEvent(new window.Event("click",{bubbles:true}));
 const kb = App.store.get("wsp-kb",[]);
 assert(kb.length===1,             "j4: artikkel lagra");
-assert(kb[0].official===true,     "j5: offisiell-flagg");
+assert(kb[0].published===true,    "j5: offisiell-flagg");
 
 /* --- K) MEDIEBANK --------------------------------------------------------- */
 nav("#/media-internal");

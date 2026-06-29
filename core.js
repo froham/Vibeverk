@@ -3164,203 +3164,29 @@ window.App = (function () {
     }
   }
 
-  let saActiveTab = "utseende";
-
-  // Kuratert utvalg fontpar — rask-velg som fyller inn fritekstfelta under.
-  // Fritekstfelta er framleis kilden til sanninga; dette er berre ein snarvei.
-  const FONT_PAIRS = [
-    { label: "Syne + Inter",                     display: "Syne",              body: "Inter" },
-    { label: "Playfair Display + Source Sans 3", display: "Playfair Display",  body: "Source Sans 3" },
-    { label: "Space Grotesk + Work Sans",        display: "Space Grotesk",     body: "Work Sans" },
-    { label: "Fraunces + Karla",                 display: "Fraunces",          body: "Karla" },
-    { label: "Poppins + Nunito Sans",             display: "Poppins",          body: "Nunito Sans" }
-  ];
-
+  // renderSuperAdminForm — forenkla utgåve. Full konfigurasjon har flytta til /console/.
+  // Beheld berre admin-passord og nullstilling her, for naudsituasjonar frå #admin.
   function renderSuperAdminForm(body) {
-    const sc   = getSuperConfig();
-    const col  = Object.assign({}, CFG.colors,   sc.colors   || {});
-    const com  = Object.assign({}, CFG.company,  sc.company  || {});
-    const fnt  = Object.assign({}, CFG.fonts,    sc.fonts    || {});
-    const wsp  = Object.assign({}, CFG.workspace || {}, sc.workspace || {});
-    const ft   = Object.assign({}, CFG.features, sc.features || {});
-    const meta = sc.meta || {};
-    const an   = Store.get("analytics", null) || (CFG.analytics || {});
-    const priv = Object.assign({}, CFG.privacy, sc.privacy || {});
-
-    const FEAT_LABELS = {
-      newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg på innlegg",
-      social:"Sosiale lenker", booking:"Booking", quote:"Tilbud",
-      references:"Referanser", faq:"FAQ", siteSearch:"Søk i toppmeny",
-      crm:"Kunder", mediabank:"Mediebank", scrollbanner:"Banner",
-      chat:"Native Chat (chatboble)"
-    };
-    const IFEAT_LABELS = {
-      announcements:"Aktuelt", notes:"Mine notatar", kb:"Kunnskapsbase",
-      mediaInternal:"Mediebank", links:"Lenker", orgdrift:"Organisasjon & drift",
-      crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar"
-    };
-    const featFields = Object.keys(CFG.features || {}).map(function (k) {
-      const on = (ft[k] !== false);
-      const lbl = FEAT_LABELS[k] || k;
-      return `<label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem;cursor:pointer">
-        <input type="checkbox" data-sa-feat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(lbl)}
-      </label>`;
-    }).join("");
-    const ift = Object.assign({}, CFG.intranettFeatures, sc.intranettFeatures || {});
-    const intranettFeatFields = Object.keys(CFG.intranettFeatures || {}).map(function (k) {
-      const on = (ift[k] !== false);
-      const lbl = IFEAT_LABELS[k] || k;
-      return `<label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem;cursor:pointer">
-        <input type="checkbox" data-sa-ifeat="${C.esc(k)}" ${on?"checked":""}> ${C.esc(lbl)}
-      </label>`;
-    }).join("");
-
-    const saTabs = [
-      { id: "utseende",   label: "Web" },
-      { id: "workspace",  label: "Workspace" },
-      { id: "analyse",    label: "Analyse" },
-      { id: "personvern", label: "Personvern" },
-      { id: "funksjoner", label: "Funksjoner" },
-      { id: "system",     label: "System" }
-    ];
-    const saTabsHtml = `<div class="tabs" role="tablist">` + saTabs.map(function (t) {
-      return `<button type="button" class="tab ${t.id === saActiveTab ? "is-active" : ""}" data-sa-tab="${t.id}">${C.esc(t.label)}</button>`;
-    }).join("") + `</div>`;
-
-    function pane(id, html) {
-      return `<div class="sa-pane" data-sa-pane="${id}" style="${id === saActiveTab ? "" : "display:none"}">${html}</div>`;
-    }
-
     body.innerHTML =
-      saTabsHtml +
+      '<div style="margin-bottom:1rem;padding:.85rem 1rem;background:var(--color-alt);border:1px solid var(--color-border);border-radius:10px">' +
+        '<p style="margin:0;font-size:.88rem"><strong>Full konfigurasjon er flytta til Konsollen</strong> — ' +
+        'fargar, fontar, Workspace, Analyse, Personvern og funksjonsbrytarar er tilgjengelege på ' +
+        '<a href="/console/" target="_blank" style="font-weight:600">/console/</a>.</p>' +
+      '</div>' +
       '<form data-sa-form>' +
-        pane("utseende",
-          '<fieldset class="admin-group"><legend>Firma</legend>' +
-            C.field({ id:"sa-name",    label:"Firmanavn",  value: com.name    || "" }) +
-            C.field({ id:"sa-tagline", label:"Tagline",    value: com.tagline || "" }) +
-            C.field({ id:"sa-logo",    label:"Logo-URL",   value: com.logoUrl || "", placeholder:"https://…" }) +
-          '</fieldset>' +
-          '<fieldset class="admin-group"><legend>SEO og deling</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i søkeresultater og som forhåndsvisning når en lenke til siden deles. Bilde/favicon må være ekte, offentlig tilgjengelige URL-er (f.eks. fra GitHub Pages) — IKKE data-URL fra bildefeltet, eksterne crawlere kan ikke lese localStorage.</p>' +
-            C.field({ id:"sa-metadesc", label:"Meta-beskrivelse", multiline:true, rows:2, value: com.metaDescription || "", placeholder:"Kort beskrivelse, 1–2 setninger" }) +
-            C.field({ id:"sa-ogimage", label:"Delingsbilde (OG-bilde)", value: com.ogImage || "", placeholder:"https://… (anbefalt ca. 1200×630px)" }) +
-            C.field({ id:"sa-favicon", label:"Favicon-URL", value: com.favicon || "", placeholder:"https://…" }) +
-          '</fieldset>' +
-          '<fieldset class="admin-group"><legend>Fargar</legend>' +
-            '<div class="bk-2col">' +
-              `<div class="field"><label>Primærfarge</label><input type="color" id="sa-primary" value="${C.esc(col.primary||"#1a7a6e")}"></div>` +
-              `<div class="field"><label>Sekundærfarge</label><input type="color" id="sa-secondary" value="${C.esc(col.secondary||"#c17f3e")}"></div>` +
-            '</div>' +
-            `<div class="field"><label>Bakgrunnsfarge</label><input type="color" id="sa-bg" value="${C.esc(col.background||"#fbfaf8")}"></div>` +
-            '<div class="bk-2col">' +
-              `<div class="field"><label>Tekstfarge</label><input type="color" id="sa-text" value="${C.esc(col.text||"#1B1B1F")}"></div>` +
-              `<div class="field"><label>Overflate-farge (kort, paneler)</label><input type="color" id="sa-surface" value="${C.esc(col.surface||"#ffffff")}"></div>` +
-            '</div>' +
-          '</fieldset>' +
-          '<fieldset class="admin-group"><legend>Fontar</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Skriv inn Google Fonts-namn og dei weights du treng. Sida brukar: display <strong>600, 700, 800</strong> · brødtekst <strong>400, 500, 600</strong>.</p>' +
-            '<div class="fontpair-row">' +
-              FONT_PAIRS.map(function (p, i) {
-                return `<button type="button" class="fontpair-btn" data-fontpair="${i}">${C.esc(p.label)}</button>`;
-              }).join("") +
-            '</div>' +
-            '<div class="bk-2col">' +
-              C.field({ id:"sa-dfont", label:"Display-font", value: fnt.display || "", placeholder:"Syne" }) +
-              C.field({ id:"sa-dweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.display ? fnt.weights.display.join(",") : "600,700,800"), placeholder:"600,700,800", hint:"Typisk for overskrifter" }) +
-            '</div>' +
-            '<div class="bk-2col">' +
-              C.field({ id:"sa-bfont", label:"Brødtekst-font", value: fnt.body || "", placeholder:"Inter" }) +
-              C.field({ id:"sa-bweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.body ? fnt.weights.body.join(",") : "400,500,600"), placeholder:"400,500,600", hint:"Typisk for brødtekst" }) +
-            '</div>' +
-          '</fieldset>'
-        ) +
-        pane("workspace",
-          '<fieldset class="admin-group"><legend>Workspace-innstillingar</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse innstillingane gjeld berre Workspace (intranett) — uavhengig av nettside-brandinga.</p>' +
-            C.field({ id:"sa-wsp-name", label:"Arbeidsområdenamn", value: wsp.name || "", placeholder:"Tomt = brukar firmanamnet" }) +
-            '<div class="bk-2col">' +
-              `<div class="field"><label>Aksentfarge (Workspace)</label><input type="color" id="sa-wsp-accent" value="${C.esc(wsp.accentColor || col.primary || "#2563eb")}"></div>` +
-            '</div>' +
-            '<p style="font-size:.78rem;color:var(--color-muted);margin:.5rem 0 0">Aksentfarga overrider primærfargen berre i Workspace — nettsida brukar framleis si eiga farge.</p>' +
-          '</fieldset>'
-        ) +
-        pane("analyse",
-          '<fieldset class="admin-group"><legend>Analyse og integrasjoner</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Berre synleg her. Kunden ser kun resultatet i Analyse-fanen i sin admin.</p>' +
-            C.field({ id:"sa-an-tawk", label:"Tidio – Public Key", value: an.tawkto || "", placeholder:"abc123defg456",
-              hint:"Finn Public Key under Settings → General i Tidio. Berre nøkkelen, ikkje heile URL-en. Ingen cookies — EU/EEA-serverar." }) +
-            C.field({ id:"sa-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"nordpunkt.no" }) +
-            C.field({ id:"sa-an-plembed", label:"Plausible – delt lenke for innebygd dashboard", value: an.plausibleEmbed || "", placeholder:"https://plausible.io/share/nordpunkt.no?auth=xxxxx",
-                        hint:"Plausible → Site Settings → Visibility → Embed dashboard. Vises direkte i kundens Analyse-fane." }) +
-          '</fieldset>'
-        ) +
-        pane("personvern",
-          '<fieldset class="admin-group"><legend>Personvernerklæring</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, samt via «Personvern»-lenken i footer.</p>' +
-            C.field({ id:"sa-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
-            C.richTextField({ id:"sa-priv-text", label:"Tekst", value: priv.text || "" }) +
-            '<div style="margin-top:.6rem">' +
-              C.button({ label:"Generer forslag på nytt", variant:"ghost", attrs:'data-priv-regen' }) +
-              '<p style="font-size:.78rem;color:var(--color-muted);margin:.4rem 0 0">Lager et nytt forslag basert på modulene som er aktive nå (Tilbud/Booking/analyse). Overskriver kun feltet over — lagres ikke før du selv trykker «Lagre og bruk».</p>' +
-            '</div>' +
-          '</fieldset>'
-        ) +
-        pane("funksjoner",
-          '<fieldset class="admin-group"><legend>Nettside</legend>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + featFields + '</div>' +
-          '</fieldset>' +
-          '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Intranett</legend>' +
-            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Låste moduler (Dashboard, Oppgaver, Innstillinger) er alltid på og vises ikke her. Skrur du av alle, kan kunden fortsatt logge inn men ser bare tomme moduler.</p>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">' + intranettFeatFields + '</div>' +
-          '</fieldset>'
-        ) +
-        pane("system",
-          '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
-            C.field({ id:"sa-apass", label:"Passord (full adgang)", value: CFG.admin && CFG.admin.password || "" }) +
-          '</fieldset>' +
-          '<fieldset class="admin-group"><legend>Faresone</legend>' +
-            C.button({ label:"Nullstill alt", variant:"ghost", attrs:'data-sa-reset style="border-color:#c0392b;color:#c0392b"' }) +
-          '</fieldset>'
-        ) +
-        '<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:1.2rem">' +
-          C.button({ label:"Lagre og bruk", type:"submit", variant:"primary" }) +
+        '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .6rem">Passordet kunden bruker for å opne web-admin via #admin-lenkja.</p>' +
+          C.field({ id:"sa-apass", label:"Passord", type:"password", value: CFG.admin && CFG.admin.password || "" }) +
+        '</fieldset>' +
+        '<fieldset class="admin-group"><legend>Faresone</legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .6rem">Slettar all superconfig og startar frå config.js-verdiane. Kan ikkje angrast.</p>' +
+          C.button({ label:"Nullstill all konfig", variant:"ghost", attrs:'data-sa-reset style="border-color:#c0392b;color:#c0392b"' }) +
+        '</fieldset>' +
+        '<div style="margin-top:1.2rem;display:flex;gap:.6rem;align-items:center">' +
+          C.button({ label:"Lagre passord", type:"submit", variant:"primary" }) +
         '</div>' +
         '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
       '</form>';
-
-    body.querySelectorAll("[data-sa-tab]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        saActiveTab = btn.getAttribute("data-sa-tab");
-        body.querySelectorAll("[data-sa-tab]").forEach(function (b) { b.classList.toggle("is-active", b === btn); });
-        body.querySelectorAll("[data-sa-pane]").forEach(function (p) {
-          p.style.display = (p.getAttribute("data-sa-pane") === saActiveTab) ? "" : "none";
-        });
-      });
-    });
-    bindRichTextFields(body);
-
-    // Fontpar rask-velg: fyller inn fritekstfelta (som framleis er kilden til sanninga)
-    body.querySelectorAll("[data-fontpair]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        const p = FONT_PAIRS[parseInt(btn.getAttribute("data-fontpair"), 10)];
-        if (!p) return;
-        body.querySelector("#sa-dfont").value = p.display;
-        body.querySelector("#sa-bfont").value = p.body;
-        body.querySelector("#sa-dweights").value = "600,700,800";
-        body.querySelector("#sa-bweights").value = "400,500,600";
-        saHasUnsaved = true;
-      });
-    });
-
-    // Personvernerklæring: regenerer forslag basert på moduler/analyse som er aktive NÅ
-    const privRegenBtn = body.querySelector("[data-priv-regen]");
-    if (privRegenBtn) privRegenBtn.addEventListener("click", function () {
-      const wrap = body.querySelector("#sa-priv-text").closest("[data-rtfield]");
-      const editor = wrap.querySelector("[data-rt-editor]");
-      editor.innerHTML = textToRichHtml(computeDefaultPrivacyText());
-      editor.dispatchEvent(new Event("input", { bubbles: true }));
-      saHasUnsaved = true;
-    });
 
     body.querySelector("[data-sa-reset]").addEventListener("click", function () {
       if (!confirm("Nullstill all super-admin-konfig og gå tilbake til config.js-verdiane?")) return;
@@ -3368,68 +3194,16 @@ window.App = (function () {
       location.reload();
     });
 
-    // Marker som endra ved kvar inputendring
-    body.querySelectorAll("input, textarea").forEach(function (el) {
-      el.addEventListener("input", function () { saHasUnsaved = true; });
-      el.addEventListener("change", function () { saHasUnsaved = true; });
-    });
-
     body.querySelector("[data-sa-form]").addEventListener("submit", function (e) {
       e.preventDefault();
-      const feats = {};
-      body.querySelectorAll("[data-sa-feat]").forEach(function (cb) {
-        feats[cb.getAttribute("data-sa-feat")] = cb.checked;
+      const newSC = Object.assign({}, getSuperConfig(), {
+        adminPassword: body.querySelector("#sa-apass").value
       });
-      const ifeats = {};
-      body.querySelectorAll("[data-sa-ifeat]").forEach(function (cb) {
-        ifeats[cb.getAttribute("data-sa-ifeat")] = cb.checked;
-      });
-      const newSC = {
-        company:  { name: body.querySelector("#sa-name").value.trim(),
-                    tagline: body.querySelector("#sa-tagline").value.trim(),
-                    logoUrl: body.querySelector("#sa-logo").value.trim(),
-                    metaDescription: body.querySelector("#sa-metadesc").value.trim(),
-                    ogImage: body.querySelector("#sa-ogimage").value.trim(),
-                    favicon: body.querySelector("#sa-favicon").value.trim() },
-        colors:   { primary:    body.querySelector("#sa-primary").value,
-                    secondary:  body.querySelector("#sa-secondary").value,
-                    background: body.querySelector("#sa-bg").value,
-                    text:       body.querySelector("#sa-text").value,
-                    surface:    body.querySelector("#sa-surface").value },
-        fonts: {
-          display:  body.querySelector("#sa-dfont").value.trim(),
-          body:     body.querySelector("#sa-bfont").value.trim(),
-          weights: {
-            display: body.querySelector("#sa-dweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean),
-            body:    body.querySelector("#sa-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
-          }
-        },
-        workspace: {
-          name:        (body.querySelector("#sa-wsp-name")   ? body.querySelector("#sa-wsp-name").value.trim()  : wsp.name        || ""),
-          accentColor: (body.querySelector("#sa-wsp-accent") ? body.querySelector("#sa-wsp-accent").value        : wsp.accentColor || "")
-        },
-        adminPassword: body.querySelector("#sa-apass").value,
-        features: feats,
-        intranettFeatures: ifeats,
-        privacy: {
-          heading: body.querySelector("#sa-priv-heading").value.trim(),
-          text:    readRichTextField(body, "sa-priv-text")
-        }
-      };
       saveSuperConfig(newSC);
-
-      // Analyse-innstillingar lagres separat (samme nøkkel som adminAnalyse/initAnalytics leser)
-      Store.set("analytics", {
-        tawkto:          body.querySelector("#sa-an-tawk")    ? body.querySelector("#sa-an-tawk").value.trim()    : (an.tawkto    || ""),
-        plausible:       body.querySelector("#sa-an-pl").value.trim(),
-        plausibleEmbed:  body.querySelector("#sa-an-plembed").value.trim()
-      });
-      initAnalytics();
-
       saHasUnsaved = false;
       const st = body.querySelector("[data-sa-status]");
-      st.textContent = "✓ Lagra! Endringar er aktivert."; st.className = "form__status is-ok";
-      setTimeout(function () { if (st) st.textContent = ""; }, 3000);
+      st.textContent = "✓ Passord lagra!"; st.className = "form__status is-ok";
+      setTimeout(function () { if (st) st.textContent = ""; }, 2500);
     });
   }
 

@@ -148,9 +148,11 @@ window.VwConsole = (function () {
     '</div>';
   }
 
-  function colorField(id, label, value) {
+  function colorField(id, label, value, hint) {
     return '<div class="field"><label>' + C.esc(label) + '</label>' +
-      '<input type="color" id="' + id + '" value="' + C.esc(value) + '"></div>';
+      '<input type="color" id="' + id + '" value="' + C.esc(value) + '">' +
+      (hint ? '<p class="field__hint">' + C.esc(hint) + '</p>' : '') +
+    '</div>';
   }
 
   function saveBtn() {
@@ -347,13 +349,13 @@ window.VwConsole = (function () {
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<div class="bk-2col">' +
-            colorField("cs-primary",   "Primærfarge",   col.primary   || "#1a7a6e") +
-            colorField("cs-secondary", "Sekundærfarge", col.secondary || "#c17f3e") +
+            colorField("cs-primary",   "Primærfarge",   col.primary   || "#1a7a6e", "Knappar, lenker og aktive element") +
+            colorField("cs-secondary", "Sekundærfarge", col.secondary || "#c17f3e", "CTA-knappar og uthevingar") +
           '</div>' +
-          colorField("cs-bg", "Bakgrunnsfarge", col.background || "#fbfaf8") +
+          colorField("cs-bg", "Bakgrunnsfarge", col.background || "#fbfaf8", "Sideflata bak alt innhald") +
           '<div class="bk-2col">' +
-            colorField("cs-text",    "Tekstfarge",    col.text    || "#1B1B1F") +
-            colorField("cs-surface", "Overflate",     col.surface || "#ffffff") +
+            colorField("cs-text",    "Tekstfarge", col.text    || "#1B1B1F", "Hovudtekst og overskrifter") +
+            colorField("cs-surface", "Overflate",  col.surface || "#ffffff", "Kort, modalar og paneler") +
           '</div>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fontar</legend>' +
@@ -370,6 +372,9 @@ window.VwConsole = (function () {
             C.field({ id:"cs-bfont",    label:"Brødtekst-font",  value: fnt.body || "", placeholder:"Inter" }) +
             C.field({ id:"cs-bweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.body ? fnt.weights.body.join(",") : "400,500,600"), hint:"For brødtekst" }) +
           '</div>' +
+          '<div style="margin-top:.5rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-web-reset">↺ Nullstill fargar og fontar til standard</button>' +
+          '</div>' +
         '</fieldset>' +
         saveBtn() +
       '</form>';
@@ -383,6 +388,20 @@ window.VwConsole = (function () {
         wrap.querySelector("#cs-dweights").value = "600,700,800";
         wrap.querySelector("#cs-bweights").value = "400,500,600";
       });
+    });
+
+    wrap.querySelector("#cs-web-reset").addEventListener("click", function () {
+      var def = CFG.colors || {};
+      var fnt = CFG.fonts  || {};
+      wrap.querySelector("#cs-primary").value   = def.primary    || "#005cff";
+      wrap.querySelector("#cs-secondary").value = def.secondary  || "#ff7a00";
+      wrap.querySelector("#cs-bg").value        = def.background || "#f7fbff";
+      wrap.querySelector("#cs-text").value      = def.text       || "#142033";
+      wrap.querySelector("#cs-surface").value   = def.surface    || "#ffffff";
+      wrap.querySelector("#cs-dfont").value     = fnt.display    || "Poppins";
+      wrap.querySelector("#cs-bfont").value     = fnt.body       || "Nunito Sans";
+      wrap.querySelector("#cs-dweights").value  = (fnt.weights && fnt.weights.display) ? fnt.weights.display.join(",") : "600,700,800";
+      wrap.querySelector("#cs-bweights").value  = (fnt.weights && fnt.weights.body)    ? fnt.weights.body.join(",")    : "400,500,600";
     });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
@@ -417,6 +436,21 @@ window.VwConsole = (function () {
   }
 
   function renderWorkspace(sc, wrap) {
+    // Berre tilgjengeleg når Workspace er aktivert
+    if (sc.productMode === "web") {
+      wrap.innerHTML =
+        '<div style="min-height:40vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem">' +
+          '<div style="max-width:340px">' +
+            '<span class="ti ti-briefcase-off" style="font-size:3rem;color:var(--color-muted)"></span>' +
+            '<h2 style="margin:.8rem 0 .5rem;font-size:1.3rem">Workspace er ikkje aktivert</h2>' +
+            '<p style="color:var(--color-muted);margin:0 0 1.4rem;font-size:.9rem">Aktiver Workspace i Produkt-seksjonen for å konfigurere tema og innstillingar.</p>' +
+            '<button type="button" class="btn btn--primary" data-goto-produkt>Gå til Produkt</button>' +
+          '</div>' +
+        '</div>';
+      wrap.querySelector("[data-goto-produkt]").addEventListener("click", function () { navigate("produkt"); });
+      return;
+    }
+
     var wsp    = Object.assign({}, CFG.workspace || {}, sc.workspace || {});
     var wspCol = Object.assign({}, CFG.colors || {}, wsp.colors || {});
     var wspFnt = Object.assign({}, CFG.fonts  || {}, wsp.fonts  || {});
@@ -430,13 +464,13 @@ window.VwConsole = (function () {
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse fargane gjeld berre Workspace — uavhengig av nettside-tema.</p>' +
           '<div class="bk-2col">' +
-            colorField("cs-wsp-primary",   "Primærfarge",   pri) +
-            colorField("cs-wsp-secondary", "Sekundærfarge", wspCol.secondary || "#7c3aed") +
+            colorField("cs-wsp-primary",   "Primærfarge",   pri,                      "Knappar, lenker og aktive element") +
+            colorField("cs-wsp-secondary", "Sekundærfarge", wspCol.secondary || "#7c3aed", "CTA-knappar og uthevingar") +
           '</div>' +
-          colorField("cs-wsp-bg", "Bakgrunnsfarge", wspCol.background || "#f1f5f9") +
+          colorField("cs-wsp-bg", "Bakgrunnsfarge", wspCol.background || "#f1f5f9", "Sideflata bak alt Workspace-innhald") +
           '<div class="bk-2col">' +
-            colorField("cs-wsp-text",    "Tekstfarge", wspCol.text    || "#0f172a") +
-            colorField("cs-wsp-surface", "Overflate",  wspCol.surface || "#ffffff") +
+            colorField("cs-wsp-text",    "Tekstfarge", wspCol.text    || "#0f172a", "Hovudtekst og overskrifter") +
+            colorField("cs-wsp-surface", "Overflate",  wspCol.surface || "#ffffff", "Kort, modalar og paneler") +
           '</div>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fontar</legend>' +
@@ -454,6 +488,9 @@ window.VwConsole = (function () {
             C.field({ id:"cs-wsp-bfont",    label:"Brødtekst-font",  value: wspFnt.body || "", placeholder:"Tomt = same som nettsida" }) +
             C.field({ id:"cs-wsp-bweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.body ? wspFnt.weights.body.join(",") : "400,500,600") }) +
           '</div>' +
+          '<div style="margin-top:.5rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-wsp-reset">↺ Nullstill fargar og fontar til standard</button>' +
+          '</div>' +
         '</fieldset>' +
         saveBtn() +
       '</form>';
@@ -467,6 +504,18 @@ window.VwConsole = (function () {
         wrap.querySelector("#cs-wsp-dweights").value = "600,700,800";
         wrap.querySelector("#cs-wsp-bweights").value = "400,500,600";
       });
+    });
+
+    wrap.querySelector("#cs-wsp-reset").addEventListener("click", function () {
+      wrap.querySelector("#cs-wsp-primary").value   = "#2563eb";
+      wrap.querySelector("#cs-wsp-secondary").value = "#7c3aed";
+      wrap.querySelector("#cs-wsp-bg").value        = "#f1f5f9";
+      wrap.querySelector("#cs-wsp-text").value      = "#0f172a";
+      wrap.querySelector("#cs-wsp-surface").value   = "#ffffff";
+      wrap.querySelector("#cs-wsp-dfont").value     = "";
+      wrap.querySelector("#cs-wsp-bfont").value     = "";
+      wrap.querySelector("#cs-wsp-dweights").value  = "600,700,800";
+      wrap.querySelector("#cs-wsp-bweights").value  = "400,500,600";
     });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {

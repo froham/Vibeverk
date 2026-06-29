@@ -63,6 +63,16 @@ All other tests must remain green. Do not silently remove or skip failing tests.
 
 **No `git push`, production deployment, or remote Supabase action may happen without explicit user approval.** Propose the command, wait for the user to confirm, then run it.
 
+## AI agent workflow
+
+- Run **Vibeverk Security Auditor** before considering security-sensitive changes ready for merge or deployment.
+- Run **Privacy and Compliance Advisor** before launch of any feature that collects, stores, shares, analyses or exposes personal data.
+- Run **UX and Mobile Reviewer** after meaningful UI, module, modal, layout or responsive changes.
+- Security-sensitive changes include: authentication, roles, permissions, superadmin access, Supabase RLS, storage, file sharing, APIs, webhooks, third-party integrations, payment-related integrations and customer data.
+- Privacy drafts must match verified functionality and confirmed customer facts — never invent data flows.
+- No agent may claim legal compliance or security assurance solely based on AI review.
+- **No `git push`, deployment, remote Supabase changes or production changes without explicit user approval.**
+
 ## Known configuration
 
 - Production Supabase project: `clzczbyklgdtdhgjphup`

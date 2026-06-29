@@ -87,6 +87,17 @@
     root.innerHTML =
       '<div class="i-page-head"><h2>Innstillinger</h2></div>' +
 
+      /* --- Utseende ------------------------------------------------------- */
+      '<div class="i-card" style="margin-bottom:1rem">' +
+        '<p class="i-section-label">Utseende</p>' +
+        '<p style="font-size:.85rem;font-weight:600;margin:0 0 .4rem">Tema</p>' +
+        '<p style="font-size:.8rem;color:var(--color-muted);margin:0 0 .6rem">Gjeld berre denne nettlesaren.</p>' +
+        '<div style="display:flex;gap:.45rem">' +
+          '<button type="button" class="pref-theme-btn btn btn--ghost btn--sm" data-theme-val="light"><i class="ti ti-sun"></i> Lyst</button>' +
+          '<button type="button" class="pref-theme-btn btn btn--ghost btn--sm" data-theme-val="dark"><i class="ti ti-moon"></i> Mørkt</button>' +
+        '</div>' +
+      '</div>' +
+
       /* --- Workspace-innstillinger ---------------------------------------- */
       '<div class="i-card" style="margin-bottom:1rem">' +
         '<p class="i-section-label">Workspace</p>' +
