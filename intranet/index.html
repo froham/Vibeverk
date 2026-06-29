@@ -30,18 +30,19 @@
 
   <style>
     /* =========================================================================
-       INTRANETT-SHELL CSS
-       Gjenbruker CSS-variablene som core.js setter fra config.colors/fonts.
-       Fallback-verdier her speiler index.html (rot).
+       WORKSPACE SHELL CSS
+       Neutrale standardfargar for Workspace — uavhengig av nettside-branding.
+       core.js set --color-primary frå config.colors, men applyWorkspaceTheme()
+       i intranet-core.js overrider primærfarga med workspace.accentColor etterpå.
        ====================================================================== */
     :root {
-      --color-primary:   #15616D;
-      --color-secondary: #E8833A;
-      --color-bg:        #FBFAF8;
-      --font-display:    "Space Grotesk", system-ui, sans-serif;
+      --color-primary:   #2563eb;
+      --color-secondary: #7c3aed;
+      --color-bg:        #f1f5f9;
+      --font-display:    "Inter", system-ui, sans-serif;
       --font-body:       "Inter", system-ui, sans-serif;
-      --color-text:      #1B1B1F;
-      --color-muted:     #6A6A73;
+      --color-text:      #0f172a;
+      --color-muted:     #64748b;
       --color-surface:   #ffffff;
       --color-border:    color-mix(in srgb, var(--color-text) 12%, transparent);
       --color-alt:       color-mix(in srgb, var(--color-primary) 5%, var(--color-bg));
@@ -483,12 +484,12 @@
        core.js sin route()-funksjon.
        ==================================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="../config.js"></script>
-  <script src="../components.js"></script>
-  <script src="../core.js"></script>
+  <script src="../config.js?v=6"></script>
+  <script src="../components.js?v=5"></script>
+  <script src="../core.js?v=6"></script>
 
   <!-- Intranett-motor og moduler -->
-  <script src="intranet-core.js"></script>
+  <script src="intranet-core.js?v=2"></script>
   <script src="module-announcements.js"></script>
   <script src="module-settings.js"></script>
   <script src="module-tasks.js"></script>

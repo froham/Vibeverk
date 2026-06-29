@@ -29,6 +29,7 @@ window.App = (function () {
       if (sc.company  && CFG.company)  Object.assign(CFG.company,  sc.company);
       if (sc.colors   && CFG.colors)   Object.assign(CFG.colors,   sc.colors);
       if (sc.fonts    && CFG.fonts)    Object.assign(CFG.fonts,     sc.fonts);
+      if (sc.workspace) { if (!CFG.workspace) CFG.workspace = {}; Object.assign(CFG.workspace, sc.workspace); }
       if (sc.adminPassword && CFG.admin) CFG.admin.password = sc.adminPassword;
     } catch (e) { /* localStorage utilgjengeleg */ }
   })();
@@ -3008,6 +3009,7 @@ window.App = (function () {
     if (sc.features) Object.assign(CFG.features,  sc.features);
     if (sc.intranettFeatures && CFG.intranettFeatures) Object.assign(CFG.intranettFeatures, sc.intranettFeatures);
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
+    if (sc.workspace) { if (!CFG.workspace) CFG.workspace = {}; Object.assign(CFG.workspace, sc.workspace); }
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
     applyTheme(); render();
   }
@@ -3021,6 +3023,7 @@ window.App = (function () {
     if (sc.features) Object.assign(CFG.features,  sc.features);
     if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
     else             CFG.privacy.text = computeDefaultPrivacyText();   // aldri lagra → modul-bevisst forslag
+    if (sc.workspace) { if (!CFG.workspace) CFG.workspace = {}; Object.assign(CFG.workspace, sc.workspace); }
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
   }
 
@@ -3157,6 +3160,7 @@ window.App = (function () {
     const col  = Object.assign({}, CFG.colors,   sc.colors   || {});
     const com  = Object.assign({}, CFG.company,  sc.company  || {});
     const fnt  = Object.assign({}, CFG.fonts,    sc.fonts    || {});
+    const wsp  = Object.assign({}, CFG.workspace || {}, sc.workspace || {});
     const ft   = Object.assign({}, CFG.features, sc.features || {});
     const meta = sc.meta || {};
     const an   = Store.get("analytics", null) || (CFG.analytics || {});
@@ -3191,7 +3195,8 @@ window.App = (function () {
     }).join("");
 
     const saTabs = [
-      { id: "utseende",   label: "Utseende" },
+      { id: "utseende",   label: "Web" },
+      { id: "workspace",  label: "Workspace" },
       { id: "analyse",    label: "Analyse" },
       { id: "personvern", label: "Personvern" },
       { id: "funksjoner", label: "Funksjoner" },
@@ -3246,6 +3251,16 @@ window.App = (function () {
               C.field({ id:"sa-bfont", label:"Brødtekst-font", value: fnt.body || "", placeholder:"Inter" }) +
               C.field({ id:"sa-bweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.body ? fnt.weights.body.join(",") : "400,500,600"), placeholder:"400,500,600", hint:"Typisk for brødtekst" }) +
             '</div>' +
+          '</fieldset>'
+        ) +
+        pane("workspace",
+          '<fieldset class="admin-group"><legend>Workspace-innstillingar</legend>' +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse innstillingane gjeld berre Workspace (intranett) — uavhengig av nettside-brandinga.</p>' +
+            C.field({ id:"sa-wsp-name", label:"Arbeidsområdenamn", value: wsp.name || "", placeholder:"Tomt = brukar firmanamnet" }) +
+            '<div class="bk-2col">' +
+              `<div class="field"><label>Aksentfarge (Workspace)</label><input type="color" id="sa-wsp-accent" value="${C.esc(wsp.accentColor || col.primary || "#2563eb")}"></div>` +
+            '</div>' +
+            '<p style="font-size:.78rem;color:var(--color-muted);margin:.5rem 0 0">Aksentfarga overrider primærfargen berre i Workspace — nettsida brukar framleis si eiga farge.</p>' +
           '</fieldset>'
         ) +
         pane("analyse",
@@ -3367,6 +3382,10 @@ window.App = (function () {
             display: body.querySelector("#sa-dweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean),
             body:    body.querySelector("#sa-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
           }
+        },
+        workspace: {
+          name:        (body.querySelector("#sa-wsp-name")   ? body.querySelector("#sa-wsp-name").value.trim()  : wsp.name        || ""),
+          accentColor: (body.querySelector("#sa-wsp-accent") ? body.querySelector("#sa-wsp-accent").value        : wsp.accentColor || "")
         },
         adminPassword: body.querySelector("#sa-apass").value,
         features: feats,

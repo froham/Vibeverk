@@ -71,7 +71,7 @@ window.confirm = () => true;
 
 // Auth via eval (same jsdom-kontekst)
 const _NS = window.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
-window.eval(`sessionStorage.setItem("${_NS}:intranet-auth","owner")`);
+window.eval(`sessionStorage.setItem("${_NS}:admin","owner")`);
 
 window.document.dispatchEvent(new window.Event("DOMContentLoaded", { bubbles: true }));
 const doc = window.document;

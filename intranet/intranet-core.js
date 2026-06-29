@@ -46,6 +46,23 @@ window.Intranet = (function () {
     role:        getRole()
   };
 
+  /* =========================================================================
+     2b) WORKSPACE-TEMA
+     Overrider web-brandinga med Workspace-spesifikke innstillingar.
+     Kallast frå init() etter at core.js har sett web-vars — slik at
+     Workspace alltid har eigen visuell identitet, uavhengig av nettsida.
+     ====================================================================== */
+  var _workspaceName = null;
+
+  function applyWorkspaceTheme() {
+    var wsp = (CFG && CFG.workspace) || {};
+    var sc = {};
+    try { sc = ((App.store.get("superconfig", {}) || {}).workspace) || {}; } catch (e) {}
+    var accent = sc.accentColor || wsp.accentColor || null;
+    _workspaceName = sc.name || wsp.name || null;
+    if (accent) document.documentElement.style.setProperty("--color-primary", accent);
+  }
+
   function getContext() {
     // Les alltid live frå sessionStorage
     context.role = getRole();
@@ -133,7 +150,8 @@ window.Intranet = (function () {
 
     var ctx = getContext();
     var tenantName = App.store.get("wsp-settings", {}).tenantName
-                     || CFG.company && CFG.company.name
+                     || _workspaceName
+                     || (CFG.company && CFG.company.name)
                      || "Arbeidsområde";
 
     root.innerHTML =
@@ -347,6 +365,7 @@ window.Intranet = (function () {
     var brand = document.querySelector(".i-sidebar__name");
     if (brand) {
       var name = App.store.get("wsp-settings", {}).tenantName
+                 || _workspaceName
                  || (CFG.company && CFG.company.name) || "Arbeidsområde";
       brand.textContent = name;
     }
@@ -468,6 +487,7 @@ window.Intranet = (function () {
   function init() {
     if (started) return;
     context.role = getRole();
+    applyWorkspaceTheme();
     buildShell();
     started = true;
     window.addEventListener("hashchange", handleRoute);

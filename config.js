@@ -270,5 +270,20 @@ window.SITE_CONFIG = {
   },
 
   /* --- Lagring -------------------------------------------------------------- */
-  storageKey: "nordpunkt"
+  storageKey: "nordpunkt",
+
+  /* --- Plattformmodus ------------------------------------------------------- */
+  // Kva slags produkt denne installasjonen er. Brukast til routing og navigasjon.
+  // "web" = offentleg nettside (standard), "workspace" = berre intranett,
+  // "custom_app" = fokusert enkeltapp
+  productMode: "web",
+
+  /* --- Workspace ------------------------------------------------------------ */
+  // Innstillingar spesifikke for Workspace (intranett), uavhengig av nettsida.
+  // Kan overstyrast i Super-admin → Workspace-fana.
+  workspace: {
+    name:        "",   // Tomt = brukar company.name som arbeidsområdenamn
+    accentColor: "",   // Tomt = brukar colors.primary frå nettside-temaet
+    logoUrl:     ""    // Tomt = brukar company.logoUrl
+  }
 };
