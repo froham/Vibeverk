@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS users (
   id           uuid         PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name text,
   role         text         NOT NULL DEFAULT 'member'
-                            CHECK (role IN ('owner', 'admin', 'editor', 'member')),
+                            CHECK (role IN ('admin', 'editor', 'member')),
   email        text,
   avatar_url   text,
   created_at   timestamptz  NOT NULL DEFAULT now(),
@@ -66,7 +66,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
 -- Oppgrader CHECK-constraint til å inkludere editor-rolla
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check
-  CHECK (role IN ('owner', 'admin', 'editor', 'member'));
+  CHECK (role IN ('admin', 'editor', 'member'));
 
 -- Private notatar (berre eiga brukar)
 CREATE TABLE IF NOT EXISTS notes (
@@ -234,19 +234,19 @@ CREATE TRIGGER on_auth_user_created
 -- ── 5. RLS-HJELP-FUNKSJONAR ──────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION is_admin_or_owner()
-RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.users
-    WHERE id = auth.uid() AND role IN ('owner', 'admin')
+    WHERE id = auth.uid() AND role = 'admin'
   );
 $$;
 
--- Editor + admin + owner kan opprette og redigere innhald (artiklar, KB, lenker, oppgåver)
+-- Admin og editor kan opprette og redigere innhald (artiklar, KB, lenker, oppgåver)
 CREATE OR REPLACE FUNCTION can_edit_content()
-RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.users
-    WHERE id = auth.uid() AND role IN ('owner', 'admin', 'editor')
+    WHERE id = auth.uid() AND role IN ('admin', 'editor')
   );
 $$;
 
@@ -369,7 +369,7 @@ CREATE POLICY chat_conv_anon_update ON chat_conversations FOR UPDATE TO anon
 CREATE POLICY chat_msg_anon_insert ON chat_messages FOR INSERT TO anon
     WITH CHECK (sender = 'visitor');
 
--- Auth (chat-admin): berre admin/owner — ikkje editor/member
+-- Auth (chat-admin): berre admin — ikkje editor/member
 CREATE POLICY chat_conv_auth ON chat_conversations FOR ALL TO authenticated
     USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
 CREATE POLICY chat_msg_auth  ON chat_messages      FOR ALL TO authenticated

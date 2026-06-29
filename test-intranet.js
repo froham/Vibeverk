@@ -20,7 +20,8 @@ const html = fs.readFileSync("intranet/index.html", "utf8")
   .replace(/src="module-dashboard\.js"/g, 'src="intranet/module-dashboard.js"')
   .replace(/src="module-orgdrift\.js"/g,  'src="intranet/module-orgdrift.js"')
   .replace(/src="module-links\.js"/g,     'src="intranet/module-links.js"')
-  .replace(/src="module-workspaceship\.js"/g, 'src="intranet/module-workspaceship.js"');
+  .replace(/src="module-workspaceship\.js"/g, 'src="intranet/module-workspaceship.js"')
+  .replace(/src="module-users\.js[^"]*"/g,   'src="intranet/module-users.js"');
 
 const dom = new JSDOM(html, {
   runScripts: "outside-only", pretendToBeVisual: true,
@@ -55,7 +56,8 @@ window.confirm = () => true;
   "intranet/module-dashboard.js",
   "intranet/module-orgdrift.js",
   "intranet/module-links.js",
-  "intranet/module-workspaceship.js"
+  "intranet/module-workspaceship.js",
+  "intranet/module-users.js"
 ].forEach(f => {
   let src = fs.readFileSync(f, "utf8");
   // For testmiljøet: skru på alle intranett-features
@@ -71,7 +73,7 @@ window.confirm = () => true;
 
 // Auth via eval (same jsdom-kontekst)
 const _NS = window.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
-window.eval(`sessionStorage.setItem("${_NS}:admin","owner")`);
+window.eval(`sessionStorage.setItem("${_NS}:admin","admin")`);
 
 window.document.dispatchEvent(new window.Event("DOMContentLoaded", { bubbles: true }));
 const doc = window.document;
@@ -101,6 +103,7 @@ assert(navIds.includes("dashboard"),     "b2: dashboard i nav");
 assert(navIds.includes("tasks"),         "b3: tasks i nav");
 assert(navIds.includes("announcements"), "b4: announcements i nav");
 assert(!navIds.includes("workspaceship"),"b5: workspaceship skjult");
+assert(navIds.includes("users"),         "b6: users i nav for admin");
 
 /* --- C) INGEN OFFENTLEG INNHALD ------------------------------------------ */
 assert(!doc.querySelector(".site-header"), "c1: ingen site-header");
@@ -249,6 +252,11 @@ App.store.set("wsp-workspaceship",{best:42});
 assert(App.store.get("wsp-workspaceship",{}).best===42, "o2: highscore lagra");
 nav("#/workspaceship");
 assert(!!doc.querySelector("#workspaceship-root"), "o3: workspaceship via direkterute");
+
+/* --- Q) BRUKARSTYRING ----------------------------------------------------- */
+nav("#/users");
+assert(!!doc.querySelector("#users-root"), "q1: users-root");
+assert(doc.querySelector("#users-root").textContent.includes("Supabase"), "q2: viser melding utan Supabase");
 
 /* --- P) MØRK MODUS CSS ---------------------------------------------------- */
 assert(!!doc.querySelector("[data-theme]")||true, "p1: dark mode CSS (visuell sjekk)");

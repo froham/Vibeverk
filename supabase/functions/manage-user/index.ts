@@ -35,8 +35,8 @@ serve(async (req: Request) => {
 
   const adminSb = createClient(supabaseUrl, serviceKey);
   const { data: caller } = await adminSb.from("users").select("role").eq("id", user.id).single();
-  if (!caller || !["owner", "admin"].includes(caller.role)) {
-    return json({ error: "Berre eigar/admin kan administrere brukarar" }, 403);
+  if (!caller || caller.role !== "admin") {
+    return json({ error: "Berre admin kan administrere brukarar" }, 403);
   }
 
   const body = await req.json().catch(() => ({}));

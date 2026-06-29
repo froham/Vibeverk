@@ -281,7 +281,11 @@ window.Intranet = (function () {
     var nav = document.getElementById("intranet-nav");
     if (!nav) return;
     var r = parseRoute();
-    var mods = orderedModules().filter(function (m) { return !m.hideFromNav; });
+    var mods = orderedModules().filter(function (m) {
+      if (m.hideFromNav) return false;
+      if (m.roles && m.roles.length) return m.roles.indexOf(context.role) !== -1;
+      return true;
+    });
     var counts = countNewHenvendelser();
 
     // Del moduler i to: hoved-nav og henvendelser
@@ -464,7 +468,7 @@ window.Intranet = (function () {
             return;
           }
           _sb.from("users").select("role, display_name").eq("id", result.data.user.id).single().then(function(r) {
-            var role = (r.data && r.data.role) || "owner";
+            var role = (r.data && r.data.role) || "admin";
             context.userId      = result.data.user.id;
             context.displayName = (r.data && r.data.display_name) || result.data.user.email;
             context.role        = role;
@@ -477,9 +481,9 @@ window.Intranet = (function () {
       } else {
         var adminPass = CFG.admin && CFG.admin.password;
         if (pass === adminPass) {
-          context.role = "owner";
-          sessionStorage.setItem(NS + ":admin", "owner");
-          if (remember) localStorage.setItem(NS + ":admin-persist", "owner");
+          context.role = "admin";
+          sessionStorage.setItem(NS + ":admin", "admin");
+          if (remember) localStorage.setItem(NS + ":admin-persist", "admin");
           init();
         } else {
           err.textContent = "Feil passord.";
@@ -560,7 +564,7 @@ window.Intranet = (function () {
         var session = result.data && result.data.session;
         if (session) {
           _sb.from("users").select("role, display_name").eq("id", session.user.id).single().then(function(r) {
-            var role = (r.data && r.data.role) || "owner";
+            var role = (r.data && r.data.role) || "admin";
             context.userId      = session.user.id;
             context.displayName = (r.data && r.data.display_name) || session.user.email;
             context.role        = role;
