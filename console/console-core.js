@@ -2,9 +2,9 @@
    console-core.js  —  Vibeverk Console (per-kunde superadmin)
    -----------------------------------------------------------------------------
    Fullside admin-grensesnitt for Vibeverk-operatørar. Lastar etter core.js
-   og overrider CSS-variablar til eit nøytralt konsolltema uavhengig av
-   kundebranding. Skriv superconfig via App.store — endringane er aktive
-   neste gong kunden lastar nettsida / Workspace.
+   og overrider CSS-variablar til eit nøytralt konsolltema. Autentisering via
+   Supabase OTP (e-post → 8-sifra kode) med 48 timars sesjonslevetid i
+   localStorage. Skriv superconfig via App.store.
    ========================================================================== */
 
 window.VwConsole = (function () {
@@ -41,26 +41,43 @@ window.VwConsole = (function () {
   }
 
   /* =========================================================================
-     AUTH
+     SUPABASE-KLIENT  — eigen klient utan persistert sesjon for Console
      ====================================================================== */
-  var AUTH_KEY = NS + ":console-auth";
-
-  function isAuthed() { return sessionStorage.getItem(AUTH_KEY) === "ok"; }
-
-  function doLogin(pw) {
-    var ok = pw === (CFG.admin && CFG.admin.password);
-    if (ok) sessionStorage.setItem(AUTH_KEY, "ok");
-    return ok;
+  var _sb = null;
+  if (window.supabase && CFG.supabase && CFG.supabase.url) {
+    _sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.anonKey, {
+      auth: { persistSession: false }
+    });
   }
 
-  function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
+  /* =========================================================================
+     AUTH  — OTP via Supabase, sesjon i localStorage med 48h utløp
+     ====================================================================== */
+  var AUTH_KEY   = NS + ":console-auth";
+  var AUTH_HOURS = 48;
+  var _otpEmail  = "";
+
+  function isAuthed() {
+    var expiry = parseInt(localStorage.getItem(AUTH_KEY) || "0", 10);
+    return Date.now() < expiry;
+  }
+
+  function setAuthed() {
+    localStorage.setItem(AUTH_KEY, (Date.now() + AUTH_HOURS * 3600000).toString());
+  }
+
+  function logout() {
+    localStorage.removeItem(AUTH_KEY);
+    if (_sb) _sb.auth.signOut();
+    location.reload();
+  }
 
   /* =========================================================================
      SUPERCONFIG I/O
      ====================================================================== */
-  function getSC()      { return App.store.get(SUPER_KEY, {}) || {}; }
-  function saveSC(sc)   { App.store.set(SUPER_KEY, sc); }
-  function resetSC() {
+  function getSC()    { return App.store.get(SUPER_KEY, {}) || {}; }
+  function saveSC(sc) { App.store.set(SUPER_KEY, sc); }
+  function resetSC()  {
     if (!confirm("Nullstill all superconfig og gå tilbake til config.js-verdiane?")) return;
     App.store.remove(SUPER_KEY);
     location.reload();
@@ -117,7 +134,7 @@ window.VwConsole = (function () {
     if (!el) return;
     el.textContent = text;
     el.className = "form__status " + (isOk ? "is-ok" : "is-error");
-    setTimeout(function () { if (el) el.textContent = ""; }, 3000);
+    setTimeout(function () { if (el) el.textContent = ""; }, 3500);
   }
 
   function checkboxGrid(obj, labels, attr) {
@@ -144,9 +161,22 @@ window.VwConsole = (function () {
   }
 
   /* =========================================================================
-     LOGIN
+     INNLOGGING  — to steg: e-post → OTP-kode
      ====================================================================== */
   function buildLogin() {
+    var app = document.getElementById("console-app");
+    if (!_sb) {
+      app.innerHTML =
+        '<div class="cs-login-wrap"><div class="cs-login-box">' +
+          '<div class="cs-login-brand"><span class="ti ti-layout-grid"></span> Console</div>' +
+          '<p style="color:#c0392b;font-size:.9rem;margin:.8rem 0 0">Supabase ikkje konfigurert — OTP-innlogging krev ein aktiv Supabase-tilkopling.</p>' +
+        '</div></div>';
+      return;
+    }
+    renderLoginStep1();
+  }
+
+  function renderLoginStep1() {
     var app = document.getElementById("console-app");
     app.innerHTML =
       '<div class="cs-login-wrap">' +
@@ -154,25 +184,80 @@ window.VwConsole = (function () {
           '<div class="cs-login-brand"><span class="ti ti-layout-grid"></span> Console</div>' +
           '<p class="cs-login-sub">' + C.esc((CFG.company && CFG.company.name) || "Vibeverk") + '</p>' +
           '<form id="cs-login-form">' +
-            C.field({ id: "cs-pw", label: "Passord", type: "password" }) +
-            '<p id="cs-login-err" style="color:#c0392b;font-size:.87rem;min-height:1.2em;margin:.4rem 0 0"></p>' +
-            '<button type="submit" class="btn btn--primary" style="width:100%;margin-top:.8rem;justify-content:center">Logg inn</button>' +
+            C.field({ id: "cs-email", label: "E-postadresse", type: "email", placeholder: "namn@eksempel.no" }) +
+            '<p id="cs-login-err" style="font-size:.87rem;min-height:1.2em;margin:.5rem 0 0"></p>' +
+            '<button type="submit" class="btn btn--primary" style="width:100%;margin-top:.8rem;justify-content:center">Send eingongskode</button>' +
           '</form>' +
         '</div>' +
       '</div>';
 
     document.getElementById("cs-login-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var pw = document.getElementById("cs-pw").value;
-      if (doLogin(pw)) {
-        buildShell();
-      } else {
-        document.getElementById("cs-login-err").textContent = "Feil passord.";
-        document.getElementById("cs-pw").value = "";
-        document.getElementById("cs-pw").focus();
-      }
+      var email = document.getElementById("cs-email").value.trim();
+      var err   = document.getElementById("cs-login-err");
+      if (!email) { err.textContent = "Skriv inn e-postadresse."; err.style.color = "#c0392b"; return; }
+      err.textContent = "Sender kode…"; err.style.color = "";
+      _sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function (res) {
+        if (res.error) { err.textContent = "Feil: " + res.error.message; err.style.color = "#c0392b"; return; }
+        _otpEmail = email;
+        renderLoginStep2();
+      });
     });
-    setTimeout(function () { var el = document.getElementById("cs-pw"); if (el) el.focus(); }, 50);
+    setTimeout(function () { var el = document.getElementById("cs-email"); if (el) el.focus(); }, 50);
+  }
+
+  function renderLoginStep2() {
+    var app = document.getElementById("console-app");
+    app.innerHTML =
+      '<div class="cs-login-wrap">' +
+        '<div class="cs-login-box">' +
+          '<div class="cs-login-brand"><span class="ti ti-layout-grid"></span> Console</div>' +
+          '<p class="cs-login-sub">Kode sendt til <strong>' + C.esc(_otpEmail) + '</strong></p>' +
+          '<form id="cs-otp-form">' +
+            '<div class="field" style="margin-bottom:.5rem">' +
+              '<label for="cs-otp">Eingongskode (8 siffer)</label>' +
+              '<input id="cs-otp" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" ' +
+                'autocomplete="one-time-code" placeholder="00000000" ' +
+                'style="font-size:1.4rem;letter-spacing:.2em;text-align:center">' +
+            '</div>' +
+            '<p id="cs-otp-err" style="font-size:.87rem;min-height:1.2em;margin:.4rem 0 0"></p>' +
+            '<button type="submit" class="btn btn--primary" style="width:100%;margin-top:.8rem;justify-content:center">Logg inn</button>' +
+            '<button type="button" id="cs-resend" class="btn btn--ghost" style="width:100%;margin-top:.5rem;justify-content:center;border-radius:999px">Send ny kode</button>' +
+            '<button type="button" id="cs-back" class="btn btn--ghost" style="width:100%;margin-top:.4rem;justify-content:center;border-radius:999px;font-size:.85rem;opacity:.7">Anna e-post</button>' +
+          '</form>' +
+        '</div>' +
+      '</div>';
+
+    document.getElementById("cs-otp-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var token = document.getElementById("cs-otp").value.trim();
+      var err   = document.getElementById("cs-otp-err");
+      err.textContent = "Verifiserer…"; err.style.color = "";
+      _sb.auth.verifyOtp({ email: _otpEmail, token: token, type: "email" }).then(function (vr) {
+        if (vr.error) {
+          err.textContent = "Feil kode — prøv igjen."; err.style.color = "#c0392b";
+          document.getElementById("cs-otp").value = "";
+          document.getElementById("cs-otp").focus();
+          return;
+        }
+        _sb.from("users").select("role").eq("id", vr.data.user.id).single().then(function (ur) {
+          if (!ur.data || ur.data.role !== "owner") {
+            err.textContent = "Tilgang nekta — ikkje owner-konto."; err.style.color = "#c0392b"; return;
+          }
+          setAuthed();
+          buildShell();
+        });
+      });
+    });
+    document.getElementById("cs-resend").addEventListener("click", function () {
+      var err = document.getElementById("cs-otp-err");
+      err.textContent = "Sender ny kode…"; err.style.color = "";
+      _sb.auth.signInWithOtp({ email: _otpEmail, options: { shouldCreateUser: false } }).then(function () {
+        err.textContent = "Ny kode sendt!"; err.style.color = "#16a34a";
+      });
+    });
+    document.getElementById("cs-back").addEventListener("click", renderLoginStep1);
+    setTimeout(function () { var el = document.getElementById("cs-otp"); if (el) el.focus(); }, 50);
   }
 
   /* =========================================================================
@@ -212,18 +297,20 @@ window.VwConsole = (function () {
   function renderProdukt(sc, wrap) {
     var mode = sc.productMode || CFG.productMode || "web";
     var opts = [
-      { val: "web",       label: "Web",             desc: "Berre offentleg nettside" },
-      { val: "workspace", label: "Workspace",        desc: "Berre intranett (ingen nettside)" },
-      { val: "full",      label: "Web + Workspace",  desc: "Nettside og intranett" }
+      { val: "web",       label: "Web",            desc: "Berre offentleg nettside — Workspace er blokkert" },
+      { val: "workspace", label: "Workspace",       desc: "Berre intranett — nettsida visar vidare til /intranet/" },
+      { val: "full",      label: "Web + Workspace", desc: "Begge er aktive (standard)" }
     ];
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Produktpakke</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 1rem">Bestemmer kva produkt kunden har tilgang til.</p>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 1rem">' +
+            'Bestemmer kva produkt kunden har tilgang til. Endringa trer i kraft neste gong nettsida eller Workspace vert lasta.' +
+          '</p>' +
           opts.map(function (o) {
             return '<label class="cs-radio-label">' +
               '<input type="radio" name="cs-mode" value="' + o.val + '"' + (mode === o.val ? " checked" : "") + '>' +
-              '<span><strong>' + C.esc(o.label) + '</strong> — ' + C.esc(o.desc) + '</span>' +
+              '<span><strong>' + C.esc(o.label) + '</strong> — <span style="color:var(--color-muted)">' + C.esc(o.desc) + '</span></span>' +
             '</label>';
           }).join("") +
         '</fieldset>' +
@@ -236,7 +323,7 @@ window.VwConsole = (function () {
       var checked = wrap.querySelector("input[name='cs-mode']:checked");
       sc2.productMode = checked ? checked.value : "web";
       saveSC(sc2);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste sideopplasting.", true);
     });
   }
 
@@ -291,8 +378,8 @@ window.VwConsole = (function () {
       btn.addEventListener("click", function () {
         var p = FONT_PAIRS[parseInt(btn.getAttribute("data-pair"), 10)];
         if (!p) return;
-        wrap.querySelector("#cs-dfont").value = p.display;
-        wrap.querySelector("#cs-bfont").value = p.body;
+        wrap.querySelector("#cs-dfont").value    = p.display;
+        wrap.querySelector("#cs-bfont").value    = p.body;
         wrap.querySelector("#cs-dweights").value = "600,700,800";
         wrap.querySelector("#cs-bweights").value = "400,500,600";
       });
@@ -336,7 +423,7 @@ window.VwConsole = (function () {
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Workspace-innstillingar</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse innstillingane gjeld berre Workspace (intranett), uavhengig av nettside-brandinga.</p>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Gjeld berre Workspace (intranett), uavhengig av nettside-brandinga.</p>' +
           C.field({ id:"cs-wsp-name", label:"Arbeidsområdenamn", value: wsp.name || "", placeholder:"Tomt = brukar firmanamnet" }) +
           colorField("cs-wsp-accent", "Aksentfarge (Workspace)", wsp.accentColor || col.primary || "#2563eb") +
           '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Overrider primærfargen berre i Workspace — nettsida brukar framleis sin eigen farge.</p>' +
@@ -357,8 +444,8 @@ window.VwConsole = (function () {
   }
 
   function renderModular(sc, wrap) {
-    var ft  = Object.assign({}, CFG.features          || {}, sc.features          || {});
-    var ift = Object.assign({}, CFG.intranettFeatures  || {}, sc.intranettFeatures  || {});
+    var ft  = Object.assign({}, CFG.features         || {}, sc.features         || {});
+    var ift = Object.assign({}, CFG.intranettFeatures || {}, sc.intranettFeatures || {});
 
     wrap.innerHTML =
       '<form id="cs-form">' +
@@ -396,7 +483,7 @@ window.VwConsole = (function () {
           C.field({ id:"cs-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"vibeverk.no" }) +
           C.field({ id:"cs-an-plembed", label:"Plausible – delt dashboard-lenke", value: an.plausibleEmbed || "",
             placeholder:"https://plausible.io/share/…",
-            hint:"Plausible → Site Settings → Visibility → Embed dashboard. Visast direkte i kundens Analyse-fane." }) +
+            hint:"Plausible → Site Settings → Visibility → Embed dashboard." }) +
         '</fieldset>' +
         saveBtn() +
       '</form>';
@@ -438,20 +525,26 @@ window.VwConsole = (function () {
   }
 
   function renderSystem(sc, wrap) {
-    var supaUrl = (CFG.supabase && CFG.supabase.url) || "—";
-    var supaKey = (CFG.supabase && CFG.supabase.anonKey) || "";
-    var supaKeyShort = supaKey ? supaKey.slice(0, 40) + "…" : "—";
+    var supaUrl     = (CFG.supabase && CFG.supabase.url) || "—";
+    var supaKey     = (CFG.supabase && CFG.supabase.anonKey) || "";
+    var supaKeyShrt = supaKey ? supaKey.slice(0, 40) + "…" : "—";
+    var expiryMs    = parseInt(localStorage.getItem(AUTH_KEY) || "0", 10);
+    var expiryStr   = expiryMs > 0 ? new Date(expiryMs).toLocaleString("nb-NO") : "—";
 
     wrap.innerHTML =
       '<form id="cs-form">' +
-        '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
-          C.field({ id:"cs-apass", label:"Passord", value: CFG.admin && CFG.admin.password || "" }) +
-          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Kunden brukar dette for å opne web-admin via #admin. Endringa er aktiv ved neste sideopplasting.</p>' +
+        '<fieldset class="admin-group"><legend>Innlogging</legend>' +
+          '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .4rem">Console brukar OTP via e-post — ingen passord å handtere her.</p>' +
+          '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Sesjon utløper: <strong>' + C.esc(expiryStr) + '</strong></p>' +
+        '</fieldset>' +
+        '<fieldset class="admin-group"><legend>Nettside-admin (for kunden)</legend>' +
+          C.field({ id:"cs-apass", label:"Passord for #admin-inngang", value: (CFG.admin && CFG.admin.password) || "" }) +
+          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Kunden brukar dette for å opne web-admin via #admin-lenkja. Aktiv ved neste sideopplasting.</p>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Supabase-prosjekt</legend>' +
           '<div style="font-size:.87rem;color:var(--color-muted);display:grid;gap:.4rem">' +
             '<div><strong>URL:</strong> ' + C.esc(supaUrl) + '</div>' +
-            '<div><strong>Anon-nøkkel:</strong> <code style="font-size:.76rem;word-break:break-all">' + C.esc(supaKeyShort) + '</code></div>' +
+            '<div><strong>Anon-nøkkel:</strong> <code style="font-size:.76rem;word-break:break-all">' + C.esc(supaKeyShrt) + '</code></div>' +
           '</div>' +
         '</fieldset>' +
         '<fieldset class="admin-group cs-danger-zone"><legend>Faresone</legend>' +
@@ -459,7 +552,7 @@ window.VwConsole = (function () {
           '<button type="button" class="btn btn--ghost" id="cs-reset-btn" style="border-color:#c0392b;color:#c0392b">Nullstill all konfig</button>' +
         '</fieldset>' +
         '<div style="display:flex;gap:.6rem;align-items:center;margin-top:1.4rem">' +
-          '<button type="submit" class="btn btn--primary">Lagre passord</button>' +
+          '<button type="submit" class="btn btn--primary">Lagre admin-passord</button>' +
         '</div>' +
         '<p class="form__status" id="cs-status" style="margin-top:.6rem"></p>' +
       '</form>';
@@ -482,20 +575,23 @@ window.VwConsole = (function () {
     modular:"Modular", analyse:"Analyse", personvern:"Personvern", system:"System"
   };
   var RENDERERS = {
-    produkt: renderProdukt, web: renderWeb, workspace: renderWorkspace,
-    modular: renderModular, analyse: renderAnalyse, personvern: renderPersonvern,
-    system:  renderSystem
+    produkt:    renderProdukt,
+    web:        renderWeb,
+    workspace:  renderWorkspace,
+    modular:    renderModular,
+    analyse:    renderAnalyse,
+    personvern: renderPersonvern,
+    system:     renderSystem
   };
 
   function renderSection(id) {
     var content = document.getElementById("cs-content");
     if (!content) return;
-    var sc = getSC();
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +
       '<div id="cs-section-wrap"></div>';
     var fn = RENDERERS[id];
-    if (fn) fn(sc, document.getElementById("cs-section-wrap"));
+    if (fn) fn(getSC(), document.getElementById("cs-section-wrap"));
   }
 
   /* =========================================================================

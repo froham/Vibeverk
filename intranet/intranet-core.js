@@ -499,6 +499,25 @@ window.Intranet = (function () {
   }
 
   function boot() {
+    // productMode-blokkering: berre aktiv når operatøren HAR satt dette via Console.
+    // config.js-standarden blokkerer ikkje — kun eksplisitt superconfig-override gjer det.
+    var _pm = (App.store.get("superconfig", {}) || {}).productMode;
+    if (_pm === "web") {
+      var el = document.getElementById("intranet");
+      if (el) el.innerHTML =
+        '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+        'font-family:sans-serif;text-align:center;padding:2rem;background:#f1f5f9;color:#0f172a">' +
+        '<div style="max-width:380px">' +
+        '<span class="ti ti-world" style="font-size:3rem;color:#2563eb"></span>' +
+        '<h1 style="font-size:1.6rem;margin:.7rem 0 .5rem">Nettside</h1>' +
+        '<p style="color:#64748b;margin:0 0 1.4rem">Workspace er ikkje aktivert for denne løysinga.</p>' +
+        '<a href="../" style="display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.6rem;' +
+        'background:#2563eb;color:#fff;border-radius:999px;text-decoration:none;font-weight:600">' +
+        'Gå til nettsida <span class="ti ti-arrow-right"></span></a>' +
+        '</div></div>';
+      return;
+    }
+
     if (_sb) {
       _sb.auth.getSession().then(function(result) {
         var session = result.data && result.data.session;

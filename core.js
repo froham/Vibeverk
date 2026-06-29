@@ -2811,6 +2811,27 @@ window.App = (function () {
 
     function boot() {
       applySuperConfig();
+
+      // productMode-blokkering: berre aktiv når operatøren HAR satt dette via Console.
+      // config.js-standarden blokkerer ikkje — kun eksplisitt superconfig-override gjer det.
+      var _pm = (Store.get(SUPER_KEY, {}) || {}).productMode;
+      if (_pm === "workspace") {
+        const appEl = document.getElementById("app");
+        if (appEl) appEl.innerHTML =
+          '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+          'font-family:var(--font-body,sans-serif);text-align:center;padding:2rem;background:var(--color-bg,#f1f5f9);color:var(--color-text,#0f172a)">' +
+          '<div style="max-width:380px">' +
+          '<span class="ti ti-briefcase" style="font-size:3rem;color:var(--color-primary,#2563eb)"></span>' +
+          '<h1 style="font-size:1.6rem;margin:.7rem 0 .5rem">Workspace</h1>' +
+          '<p style="color:var(--color-muted,#64748b);margin:0 0 1.4rem">Denne løysinga har berre Workspace aktivert. Nettsida er ikkje tilgjengeleg.</p>' +
+          '<a href="intranet/" style="display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.6rem;' +
+          'background:var(--color-primary,#2563eb);color:#fff;border-radius:999px;text-decoration:none;font-weight:600">' +
+          'Gå til Workspace <span class="ti ti-arrow-right"></span></a>' +
+          '</div></div>';
+        started = true;
+        return;
+      }
+
       loadContent();
       applyTheme();         // på nytt etter hydration: plukk opp Supabase-lagra fargar/fontar
       initAnalytics();
