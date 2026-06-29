@@ -472,6 +472,7 @@ window.VwConsole = (function () {
             colorField("cs-wsp-text",    "Tekstfarge", wspCol.text    || "#0f172a", "Hovudtekst og overskrifter") +
             colorField("cs-wsp-surface", "Overflate",  wspCol.surface || "#ffffff", "Kort, modalar og paneler") +
           '</div>' +
+          colorField("cs-wsp-muted", "Sekundærtekst", wspCol.muted || "#64748b", "Dempet tekst, seksjonsoverskrifter og etiketter") +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fontar</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Tomt = arvar frå nettside-tema.</p>' +
@@ -512,6 +513,7 @@ window.VwConsole = (function () {
       wrap.querySelector("#cs-wsp-bg").value        = "#f1f5f9";
       wrap.querySelector("#cs-wsp-text").value      = "#0f172a";
       wrap.querySelector("#cs-wsp-surface").value   = "#ffffff";
+      wrap.querySelector("#cs-wsp-muted").value     = "#64748b";
       wrap.querySelector("#cs-wsp-dfont").value     = "";
       wrap.querySelector("#cs-wsp-bfont").value     = "";
       wrap.querySelector("#cs-wsp-dweights").value  = "600,700,800";
@@ -530,7 +532,8 @@ window.VwConsole = (function () {
           secondary:  wrap.querySelector("#cs-wsp-secondary").value,
           background: wrap.querySelector("#cs-wsp-bg").value,
           text:       wrap.querySelector("#cs-wsp-text").value,
-          surface:    wrap.querySelector("#cs-wsp-surface").value
+          surface:    wrap.querySelector("#cs-wsp-surface").value,
+          muted:      wrap.querySelector("#cs-wsp-muted").value
         },
         fonts: {
           display: wrap.querySelector("#cs-wsp-dfont").value.trim(),

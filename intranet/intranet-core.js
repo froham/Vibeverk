@@ -72,6 +72,7 @@ window.Intranet = (function () {
     if (colors.background) r.style.setProperty("--color-bg",        colors.background);
     if (colors.text)       r.style.setProperty("--color-text",      colors.text);
     if (colors.surface)    r.style.setProperty("--color-surface",   colors.surface);
+    if (colors.muted)      r.style.setProperty("--color-muted",     colors.muted);
 
     // Fontar — tomt = arvar frå web-tema (allereie sett av core.js)
     var dFont = fonts.display || null;
