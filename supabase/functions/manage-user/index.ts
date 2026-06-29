@@ -34,7 +34,9 @@ serve(async (req: Request) => {
   if (authErr || !user) return json({ error: "Ugyldig token" }, 401);
 
   const adminSb = createClient(supabaseUrl, serviceKey);
-  const { data: caller } = await adminSb.from("users").select("role").eq("id", user.id).single();
+
+  // Rolle-sjekk via autentisert brukar (callerSb) — unngår service_role-avhengigheit for oppslaget
+  const { data: caller } = await callerSb.from("users").select("role").eq("id", user.id).single();
   if (!caller || caller.role !== "admin") {
     return json({ error: "Berre admin kan administrere brukarar" }, 403);
   }
@@ -44,7 +46,7 @@ serve(async (req: Request) => {
 
   // ── INVITE ──────────────────────────────────────────────────────────────────
   if (action === "invite") {
-    const { email, role = "member", display_name = "" } = body;
+    const { email, role = "member", display_name = "", redirect_to = "" } = body;
     if (!email) return json({ error: "E-post er påkrevd" }, 400);
 
     // Maks 50 brukarar per tenant
@@ -52,12 +54,12 @@ serve(async (req: Request) => {
       .from("users").select("id", { count: "exact", head: true });
     if ((count ?? 0) >= 50) return json({ error: "Maks 50 brukarar" }, 400);
 
-    const { data, error } = await adminSb.auth.admin.inviteUserByEmail(email, {
-      data: {
-        role,
-        display_name: display_name || email.split("@")[0],
-      },
-    });
+    const inviteOpts: { data: Record<string, string>; redirectTo?: string } = {
+      data: { role, display_name: display_name || email.split("@")[0] },
+    };
+    if (redirect_to) inviteOpts.redirectTo = redirect_to;
+
+    const { data, error } = await adminSb.auth.admin.inviteUserByEmail(email, inviteOpts);
     if (error) return json({ error: error.message }, 400);
     return json({ success: true, id: data.user.id });
   }

@@ -130,7 +130,8 @@
       var role  = document.getElementById("u-role").value;
       if (!email) { setStatus(statusEl, "E-post er påkrevd.", "error"); return; }
       setStatus(statusEl, "Sender…", "");
-      callManageUser("invite", { email: email, display_name: name, role: role })
+      var redirectTo = window.location.href.split("#")[0].replace(/\/$/, "") + "/";
+      callManageUser("invite", { email: email, display_name: name, role: role, redirect_to: redirectTo })
         .then(function (res) {
           if (res.error) { setStatus(statusEl, res.error, "error"); return; }
           setStatus(statusEl, "Invitasjon sendt til " + email + "!", "ok");
