@@ -529,21 +529,18 @@
       }
 
       var msgs = Chat.getMsgs(convId);
-      if (!msgs.length) {
-        var welcome = document.createElement("div");
-        welcome.className = "vw-msg vw-msg--op";
-        welcome.innerHTML = Chat.esc(OPT.welcomeMsg) +
-          '<div class="vw-msg-ts">' + Chat.ts(Date.now()) + '</div>';
-        msgsEl.appendChild(welcome);
-      } else {
-        msgs.forEach(function (m) {
-          var d = document.createElement("div");
-          d.className = "vw-msg " + (m.sender==="operator" ? "vw-msg--op" : "vw-msg--vis");
-          d.innerHTML = Chat.esc(m.text) + '<div class="vw-msg-ts">' + Chat.ts(m.at) + '</div>';
-          msgsEl.appendChild(d);
-        });
-        msgsEl.scrollTop = msgsEl.scrollHeight;
-      }
+      var welcome = document.createElement("div");
+      welcome.className = "vw-msg vw-msg--op";
+      welcome.innerHTML = Chat.esc(OPT.welcomeMsg) +
+        '<div class="vw-msg-ts">' + Chat.ts(conv.createdAt || Date.now()) + '</div>';
+      msgsEl.appendChild(welcome);
+      msgs.forEach(function (m) {
+        var d = document.createElement("div");
+        d.className = "vw-msg " + (m.sender==="operator" ? "vw-msg--op" : "vw-msg--vis");
+        d.innerHTML = Chat.esc(m.text) + '<div class="vw-msg-ts">' + Chat.ts(m.at) + '</div>';
+        msgsEl.appendChild(d);
+      });
+      if (msgs.length) msgsEl.scrollTop = msgsEl.scrollHeight;
 
       if (conv.status === "closed") {
         bottom.innerHTML =
@@ -1091,7 +1088,7 @@
       Chat.markRead(activeId);
       markLeadAsRead(activeId);
     } else {
-      activeId = container._activeConvId || (convs.filter(function(c){return c.status==="open";})[0]||convs[0]||{}).id || null;
+      activeId = container._activeConvId || (convs.filter(function(c){return c.status==="open";})[0]||{}).id || null;
     }
 
     if (!document.getElementById("vwca-css")) {
