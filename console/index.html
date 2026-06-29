@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Console — Vibeverk</title>
+
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src  'self' 'unsafe-inline'
+                https://cdn.jsdelivr.net;
+    connect-src 'self'
+                https://cdn.jsdelivr.net
+                https://clzczbyklgdtdhgjphup.supabase.co
+                wss://clzczbyklgdtdhgjphup.supabase.co;
+    style-src   'self' 'unsafe-inline'
+                https://fonts.googleapis.com
+                https://cdn.jsdelivr.net;
+    font-src    'self'
+                https://fonts.gstatic.com
+                https://cdn.jsdelivr.net
+                data:;
+    img-src     'self' data: https:;
+  ">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.0.0/dist/tabler-icons.min.css">
+
+  <style>
+    /* =========================================================================
+       KONSOLL-GRUNNSTIL — nøytralt Vibeverk-internt tema.
+       console-core.js overrider CSS-vars etter at core.js har sett kundefargane.
+       ====================================================================== */
+    :root {
+      --color-primary:   #2563eb;
+      --color-secondary: #7c3aed;
+      --color-bg:        #f1f5f9;
+      --color-surface:   #ffffff;
+      --color-text:      #0f172a;
+      --color-muted:     #64748b;
+      --color-border:    rgba(15,23,42,.12);
+      --color-alt:       rgba(37,99,235,.04);
+      --color-tint:      rgba(37,99,235,.08);
+      --font-display:    "Inter", system-ui, sans-serif;
+      --font-body:       "Inter", system-ui, sans-serif;
+      --radius: 14px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-text);
+      background: var(--color-bg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.1; margin: 0; }
+    a { color: var(--color-primary); text-decoration: none; }
+    img { max-width: 100%; display: block; }
+
+    /* --- Knapper ---------------------------------------------------------- */
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      font: inherit; font-weight: 600; cursor: pointer;
+      padding: .72rem 1.3rem; border-radius: 999px; border: 1.5px solid transparent;
+      transition: background .15s, box-shadow .15s, opacity .15s;
+      line-height: 1;
+    }
+    .btn--primary  { background: var(--color-primary); color: #fff; }
+    .btn--primary:hover { box-shadow: 0 6px 18px color-mix(in srgb, var(--color-primary) 35%, transparent); }
+    .btn--ghost    { background: transparent; color: var(--color-text); border-color: var(--color-border); }
+    .btn--ghost:hover { background: var(--color-tint); }
+
+    /* --- Formfelt --------------------------------------------------------- */
+    .field { display: grid; gap: .35rem; }
+    .field label { font-size: .85rem; font-weight: 600; color: var(--color-text); }
+    .field__hint  { font-size: .78rem; color: var(--color-muted); margin: -.1rem 0 0; }
+    .field input:not([type="color"]), .field textarea {
+      font: inherit; padding: .7rem .85rem; border-radius: 10px;
+      border: 1.5px solid var(--color-border); background: var(--color-surface);
+      color: var(--color-text); width: 100%; resize: vertical;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .field input:not([type="color"]):focus, .field textarea:focus {
+      outline: none; border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+    }
+    .field input[type="color"] {
+      width: 100%; height: 42px; padding: 3px 4px;
+      border-radius: 10px; border: 1.5px solid var(--color-border);
+      background: var(--color-surface); cursor: pointer;
+    }
+    .form__status { margin: 0; font-size: .9rem; min-height: 1.2em; }
+    .form__status.is-ok    { color: #16a34a; }
+    .form__status.is-error { color: #c0392b; }
+
+    /* --- Admin-gruppar ---------------------------------------------------- */
+    .admin-group {
+      border: 1px solid var(--color-border); border-radius: 12px;
+      padding: 1rem 1.2rem; display: grid; gap: .85rem;
+    }
+    .admin-group legend { font-weight: 700; padding: 0 .4rem; font-size: .95rem; }
+    .cs-danger-zone { border-color: rgba(192,57,43,.3); }
+
+    /* Fontpar-knappar */
+    .fontpair-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .9rem; }
+    .fontpair-btn {
+      font: inherit; font-size: .82rem; padding: .4rem .8rem;
+      border-radius: 999px; border: 1.5px solid var(--color-border);
+      background: var(--color-surface); color: var(--color-text); cursor: pointer;
+    }
+    .fontpair-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+    /* To-kolonne-grid for felt */
+    .bk-2col { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+
+    /* Avkryssingsgrid for feature-flaggar */
+    .cs-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .5rem; }
+    .cs-checkbox-label {
+      display: flex; align-items: center; gap: .45rem;
+      font-size: .9rem; cursor: pointer; padding: .4rem .5rem;
+      border-radius: 8px; transition: background .1s;
+    }
+    .cs-checkbox-label:hover { background: var(--color-tint); }
+
+    /* Radio-labels for produktpakke */
+    .cs-radio-label {
+      display: flex; align-items: flex-start; gap: .6rem;
+      font-size: .92rem; cursor: pointer; padding: .5rem .4rem;
+      border-radius: 8px; transition: background .1s;
+    }
+    .cs-radio-label:hover { background: var(--color-tint); }
+    .cs-radio-label input { margin-top: .2rem; flex-shrink: 0; }
+
+    /* =========================================================================
+       KONSOLL-LAYOUT
+       ====================================================================== */
+    #console-app { min-height: 100vh; }
+
+    /* ---- Innlogging ---- */
+    .cs-login-wrap {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: var(--color-bg); padding: 2rem;
+    }
+    .cs-login-box {
+      background: var(--color-surface); border: 1px solid var(--color-border);
+      border-radius: var(--radius); padding: 2.4rem 2rem;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.07);
+    }
+    .cs-login-brand {
+      font-size: 1.3rem; font-weight: 700; margin: 0 0 .25rem;
+      display: flex; align-items: center; gap: .45rem; color: var(--color-primary);
+    }
+    .cs-login-sub { margin: 0 0 1.5rem; font-size: .88rem; color: var(--color-muted); }
+
+    /* ---- Hovudskall ---- */
+    .cs-wrap { display: flex; height: 100vh; overflow: hidden; }
+
+    .cs-sidebar {
+      width: 224px; flex-shrink: 0;
+      background: #1e293b; color: #e2e8f0;
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+    .cs-brand {
+      padding: 1.3rem 1.2rem 1rem;
+      font-weight: 700; font-size: 1.05rem;
+      display: flex; align-items: center; gap: .5rem;
+      color: #f1f5f9;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .cs-brand .ti { color: #60a5fa; font-size: 1.25rem; }
+    .cs-customer {
+      padding: .55rem 1.2rem .7rem;
+      font-size: .77rem; color: #94a3b8;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .cs-nav { flex: 1; display: flex; flex-direction: column; padding: .6rem 0; }
+    .cs-nav__item {
+      display: flex; align-items: center; gap: .6rem;
+      padding: .6rem 1.2rem;
+      background: none; border: none; border-left: 3px solid transparent;
+      color: #94a3b8; font: inherit; font-size: .9rem;
+      cursor: pointer; text-align: left;
+      transition: background .12s, color .12s;
+    }
+    .cs-nav__item:hover { background: rgba(255,255,255,.05); color: #e2e8f0; }
+    .cs-nav__item.is-active { background: rgba(96,165,250,.1); color: #60a5fa; border-left-color: #2563eb; }
+    .cs-nav__item .ti { font-size: 1.1rem; }
+
+    .cs-sidebar__foot {
+      padding: .8rem 1.2rem;
+      border-top: 1px solid rgba(255,255,255,.07);
+    }
+    .cs-logout-btn {
+      display: flex; align-items: center; gap: .5rem;
+      background: none; border: 1px solid rgba(255,255,255,.15);
+      color: #94a3b8; font: inherit; font-size: .85rem;
+      padding: .5rem .9rem; border-radius: 8px; cursor: pointer; width: 100%;
+    }
+    .cs-logout-btn:hover { background: rgba(255,255,255,.05); color: #e2e8f0; }
+
+    .cs-main { flex: 1; overflow-y: auto; background: var(--color-bg); }
+    .cs-content { max-width: 720px; padding: 2rem 2rem 4rem; margin: 0 auto; }
+
+    .cs-page-head { margin-bottom: 1.6rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
+    .cs-page-title { font-size: 1.45rem; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <!-- core.js rendrar inn her, men heile #app er skjult —
+       konsollen brukar #console-app som eige monteringspunkt -->
+  <div id="app" style="display:none"></div>
+  <div id="console-app"></div>
+
+  <!-- Skriptkjede: same rekkefølgje som index.html, men berre kjernefiler.
+       Modular er ikkje nødvendig sidan konsollen berre les/skriv config-data.
+       console-core.js kjem sist og overrider CSS-vars + monterer UI-et. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="../config.js?v=6"></script>
+  <script src="../components.js?v=5"></script>
+  <script src="../core.js?v=6"></script>
+  <script src="console-core.js?v=1"></script>
+</body>
+</html>
