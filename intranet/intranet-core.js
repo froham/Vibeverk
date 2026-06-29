@@ -56,11 +56,47 @@ window.Intranet = (function () {
 
   function applyWorkspaceTheme() {
     var wsp = (CFG && CFG.workspace) || {};
-    var sc = {};
+    var sc  = {};
     try { sc = ((App.store.get("superconfig", {}) || {}).workspace) || {}; } catch (e) {}
-    var accent = sc.accentColor || wsp.accentColor || null;
+
     _workspaceName = sc.name || wsp.name || null;
-    if (accent) document.documentElement.style.setProperty("--color-primary", accent);
+
+    var colors = sc.colors || {};
+    var fonts  = sc.fonts  || {};
+    var r      = document.documentElement;
+
+    // Fargar — berre overstyring der operatøren har sett noko eksplisitt
+    var primary = colors.primary || sc.accentColor || wsp.accentColor || null;
+    if (primary)           r.style.setProperty("--color-primary",   primary);
+    if (colors.secondary)  r.style.setProperty("--color-secondary", colors.secondary);
+    if (colors.background) r.style.setProperty("--color-bg",        colors.background);
+    if (colors.text)       r.style.setProperty("--color-text",      colors.text);
+    if (colors.surface)    r.style.setProperty("--color-surface",   colors.surface);
+
+    // Fontar — tomt = arvar frå web-tema (allereie sett av core.js)
+    var dFont = fonts.display || null;
+    var bFont = fonts.body    || null;
+    if (dFont) r.style.setProperty("--font-display", '"' + dFont + '", system-ui, sans-serif');
+    if (bFont) r.style.setProperty("--font-body",    '"' + bFont + '", system-ui, sans-serif');
+    if (dFont || bFont) _loadWspFonts(fonts, dFont, bFont);
+  }
+
+  function _loadWspFonts(fonts, dFont, bFont) {
+    var dW = (fonts.weights && fonts.weights.display) || [600, 700, 800];
+    var bW = (fonts.weights && fonts.weights.body)    || [400, 500, 600];
+    var families = [];
+    if (dFont) families.push(encodeURIComponent(dFont) + ":wght@" + dW.join(";"));
+    if (bFont && bFont !== dFont) families.push(encodeURIComponent(bFont) + ":wght@" + bW.join(";"));
+    if (!families.length) return;
+    var href = "https://fonts.googleapis.com/css2?display=swap&" + families.map(function (f) { return "family=" + f; }).join("&");
+    var el = document.getElementById("wsp-gfonts");
+    if (!el) {
+      el = document.createElement("link");
+      el.id  = "wsp-gfonts";
+      el.rel = "stylesheet";
+      document.head.appendChild(el);
+    }
+    el.href = href;
   }
 
   function getContext() {

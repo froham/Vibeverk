@@ -417,29 +417,83 @@ window.VwConsole = (function () {
   }
 
   function renderWorkspace(sc, wrap) {
-    var col = Object.assign({}, CFG.colors, sc.colors || {});
-    var wsp = Object.assign({}, CFG.workspace || {}, sc.workspace || {});
+    var wsp    = Object.assign({}, CFG.workspace || {}, sc.workspace || {});
+    var wspCol = Object.assign({}, CFG.colors || {}, wsp.colors || {});
+    var wspFnt = Object.assign({}, CFG.fonts  || {}, wsp.fonts  || {});
+    var pri    = (wsp.colors && wsp.colors.primary) || wsp.accentColor || wspCol.primary || "#2563eb";
 
     wrap.innerHTML =
       '<form id="cs-form">' +
-        '<fieldset class="admin-group"><legend>Workspace-innstillingar</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Gjeld berre Workspace (intranett), uavhengig av nettside-brandinga.</p>' +
+        '<fieldset class="admin-group"><legend>Identitet</legend>' +
           C.field({ id:"cs-wsp-name", label:"Arbeidsområdenamn", value: wsp.name || "", placeholder:"Tomt = brukar firmanamnet" }) +
-          colorField("cs-wsp-accent", "Aksentfarge (Workspace)", wsp.accentColor || col.primary || "#2563eb") +
-          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Overrider primærfargen berre i Workspace — nettsida brukar framleis sin eigen farge.</p>' +
+        '</fieldset>' +
+        '<fieldset class="admin-group"><legend>Fargar</legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse fargane gjeld berre Workspace — uavhengig av nettside-tema.</p>' +
+          '<div class="bk-2col">' +
+            colorField("cs-wsp-primary",   "Primærfarge",   pri) +
+            colorField("cs-wsp-secondary", "Sekundærfarge", wspCol.secondary || "#7c3aed") +
+          '</div>' +
+          colorField("cs-wsp-bg", "Bakgrunnsfarge", wspCol.background || "#f1f5f9") +
+          '<div class="bk-2col">' +
+            colorField("cs-wsp-text",    "Tekstfarge", wspCol.text    || "#0f172a") +
+            colorField("cs-wsp-surface", "Overflate",  wspCol.surface || "#ffffff") +
+          '</div>' +
+        '</fieldset>' +
+        '<fieldset class="admin-group"><legend>Fontar</legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Tomt = arvar frå nettside-tema.</p>' +
+          '<div class="fontpair-row">' +
+            FONT_PAIRS.map(function (p, i) {
+              return '<button type="button" class="fontpair-btn" data-wsp-pair="' + i + '">' + C.esc(p.label) + '</button>';
+            }).join("") +
+          '</div>' +
+          '<div class="bk-2col">' +
+            C.field({ id:"cs-wsp-dfont",    label:"Display-font",    value: wspFnt.display || "", placeholder:"Tomt = same som nettsida" }) +
+            C.field({ id:"cs-wsp-dweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.display ? wspFnt.weights.display.join(",") : "600,700,800") }) +
+          '</div>' +
+          '<div class="bk-2col">' +
+            C.field({ id:"cs-wsp-bfont",    label:"Brødtekst-font",  value: wspFnt.body || "", placeholder:"Tomt = same som nettsida" }) +
+            C.field({ id:"cs-wsp-bweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.body ? wspFnt.weights.body.join(",") : "400,500,600") }) +
+          '</div>' +
         '</fieldset>' +
         saveBtn() +
       '</form>';
 
+    wrap.querySelectorAll("[data-wsp-pair]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var p = FONT_PAIRS[parseInt(btn.getAttribute("data-wsp-pair"), 10)];
+        if (!p) return;
+        wrap.querySelector("#cs-wsp-dfont").value    = p.display;
+        wrap.querySelector("#cs-wsp-bfont").value    = p.body;
+        wrap.querySelector("#cs-wsp-dweights").value = "600,700,800";
+        wrap.querySelector("#cs-wsp-bweights").value = "400,500,600";
+      });
+    });
+
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
+      var primary = wrap.querySelector("#cs-wsp-primary").value;
       var sc2 = getSC();
-      sc2.workspace = {
+      sc2.workspace = Object.assign({}, sc2.workspace || {}, {
         name:        wrap.querySelector("#cs-wsp-name").value.trim(),
-        accentColor: wrap.querySelector("#cs-wsp-accent").value
-      };
+        accentColor: primary,
+        colors: {
+          primary:    primary,
+          secondary:  wrap.querySelector("#cs-wsp-secondary").value,
+          background: wrap.querySelector("#cs-wsp-bg").value,
+          text:       wrap.querySelector("#cs-wsp-text").value,
+          surface:    wrap.querySelector("#cs-wsp-surface").value
+        },
+        fonts: {
+          display: wrap.querySelector("#cs-wsp-dfont").value.trim(),
+          body:    wrap.querySelector("#cs-wsp-bfont").value.trim(),
+          weights: {
+            display: wrap.querySelector("#cs-wsp-dweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean),
+            body:    wrap.querySelector("#cs-wsp-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
+          }
+        }
+      });
       saveSC(sc2);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste Workspace-opplasting.", true);
     });
   }
 

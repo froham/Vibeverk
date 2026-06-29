@@ -115,13 +115,19 @@
           var me_user = users.find(function (u) { return u.id === me.id; }) || {};
           var isOwnerAdmin = ["owner", "admin"].includes(me_user.role);
 
+          // Skjul owner for ikkje-eigarar (editor/member treng ikkje sjå/endre eigaren)
+          var visibleUsers = me_user.role === "owner"
+            ? users
+            : users.filter(function (u) { return u.role !== "owner"; });
+
           function roleTag(role) {
             return '<span class="vwu-role vwu-role--' + esc(role) + '">' + esc(role) + '</span>';
           }
 
-          var rows = users.map(function (u) {
+          var rows = visibleUsers.map(function (u) {
             var isSelf = u.id === me.id;
-            var canEdit = isOwnerAdmin && !isSelf;
+            // Owner-kontoen er aldri redigerbar av andre
+            var canEdit = isOwnerAdmin && !isSelf && u.role !== "owner";
             var roleHtml = canEdit
               ? '<select class="vwu-role-sel" data-uid="' + esc(u.id) + '" data-cur-role="' + esc(u.role) + '">' +
                   ['member', 'editor', 'admin', 'owner'].map(function (r) {
@@ -163,7 +169,7 @@
 
           container.innerHTML =
             '<div class="vwu">' +
-              '<h3 style="margin:0 0 .9rem;font-size:1rem">Brukarar (' + users.length + '/50)</h3>' +
+              '<h3 style="margin:0 0 .9rem;font-size:1rem">Brukarar (' + visibleUsers.length + ')</h3>' +
               '<table class="vwu-table"><thead><tr>' +
                 '<th>Namn</th><th>E-post</th><th>Rolle</th><th></th>' +
               '</tr></thead><tbody>' + rows + '</tbody></table>' +
