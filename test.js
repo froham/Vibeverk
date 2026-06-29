@@ -39,9 +39,9 @@ assert(JSON.stringify(navIds) === JSON.stringify(["hjem","om-oss","tjenester","r
 
 // 3) Tema-variabler satt fra config
 const primary = window.document.documentElement.style.getPropertyValue("--color-primary").trim();
-assert(primary === "#15616D", "primærfarge fra config satt: " + primary);
+assert(primary === "#005cff", "primærfarge fra config satt: " + primary);
 assert(!!doc.getElementById("app-fonts"), "Google Fonts-link injisert");
-assert(doc.title.includes("Nordpunkt"), "tittel fra config: " + doc.title);
+assert(doc.title.includes("Vibeverk"), "tittel fra config: " + doc.title);
 
 // 4) Tjenester: 4 kort
 assert(doc.querySelectorAll(".card").length === 4, "fire tjenestekort");

@@ -849,16 +849,7 @@
       });
     }
 
-    /* Sjekk ulesne meldingar med ein gong (ikkje vent 5 sek) */
-    setTimeout(function () {
-      if (!convId || isOpen) return;
-      var msgs = Chat.getMsgs(convId);
-      lastMsgCount = msgs.length;
-      var unread = msgs.filter(function(m){ return m.sender === "operator" && m.at > lastReadAt; }).length;
-      if (unread > 0) showUnreadBadge(unread);
-    }, 300);
-
-    setInterval(function () {
+    function pollVisitorMsgs() {
       if (!convId) return;
       if (_sb) {
         var local = Chat.getMsgs(convId);
@@ -905,7 +896,9 @@
           }
         }
       }
-    }, OPT.pollInterval);
+    }
+    pollVisitorMsgs();
+    setInterval(pollVisitorMsgs, OPT.pollInterval);
 
     /* ── PRESENCE TRACKING ── */
     document.addEventListener("visibilitychange", function () {

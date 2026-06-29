@@ -283,8 +283,8 @@ LANGUAGE sql AS $$
   ORDER BY COALESCE(m.at, 0), m.created_at;
 $$;
 
-REVOKE EXECUTE ON FUNCTION get_visitor_conv FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION get_visitor_msgs FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION get_visitor_conv(text, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION get_visitor_msgs(text, text, bigint) FROM PUBLIC;
 
 
 -- ── 6. RLS ───────────────────────────────────────────────────────────────────
@@ -390,8 +390,8 @@ GRANT INSERT ON chat_conversations, chat_messages TO anon;
 GRANT UPDATE (visitor_name, visitor_email, page_url, referrer, language, browser, os, screen,
               last_seen_at, visitor_active, visitor_read_at) ON chat_conversations TO anon;
 -- Visitor-RPC-ar: SECURITY DEFINER, men må eksplisitt grantast
-GRANT EXECUTE ON FUNCTION get_visitor_conv   TO anon;
-GRANT EXECUTE ON FUNCTION get_visitor_msgs   TO anon;
+GRANT EXECUTE ON FUNCTION get_visitor_conv(text, text)         TO anon;
+GRANT EXECUTE ON FUNCTION get_visitor_msgs(text, text, bigint) TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO authenticated;
 
 

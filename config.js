@@ -12,10 +12,10 @@ window.SITE_CONFIG = {
   /* --- Identitet ------------------------------------------------------------ */
   // Brukes i logo, footer, <title>, e-poster osv.
   company: {
-    name: "Nordpunkt",                       // ← Firmanavn
-    tagline: "Rådgivning som flytter ting framover", // ← Slagord
+    name: "Vibeverk",                        // ← Firmanavn
+    tagline: "Gjør data enkelt og tilgjengelig", // ← Slagord
     // Valgfri logo-URL. La stå tom ("") for å bruke firmanavn som tekstlogo.
-    logoUrl: "",
+    logoUrl: "https://github.com/froham/Vibeverk/blob/main/asset/Logo%20Icon.png?raw=true",
     // SEO/deling — settes i super-admin, ikke i vanlig admin. Vises i søkeresultater
     // og som forhåndsvisning når en lenke til siden deles (Facebook/LinkedIn/Slack m.fl).
     metaDescription: "",   // ← kort beskrivelse, ca. 1–2 setninger
@@ -31,18 +31,19 @@ window.SITE_CONFIG = {
   // (overflater, kantlinjer, dempet tekst) via color-mix() — du trenger ikke
   // definere flere farger med mindre du vil overstyre.
   colors: {
-    primary:    "#15616D",   // ← Primærfarge (knapper, lenker, aksent)
-    secondary:  "#E8833A",   // ← Sekundærfarge (CTA, highlights)
-    background: "#FBFAF8"    // ← Bakgrunnsfarge
-    // Valgfritt å overstyre: text, muted, surface, border (se core.js for default)
+    primary:    "#005cff",   // ← Primærfarge (knapper, lenker, aksent)
+    secondary:  "#ff7a00",   // ← Sekundærfarge (CTA, highlights)
+    background: "#f7fbff",   // ← Bakgrunnsfarge
+    text:       "#142033",   // ← Tekstfarge
+    surface:    "#ffffff"    // ← Overflate (kort, modaler)
   },
 
   /* --- Fonter --------------------------------------------------------------- */
   // Hentes automatisk fra Google Fonts av core.js. Skriv navnet slik Google
   // Fonts staver det. Vekter du vil ha må listes i `weights`.
   fonts: {
-    display: "Space Grotesk",                // ← Overskrifter
-    body:    "Inter",                        // ← Brødtekst
+    display: "Poppins",                      // ← Overskrifter
+    body:    "Nunito Sans",                  // ← Brødtekst
     weights: { display: [500, 700], body: [400, 500, 600] }
   },
 
