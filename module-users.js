@@ -216,7 +216,7 @@
               }
               invBtn.disabled = true;
               msgEl.className = "vwu-msg"; msgEl.textContent = "Sender…";
-              var redirectTo = window.location.origin + "/intranet/";
+              var redirectTo = window.location.origin + (window.location.pathname.indexOf("/intranet/") > -1 ? "/intranet/" : "/");
               var result = await callFn({ action: "invite", email: email, role: role, display_name: dname, redirect_to: redirectTo });
               invBtn.disabled = false;
               if (result.error) {
@@ -235,21 +235,6 @@
   }
 
   /* ── REGISTRERING ────────────────────────────────────────────────────────── */
-  // Web-admin: eksponér renderAdmin slik at core.js kan kalle den frå "Brukarar"-fana
   window.VwUsersAdmin = { render: renderAdmin };
-
-  if (window.Intranet && typeof window.Intranet.registerModule === "function") {
-    window.Intranet.registerModule({
-      id:       "users",
-      navLabel: "Brukarar",
-      icon:     "users",
-      order:    90,
-      render:   function () { return '<div data-users-root></div>'; },
-      mount:    function (outlet) {
-        var root = outlet.querySelector("[data-users-root]") || outlet;
-        renderAdmin(root);
-      }
-    });
-  }
 
 })();
