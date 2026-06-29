@@ -216,7 +216,8 @@
               }
               invBtn.disabled = true;
               msgEl.className = "vwu-msg"; msgEl.textContent = "Sender…";
-              var result = await callFn({ action: "invite", email: email, role: role, display_name: dname });
+              var redirectTo = window.location.origin + "/intranet/";
+              var result = await callFn({ action: "invite", email: email, role: role, display_name: dname, redirect_to: redirectTo });
               invBtn.disabled = false;
               if (result.error) {
                 msgEl.className = "vwu-msg vwu-msg--err"; msgEl.textContent = "Feil: " + result.error;
@@ -234,24 +235,8 @@
   }
 
   /* ── REGISTRERING ────────────────────────────────────────────────────────── */
-  if (window.App && typeof window.App.registerModule === "function") {
-    window.App.registerModule({
-      id:        "users",
-      label:     "Brukarar",
-      order:     999,
-      adminOnly: true,
-      render:    function () { return ""; },
-      admin: {
-        label:    "Brukarar",
-        category: "innstillinger",
-        render:   function () { return '<div data-users-root></div>'; },
-        mount:    function (body) {
-          var root = body.querySelector("[data-users-root]") || body;
-          renderAdmin(root);
-        }
-      }
-    });
-  }
+  // Web-admin: eksponér renderAdmin slik at core.js kan kalle den frå "Brukarar"-fana
+  window.VwUsersAdmin = { render: renderAdmin };
 
   if (window.Intranet && typeof window.Intranet.registerModule === "function") {
     window.Intranet.registerModule({

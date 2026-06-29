@@ -76,12 +76,13 @@
     return '<div id="settings-root"></div>';
   }
 
-  function mount(outlet) {
+  function mount(outlet, ctx) {
     var root = outlet.querySelector("#settings-root") || outlet;
-    renderSettings(root);
+    renderSettings(root, ctx && ctx.role);
   }
 
-  function renderSettings(root) {
+  function renderSettings(root, role) {
+    var isAdmin = role === "admin";
     var s = getSettings();
 
     root.innerHTML =
@@ -98,26 +99,26 @@
         '</div>' +
       '</div>' +
 
-      /* --- Workspace-innstillinger ---------------------------------------- */
-      '<div class="i-card" style="margin-bottom:1rem">' +
-        '<p class="i-section-label">Workspace</p>' +
-        '<form class="i-form" id="settings-form">' +
-          field("settings-name",  "Bedriftsnavn", s.tenantName,   "text",  "Nordpunkt AS") +
-          field("settings-email", "Kontakt-e-post", s.contactEmail, "email", "post@bedrift.no") +
-          '<div style="margin-top:.4rem">' +
-            '<button type="submit" class="btn btn--primary btn--sm">Lagre</button>' +
-            ' <span class="form__status" id="settings-status"></span>' +
-          '</div>' +
-        '</form>' +
-      '</div>' +
+      /* --- Workspace-innstillinger (berre admin) ----------------------------- */
+      (isAdmin
+        ? '<div class="i-card" style="margin-bottom:1rem">' +
+            '<p class="i-section-label">Workspace</p>' +
+            '<form class="i-form" id="settings-form">' +
+              field("settings-name",  "Bedriftsnavn", s.tenantName,   "text",  "Nordpunkt AS") +
+              field("settings-email", "Kontakt-e-post", s.contactEmail, "email", "post@bedrift.no") +
+              '<div style="margin-top:.4rem">' +
+                '<button type="submit" class="btn btn--primary btn--sm">Lagre</button>' +
+                ' <span class="form__status" id="settings-status"></span>' +
+              '</div>' +
+            '</form>' +
+          '</div>'
+        : '') +
 
-      /* Utseende-seksjonen er deaktivert — styrast sentralt av admin */
+      /* --- E-postkonfigurasjon (CRM) — berre admin -------------------------- */
+      (isAdmin ? emailProviderCard() : "") +
 
-      /* --- E-postkonfigurasjon (CRM) ----------------------------------------- */
-      emailProviderCard() +
-
-      /* --- Supabase-synkronisering ------------------------------------------ */
-      (App.supabase
+      /* --- Supabase-synkronisering — berre admin ---------------------------- */
+      (isAdmin && App.supabase
         ? '<div class="i-card" style="margin-bottom:1rem">' +
             '<p class="i-section-label">Synkronisering</p>' +
             '<p style="font-size:.88rem;color:var(--color-muted);margin:.3rem 0 .9rem">' +
@@ -143,8 +144,9 @@
           '</div>'
         : '') +
 
-      /* --- Farlig sone ------------------------------------------------------- */
-      '<div class="i-card" style="border-color:color-mix(in srgb,#c0392b 35%,transparent)">' +
+      /* --- Farlig sone — berre admin ----------------------------------------- */
+      (isAdmin
+        ? '<div class="i-card" style="border-color:color-mix(in srgb,#c0392b 35%,transparent)">' +
         '<p class="i-section-label" style="color:#c0392b">Farlig sone</p>' +
         '<p style="font-size:.88rem;color:var(--color-muted);margin:.3rem 0 .9rem">' +
           'Nullstiller kun intranett-data (oppgaver, notater, aktivitetslogg, innstillinger). ' +
@@ -152,10 +154,12 @@
         '</p>' +
         '<button class="btn btn--danger btn--sm" id="settings-reset">Nullstill intranett-data</button>' +
         ' <span class="form__status" id="settings-reset-status"></span>' +
-      '</div>';
+        '</div>'
+        : '');
 
-    /* Bind skjema */
-    root.querySelector("#settings-form").addEventListener("submit", function (e) {
+    /* Bind skjema (berre admin) */
+    var settingsForm = root.querySelector("#settings-form");
+    if (settingsForm) settingsForm.addEventListener("submit", function (e) {
       e.preventDefault();
       var cur = getSettings();
       cur.tenantName   = root.querySelector("#settings-name").value.trim();
@@ -291,15 +295,16 @@
       });
     }
 
-    /* Bind reset */
-    root.querySelector("#settings-reset").addEventListener("click", function () {
+    /* Bind reset (berre admin) */
+    var resetBtn = root.querySelector("#settings-reset");
+    if (resetBtn) resetBtn.addEventListener("click", function () {
       if (!confirm("Er du sikker? All intranett-data slettes permanent.")) return;
       resetWspData();
       applyPrefs({ theme: "light", density: "normal" });
       var st = root.querySelector("#settings-reset-status");
       st.textContent = "Nullstilt."; st.className = "form__status is-ok";
       Intranet.refresh();
-      setTimeout(function () { renderSettings(root); }, 500);
+      setTimeout(function () { renderSettings(root, role); }, 500);
     });
   }
 

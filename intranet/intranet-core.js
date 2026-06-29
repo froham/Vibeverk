@@ -351,6 +351,11 @@ window.Intranet = (function () {
       return;
     }
 
+    if (m.roles && m.roles.length && m.roles.indexOf(context.role) === -1) {
+      outlet.innerHTML = '<p style="color:var(--color-muted);padding:2rem 0">Du har ikkje tilgang til denne sida.</p>';
+      return;
+    }
+
     var ctx = getContext();
     outlet.innerHTML = typeof m.render === "function" ? m.render(ctx, r.sub) : "";
     if (typeof m.mount === "function") m.mount(outlet, ctx, r.sub);

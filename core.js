@@ -1031,7 +1031,10 @@ window.App = (function () {
     const role = getAuthRole() || "admin";
     const allowedCats = allowedCategoriesForRole(role);
     const allTabs = buildAdminTabs();
-    const visibleTabs = allTabs.filter(function (t) { return allowedCats.indexOf(t.category) > -1; });
+    const visibleTabs = allTabs.filter(function (t) {
+      if (t.id === "min-konto" && _sb) return true; // alltid synleg for Supabase-innlogga brukarar
+      return allowedCats.indexOf(t.category) > -1;
+    });
 
     if (allowedCats.indexOf(activeCategory) === -1) activeCategory = allowedCats[0];
     let tabsInCat = visibleTabs.filter(function (t) { return t.category === activeCategory; });
@@ -1112,7 +1115,10 @@ window.App = (function () {
     }
     if (activeTab === "sikkerhetskopi") return adminBackup(body);
     if (activeTab === "admin-backup")   return adminBackupCustomer(body);
-    if (activeTab === "brukarar")       return adminBrukarar(body);
+    if (activeTab === "brukarar") {
+      if (window.VwUsersAdmin) window.VwUsersAdmin.render(body);
+      return;
+    }
     if (activeTab === "min-konto")      return adminMinKonto(body);
     if (activeTab.indexOf("mod-") === 0) {
       const id = activeTab.slice(4);
@@ -2575,124 +2581,6 @@ window.App = (function () {
       importBackup(file, function (ok, msg) {
         if (ok) { st.textContent = msg + " Laster på nytt…"; st.className = "form__status is-ok"; setTimeout(function () { location.reload(); }, 700); }
         else    { st.textContent = msg; st.className = "form__status is-error"; e.target.value = ""; }
-      });
-    });
-  }
-
-  /* --- Web-admin: Brukarstyring --------------------------------------------- */
-  function _callManageUser(action, payload) {
-    const supaUrl = CFG.supabase && CFG.supabase.url;
-    if (!supaUrl || !_sb) return Promise.reject(new Error("Ingen Supabase-tilkopling"));
-    return _sb.auth.getSession().then(function(r) {
-      const token = r.data && r.data.session && r.data.session.access_token;
-      if (!token) throw new Error("Ikkje innlogga");
-      return fetch(supaUrl + "/functions/v1/manage-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-        body: JSON.stringify(Object.assign({ action: action }, payload))
-      }).then(function(res) { return res.json(); });
-    });
-  }
-
-  function adminBrukarar(body) {
-    const ROLE_LABELS = { admin: "Admin", editor: "Redaktør", member: "Medlem" };
-    body.innerHTML = '<p style="color:var(--color-muted);padding:.5rem 0">Laster brukarar…</p>';
-    _sb.from("users").select("id, display_name, email, role, created_at").order("created_at")
-      .then(function(r) {
-        if (r.error) { body.innerHTML = '<p style="color:#c0392b">Feil: ' + C.esc(r.error.message) + '</p>'; return; }
-        renderBrukarar(body, r.data || [], ROLE_LABELS);
-      });
-  }
-
-  function renderBrukarar(body, users, ROLE_LABELS) {
-    const roleOpts = Object.keys(ROLE_LABELS).map(function(r) {
-      return '<option value="' + r + '">' + ROLE_LABELS[r] + '</option>';
-    }).join("");
-    const currentId = _sb._auth && _sb._auth.user && _sb._auth.user.id;
-
-    body.innerHTML =
-      '<div class="bk-wrap">' +
-        '<h4 class="an-heading">Inviter ny brukar</h4>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem">' +
-          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">E-post</label>' +
-          '<input id="bru-email" type="email" class="admin-input" placeholder="brukar@firma.no"></div>' +
-          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Namn (valfritt)</label>' +
-          '<input id="bru-name" type="text" class="admin-input" placeholder="Ola Nordmann"></div>' +
-        '</div>' +
-        '<div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:1.6rem">' +
-          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Rolle</label>' +
-          '<select id="bru-role" class="admin-input">' + roleOpts + '</select></div>' +
-          C.button({ label: "Send invitasjon", variant: "primary", size: "sm", attrs: 'id="bru-invite-btn"' }) +
-          '<span id="bru-invite-status" style="font-size:.85rem;color:var(--color-muted)"></span>' +
-        '</div>' +
-        '<h4 class="an-heading">Brukarar (' + users.length + '/50)</h4>' +
-        '<ul class="admin-list">' +
-          users.map(function(u) {
-            const isSelf = u.id === currentId;
-            const roleSelectOpts = Object.keys(ROLE_LABELS).map(function(r) {
-              return '<option value="' + r + '"' + (u.role === r ? " selected" : "") + '>' + ROLE_LABELS[r] + '</option>';
-            }).join("");
-            return '<li class="admin-row">' +
-              '<div class="admin-row__main">' +
-                '<div style="font-weight:600">' + C.esc(u.display_name || u.email || "Ukjend") + '</div>' +
-                '<div class="admin-row__meta">' + C.esc(u.email || "") + '</div>' +
-              '</div>' +
-              '<div class="admin-row__actions">' +
-                (isSelf
-                  ? '<span style="font-size:.8rem;padding:.3rem .7rem;border-radius:999px;background:var(--color-tint);color:var(--color-primary);font-weight:600">' + (ROLE_LABELS[u.role] || u.role) + ' (deg)</span>'
-                  : '<select class="bru-role-sel admin-input" style="width:auto" data-uid="' + C.esc(u.id) + '">' + roleSelectOpts + '</select>' +
-                    C.button({ label: "Fjern", variant: "danger", size: "sm", attrs: 'class="bru-remove-btn" data-uid="' + C.esc(u.id) + '" data-name="' + C.esc(u.display_name || u.email || "Ukjend") + '"' })
-                ) +
-              '</div>' +
-            '</li>';
-          }).join("") +
-        '</ul>' +
-      '</div>';
-
-    const statusEl = body.querySelector("#bru-invite-status");
-    body.querySelector("#bru-invite-btn").addEventListener("click", function() {
-      const email = (body.querySelector("#bru-email").value || "").trim();
-      const name  = (body.querySelector("#bru-name").value  || "").trim();
-      const role  = body.querySelector("#bru-role").value;
-      if (!email) { statusEl.style.color = "#c0392b"; statusEl.textContent = "E-post er påkrevd."; return; }
-      statusEl.style.color = "var(--color-muted)"; statusEl.textContent = "Sender…";
-      const redirectTo = (CFG.supabase && CFG.supabase.url
-        ? window.location.origin + "/intranet/"
-        : window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "/intranet/"));
-      _callManageUser("invite", { email: email, display_name: name, role: role, redirect_to: redirectTo })
-        .then(function(res) {
-          if (res.error) { statusEl.style.color = "#c0392b"; statusEl.textContent = res.error; return; }
-          statusEl.style.color = "#16a34a"; statusEl.textContent = "Invitasjon sendt til " + email + "!";
-          body.querySelector("#bru-email").value = "";
-          body.querySelector("#bru-name").value  = "";
-          setTimeout(function() { adminBrukarar(body); }, 1500);
-        })
-        .catch(function(e) { statusEl.style.color = "#c0392b"; statusEl.textContent = e.message || "Nettverksfeil."; });
-    });
-
-    body.querySelectorAll(".bru-role-sel").forEach(function(sel) {
-      sel.addEventListener("change", function() {
-        const uid  = sel.getAttribute("data-uid");
-        const role = sel.value;
-        _sb.from("users").update({ role: role }).eq("id", uid).then(function(r) {
-          if (r.error) { alert("Kunne ikkje oppdatere rolle."); return; }
-          sel.style.outline = "2px solid var(--color-primary)";
-          setTimeout(function() { sel.style.outline = ""; }, 1200);
-        });
-      });
-    });
-
-    body.querySelectorAll(".bru-remove-btn").forEach(function(btn) {
-      btn.addEventListener("click", function() {
-        const uid  = btn.getAttribute("data-uid");
-        const name = btn.getAttribute("data-name");
-        if (!confirm("Fjerne brukar «" + name + "»? Dette kan ikkje angras.")) return;
-        _callManageUser("remove", { user_id: uid })
-          .then(function(res) {
-            if (res.error) { alert("Feil: " + res.error); return; }
-            adminBrukarar(body);
-          })
-          .catch(function() { alert("Nettverksfeil."); });
       });
     });
   }
