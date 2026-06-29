@@ -10,20 +10,20 @@ window.HUB_CONFIG = {
 
   tenants: [
     {
-      id:               "nordpunkt",
-      name:             "Nordpunkt",
+      id:               "vibeverk",
+      name:             "Vibeverk",
       plan:             "full",          /* "web" | "workspace" | "full" */
       status:           "pilot",         /* "active" | "pilot" | "inactive" */
-      webUrl:           "https://nordpunkt.no",
-      workspaceUrl:     "https://nordpunkt.no/intranet/",
-      consoleUrl:       "https://nordpunkt.no/console/",
+      webUrl:           "https://vibeverk.no",
+      workspaceUrl:     "https://vibeverk.no/intranet/",
+      consoleUrl:       "https://vibeverk.no/console/",
       supabaseProject:  "clzczbyklgdtdhgjphup",
       contact: {
         name:  "Frode Hammerstad",
         email: "froham90@gmail.com"
       },
       since:  "2026-01",
-      notes:  "Testmiljø / pilot"
+      notes:  "Eigen instans — referansekunde"
     }
   ]
 };
