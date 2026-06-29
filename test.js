@@ -820,7 +820,7 @@ window.Image = FakeImg;
   clickAdminTab("analyse");
   assert(!!doc.querySelector(".an-cards"), "analyse-fanen viser statistikk-kort");
   assert(doc.querySelectorAll(".an-card").length === 12, "alle kort vises: 3 denne måneden + 3 status + 6 innhold (alle moduler aktive i testen)");
-  assert(!doc.querySelector("[data-an-form]"), "analytics-innstillinger-skjema er FLYTTET til super-admin (ikke i vanlig admin)");
+  assert(!doc.querySelector("[data-an-form]"), "analytics-innstillinger-skjema er flytta til Konsollen (ikkje i vanleg admin)");
   assert(!!doc.querySelector(".an-hint"), "tomt-state-melding vises når ingen analyse er konfigurert");
 
   // Status-fordeling (åpne/løst) og modul-bevisste innholdstal
@@ -833,18 +833,6 @@ window.Image = FakeImg;
   assert(anCardTexts.some(function (t) { return /FAQ-spørsmål/.test(t); }), "antall FAQ-spørsmål vises (faq-modul aktiv)");
   assert(anCardTexts.some(function (t) { return /Bilder i Mediebank/.test(t); }), "antall bilder i mediebank vises");
   assert(anCardTexts.some(function (t) { return /Kunder/.test(t); }), "antall kunder (CRM) vises");
-
-  // Super-admin: forenkla form — berre passord og nullstilling (analyse flytta til /console/)
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("#sa-pass").value = "Superadmin";
-  fire(doc.querySelector("[data-sa-login]"), "submit");
-  assert(!!doc.querySelector("#sa-apass"), "admin-passord-felt finnes i forenkla super-admin");
-  assert(!doc.querySelector("#sa-an-pl"), "Plausible-felt er flytta til Konsollen (ikkje i super-admin)");
-  assert(!doc.querySelector("#sa-an-ga") && !doc.querySelector("#sa-an-fa") && !doc.querySelector("#sa-an-gtm"), "GA4/Fathom/GTM-felt er fjerna (analyseconfig berre i Konsollen)");
-  assert(!doc.querySelector("#sa-github"), "GitHub-URL-felt er fjerna frå super-admin");
-  doc.getElementById("super-admin-root").remove();
 
   // Analyse-fanen: simuler konfigurert analyse direkte via localStorage
   window.localStorage.setItem("nordpunkt:analytics", JSON.stringify({ plausible: "nordpunkt.no" }));
@@ -1206,8 +1194,8 @@ window.Image = FakeImg;
   var leadsAfterTerms = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]").length;
   assert(leadsAfterTerms === leadsBeforeTerms, "innsending blokkeres uten godkjente vilkår");
 
-  // --- Personvern: footer-lenke og redigering i super-admin ---
-  console.log("\n— Personvern i footer og super-admin —");
+  // --- Personvern: footer-lenke og personverntekst ---
+  console.log("\n— Personvern i footer —");
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
   assert(!!doc.querySelector('[data-terms-open="footer-privacy"]'), "personvern-lenke finst i footer");
   assert(!!doc.querySelector('[data-terms-modal="footer-privacy"]'), "personvern-popup finst i footer");
@@ -1216,62 +1204,25 @@ window.Image = FakeImg;
   fire(doc.querySelector('[data-terms-close="footer-privacy"]'), "click");
   assert(doc.querySelector('[data-terms-modal="footer-privacy"]').style.display === "none", "footer-personvern-popup lukkes ved klikk");
 
-  // Rediger personvernteksten i super-admin
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  var saPassField = doc.querySelector("#sa-pass");
-  if (saPassField) { saPassField.value = "Superadmin"; fire(doc.querySelector("[data-sa-login]"), "submit"); }
-
-  // «Generer forslag på nytt»: nevner Plausible når analyse er konfigurert
+  // computeDefaultPrivacyText() genererer modul-bevisst forslag
   window.localStorage.setItem("nordpunkt:analytics", JSON.stringify({ plausible: "nordpunkt.no" }));
   var defaultPrivNow = window.App.computeDefaultPrivacyText();
   assert(/Plausible/.test(defaultPrivNow), "generert personvernforslag nevner Plausible når analyse er konfigurert");
   assert(/tilbud/.test(defaultPrivNow) && /booking/i.test(defaultPrivNow), "generert forslag nevner tilbud og booking");
-  assert(!!doc.querySelector("[data-priv-regen]"), "«Generer forslag på nytt»-knapp finst i super-admin");
-  fire(doc.querySelector("[data-priv-regen]"), "click");
-  var privEditorNow = doc.querySelector("#sa-priv-text").closest("[data-rtfield]").querySelector("[data-rt-editor]");
-  assert(/Plausible/.test(privEditorNow.textContent), "knappen fyller inn et forslag som nevner Plausible");
   window.localStorage.removeItem("nordpunkt:analytics");
 
-  assert(!!doc.querySelector("#sa-priv-heading"), "personvern-overskriftfelt finst i super-admin");
-  assert(!!doc.querySelector("#sa-priv-text"), "personvern-tekstfelt finst i super-admin");
-  doc.querySelector("#sa-priv-heading").value = "Testoverskrift";
-  doc.querySelector("#sa-priv-text").value = "Testtekst for personvern.";
-  fire(doc.querySelector("[data-sa-form]"), "submit");
-  var savedPriv = JSON.parse(window.localStorage.getItem("nordpunkt:superconfig") || "{}");
-  assert(savedPriv.privacy && savedPriv.privacy.heading === "Testoverskrift", "personvern-overskrift lagret i superconfig");
-  assert(savedPriv.privacy && savedPriv.privacy.text === "Testtekst for personvern.", "personvern-tekst lagret i superconfig");
-  doc.getElementById("super-admin-root").remove();
-
-  // Verifiser at endringen slår gjennom på footer-popup og kontaktskjema
+  // Personvernkonfigurasjon via superconfig (simulerer Konsoll-lagring)
+  window.App.store.set("superconfig", { privacy: { heading: "Testoverskrift", text: "Testtekst for personvern." } });
+  window.App.reloadConfig();
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
-  assert(doc.querySelector('[data-terms-modal="footer-privacy"] h3').textContent === "Testoverskrift", "ny overskrift vises i footer-popup");
-  assert(doc.querySelector('[data-terms-modal="footer-privacy"] .terms-modal-text').textContent === "Testtekst for personvern.", "ny tekst vises i footer-popup");
+  assert(doc.querySelector('[data-terms-modal="footer-privacy"] h3').textContent === "Testoverskrift", "ny overskrift vises i footer-popup etter superconfig-endring");
+  assert(doc.querySelector('[data-terms-modal="footer-privacy"] .terms-modal-text').textContent === "Testtekst for personvern.", "ny tekst vises i footer-popup etter superconfig-endring");
 
-  // Personvernerklæringen bruker no rik-tekst-editoren (ikke bare ren tekst)
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  var saPassField2 = doc.querySelector("#sa-pass");
-  if (saPassField2) { saPassField2.value = "Superadmin"; fire(doc.querySelector("[data-sa-login]"), "submit"); }
-  var privRt = doc.querySelector("#sa-priv-text").closest("[data-rtfield]");
-  assert(!!privRt, "personvern-tekstfeltet er et rik-tekst-felt med verktøylinje");
-  var privEditor = privRt.querySelector("[data-rt-editor]");
-  privEditor.innerHTML = "<script>alert(1)</script><b>Viktig:</b> vi lagrer ingen data uten samtykke.";
-  fire(privEditor, "input");
-  fire(doc.querySelector("[data-sa-form]"), "submit");
-  var savedPriv2 = JSON.parse(window.localStorage.getItem("nordpunkt:superconfig") || "{}");
-  assert(savedPriv2.privacy.text === "<b>Viktig:</b> vi lagrer ingen data uten samtykke.", "rik tekst i personvernerklæringen saneres og lagres korrekt");
-  doc.getElementById("super-admin-root").remove();
-  window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
-  assert(doc.querySelector('[data-terms-modal="footer-privacy"] .terms-modal-text strong, [data-terms-modal="footer-privacy"] .terms-modal-text b'), "fet tekst i personvernerklæringen vises korrekt formatert i popup");
-  assert(doc.querySelector('[data-terms-modal="lead"] h3').textContent === "Testoverskrift", "ny overskrift vises også i kontaktskjemaets popup (delt tekst)");
-
-  // Rydd opp (ikke la testdata påvirke resten av suiten)
+  // Rydd opp
   var rawSC = JSON.parse(window.localStorage.getItem("nordpunkt:superconfig") || "{}");
   delete rawSC.privacy;
   window.localStorage.setItem("nordpunkt:superconfig", JSON.stringify(rawSC));
+  window.App.reloadConfig();
 
   // --- CRM/Kunder kan ALDRI vises på framsida eller i footer ---
   console.log("\n— CRM aldri synlig publikt —");
@@ -1392,48 +1343,16 @@ window.Image = FakeImg;
   assert(!doc.querySelector(".mb-lightbox-back"), "lightbox lukkes ved klikk på Lukk");
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
-  // --- Super-admin: fane-struktur ---
-  console.log("\n— Super-admin fane-struktur —");
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  var saPass2 = doc.querySelector("#sa-pass");
-  if (saPass2) { saPass2.value = "Superadmin"; fire(doc.querySelector("[data-sa-login]"), "submit"); }
-  assert(doc.querySelectorAll("[data-sa-tab]").length === 5, "super-admin har 5 faner");
-  assert(doc.querySelector('[data-sa-pane="utseende"]').style.display !== "none", "Utseende-fanen er aktiv som standard");
-  assert(doc.querySelector('[data-sa-pane="analyse"]').style.display === "none", "Analyse-fanen er skjult før klikk");
-  fire(doc.querySelector('[data-sa-tab="analyse"]'), "click");
-  assert(doc.querySelector('[data-sa-pane="analyse"]').style.display !== "none", "Analyse-fanen vises etter klikk");
-  assert(doc.querySelector('[data-sa-pane="utseende"]').style.display === "none", "Utseende-fanen skjules etter fanebyte");
-  assert(!!doc.querySelector("#sa-an-pl"), "felt i annen fane finst fortsatt i DOM (ikke fjernet ved fanebyte)");
-  doc.getElementById("super-admin-root").remove();
-
-  // --- Super-admin: fargevelgere og fontpar-rask-velg ---
-  console.log("\n— Super-admin: farger og fonter —");
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  var saPass3 = doc.querySelector("#sa-pass");
-  if (saPass3) { saPass3.value = "Superadmin"; fire(doc.querySelector("[data-sa-login]"), "submit"); }
-  assert(!!doc.querySelector("#sa-text") && !!doc.querySelector("#sa-surface"), "fargevelgere for tekst- og overflate-farge finst");
-  assert(doc.querySelectorAll("[data-fontpair]").length >= 4, "minst fire kuraterte fontpar tilbys som rask-velg");
-
-  // Rask-velg fyller inn fritekstfelta
-  var pairBtn = doc.querySelector('[data-fontpair="2"]'); // Space Grotesk + Work Sans
-  fire(pairBtn, "click");
-  assert(doc.querySelector("#sa-dfont").value === "Space Grotesk" && doc.querySelector("#sa-bfont").value === "Work Sans", "fontpar-knapp fyller inn display- og brødtekst-felt");
-  assert(doc.querySelector("#sa-dweights").value === "600,700,800" && doc.querySelector("#sa-bweights").value === "400,500,600", "fontpar-knapp setter standard weights");
-
-  // Lagre og verifiser at alt persisteres
-  doc.querySelector("#sa-text").value = "#222222";
-  doc.querySelector("#sa-surface").value = "#f0f0f0";
-  fire(doc.querySelector("[data-sa-form]"), "submit");
+  // --- Superconfig: fargar og fontar via store (simulerer Konsoll-lagring) ---
+  console.log("\n— Superconfig: fargar og fontar —");
+  window.App.store.set("superconfig", { colors: { text: "#222222", surface: "#f0f0f0" }, fonts: { display: "Space Grotesk", body: "Work Sans" } });
+  window.App.reloadConfig();
+  assert(doc.documentElement.style.getPropertyValue("--color-text") === "#222222", "tekstfarge frå superconfig brukast (CSS-var satt)");
   var savedSC2 = JSON.parse(window.localStorage.getItem("nordpunkt:superconfig") || "{}");
-  assert(savedSC2.colors.text === "#222222" && savedSC2.colors.surface === "#f0f0f0", "tekst- og overflate-farge lagres via super-admin");
-  assert(savedSC2.fonts.display === "Space Grotesk" && savedSC2.fonts.body === "Work Sans", "fontpar valgt via rask-velg lagres korrekt");
-  doc.getElementById("super-admin-root").remove();
-  window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
-  assert(doc.documentElement.style.getPropertyValue("--color-text") === "#222222", "tekstfarge anvendes på siden (CSS-variabel satt)");
+  assert(savedSC2.colors.text === "#222222" && savedSC2.colors.surface === "#f0f0f0", "fargar persisterte i superconfig-nøkkel");
+  assert(savedSC2.fonts.display === "Space Grotesk" && savedSC2.fonts.body === "Work Sans", "fontar persisterte i superconfig-nøkkel");
+  window.App.store.remove("superconfig");
+  window.App.reloadConfig();
 
   // --- Rik tekst: sanering ---
   console.log("\n— Rik tekst —");
@@ -1551,23 +1470,16 @@ window.Image = FakeImg;
   assert(mbAfterBulk.length === mbBeforeBulk + 2, "to nye bilder lagt til via bulk-opplasting");
   assert(mbAfterBulk[mbAfterBulk.length - 1].description === "" && mbAfterBulk[mbAfterBulk.length - 1].tags.length === 0, "bulk-opplastede bilder har tom beskrivelse/tagger til å begynne med");
 
-  // --- SEO/deling (super-admin) ---
+  // --- SEO/deling (via superconfig, simulerer Konsoll-lagring) ---
   console.log("\n— SEO og deling —");
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  doc.querySelector("[data-vibeverk-click]").dispatchEvent(new window.Event("click", { bubbles: true }));
-  var saPass3 = doc.querySelector("#sa-pass");
-  if (saPass3) { saPass3.value = "Superadmin"; fire(doc.querySelector("[data-sa-login]"), "submit"); }
-  assert(!!doc.querySelector("#sa-metadesc"), "meta-beskrivelse-felt finst i super-admin");
-  doc.querySelector("#sa-metadesc").value = "Nordpunkt hjelper deg med rådgivning som flytter ting framover.";
-  doc.querySelector("#sa-ogimage").value = "https://nordpunkt.no/del-bilde.jpg";
-  doc.querySelector("#sa-favicon").value = "https://nordpunkt.no/favicon.png";
-  fire(doc.querySelector("[data-sa-form]"), "submit");
+  window.App.store.set("superconfig", { company: { metaDescription: "Nordpunkt hjelper deg med rådgivning som flytter ting framover.", ogImage: "https://nordpunkt.no/del-bilde.jpg", favicon: "https://nordpunkt.no/favicon.png" } });
+  window.App.reloadConfig();
   assert(doc.querySelector('meta[name="description"]')?.getAttribute("content") === "Nordpunkt hjelper deg med rådgivning som flytter ting framover.", "meta-beskrivelse satt i <head>");
   assert(doc.querySelector('meta[property="og:image"]')?.getAttribute("content") === "https://nordpunkt.no/del-bilde.jpg", "og:image satt i <head>");
   assert(doc.querySelector('meta[name="twitter:card"]')?.getAttribute("content") === "summary_large_image", "twitter:card satt korrekt");
   assert(doc.querySelector('link[rel="icon"]')?.getAttribute("href") === "https://nordpunkt.no/favicon.png", "favicon-lenke satt i <head>");
-  doc.getElementById("super-admin-root") && doc.getElementById("super-admin-root").remove();
+  window.App.store.remove("superconfig");
+  window.App.reloadConfig();
 
   // --- Om oss og Tjenestekort: rik tekst (manglet eksplisitt testdekning) ---
   console.log("\n— Om oss / Tjenestekort: rik tekst —");
@@ -1674,7 +1586,6 @@ window.Image = FakeImg;
   assert(csvCalls[2].headers.indexOf("Referanse") > -1, "tilbud-CSV har referanse-kolonne");
 
   window.App.downloadCsv = origDownloadCsv;
-  doc.getElementById("super-admin-root") && doc.getElementById("super-admin-root").remove();
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
   console.log("\nResultat: OK " + (globalThis.__ok||0) + " / FEIL " + (globalThis.__err||0));

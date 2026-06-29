@@ -1060,7 +1060,7 @@ window.App = (function () {
             })() +
             `<div class="admin-tabbody" data-tabbody></div>
              <div class="admin-foot">
-               ${role === "owner" ? '<span class="admin-vibeverk" data-vibeverk-click>Levert av Vibeverk</span>' : '<span class="admin-vibeverk">Levert av Vibeverk</span>'}
+               <span class="admin-vibeverk">Levert av Vibeverk</span>
                ${C.button({ label: "Logg ut", variant: "ghost", attrs: 'data-logout' })}
              </div>`
     });
@@ -1086,17 +1086,6 @@ window.App = (function () {
     root.querySelector("[data-logout]").addEventListener("click", function () {
       setAuthed(false); closeAdmin();
     });
-
-    // Trippelklikk på «Levert av Vibeverk» → super-admin (kun eigaren, ikke ansattrolle)
-    if (role === "owner") {
-      let vClicks = 0, vTimer;
-      root.querySelector("[data-vibeverk-click]").addEventListener("click", function () {
-        vClicks++;
-        clearTimeout(vTimer);
-        vTimer = setTimeout(function () { vClicks = 0; }, 600);
-        if (vClicks >= 3) { vClicks = 0; openSuperAdmin(root); }
-      });
-    }
 
     renderAdminTab(root.querySelector("[data-tabbody]"));
     startAdminBadgeRefresh(root);
@@ -2971,18 +2960,11 @@ window.App = (function () {
     setTimeout(function () { input.focus(); }, 50);
   }
 
-  /* ===========================================================================
-     SUPER-ADMIN  (berre for Vibeverk — trippelklikk «Levert av Vibeverk»)
-     ======================================================================== */
-  const SUPER_PASS = "Superadmin";
   const SUPER_KEY  = "superconfig";
 
-  // Sett sammen et forslag til personvernerklæring basert på hvilke moduler/
-  // funksjoner som faktisk er aktive — så en kunde uten Tilbud/Booking ikke får
-  // tekst som nevner ting de ikke har. Brukes som startpunkt (kun ved første
-  // oppstart, før noe er lagret) og av «Generer forslag på nytt»-knappen i
-  // super-admin. Når noe er lagret, er det den lagra teksten som gjelder —
-  // dette skriver aldri over en allerede lagra (også tom) personvernstekst.
+  // Sett saman eit forslag til personvernerklæring basert på kva modular/
+  // funksjonar som faktisk er aktive. Brukes som startpunkt ved første oppstart
+  // (før noe er lagra). Kan kallast frå Konsollen for å generere eit nytt forslag.
   function computeDefaultPrivacyText() {
     const hasTilbud  = modules.some(function (m) { return m.id === "tilbud"; });
     const hasBooking = modules.some(function (m) { return m.id === "booking"; });
@@ -3020,20 +3002,6 @@ window.App = (function () {
   }
 
   function getSuperConfig() { return Store.get(SUPER_KEY, {}) || {}; }
-  function saveSuperConfig(v) {
-    Store.set(SUPER_KEY, v);
-    // Slå saman med CFG og oppdater sida
-    const sc = v || {};
-    if (sc.company)  Object.assign(CFG.company,  sc.company);
-    if (sc.colors)   Object.assign(CFG.colors,   sc.colors);
-    if (sc.fonts)    Object.assign(CFG.fonts,     sc.fonts);
-    if (sc.features) Object.assign(CFG.features,  sc.features);
-    if (sc.intranettFeatures && CFG.intranettFeatures) Object.assign(CFG.intranettFeatures, sc.intranettFeatures);
-    if (sc.privacy)  Object.assign(CFG.privacy,   sc.privacy);
-    if (sc.workspace) { if (!CFG.workspace) CFG.workspace = {}; Object.assign(CFG.workspace, sc.workspace); }
-    if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
-    applyTheme(); render();
-  }
 
   // Bruk lagra super-config ved oppstart
   function applySuperConfig() {
@@ -3046,165 +3014,6 @@ window.App = (function () {
     else             CFG.privacy.text = computeDefaultPrivacyText();   // aldri lagra → modul-bevisst forslag
     if (sc.workspace) { if (!CFG.workspace) CFG.workspace = {}; Object.assign(CFG.workspace, sc.workspace); }
     if (sc.adminPassword) CFG.admin.password = sc.adminPassword;
-  }
-
-  function openSuperAdmin(adminRoot) {
-    const existing = document.getElementById("super-admin-root");
-    if (existing) { existing.remove(); return; }
-
-    const wrap = document.createElement("div");
-    wrap.id = "super-admin-root";
-    wrap.style.cssText = "position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:1rem";
-    wrap.innerHTML =
-      '<div style="background:var(--color-bg);border-radius:var(--radius);width:min(720px,97vw);max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.4)">' +
-        '<div style="padding:1.1rem 1.4rem;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--color-bg);z-index:1">' +
-          '<strong>⚙ Super-admin — Vibeverk</strong>' +
-          '<button data-sa-close style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);padding:.2rem .5rem;border-radius:6px" title="Lukk">&times;</button>' +
-        '</div>' +
-        '<div data-sa-body style="padding:1.3rem"></div>' +
-      '</div>';
-    document.body.appendChild(wrap);
-
-    let saHasUnsaved = false;
-
-    function closeSuperAdmin() {
-      if (saHasUnsaved) {
-        const choice = confirm("Du har ulagrede endringer. Lagre før du lukker?");
-        if (choice) {
-          const form = wrap.querySelector("[data-sa-form]");
-          if (form) form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
-        }
-      }
-      wrap.remove();
-    }
-
-    const body = wrap.querySelector("[data-sa-body]");
-    wrap.querySelector("[data-sa-close]").addEventListener("click", closeSuperAdmin);
-    // IKKJE lukk ved klikk utanfor — brukar MÅ bruke krysset
-    document.addEventListener("keydown", function saEsc(e) {
-      if (e.key === "Escape") { closeSuperAdmin(); document.removeEventListener("keydown", saEsc); }
-    });
-
-    // OTP-autentisering via Supabase — ingen passord lagra nokon stad
-    if (_sb) {
-      _sb.auth.getUser().then(function (r) {
-        const email = r.data && r.data.user && r.data.user.email;
-        if (!email) {
-          body.innerHTML = '<p style="color:#c0392b;font-size:.92rem">Ikkje innlogga — logg inn att.</p>';
-          return;
-        }
-        body.innerHTML =
-          '<p style="margin:0 0 .5rem;font-size:.92rem;color:var(--color-muted)">Sender eingongskode til <strong>' + C.esc(email) + '</strong>…</p>' +
-          '<p class="form__status" data-sa-status></p>';
-        const stSend = body.querySelector("[data-sa-status]");
-        _sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function (res) {
-          if (res.error) {
-            stSend.textContent = "Feil: " + res.error.message; stSend.className = "form__status is-error"; return;
-          }
-          body.innerHTML =
-            '<form data-sa-otp>' +
-              '<p style="margin:0 0 1rem;font-size:.92rem;color:var(--color-muted)">Kode sendt til <strong>' + C.esc(email) + '</strong>. Sjekk innboksen.</p>' +
-              '<div class="i-field" style="margin-bottom:.8rem">' +
-                '<label for="sa-otp" style="font-size:.85rem;font-weight:600">Eingongskode (8 siffer)</label>' +
-                '<input id="sa-otp" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" placeholder="00000000" style="width:100%;font:inherit;font-size:1.3rem;letter-spacing:.25em;text-align:center;padding:.6rem .8rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)">' +
-              '</div>' +
-              '<div style="display:flex;gap:.6rem;align-items:center">' +
-                C.button({ label: "Bekreft", type: "submit", variant: "primary" }) +
-                '<button type="button" data-sa-resend class="btn btn--ghost btn--sm">Send ny kode</button>' +
-              '</div>' +
-              '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
-            '</form>';
-          const stOtp = body.querySelector("[data-sa-status]");
-          setTimeout(function () { const i = body.querySelector("#sa-otp"); if (i) i.focus(); }, 50);
-          body.querySelector("[data-sa-resend]").addEventListener("click", function () {
-            _sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function () {
-              stOtp.textContent = "Ny kode sendt."; stOtp.className = "form__status is-ok";
-            });
-          });
-          body.querySelector("[data-sa-otp]").addEventListener("submit", function (e) {
-            e.preventDefault();
-            const token = body.querySelector("#sa-otp").value.trim();
-            stOtp.textContent = "Verifiserer…"; stOtp.className = "form__status";
-            _sb.auth.verifyOtp({ email: email, token: token, type: "email" }).then(function (vr) {
-              if (vr.error) {
-                stOtp.textContent = "Feil kode — prøv igjen."; stOtp.className = "form__status is-error";
-                body.querySelector("#sa-otp").value = "";
-                body.querySelector("#sa-otp").focus();
-                return;
-              }
-              _sb.from("users").select("role").eq("id", vr.data.user.id).single().then(function (ur) {
-                if (!ur.data || ur.data.role !== "owner") {
-                  stOtp.textContent = "Tilgang nekta — ikkje superadmin-konto."; stOtp.className = "form__status is-error";
-                  return;
-                }
-                renderSuperAdminForm(body);
-              });
-            });
-          });
-        });
-      });
-    } else {
-      // Fallback utan Supabase (lokal/testmiljø)
-      body.innerHTML =
-        '<form data-sa-login>' +
-          '<p style="margin:0 0 1rem;color:var(--color-muted);font-size:.92rem">Skriv inn super-admin-passord for å redigere konfigurasjon.</p>' +
-          C.field({ id:"sa-pass", label:"Passord", type:"password", required:true }) +
-          '<div style="margin-top:.8rem">' + C.button({ label:"Logg inn", type:"submit", variant:"primary" }) + '</div>' +
-          '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
-        '</form>';
-      body.querySelector("[data-sa-login]").addEventListener("submit", function (e) {
-        e.preventDefault();
-        if (body.querySelector("#sa-pass").value !== SUPER_PASS) {
-          const st = body.querySelector("[data-sa-status]");
-          st.textContent = "Feil passord."; st.className = "form__status is-error"; return;
-        }
-        renderSuperAdminForm(body);
-      });
-      setTimeout(function () { const i = body.querySelector("#sa-pass"); if (i) i.focus(); }, 50);
-    }
-  }
-
-  // renderSuperAdminForm — forenkla utgåve. Full konfigurasjon har flytta til /console/.
-  // Beheld berre admin-passord og nullstilling her, for naudsituasjonar frå #admin.
-  function renderSuperAdminForm(body) {
-    body.innerHTML =
-      '<div style="margin-bottom:1rem;padding:.85rem 1rem;background:var(--color-alt);border:1px solid var(--color-border);border-radius:10px">' +
-        '<p style="margin:0;font-size:.88rem"><strong>Full konfigurasjon er flytta til Konsollen</strong> — ' +
-        'fargar, fontar, Workspace, Analyse, Personvern og funksjonsbrytarar er tilgjengelege på ' +
-        '<a href="/console/" target="_blank" style="font-weight:600">/console/</a>.</p>' +
-      '</div>' +
-      '<form data-sa-form>' +
-        '<fieldset class="admin-group"><legend>Admin-passord (for kunden)</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .6rem">Passordet kunden bruker for å opne web-admin via #admin-lenkja.</p>' +
-          C.field({ id:"sa-apass", label:"Passord", type:"password", value: CFG.admin && CFG.admin.password || "" }) +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Faresone</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .6rem">Slettar all superconfig og startar frå config.js-verdiane. Kan ikkje angrast.</p>' +
-          C.button({ label:"Nullstill all konfig", variant:"ghost", attrs:'data-sa-reset style="border-color:#c0392b;color:#c0392b"' }) +
-        '</fieldset>' +
-        '<div style="margin-top:1.2rem;display:flex;gap:.6rem;align-items:center">' +
-          C.button({ label:"Lagre passord", type:"submit", variant:"primary" }) +
-        '</div>' +
-        '<p class="form__status" data-sa-status style="margin-top:.6rem"></p>' +
-      '</form>';
-
-    body.querySelector("[data-sa-reset]").addEventListener("click", function () {
-      if (!confirm("Nullstill all super-admin-konfig og gå tilbake til config.js-verdiane?")) return;
-      Store.remove(SUPER_KEY);
-      location.reload();
-    });
-
-    body.querySelector("[data-sa-form]").addEventListener("submit", function (e) {
-      e.preventDefault();
-      const newSC = Object.assign({}, getSuperConfig(), {
-        adminPassword: body.querySelector("#sa-apass").value
-      });
-      saveSuperConfig(newSC);
-      saHasUnsaved = false;
-      const st = body.querySelector("[data-sa-status]");
-      st.textContent = "✓ Passord lagra!"; st.className = "form__status is-ok";
-      setTimeout(function () { if (st) st.textContent = ""; }, 2500);
-    });
   }
 
   function initAnalytics() {
@@ -3299,6 +3108,8 @@ window.App = (function () {
     bindEmailTemplateCard: bindEmailTemplateCard,
     DEFAULT_REPLY_TEMPLATE: DEFAULT_REPLY_TEMPLATE,
     computeDefaultPrivacyText: computeDefaultPrivacyText,
+    applySuperConfig: applySuperConfig,
+    reloadConfig: function () { applySuperConfig(); applyTheme(); render(); },
     downloadBlob: downloadBlob,
     toCsvValue:   toCsvValue,
     downloadCsv:  downloadCsv,
