@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   id              text         PRIMARY KEY,
   conversation_id text         NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
   text            text         NOT NULL,
-  sender          text         NOT NULL CHECK (sender IN ('visitor', 'operator')),
+  sender          text         NOT NULL CHECK (sender IN ('visitor', 'operator', 'system')),
   at              bigint,                        -- epoch-ms for rask sortering
   created_at      timestamptz  NOT NULL DEFAULT now()
 );

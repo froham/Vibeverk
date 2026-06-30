@@ -151,25 +151,31 @@
       var convs = Chat.getConvs();
       var idx = convs.findIndex(function(c){return c.id===id;});
       if (idx > -1) { Object.assign(convs[idx], changes); Chat.setConvs(convs); }
-      if (_sb) {
-        var sb = {};
-        if (changes.name !== undefined)          sb.visitor_name    = changes.name;
-        if (changes.email !== undefined)         sb.visitor_email   = changes.email;
-        if (changes.status !== undefined)        sb.status          = changes.status;
-        // unread=0 er mark-as-read (admin-handling) — inkrement vert gjort av DB-triggaren
-        if (changes.unread === 0)                sb.unread          = 0;
-        // last_msg og last_at vert sett automatisk av triggaren _chat_conv_update_on_msg
-        if (changes.pageUrl !== undefined)       sb.page_url        = changes.pageUrl;
-        if (changes.referrer !== undefined)      sb.referrer        = changes.referrer;
-        if (changes.language !== undefined)      sb.language        = changes.language;
-        if (changes.browser !== undefined)       sb.browser         = changes.browser;
-        if (changes.os !== undefined)            sb.os              = changes.os;
-        if (changes.screen !== undefined)        sb.screen          = changes.screen;
-        if (changes.visitorActive !== undefined) sb.visitor_active  = changes.visitorActive;
-        if (changes.lastSeenAt !== undefined)    sb.last_seen_at    = changes.lastSeenAt;
-        if (changes.visitorReadAt !== undefined) sb.visitor_read_at = changes.visitorReadAt;
-        if (Object.keys(sb).length) _sb.from("chat_conversations").update(sb).eq("id", id);
-      }
+      if (!_sb) return Promise.resolve();
+      var sb = {};
+      if (changes.name !== undefined)          sb.visitor_name    = changes.name;
+      if (changes.email !== undefined)         sb.visitor_email   = changes.email;
+      if (changes.status !== undefined)        sb.status          = changes.status;
+      // unread=0 er mark-as-read (admin-handling) — inkrement vert gjort av DB-triggaren
+      if (changes.unread === 0)                sb.unread          = 0;
+      // last_msg og last_at vert sett automatisk av triggaren _chat_conv_update_on_msg
+      if (changes.pageUrl !== undefined)       sb.page_url        = changes.pageUrl;
+      if (changes.referrer !== undefined)      sb.referrer        = changes.referrer;
+      if (changes.language !== undefined)      sb.language        = changes.language;
+      if (changes.browser !== undefined)       sb.browser         = changes.browser;
+      if (changes.os !== undefined)            sb.os              = changes.os;
+      if (changes.screen !== undefined)        sb.screen          = changes.screen;
+      if (changes.visitorActive !== undefined) sb.visitor_active  = changes.visitorActive;
+      if (changes.lastSeenAt !== undefined)    sb.last_seen_at    = changes.lastSeenAt;
+      if (changes.visitorReadAt !== undefined) sb.visitor_read_at = changes.visitorReadAt;
+      if (!Object.keys(sb).length) return Promise.resolve();
+      // postgrest-js er lazy — .then() må kallast for at requesten faktisk vert sendt
+      return _sb.from("chat_conversations").update(sb).eq("id", id).then(function(r) {
+        if (r && r.error) {
+          console.error("[chat] conv update failed:", r.error.message, Object.keys(sb).join(","));
+          return Promise.reject(r.error);
+        }
+      });
     },
 
     getMsgs:  function (id)    { return Chat.store.get("chat:msgs:"+id,[]); },
@@ -198,7 +204,7 @@
     },
 
     markRead:   function (id) { Chat.updateConv(id,{unread:0}); },
-    setStatus:  function (id, s) { Chat.updateConv(id,{status:s}); },
+    setStatus:  function (id, s) { return Chat.updateConv(id,{status:s}); },
 
     getVid:    function () {
       var v = Chat.store.get("chat:vid",null);
@@ -1541,12 +1547,29 @@
             window.App.setLeadStatus(reopenLead.id, "lest");
           }
         }
-        Chat.setStatus(activeId, newStatus);
-        // Keep in-memory convs in sync so buildUI shows updated status
+        // Optimistic: update in-memory and rebuild UI immediately
         var sidx = convs.findIndex(function(c){return c.id===activeId;});
         if (sidx>-1) convs[sidx].status = newStatus;
         _adminConvs = convs;
         buildUI();
+        // Persist to Supabase — roll back and show error on failure
+        Chat.setStatus(activeId, newStatus).then(null, function() {
+          var prev = newStatus === "closed" ? "open" : "closed";
+          var lc = Chat.getConvs();
+          var li = lc.findIndex(function(c){return c.id===activeId;});
+          if (li > -1) { lc[li].status = prev; Chat.setConvs(lc); }
+          var ridx = convs.findIndex(function(c){return c.id===activeId;});
+          if (ridx > -1) { convs[ridx].status = prev; _adminConvs = convs; }
+          buildUI();
+          var viewEl = container.querySelector(".vwca-view");
+          if (viewEl) {
+            var errEl = document.createElement("div");
+            errEl.style.cssText = "background:#fef2f2;color:#b91c1c;font-size:.78rem;text-align:center;padding:.5rem 1rem;border-top:1px solid #fca5a5";
+            errEl.textContent = "Kunne ikkje lagre status. Prøv igjen.";
+            viewEl.appendChild(errEl);
+            setTimeout(function(){if(errEl&&errEl.parentNode)errEl.parentNode.removeChild(errEl);},4000);
+          }
+        });
       });
 
       /* Info-panel toggle */

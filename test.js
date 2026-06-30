@@ -1588,5 +1588,30 @@ window.Image = FakeImg;
   window.App.downloadCsv = origDownloadCsv;
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
+  // --- Chat: statuspersistens (regresjonstest) ---
+  console.log("\n— Chat: statuspersistens —");
+  (function () {
+    if (!window.VwChat) { console.log("OK: chat-modul ikkje lasta i denne testsuite — statuspersistens-test hoppast over"); return; }
+    var ns = "nordpunkt:";
+    var cid = "ctest-status-reg";
+    var saved = JSON.parse(window.localStorage.getItem(ns + "chat:convs") || "[]");
+    var tc = { id: cid, name: "Testar", status: "open", unread: 0, lastMsg: "", lastAt: Date.now() };
+    window.localStorage.setItem(ns + "chat:convs", JSON.stringify([tc].concat(saved)));
+
+    window.VwChat.setStatus(cid, "closed");
+    var afterClose = window.VwChat.getConv(cid);
+    assert(afterClose && afterClose.status === "closed", "chat setStatus('closed') oppdaterer in-memory status");
+
+    var raw = JSON.parse(window.localStorage.getItem(ns + "chat:convs") || "[]");
+    var persisted = raw.find(function (c) { return c.id === cid; });
+    assert(persisted && persisted.status === "closed", "chat 'closed' overlever localStorage-les (simulert sidereload)");
+
+    window.VwChat.setStatus(cid, "open");
+    var afterOpen = window.VwChat.getConv(cid);
+    assert(afterOpen && afterOpen.status === "open", "chat setStatus('open') opnar samtalen att");
+
+    window.localStorage.setItem(ns + "chat:convs", JSON.stringify(saved));
+  })();
+
   console.log("\nResultat: OK " + (globalThis.__ok||0) + " / FEIL " + (globalThis.__err||0));
 })();
