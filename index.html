@@ -366,9 +366,9 @@
     .contact__quote-hint { margin: 0 0 .7rem; font-size: .92rem; color: var(--color-muted); }
     .contact__actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
     /* Analyse-fane */
-    .an-wrap { max-width: 640px; }
+    .an-wrap { max-width: none; }
     .an-heading { margin: 0 0 .8rem; font-size: 1rem; }
-    .an-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-bottom: 1.6rem; }
+    .an-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .8rem; margin-bottom: 1.6rem; }
     .an-card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem 1.1rem; background: var(--color-surface); }
     .an-card__val { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--color-primary); }
     .an-card__label { font-size: .85rem; color: var(--color-muted); margin: .3rem 0 .4rem; }
@@ -537,7 +537,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js?v=6"></script>
   <script src="components.js?v=5"></script>
-  <script src="core.js?v=13"></script>
+  <script src="core.js?v=14"></script>
   <!-- Ekstra-moduler lastes her, etter core.js -->
   <script src="module-booking.js?v=5"></script>
   <script src="module-quote.js?v=5"></script>

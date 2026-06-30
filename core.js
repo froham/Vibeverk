@@ -2819,7 +2819,7 @@ window.App = (function () {
   }
 
   // Generisk svar-modal, brukt av Kontakt, Tilbud og Booking.
-  // opts = { name, email, subject, templateKey, defaultTemplate, vars, previewHtml }
+  // opts = { name, email, subject, templateKey, defaultTemplate, vars, previewHtml, onSent }
   function openReplyModal(opts) {
     const existing = document.getElementById("reply-modal-root");
     if (existing) existing.remove();
@@ -2828,33 +2828,97 @@ window.App = (function () {
     const bodyText = fillTemplate(tpl, opts.vars || {}).slice(0, 1800);
     const mailtoFull  = buildMailtoUrl(opts.email, opts.subject, bodyText);
     const mailtoBlank = buildMailtoUrl(opts.email, opts.subject, "");
+    const canSendDirect = !!(window.App && window.App.supabase);
 
     const root = document.createElement("div");
     root.id = "reply-modal-root";
     root.innerHTML =
       '<div style="position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem" data-reply-back>' +
-        '<div style="background:var(--color-bg);border-radius:var(--radius);width:min(620px,100%);max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">' +
+        '<div style="background:var(--color-bg);border-radius:var(--radius);width:min(640px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.3rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
             '<strong style="font-size:1rem">Svar til ' + C.esc(opts.name || opts.email) + '</strong>' +
             '<button data-reply-close style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
           '</div>' +
-          '<div style="padding:1.1rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
+          '<div style="padding:.9rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
             '<p style="margin:0;font-size:.88rem"><strong>Til:</strong> &lt;<a href="mailto:' + C.esc(opts.email) + '" style="color:var(--color-primary)">' + C.esc(opts.email) + '</a>&gt;</p>' +
           '</div>' +
-          (opts.previewHtml ? '<div style="padding:1.1rem 1.3rem;border-bottom:1px solid var(--color-border)">' + opts.previewHtml + '</div>' : '') +
-          '<div style="padding:1rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
-            '<p style="margin:0;font-size:.8rem;color:var(--color-muted)">' +
-              C.icon("info-circle") + ' E-posten åpnes som ren tekst.' +
-            '</p>' +
+          (opts.previewHtml ? '<div style="padding:1rem 1.3rem;border-bottom:1px solid var(--color-border)">' + opts.previewHtml + '</div>' : '') +
+          '<div style="padding:.9rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
+            '<p style="margin:0;font-size:.8rem;color:var(--color-muted)">' + C.icon("info-circle") + ' E-posten åpnes som ren tekst i e-postklienten din.</p>' +
           '</div>' +
           '<div style="padding:1rem 1.3rem;display:flex;gap:.7rem;flex-wrap:wrap;align-items:center">' +
             C.button({ label: "Åpne i Outlook", icon: "mail-forward", variant: "primary", href: mailtoFull }) +
             C.button({ label: "Åpne uten mal", variant: "ghost", href: mailtoBlank }) +
+            (canSendDirect ? '<button class="btn btn--ghost" id="reply-direct-toggle" style="border-color:var(--color-primary);color:var(--color-primary)"><i class="ti ti-send"></i> Send via Vibeverk</button>' : '') +
             (opts.chatId ? C.button({ label: "Svar i chat", icon: "message-circle", variant: "secondary", attrs: 'data-goto-chat="' + C.esc(opts.chatId) + '"' }) : "") +
           '</div>' +
+          (canSendDirect
+            ? '<div id="reply-direct-area" style="display:none;padding:1rem 1.3rem;border-top:1px solid var(--color-border);display:none;gap:.7rem;flex-direction:column">' +
+                '<div class="field">' +
+                  '<label style="font-size:.8rem;font-weight:600;color:var(--color-muted)">Din e-post (svar-til — kunden svarar hit)</label>' +
+                  '<input id="reply-replyto" type="email" placeholder="din@epost.no" autocomplete="email" ' +
+                  'style="font:inherit;font-size:.88rem;padding:.55rem .8rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%">' +
+                '</div>' +
+                '<div class="field">' +
+                  '<label style="font-size:.8rem;font-weight:600;color:var(--color-muted)">Melding</label>' +
+                  '<textarea id="reply-direct-body" rows="8" style="width:100%;font:inherit;font-size:.87rem;padding:.65rem .85rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);resize:vertical;line-height:1.6">' + C.esc(bodyText) + '</textarea>' +
+                '</div>' +
+                '<div style="display:flex;align-items:center;gap:.8rem">' +
+                  '<button class="btn btn--primary" id="reply-send-now"><i class="ti ti-send"></i> Send nå</button>' +
+                  '<span id="reply-direct-status" style="font-size:.87rem"></span>' +
+                '</div>' +
+              '</div>'
+            : '') +
         '</div>' +
       '</div>';
     document.body.appendChild(root);
+
+    // Toggle Send via Vibeverk-seksjonen
+    const toggleBtn = root.querySelector("#reply-direct-toggle");
+    const directArea = root.querySelector("#reply-direct-area");
+    if (toggleBtn && directArea) {
+      toggleBtn.addEventListener("click", function () {
+        const open = directArea.style.display === "flex";
+        directArea.style.display = open ? "none" : "flex";
+        toggleBtn.style.background = open ? "" : "color-mix(in srgb,var(--color-primary) 8%,transparent)";
+      });
+      // Forhåndsutfyll reply-to med standard svaradresse
+      var replyToEl = root.querySelector("#reply-replyto");
+      if (replyToEl) replyToEl.value = "hei@vibeverk.no";
+    }
+
+    // Send via Vibeverk
+    var sendNowBtn = root.querySelector("#reply-send-now");
+    if (sendNowBtn) {
+      sendNowBtn.addEventListener("click", async function () {
+        var body    = (root.querySelector("#reply-direct-body") || {}).value || "";
+        var replyTo = (root.querySelector("#reply-replyto")    || {}).value || "";
+        var st      = root.querySelector("#reply-direct-status");
+        if (!body.trim()) { st.innerHTML = '<span style="color:#c0392b">Meldingen er tom.</span>'; return; }
+        sendNowBtn.disabled = true;
+        st.innerHTML = '<span style="color:var(--color-muted)">Sender…</span>';
+        try {
+          var sb = window.App.supabase;
+          var session = (await sb.auth.getSession()).data.session;
+          if (!session) throw new Error("Ikkje innlogga");
+          var fnUrl = (window.SITE_CONFIG && window.SITE_CONFIG.supabase && window.SITE_CONFIG.supabase.url) + "/functions/v1/send-reply";
+          var resp = await fetch(fnUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + session.access_token },
+            body: JSON.stringify({ to_email: opts.email, to_name: opts.name || "", subject: opts.subject || "", body: body.trim(), reply_to: replyTo })
+          });
+          var result = await resp.json();
+          if (result.error) throw new Error(result.error);
+          st.innerHTML = '<span style="color:#16a34a"><i class="ti ti-circle-check"></i> E-post sendt!</span>';
+          if (opts.onSent) opts.onSent();
+          setTimeout(function () { root.remove(); }, 2000);
+        } catch (e) {
+          sendNowBtn.disabled = false;
+          st.innerHTML = '<span style="color:#c0392b">Feil: ' + C.esc(e.message) + '</span>';
+        }
+      });
+    }
+
     root.querySelector("[data-reply-close]").addEventListener("click", function () { root.remove(); });
     root.querySelector("[data-reply-back]").addEventListener("click", function (e) { if (e.target === e.currentTarget) root.remove(); });
     document.addEventListener("keydown", function escClose(e) {
