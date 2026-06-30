@@ -1016,7 +1016,22 @@
     try { var raw=localStorage.getItem(key); return (raw?JSON.parse(raw):{}).snippets||[]; } catch(e){ return []; }
   }
 
-  function bindSnippetAutocomplete(inp, replyEl, doSend) {
+  function insertAtCursor(inp, text) {
+    var s = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
+    var e = inp.selectionEnd   != null ? inp.selectionEnd   : inp.value.length;
+    inp.value = inp.value.slice(0, s) + text + inp.value.slice(e);
+    inp.selectionStart = inp.selectionEnd = s + text.length;
+  }
+
+  function expandSnippetVars(text, vars) {
+    if (!vars || !text) return text;
+    return text.replace(/\{(\w+)\}/g, function (_, key) {
+      return vars[key] !== undefined ? vars[key] : "{" + key + "}";
+    });
+  }
+
+  // getVars: optional fn → {namn, epost, firma, …} for variabelsubstitusjon i snippet-body
+  function bindSnippetAutocomplete(inp, replyEl, doSend, getVars) {
     var dd = null;
 
     function closeDd() { if(dd&&dd.parentNode){dd.parentNode.removeChild(dd);} dd=null; }
@@ -1040,8 +1055,14 @@
     }
 
     function insertSnippet(s) {
+      var body = expandSnippetVars(s.body, getVars ? getVars() : null);
       var val=inp.value, hashIdx=val.lastIndexOf("#");
-      inp.value = hashIdx!==-1 ? val.slice(0,hashIdx)+s.body : val+s.body;
+      if (hashIdx !== -1) {
+        inp.value = val.slice(0, hashIdx) + body;
+        inp.selectionStart = inp.selectionEnd = hashIdx + body.length;
+      } else {
+        insertAtCursor(inp, body);
+      }
       closeDd(); inp.focus();
       inp.style.height="auto"; inp.style.height=Math.min(inp.scrollHeight,90)+"px";
     }
@@ -1553,11 +1574,15 @@
       var inp         = view.querySelector("#vwca-inp");
       var sendBtn     = view.querySelector("#vwca-send");
 
-      var snippetAC = bindSnippetAutocomplete(inp, view.querySelector("#vwca-reply"), doSend);
+      var snippetAC = bindSnippetAutocomplete(inp, view.querySelector("#vwca-reply"), doSend, function () {
+        var conv = convs.find(function (c) { return c.id === activeId; });
+        return { namn: (conv && conv.name) || "", epost: (conv && conv.email) || "" };
+      });
 
       /* # Snippet trigger — opnar meny utan å skrive # i textarea */
       var snippetTriggerBtn = view.querySelector("#vwca-snip-btn");
-      if (snippetTriggerBtn) snippetTriggerBtn.addEventListener("click", function () {
+      if (snippetTriggerBtn) snippetTriggerBtn.addEventListener("mousedown", function (e) {
+        e.preventDefault();
         snippetAC.trigger();
       });
 
@@ -1565,8 +1590,9 @@
         return '<button class="vwca-emoji-btn" data-e="'+e+'">'+e+'</button>';
       }).join("");
       emojiPicker.querySelectorAll("[data-e]").forEach(function(b){
-        b.addEventListener("click",function(){
-          inp.value += b.getAttribute("data-e");
+        b.addEventListener("mousedown",function(e){
+          e.preventDefault();
+          insertAtCursor(inp, b.getAttribute("data-e"));
           emojiPicker.classList.remove("is-open");
           inp.focus();
         });

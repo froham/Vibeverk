@@ -133,12 +133,13 @@
       (App.supabase
         ? '<div class="i-card" style="margin-bottom:1rem">' +
             '<p class="i-section-label">Endre passord</p>' +
-            '<div style="display:grid;gap:.6rem;max-width:320px">' +
-              field("settings-pass1", "Nytt passord",     "", "password", "Minst 8 teikn") +
-              field("settings-pass2", "Gjenta passord",   "", "password", "") +
-              '<div>' +
+            '<div style="display:grid;gap:.9rem;max-width:360px">' +
+              field("settings-pass1", "Nytt passord", "", "password", "Minst 8 teikn") +
+              '<div id="settings-pass-strength" style="display:grid;gap:.25rem;padding:.65rem .9rem;background:var(--color-alt);border-radius:10px;font-size:.8rem"></div>' +
+              field("settings-pass2", "Gjenta passord", "", "password", "") +
+              '<div style="display:flex;align-items:center;gap:.8rem">' +
                 '<button class="btn btn--primary btn--sm" id="settings-change-pass">Endre passord</button>' +
-                ' <span class="form__status" id="settings-pass-status"></span>' +
+                '<span class="form__status" id="settings-pass-status"></span>' +
               '</div>' +
             '</div>' +
           '</div>'
@@ -217,20 +218,50 @@
     });
 
     /* Bind endre passord */
+    var pass1El    = root.querySelector("#settings-pass1");
+    var strengthEl = root.querySelector("#settings-pass-strength");
     var changePsBtn = root.querySelector("#settings-change-pass");
+
+    function passRules(pw) {
+      return [
+        { label: "Minst 8 teikn",        ok: pw.length >= 8 },
+        { label: "Stor bokstav (A–Z)",    ok: /[A-Z]/.test(pw) },
+        { label: "Liten bokstav (a–z)",   ok: /[a-z]/.test(pw) },
+        { label: "Tal (0–9)",              ok: /[0-9]/.test(pw) },
+        { label: "Spesialtegn (!@#$…)",   ok: /[^A-Za-z0-9]/.test(pw) }
+      ];
+    }
+
+    function renderStrength(pw) {
+      if (!strengthEl) return;
+      strengthEl.innerHTML = passRules(pw).map(function (r) {
+        return '<div style="display:flex;align-items:center;gap:.4rem;color:' + (r.ok ? '#16a34a' : 'var(--color-muted)') + '">' +
+          '<i class="ti ti-' + (r.ok ? 'circle-check' : 'circle') + '" style="font-size:.85rem"></i>' +
+          r.label + '</div>';
+      }).join("");
+    }
+
+    if (pass1El) {
+      renderStrength("");
+      pass1El.addEventListener("input", function () { renderStrength(this.value); });
+    }
+
     if (changePsBtn) {
       changePsBtn.addEventListener("click", function() {
-        var p1 = root.querySelector("#settings-pass1").value;
-        var p2 = root.querySelector("#settings-pass2").value;
-        var st = root.querySelector("#settings-pass-status");
+        var p1    = pass1El ? pass1El.value : "";
+        var p2    = root.querySelector("#settings-pass2").value;
+        var st    = root.querySelector("#settings-pass-status");
+        var rules = passRules(p1);
+        var failed = rules.find(function (r) { return !r.ok; });
         st.className = "form__status";
-        if (p1.length < 8) { st.textContent = "Minst 8 teikn."; st.className = "form__status is-error"; return; }
-        if (p1 !== p2)     { st.textContent = "Passorda er ikkje like."; st.className = "form__status is-error"; return; }
+        if (failed) { st.textContent = failed.label + " manglar."; st.className = "form__status is-error"; return; }
+        if (p1 !== p2) { st.textContent = "Passorda er ikkje like."; st.className = "form__status is-error"; return; }
         App.supabase.auth.updateUser({ password: p1 }).then(function(r) {
           if (r.error) { st.textContent = r.error.message; st.className = "form__status is-error"; return; }
           st.textContent = "Passord endra."; st.className = "form__status is-ok";
-          root.querySelector("#settings-pass1").value = "";
+          if (pass1El) pass1El.value = "";
           root.querySelector("#settings-pass2").value = "";
+          renderStrength("");
           setTimeout(function() { if (st) st.textContent = ""; }, 3000);
         });
       });

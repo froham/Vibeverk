@@ -848,16 +848,20 @@ window.App = (function () {
   const ADMIN_CATEGORIES = [
     { id: "innhold",       label: "Innhold" },
     { id: "henvendelser",  label: "Henvendelser" },
-    { id: "innstillinger", label: "Innstillinger" }
+    { id: "innstillinger", label: "Innstillinger" },
+    { id: "konto",         label: "Min konto" }
   ];
   // Kva faner kvar rolle ser i web-adminen:
   //   owner/admin → alt (innhold + henvendelser + innstillinger)
   //   editor      → innhald og henvendelser (ikkje innstillinger)
   //   member/employee → berre henvendelser
   function allowedCategoriesForRole(role) {
-    if (role === "member" || role === "employee") return ["henvendelser"];
-    if (role === "editor") return ["innhold", "henvendelser"];
-    return ["innhold", "henvendelser", "innstillinger"];
+    var cats;
+    if (role === "member" || role === "employee") cats = ["henvendelser"];
+    else if (role === "editor") cats = ["innhold", "henvendelser"];
+    else cats = ["innhold", "henvendelser", "innstillinger"];
+    if (_sb) cats = cats.concat(["konto"]);
+    return cats;
   }
   function buildAdminTabs() {
     const tabs = [
@@ -891,7 +895,7 @@ window.App = (function () {
       tabs.push({ id: "admin-backup",   label: "Sikkerhetskopi", category: "innstillinger" });
     }
     if (_sb) {
-      tabs.push({ id: "min-konto", label: "Min konto", category: "innstillinger" });
+      tabs.push({ id: "min-konto", label: "Min konto", category: "konto" });
     }
     if (_sb && (_backupRole === "admin" || _backupRole === "owner")) {
       tabs.push({ id: "brukarar",  label: "Brukarar",  category: "innstillinger" });
@@ -1032,7 +1036,6 @@ window.App = (function () {
     const allowedCats = allowedCategoriesForRole(role);
     const allTabs = buildAdminTabs();
     const visibleTabs = allTabs.filter(function (t) {
-      if (t.id === "min-konto" && _sb) return true; // alltid synleg for Supabase-innlogga brukarar
       return allowedCats.indexOf(t.category) > -1;
     });
 
@@ -2587,31 +2590,66 @@ window.App = (function () {
 
   function adminMinKonto(body) {
     if (!_sb) { body.innerHTML = '<p style="color:var(--color-muted)">Krev Supabase-tilkopling.</p>'; return; }
+
+    function passStrength(pw) {
+      return [
+        { key: "len",     label: "Minst 8 teikn",          ok: pw.length >= 8 },
+        { key: "upper",   label: "Stor bokstav (A–Z)",      ok: /[A-Z]/.test(pw) },
+        { key: "lower",   label: "Liten bokstav (a–z)",     ok: /[a-z]/.test(pw) },
+        { key: "num",     label: "Tal (0–9)",                ok: /[0-9]/.test(pw) },
+        { key: "special", label: "Spesialtegn (!@#$…)",     ok: /[^A-Za-z0-9]/.test(pw) }
+      ];
+    }
+
     body.innerHTML =
       '<div class="bk-wrap">' +
         '<h4 class="an-heading">Endre passord</h4>' +
-        '<div style="display:grid;gap:.6rem;max-width:320px">' +
-          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Nytt passord</label>' +
-          '<input id="mk-pass1" type="password" class="admin-input" placeholder="Minst 8 teikn" autocomplete="new-password"></div>' +
-          '<div><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:.25rem">Gjenta passord</label>' +
-          '<input id="mk-pass2" type="password" class="admin-input" autocomplete="new-password"></div>' +
-          '<div>' + C.button({ label: "Endre passord", variant: "primary", size: "sm", attrs: 'id="mk-save"' }) +
-          ' <span class="form__status" id="mk-status"></span></div>' +
+        '<div style="max-width:380px;display:grid;gap:1rem">' +
+          '<div class="field">' +
+            '<label for="mk-pass1">Nytt passord</label>' +
+            '<input id="mk-pass1" type="password" class="admin-input" placeholder="Minst 8 teikn" autocomplete="new-password" style="font:inherit;padding:.65rem .9rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;font-size:.95rem">' +
+          '</div>' +
+          '<div id="mk-strength" style="display:grid;gap:.3rem;padding:.7rem 1rem;background:var(--color-alt);border-radius:10px;font-size:.82rem"></div>' +
+          '<div class="field">' +
+            '<label for="mk-pass2">Gjenta passord</label>' +
+            '<input id="mk-pass2" type="password" class="admin-input" placeholder="" autocomplete="new-password" style="font:inherit;padding:.65rem .9rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;font-size:.95rem">' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:.8rem">' +
+            C.button({ label: "Endre passord", variant: "primary", size: "sm", attrs: 'id="mk-save"' }) +
+            '<span class="form__status" id="mk-status"></span>' +
+          '</div>' +
         '</div>' +
       '</div>';
 
+    function renderStrength(pw) {
+      var rules = passStrength(pw);
+      body.querySelector("#mk-strength").innerHTML = rules.map(function (r) {
+        return '<div style="display:flex;align-items:center;gap:.4rem;color:' + (r.ok ? '#16a34a' : 'var(--color-muted)') + '">' +
+          '<i class="ti ti-' + (r.ok ? 'circle-check' : 'circle') + '" style="font-size:.9rem"></i>' +
+          r.label + '</div>';
+      }).join("");
+    }
+    renderStrength("");
+
+    body.querySelector("#mk-pass1").addEventListener("input", function () {
+      renderStrength(this.value);
+    });
+
     body.querySelector("#mk-save").addEventListener("click", function() {
-      const p1 = body.querySelector("#mk-pass1").value;
-      const p2 = body.querySelector("#mk-pass2").value;
-      const st = body.querySelector("#mk-status");
-      if (p1.length < 8) { st.className = "form__status is-error"; st.textContent = "Minst 8 teikn."; return; }
-      if (p1 !== p2)     { st.className = "form__status is-error"; st.textContent = "Passorda er ikkje like."; return; }
+      const p1   = body.querySelector("#mk-pass1").value;
+      const p2   = body.querySelector("#mk-pass2").value;
+      const st   = body.querySelector("#mk-status");
+      const rules = passStrength(p1);
+      const failed = rules.find(function (r) { return !r.ok; });
+      if (failed) { st.className = "form__status is-error"; st.textContent = failed.label + " manglar."; return; }
+      if (p1 !== p2) { st.className = "form__status is-error"; st.textContent = "Passorda er ikkje like."; return; }
       st.className = "form__status"; st.textContent = "Lagrar…";
       _sb.auth.updateUser({ password: p1 }).then(function(r) {
         if (r.error) { st.className = "form__status is-error"; st.textContent = r.error.message; return; }
         st.className = "form__status is-ok"; st.textContent = "Passord endra.";
         body.querySelector("#mk-pass1").value = "";
         body.querySelector("#mk-pass2").value = "";
+        renderStrength("");
         setTimeout(function() { if (st) st.textContent = ""; }, 3000);
       });
     });

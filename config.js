@@ -181,7 +181,7 @@ window.SITE_CONFIG = {
     crm:           true,  // ← Kunder (frå nettsida)
     booking:       false, // ← Booking (frå nettsida)
     quote:         false, // ← Tilbud (frå nettsida)
-    contact:       false, // ← Kontakthenvendingar (frå nettsida)
+    contact:       true,  // ← Kontakthenvendingar (frå nettsida)
     kb:            false, // ← Kunnskapsbase
     mediaInternal: false  // ← Mediebank (intern)
   },

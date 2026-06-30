@@ -187,17 +187,40 @@
   }
 
   function renderList(root) {
-    var active   = _tasks.filter(function (t) { return t.status !== "done"; });
-    var done     = _tasks.filter(function (t) { return t.status === "done"; });
-    var todoTasks = active.filter(function (t) { return t.status === "todo"; });
-    var inpTasks  = active.filter(function (t) { return t.status === "in_progress"; });
+    var me   = uid();
+    var ctx  = Intranet.getContext();
+    var role = ctx && ctx.role;
+    var isAdminRole = role === "owner" || role === "admin";
 
-    function groupHtml(label, list) {
+    // Mine: tildelt meg, eller opprettet av meg utan tildeling
+    function isMine(t) {
+      if (t.status === "done") return false;
+      return t.assigned_to === me || (t.created_by === me && !t.assigned_to);
+    }
+    // Tildelt til andre: opprettet av meg, tildelt ein annan
+    function isAssignedByMe(t) {
+      if (t.status === "done") return false;
+      return t.created_by === me && t.assigned_to && t.assigned_to !== me;
+    }
+    // Andre sine (berre synleg for admin/owner)
+    function isOther(t) {
+      if (t.status === "done") return false;
+      return !isMine(t) && !isAssignedByMe(t);
+    }
+
+    var mine        = _tasks.filter(isMine);
+    var assignedOut = _tasks.filter(isAssignedByMe);
+    var others      = isAdminRole ? _tasks.filter(isOther) : [];
+    var done        = _tasks.filter(function (t) { return t.status === "done"; });
+
+    function groupHtml(label, list, id) {
       if (!list.length) return "";
       return '<div class="task-group">' +
         '<p class="i-section-label">' + C.esc(label) +
           ' <span style="font-weight:400;opacity:.6">(' + list.length + ')</span></p>' +
-        '<div class="task-group__list">' + list.map(taskRow).join("") + '</div>' +
+        '<div class="task-group__list" ' + (id ? 'id="' + id + '"' : '') + '>' +
+          list.map(taskRow).join("") +
+        '</div>' +
       '</div>';
     }
 
@@ -213,13 +236,18 @@
         '</div>'
       : "";
 
+    var hasAny = mine.length || assignedOut.length || others.length || done.length;
+
     root.innerHTML =
       '<div class="i-page-head">' +
         '<h2>Oppgaver</h2>' +
         '<button class="btn btn--primary btn--sm" id="tasks-new-btn"><i class="ti ti-plus"></i> Ny oppgave</button>' +
       '</div>' +
-      (_tasks.length
-        ? groupHtml("Å gjøre", todoTasks) + groupHtml("Pågår", inpTasks) + doneHtml
+      (hasAny
+        ? groupHtml("Mine oppgaver", mine) +
+          groupHtml("Tildelt til andre", assignedOut) +
+          (isAdminRole && others.length ? groupHtml("Andre sine oppgaver", others) : "") +
+          doneHtml
         : '<p style="color:var(--color-muted);font-size:.9rem">Ingen oppgaver ennå.</p>'
       );
 

@@ -216,7 +216,7 @@
               }
               invBtn.disabled = true;
               msgEl.className = "vwu-msg"; msgEl.textContent = "Sender…";
-              var redirectTo = window.location.origin + (window.location.pathname.indexOf("/intranet/") > -1 ? "/intranet/" : "/");
+              var redirectTo = window.location.href.split("#")[0];
               var result = await callFn({ action: "invite", email: email, role: role, display_name: dname, redirect_to: redirectTo });
               invBtn.disabled = false;
               if (result.error) {

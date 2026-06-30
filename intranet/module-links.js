@@ -25,7 +25,7 @@
 
   function isAdmin(ctx) {
     var role = (ctx && ctx.role) || Intranet.getContext().role;
-    return role === "owner" || role === "admin";
+    return role === "owner" || role === "admin" || role === "editor";
   }
 
   function getCategories() {

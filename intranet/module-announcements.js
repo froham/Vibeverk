@@ -24,7 +24,12 @@
      ====================================================================== */
   function uid() { return Intranet.getContext().userId; }
 
-  function isAdmin(ctx) {
+  function canEdit(ctx) {
+    var role = (ctx && ctx.role) || Intranet.getContext().role;
+    return role === "owner" || role === "admin" || role === "editor";
+  }
+
+  function canDelete(ctx) {
     var role = (ctx && ctx.role) || Intranet.getContext().role;
     return role === "owner" || role === "admin";
   }
@@ -189,18 +194,18 @@
   }
 
   function renderList(root, ctx) {
-    var admin = isAdmin(ctx);
+    var editor = canEdit(ctx);
+    var deleter = canDelete(ctx);
 
     root.innerHTML =
       '<div class="i-page-head">' +
         '<h2>Aktuelt <span style="font-size:1rem;font-weight:400;color:var(--color-muted)">(' + _items.length + ')</span></h2>' +
-        (admin ? '<button class="btn btn--primary btn--sm" id="ann-new-btn"><i class="ti ti-plus"></i> Ny sak</button>' : '') +
+        (editor ? '<button class="btn btn--primary btn--sm" id="ann-new-btn"><i class="ti ti-plus"></i> Ny sak</button>' : '') +
       '</div>' +
-      '<div id="ann-editor"></div>' +
       (_items.length === 0
         ? '<p style="color:var(--color-muted);font-size:.9rem">Ingen saker ennå.</p>'
         : '<div class="i-card-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;align-items:stretch">' +
-            _items.map(function (a) { return annCard(a, admin); }).join("") +
+            _items.map(function (a) { return annCard(a, editor, deleter); }).join("") +
           '</div>'
       );
 
@@ -211,7 +216,7 @@
       });
     });
 
-    if (admin) {
+    if (editor) {
       var newBtn = root.querySelector("#ann-new-btn");
       if (newBtn) newBtn.addEventListener("click", function () { openEditor(root, null, ctx); });
 
@@ -222,7 +227,9 @@
           if (item) openEditor(root, item, ctx);
         });
       });
+    }
 
+    if (deleter) {
       root.querySelectorAll("[data-ann-del]").forEach(function (btn) {
         btn.addEventListener("click", function (e) {
           e.stopPropagation();
@@ -235,7 +242,7 @@
     }
   }
 
-  function annCard(a, admin) {
+  function annCard(a, editor, deleter) {
     var img     = a.image ? App.media.resolveImage(a.image) : null;
     var preview = C.stripHtml(a.content || "").slice(0, 160);
     return '<div class="i-card ann-card" style="cursor:pointer;display:flex;flex-direction:column" data-ann-open="' + C.esc(a.id) + '">' +
@@ -259,10 +266,10 @@
             a.attachments.length + ' vedlegg</div>'
         : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:.6rem;border-top:1px solid var(--color-border)">' +
-        (admin
+        (editor
           ? '<div style="display:flex;gap:.4rem">' +
               '<button class="btn btn--ghost btn--sm" data-ann-edit="' + C.esc(a.id) + '">Rediger</button>' +
-              '<button class="btn btn--ghost btn--sm" style="color:#c0392b;border-color:#c0392b" data-ann-del="' + C.esc(a.id) + '">Slett</button>' +
+              (deleter ? '<button class="btn btn--ghost btn--sm" style="color:#c0392b;border-color:#c0392b" data-ann-del="' + C.esc(a.id) + '">Slett</button>' : '') +
             '</div>'
           : '<span></span>') +
         '<span style="font-size:.78rem;font-weight:600;color:var(--color-primary);display:inline-flex;align-items:center;gap:.25rem">Les mer <i class="ti ti-arrow-right" style="font-size:.78rem"></i></span>' +
@@ -333,65 +340,81 @@
   }
 
   /* =========================================================================
-     EDITOR
+     EDITOR  —  modal
      ====================================================================== */
   function openEditor(root, item, ctx) {
-    var ed = root.querySelector("#ann-editor");
-    if (!ed) return;
+    var existing = document.getElementById("ann-editor-bd");
+    if (existing) existing.remove();
 
     var imgHtml = App.ui ? App.ui.imageField("ann-image", "Bilete (valgfritt)", item ? item.image : "", 16 / 9) : "";
     var attHtml = App.ui ? App.ui.attachField("ann-attachments", item ? (item.attachments || []) : []) : "";
 
-    ed.innerHTML =
-      '<div class="i-card" style="margin-bottom:1rem">' +
-        '<h4 style="margin:0 0 1rem">' + (item ? "Rediger sak" : "Ny sak") + '</h4>' +
-        '<div class="i-form" id="ann-form">' +
-          '<div class="i-field">' +
-            '<label for="ann-title">Tittel *</label>' +
-            '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Overskrift på saka" required>' +
-          '</div>' +
-          C.richTextField({ id: "ann-body", label: "Innhald", value: item ? (item.content || "") : "" }) +
-          imgHtml +
-          attHtml +
-          '<div class="i-field" style="margin-top:.2rem">' +
-            '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500">' +
-              '<input type="checkbox" id="ann-important"' + (item && item.important ? " checked" : "") + '>' +
-              '<i class="ti ti-speakerphone" style="color:var(--color-primary)"></i>' +
-              'Merk som viktig (vises som banner øvst)' +
-            '</label>' +
-          '</div>' +
-          '<div style="display:flex;gap:.6rem;margin-top:.4rem">' +
-            '<button type="button" class="btn btn--primary btn--sm" id="ann-save">Lagre</button>' +
-            '<button type="button" class="btn btn--ghost btn--sm" id="ann-cancel">Avbryt</button>' +
-          '</div>' +
-          '<p class="form__status" id="ann-status"></p>' +
+    var bd = document.createElement("div");
+    bd.id  = "ann-editor-bd";
+    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto";
+
+    var modal = document.createElement("div");
+    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(640px,100%);max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3);display:flex;flex-direction:column";
+
+    modal.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
+        '<h4 style="margin:0;font-size:1rem">' + (item ? "Rediger sak" : "Ny sak") + '</h4>' +
+        '<button id="ann-modal-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+      '</div>' +
+      '<div style="padding:1.2rem 1.4rem;display:grid;gap:1rem">' +
+        '<div class="i-field">' +
+          '<label for="ann-title">Tittel *</label>' +
+          '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Overskrift på saka" required>' +
+        '</div>' +
+        imgHtml +
+        C.richTextField({ id: "ann-body", label: "Innhald", value: item ? (item.content || "") : "" }) +
+        attHtml +
+        '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500;font-size:.9rem">' +
+          '<input type="checkbox" id="ann-important"' + (item && item.important ? " checked" : "") + '>' +
+          '<i class="ti ti-speakerphone" style="color:var(--color-primary)"></i>' +
+          'Merk som viktig (vises som banner øvst)' +
+        '</label>' +
+        '<div style="display:flex;gap:.6rem;padding-top:.2rem">' +
+          '<button type="button" class="btn btn--primary btn--sm" id="ann-save">Lagre</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="ann-cancel">Avbryt</button>' +
+          '<span class="form__status" id="ann-status" style="align-self:center"></span>' +
         '</div>' +
       '</div>';
 
-    App.ui.bindImageFields(ed);
-    App.ui.bindRichTextFields(ed);
-    App.ui.bindAttachField(ed);
+    bd.appendChild(modal);
+    document.body.appendChild(bd);
 
-    ed.querySelector("#ann-cancel").addEventListener("click", function () { ed.innerHTML = ""; });
+    App.ui.bindImageFields(modal);
+    App.ui.bindRichTextFields(modal);
+    App.ui.bindAttachField(modal);
 
-    ed.querySelector("#ann-save").addEventListener("click", function () {
-      var title = ed.querySelector("#ann-title").value.trim();
-      var st    = ed.querySelector("#ann-status");
-      if (!title) { st.textContent = "Tittel er påkrevd."; st.className = "form__status is-err"; return; }
-      st.textContent = "Lagrar…";
+    function close() { bd.remove(); document.removeEventListener("keydown", escH); }
+    function escH(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", escH);
+    modal.querySelector("#ann-modal-close").addEventListener("click", close);
+    modal.querySelector("#ann-cancel").addEventListener("click", close);
+    bd.addEventListener("click", function (e) { if (e.target === bd) close(); });
+
+    modal.querySelector("#ann-save").addEventListener("click", function () {
+      var title = modal.querySelector("#ann-title").value.trim();
+      var st    = modal.querySelector("#ann-status");
+      if (!title) { st.textContent = "Tittel er påkrevd."; st.className = "form__status is-error"; return; }
+      st.textContent = "Lagrar…"; st.className = "form__status";
       var data = {
         title:       title,
-        body:        App.ui.readRichTextField(ed, "ann-body"),
-        important:   ed.querySelector("#ann-important").checked,
-        image:       App.ui.readImageField(ed, "ann-image"),
-        attachments: App.ui.readAttachments(ed, "ann-attachments")
+        body:        App.ui.readRichTextField(modal, "ann-body"),
+        important:   modal.querySelector("#ann-important").checked,
+        image:       App.ui.readImageField(modal, "ann-image"),
+        attachments: App.ui.readAttachments(modal, "ann-attachments")
       };
       saveItem(item || null, data, function () {
-        ed.innerHTML = "";
+        close();
         renderList(root, ctx);
         renderBanner();
       });
     });
+
+    setTimeout(function () { var t = modal.querySelector("#ann-title"); if (t) t.focus(); }, 50);
   }
 
   /* =========================================================================

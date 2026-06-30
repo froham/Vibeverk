@@ -16,6 +16,9 @@ window.VwConsole = (function () {
   var NS  = CFG.storageKey || "site";
   var SUPER_KEY = "superconfig";
 
+  // Superadmin: hardkoda e-post for Vibeverk-operatør. Ikkje eit kundeVal.
+  var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
+
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
     if (errEl) errEl.innerHTML = '<p style="padding:2rem;color:#c0392b;font-family:sans-serif">Feil: core.js / components.js ikkje lasta. Sjekk konsollen.</p>';
@@ -195,9 +198,12 @@ window.VwConsole = (function () {
 
     document.getElementById("cs-login-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var email = document.getElementById("cs-email").value.trim();
+      var email = document.getElementById("cs-email").value.trim().toLowerCase();
       var err   = document.getElementById("cs-login-err");
       if (!email) { err.textContent = "Skriv inn e-postadresse."; err.style.color = "#c0392b"; return; }
+      if (SUPERADMIN_EMAILS.indexOf(email) === -1) {
+        err.textContent = "Ingen tilgang til Console."; err.style.color = "#c0392b"; return;
+      }
       err.textContent = "Sender kode…"; err.style.color = "";
       _sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function (res) {
         if (res.error) { err.textContent = "Feil: " + res.error.message; err.style.color = "#c0392b"; return; }

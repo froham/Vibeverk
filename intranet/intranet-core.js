@@ -195,7 +195,6 @@ window.Intranet = (function () {
       '<aside class="i-sidebar" id="intranet-sidebar">' +
         '<div class="i-sidebar__brand" data-workspaceship-trigger>' +
           '<span class="i-sidebar__name">' + C.esc(tenantName) + '</span>' +
-          '<span class="i-sidebar__label">Workspace</span>' +
         '</div>' +
         '<nav class="i-nav" id="intranet-nav"></nav>' +
         '<div class="i-sidebar__footer">' +
