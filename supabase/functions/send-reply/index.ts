@@ -42,7 +42,7 @@ serve(async (req) => {
       return json({ error: "Ikkje tilgang" }, 403);
     }
 
-    const { to_email, to_name, subject, body, reply_to } = await req.json();
+    const { to_email, to_name, subject, body, html, reply_to, attachments } = await req.json();
 
     if (!to_email || !subject || !body) {
       return json({ error: "Manglande felt: to_email, subject, body" }, 400);
@@ -60,6 +60,8 @@ serve(async (req) => {
       subject,
       text:    body,
     };
+    if (html) payload.html = html;
+    if (Array.isArray(attachments) && attachments.length) payload.attachments = attachments;
     payload.reply_to = reply_to || Deno.env.get("RESEND_REPLY_TO") || "hei@vibeverk.no";
 
     const resendResp = await fetch("https://api.resend.com/emails", {

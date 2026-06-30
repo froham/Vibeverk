@@ -84,7 +84,7 @@
         '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">' +
           '<label style="font-size:.85rem;font-weight:600">Status:</label>' +
           '<select id="lead-detail-status" style="font-size:.88rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)">' + statusOptions + '</select>' +
-          '<a href="mailto:' + C.esc(lead.email) + '" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</a>' +
+          (lead.email ? '<button id="lead-detail-svar-btn" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</button>' : '') +
         '</div>' +
       '</div>';
     bd.appendChild(modal);
@@ -94,6 +94,24 @@
     document.addEventListener("keydown", function escH(e) { if (e.key === "Escape") { bd.remove(); document.removeEventListener("keydown", escH); } });
     modal.querySelector("#lead-detail-status").addEventListener("change", function () {
       if (typeof onStatusChange === "function") onStatusChange(modal.querySelector("#lead-detail-status").value);
+    });
+    var svarBtn = modal.querySelector("#lead-detail-svar-btn");
+    if (svarBtn) svarBtn.addEventListener("click", function () {
+      bd.remove();
+      if (!App.openReplyModal) { window.location.href = "mailto:" + lead.email; return; }
+      setLeadStatus(lead.id, "løst");
+      App.openReplyModal({
+        name: lead.name, email: lead.email,
+        subject: "Re: Tilbudsforespørsel fra " + (lead.name || ""),
+        templateKey: "tilbud",
+        defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+        vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDate(lead.time), referanse: lead.referenceNumber || "" },
+        onSent: function (info) {
+          if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
+            window.CrmAdmin.logEmailSent({ email: lead.email, name: lead.name, subject: info.subject, plain: info.plain });
+          }
+        }
+      });
     });
   }
   function infoRow(label, value) {
@@ -197,7 +215,12 @@
             subject: "Re: Tilbudsforespørsel fra " + (quote.name || ""),
             templateKey: "tilbud",
             defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
-            vars: { navn: quote.name || "", epost: quote.email || "", dato: formatDate(quote.time), referanse: quote.referenceNumber || "" }
+            vars: { navn: quote.name || "", epost: quote.email || "", dato: formatDate(quote.time), referanse: quote.referenceNumber || "" },
+            onSent: function (info) {
+              if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
+                window.CrmAdmin.logEmailSent({ email: quote.email, name: quote.name, subject: info.subject, plain: info.plain });
+              }
+            }
           });
         } else {
           window.location.href = "mailto:" + quote.email;

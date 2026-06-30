@@ -34,7 +34,13 @@
   var _pendingCrmOpen = null; // sett frå chat-modul via window.CrmAdmin
 
   window.CrmAdmin = {
-    openCustomer: function (id) { _pendingCrmOpen = id; }
+    openCustomer: function (id) { _pendingCrmOpen = id; },
+    logEmailSent: function (opts) {
+      var email = (opts.email || "").toLowerCase();
+      var customer = getCustomers().find(function (c) { return (c.email || "").toLowerCase() === email; });
+      if (!customer) return;
+      addComm({ customerId: customer.id, type: "email_sent", title: opts.subject || "E-post sendt", subject: opts.subject || "", body: (opts.plain || "").slice(0, 200), to: opts.email });
+    }
   };
 
   /* =========================================================================

@@ -88,7 +88,7 @@
         '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">' +
           '<label style="font-size:.85rem;font-weight:600">Status:</label>' +
           '<select id="lead-detail-status" style="font-size:.88rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)">' + statusOptions + '</select>' +
-          '<a href="mailto:' + C.esc(lead.email) + '" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</a>' +
+          '<button id="lead-detail-svar-btn" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</button>' +
         '</div>' +
       '</div>';
 
@@ -104,6 +104,11 @@
     modal.querySelector("#lead-detail-status").addEventListener("change", function () {
       var newStatus = modal.querySelector("#lead-detail-status").value;
       if (typeof onStatusChange === "function") onStatusChange(newStatus);
+    });
+
+    modal.querySelector("#lead-detail-svar-btn").addEventListener("click", function () {
+      bd.remove();
+      openReply(lead);
     });
   }
 
@@ -149,7 +154,12 @@
       },
       previewHtml: lead.message
         ? '<div style="font-size:.88rem;color:var(--color-muted);white-space:pre-wrap">' + C.esc(lead.message) + '</div>'
-        : ""
+        : "",
+      onSent: function (info) {
+        if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
+          window.CrmAdmin.logEmailSent({ email: lead.email, name: lead.name, subject: info.subject, plain: info.plain });
+        }
+      }
     });
   }
 

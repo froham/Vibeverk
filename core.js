@@ -2828,7 +2828,8 @@ window.App = (function () {
     const bodyText = fillTemplate(tpl, opts.vars || {}).slice(0, 1800);
     const mailtoFull  = buildMailtoUrl(opts.email, opts.subject, bodyText);
     const mailtoBlank = buildMailtoUrl(opts.email, opts.subject, "");
-    const canSendDirect = !!(window.App && window.App.supabase);
+    const canSendDirect = !!(window.Intranet && window.App && window.App.supabase);
+    const initHtml = bodyText ? C.esc(bodyText).replace(/\n/g, '<br>') : '';
 
     const root = document.createElement("div");
     root.id = "reply-modal-root";
@@ -2843,58 +2844,111 @@ window.App = (function () {
             '<p style="margin:0;font-size:.88rem"><strong>Til:</strong> &lt;<a href="mailto:' + C.esc(opts.email) + '" style="color:var(--color-primary)">' + C.esc(opts.email) + '</a>&gt;</p>' +
           '</div>' +
           (opts.previewHtml ? '<div style="padding:1rem 1.3rem;border-bottom:1px solid var(--color-border)">' + opts.previewHtml + '</div>' : '') +
-          '<div style="padding:.9rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
-            '<p style="margin:0;font-size:.8rem;color:var(--color-muted)">' + C.icon("info-circle") + ' E-posten åpnes som ren tekst i e-postklienten din.</p>' +
-          '</div>' +
-          '<div style="padding:1rem 1.3rem;display:flex;gap:.7rem;flex-wrap:wrap;align-items:center">' +
-            C.button({ label: "Åpne i Outlook", icon: "mail-forward", variant: "primary", href: mailtoFull }) +
-            C.button({ label: "Åpne uten mal", variant: "ghost", href: mailtoBlank }) +
-            (canSendDirect ? '<button class="btn btn--ghost" id="reply-direct-toggle" style="border-color:var(--color-primary);color:var(--color-primary)"><i class="ti ti-send"></i> Send via Vibeverk</button>' : '') +
-            (opts.chatId ? C.button({ label: "Svar i chat", icon: "message-circle", variant: "secondary", attrs: 'data-goto-chat="' + C.esc(opts.chatId) + '"' }) : "") +
-          '</div>' +
           (canSendDirect
-            ? '<div id="reply-direct-area" style="display:none;padding:1rem 1.3rem;border-top:1px solid var(--color-border);display:none;gap:.7rem;flex-direction:column">' +
-                '<div class="field">' +
-                  '<label style="font-size:.8rem;font-weight:600;color:var(--color-muted)">Din e-post (svar-til — kunden svarar hit)</label>' +
-                  '<input id="reply-replyto" type="email" placeholder="din@epost.no" autocomplete="email" ' +
-                  'style="font:inherit;font-size:.88rem;padding:.55rem .8rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%">' +
+            ? '<div style="padding:1rem 1.3rem;display:flex;flex-direction:column;gap:.8rem">' +
+                '<div>' +
+                  '<label style="font-size:.78rem;font-weight:600;color:var(--color-muted);display:block;margin-bottom:.3rem">Svar-til (kunden svarar tilbake hit)</label>' +
+                  '<input id="reply-replyto" type="email" placeholder="hei@vibeverk.no" autocomplete="email" style="font:inherit;font-size:.88rem;padding:.55rem .8rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%">' +
                 '</div>' +
-                '<div class="field">' +
-                  '<label style="font-size:.8rem;font-weight:600;color:var(--color-muted)">Melding</label>' +
-                  '<textarea id="reply-direct-body" rows="8" style="width:100%;font:inherit;font-size:.87rem;padding:.65rem .85rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);resize:vertical;line-height:1.6">' + C.esc(bodyText) + '</textarea>' +
+                '<div>' +
+                  '<label style="font-size:.78rem;font-weight:600;color:var(--color-muted);display:block;margin-bottom:.3rem">Melding</label>' +
+                  '<div style="border:1.5px solid var(--color-border);border-radius:9px;overflow:hidden">' +
+                    '<div id="reply-editor-toolbar" style="display:flex;gap:.15rem;padding:.35rem .5rem;border-bottom:1px solid var(--color-border);background:var(--color-alt);flex-wrap:wrap">' +
+                      '<button type="button" data-cmd="bold"                title="Fet"        style="background:none;border:1.5px solid transparent;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-weight:700;font-size:.85rem;color:var(--color-text)">B</button>' +
+                      '<button type="button" data-cmd="italic"              title="Kursiv"     style="background:none;border:1.5px solid transparent;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-style:italic;font-size:.85rem;color:var(--color-text)">I</button>' +
+                      '<button type="button" data-cmd="underline"           title="Understrek" style="background:none;border:1.5px solid transparent;border-radius:5px;padding:.2rem .5rem;cursor:pointer;text-decoration:underline;font-size:.85rem;color:var(--color-text)">U</button>' +
+                      '<span style="display:inline-block;width:1px;background:var(--color-border);margin:.1rem .2rem;align-self:stretch"></span>' +
+                      '<button type="button" data-cmd="insertUnorderedList" title="Punktliste" style="background:none;border:1.5px solid transparent;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.88rem;color:var(--color-text)"><i class="ti ti-list"></i></button>' +
+                    '</div>' +
+                    '<div id="reply-direct-body" contenteditable="true" style="min-height:180px;max-height:320px;overflow-y:auto;padding:.65rem .85rem;font-size:.87rem;line-height:1.6;outline:none;color:var(--color-text)">' + initHtml + '</div>' +
+                  '</div>' +
                 '</div>' +
-                '<div style="display:flex;align-items:center;gap:.8rem">' +
+                '<div>' +
+                  '<label style="cursor:pointer;font-size:.82rem;color:var(--color-primary);font-weight:600;display:inline-flex;align-items:center;gap:.3rem">' +
+                    '<i class="ti ti-paperclip"></i> Legg til vedlegg' +
+                    '<input id="reply-attachments" type="file" multiple style="display:none">' +
+                  '</label>' +
+                  '<div id="reply-attachment-list" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem"></div>' +
+                '</div>' +
+                '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">' +
                   '<button class="btn btn--primary" id="reply-send-now"><i class="ti ti-send"></i> Send nå</button>' +
                   '<span id="reply-direct-status" style="font-size:.87rem"></span>' +
+                  '<div style="margin-left:auto;display:flex;gap:.6rem;align-items:center">' +
+                    '<a href="' + mailtoFull + '" style="font-size:.78rem;color:var(--color-muted);text-decoration:none;white-space:nowrap"><i class="ti ti-mail-forward"></i> E-postklient</a>' +
+                    (opts.chatId ? ' ' + C.button({ label: "Svar i chat", icon: "message-circle", variant: "secondary", attrs: 'data-goto-chat="' + C.esc(opts.chatId) + '"' }) : "") +
+                  '</div>' +
                 '</div>' +
               '</div>'
-            : '') +
+            : '<div style="padding:.9rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
+                '<p style="margin:0;font-size:.8rem;color:var(--color-muted)">' + C.icon("info-circle") + ' E-posten åpnes som ren tekst i e-postklienten din.</p>' +
+              '</div>' +
+              '<div style="padding:1rem 1.3rem;display:flex;gap:.7rem;flex-wrap:wrap;align-items:center">' +
+                C.button({ label: "Åpne i Outlook", icon: "mail-forward", variant: "primary", href: mailtoFull }) +
+                C.button({ label: "Åpne uten mal", variant: "ghost", href: mailtoBlank }) +
+                (opts.chatId ? C.button({ label: "Svar i chat", icon: "message-circle", variant: "secondary", attrs: 'data-goto-chat="' + C.esc(opts.chatId) + '"' }) : "") +
+              '</div>'
+          ) +
         '</div>' +
       '</div>';
     document.body.appendChild(root);
 
-    // Toggle Send via Vibeverk-seksjonen
-    const toggleBtn = root.querySelector("#reply-direct-toggle");
-    const directArea = root.querySelector("#reply-direct-area");
-    if (toggleBtn && directArea) {
-      toggleBtn.addEventListener("click", function () {
-        const open = directArea.style.display === "flex";
-        directArea.style.display = open ? "none" : "flex";
-        toggleBtn.style.background = open ? "" : "color-mix(in srgb,var(--color-primary) 8%,transparent)";
+    // Forhåndsutfyll reply-to
+    var replyToEl = root.querySelector("#reply-replyto");
+    if (replyToEl) replyToEl.value = "hei@vibeverk.no";
+
+    // Tekstformatering — toolbar
+    var toolbar = root.querySelector("#reply-editor-toolbar");
+    if (toolbar) toolbar.querySelectorAll("[data-cmd]").forEach(function (btn) {
+      btn.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        document.execCommand(btn.getAttribute("data-cmd"), false, null);
       });
-      // Forhåndsutfyll reply-to med standard svaradresse
-      var replyToEl = root.querySelector("#reply-replyto");
-      if (replyToEl) replyToEl.value = "hei@vibeverk.no";
+    });
+
+    // Vedlegg
+    var attachInput = root.querySelector("#reply-attachments");
+    var attachList  = root.querySelector("#reply-attachment-list");
+    var _attachments = [];
+    function renderAttachList() {
+      if (!attachList) return;
+      attachList.innerHTML = _attachments.map(function (a, i) {
+        return '<span style="display:inline-flex;align-items:center;gap:.25rem;background:var(--color-alt);border:1px solid var(--color-border);border-radius:6px;padding:.2rem .5rem;font-size:.78rem">' +
+          C.esc(a.filename) +
+          ' <button type="button" data-rm="' + i + '" style="background:none;border:0;cursor:pointer;color:var(--color-muted);font-size:1rem;line-height:1;padding:0">&times;</button>' +
+          '</span>';
+      }).join("");
+      attachList.querySelectorAll("[data-rm]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          _attachments.splice(parseInt(btn.getAttribute("data-rm")), 1);
+          renderAttachList();
+        });
+      });
     }
+    if (attachInput) attachInput.addEventListener("change", function () {
+      var files = Array.from(this.files);
+      var pending = files.length;
+      if (!pending) return;
+      files.forEach(function (file) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          _attachments.push({ filename: file.name, content: e.target.result.split(",")[1] });
+          if (--pending === 0) renderAttachList();
+        };
+        reader.readAsDataURL(file);
+      });
+      this.value = "";
+    });
 
     // Send via Vibeverk
     var sendNowBtn = root.querySelector("#reply-send-now");
     if (sendNowBtn) {
       sendNowBtn.addEventListener("click", async function () {
-        var body    = (root.querySelector("#reply-direct-body") || {}).value || "";
-        var replyTo = (root.querySelector("#reply-replyto")    || {}).value || "";
+        var editor  = root.querySelector("#reply-direct-body");
+        var html    = editor ? editor.innerHTML : "";
+        var plain   = editor ? (editor.innerText || editor.textContent || "").trim() : "";
+        var replyTo = (root.querySelector("#reply-replyto") || {}).value || "";
         var st      = root.querySelector("#reply-direct-status");
-        if (!body.trim()) { st.innerHTML = '<span style="color:#c0392b">Meldingen er tom.</span>'; return; }
+        if (!plain) { st.innerHTML = '<span style="color:#c0392b">Meldingen er tom.</span>'; return; }
         sendNowBtn.disabled = true;
         st.innerHTML = '<span style="color:var(--color-muted)">Sender…</span>';
         try {
@@ -2902,15 +2956,17 @@ window.App = (function () {
           var session = (await sb.auth.getSession()).data.session;
           if (!session) throw new Error("Ikkje innlogga");
           var fnUrl = (window.SITE_CONFIG && window.SITE_CONFIG.supabase && window.SITE_CONFIG.supabase.url) + "/functions/v1/send-reply";
+          var payload = { to_email: opts.email, to_name: opts.name || "", subject: opts.subject || "", body: plain, html: html, reply_to: replyTo };
+          if (_attachments.length) payload.attachments = _attachments;
           var resp = await fetch(fnUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + session.access_token },
-            body: JSON.stringify({ to_email: opts.email, to_name: opts.name || "", subject: opts.subject || "", body: body.trim(), reply_to: replyTo })
+            body: JSON.stringify(payload)
           });
           var result = await resp.json();
           if (result.error) throw new Error(result.error);
           st.innerHTML = '<span style="color:#16a34a"><i class="ti ti-circle-check"></i> E-post sendt!</span>';
-          if (opts.onSent) opts.onSent();
+          if (opts.onSent) opts.onSent({ subject: opts.subject || "", plain: plain, html: html, to_email: opts.email, to_name: opts.name || "" });
           setTimeout(function () { root.remove(); }, 2000);
         } catch (e) {
           sendNowBtn.disabled = false;
