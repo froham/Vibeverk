@@ -202,6 +202,7 @@
         '<h2>Aktuelt <span style="font-size:1rem;font-weight:400;color:var(--color-muted)">(' + _items.length + ')</span></h2>' +
         (editor ? '<button class="btn btn--primary btn--sm" id="ann-new-btn"><i class="ti ti-plus"></i> Ny sak</button>' : '') +
       '</div>' +
+      '<div id="ann-editor"></div>' +
       (_items.length === 0
         ? '<p style="color:var(--color-muted);font-size:.9rem">Ingen saker ennå.</p>'
         : '<div class="i-card-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;align-items:stretch">' +
@@ -340,72 +341,61 @@
   }
 
   /* =========================================================================
-     EDITOR  —  modal
+     EDITOR  —  inline under sidehovudet
      ====================================================================== */
   function openEditor(root, item, ctx) {
-    var existing = document.getElementById("ann-editor-bd");
-    if (existing) existing.remove();
+    var ed = root.querySelector("#ann-editor");
+    if (!ed) return;
 
     var imgHtml = App.ui ? App.ui.imageField("ann-image", "Bilete (valgfritt)", item ? item.image : "", 16 / 9) : "";
     var attHtml = App.ui ? App.ui.attachField("ann-attachments", item ? (item.attachments || []) : []) : "";
 
-    var bd = document.createElement("div");
-    bd.id  = "ann-editor-bd";
-    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto";
-
-    var modal = document.createElement("div");
-    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(640px,100%);max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3);display:flex;flex-direction:column";
-
-    modal.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
-        '<h4 style="margin:0;font-size:1rem">' + (item ? "Rediger sak" : "Ny sak") + '</h4>' +
-        '<button id="ann-modal-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
-      '</div>' +
-      '<div style="padding:1.2rem 1.4rem;display:grid;gap:1rem">' +
-        '<div class="i-field">' +
-          '<label for="ann-title">Tittel *</label>' +
-          '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Overskrift på saka" required>' +
+    ed.innerHTML =
+      '<div style="border:1.5px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);margin-bottom:1.5rem;overflow:hidden">' +
+        '<div style="padding:.85rem 1.2rem;border-bottom:1.5px solid var(--color-border);display:flex;align-items:center;justify-content:space-between">' +
+          '<h4 style="margin:0;font-size:.97rem;font-weight:700">' + (item ? "Rediger sak" : "Ny sak") + '</h4>' +
+          '<button id="ann-cancel" style="background:none;border:0;font-size:1.3rem;cursor:pointer;color:var(--color-muted);line-height:1;padding:.2rem" aria-label="Avbryt">&times;</button>' +
         '</div>' +
-        imgHtml +
-        C.richTextField({ id: "ann-body", label: "Innhald", value: item ? (item.content || "") : "" }) +
-        attHtml +
-        '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500;font-size:.9rem">' +
-          '<input type="checkbox" id="ann-important"' + (item && item.important ? " checked" : "") + '>' +
-          '<i class="ti ti-speakerphone" style="color:var(--color-primary)"></i>' +
-          'Merk som viktig (vises som banner øvst)' +
-        '</label>' +
-        '<div style="display:flex;gap:.6rem;padding-top:.2rem">' +
-          '<button type="button" class="btn btn--primary btn--sm" id="ann-save">Lagre</button>' +
-          '<button type="button" class="btn btn--ghost btn--sm" id="ann-cancel">Avbryt</button>' +
-          '<span class="form__status" id="ann-status" style="align-self:center"></span>' +
+        '<div style="padding:1.2rem;display:grid;gap:1.1rem">' +
+          '<div class="i-field">' +
+            '<label for="ann-title">Tittel *</label>' +
+            '<input id="ann-title" type="text" value="' + C.esc(item ? item.title : "") + '" placeholder="Overskrift på saka" autocomplete="off">' +
+          '</div>' +
+          imgHtml +
+          C.richTextField({ id: "ann-body", label: "Innhald", value: item ? (item.content || "") : "" }) +
+          attHtml +
+          '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.88rem;font-weight:500">' +
+            '<input type="checkbox" id="ann-important"' + (item && item.important ? " checked" : "") + '>' +
+            '<i class="ti ti-speakerphone" style="color:var(--color-primary)"></i>' +
+            'Merk som viktig (vises som banner øvst)' +
+          '</label>' +
+          '<div style="display:flex;gap:.6rem;align-items:center;padding-top:.2rem;border-top:1px solid var(--color-border)">' +
+            '<button type="button" class="btn btn--primary btn--sm" id="ann-save">Lagre</button>' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="ann-cancel-btn">Avbryt</button>' +
+            '<span class="form__status" id="ann-status"></span>' +
+          '</div>' +
         '</div>' +
       '</div>';
 
-    bd.appendChild(modal);
-    document.body.appendChild(bd);
+    App.ui.bindImageFields(ed);
+    App.ui.bindRichTextFields(ed);
+    App.ui.bindAttachField(ed);
 
-    App.ui.bindImageFields(modal);
-    App.ui.bindRichTextFields(modal);
-    App.ui.bindAttachField(modal);
+    function close() { ed.innerHTML = ""; }
+    ed.querySelector("#ann-cancel").addEventListener("click", close);
+    ed.querySelector("#ann-cancel-btn").addEventListener("click", close);
 
-    function close() { bd.remove(); document.removeEventListener("keydown", escH); }
-    function escH(e) { if (e.key === "Escape") close(); }
-    document.addEventListener("keydown", escH);
-    modal.querySelector("#ann-modal-close").addEventListener("click", close);
-    modal.querySelector("#ann-cancel").addEventListener("click", close);
-    bd.addEventListener("click", function (e) { if (e.target === bd) close(); });
-
-    modal.querySelector("#ann-save").addEventListener("click", function () {
-      var title = modal.querySelector("#ann-title").value.trim();
-      var st    = modal.querySelector("#ann-status");
+    ed.querySelector("#ann-save").addEventListener("click", function () {
+      var title = ed.querySelector("#ann-title").value.trim();
+      var st    = ed.querySelector("#ann-status");
       if (!title) { st.textContent = "Tittel er påkrevd."; st.className = "form__status is-error"; return; }
       st.textContent = "Lagrar…"; st.className = "form__status";
       var data = {
         title:       title,
-        body:        App.ui.readRichTextField(modal, "ann-body"),
-        important:   modal.querySelector("#ann-important").checked,
-        image:       App.ui.readImageField(modal, "ann-image"),
-        attachments: App.ui.readAttachments(modal, "ann-attachments")
+        body:        App.ui.readRichTextField(ed, "ann-body"),
+        important:   ed.querySelector("#ann-important").checked,
+        image:       App.ui.readImageField(ed, "ann-image"),
+        attachments: App.ui.readAttachments(ed, "ann-attachments")
       };
       saveItem(item || null, data, function () {
         close();
@@ -414,7 +404,8 @@
       });
     });
 
-    setTimeout(function () { var t = modal.querySelector("#ann-title"); if (t) t.focus(); }, 50);
+    setTimeout(function () { var t = ed.querySelector("#ann-title"); if (t) t.focus(); }, 50);
+    ed.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   /* =========================================================================

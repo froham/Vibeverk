@@ -535,6 +535,7 @@
         '<div class="vw-msg-ts">' + Chat.ts(conv.createdAt || Date.now()) + '</div>';
       msgsEl.appendChild(welcome);
       msgs.forEach(function (m) {
+        if (m.sender === "system") return;
         var d = document.createElement("div");
         d.className = "vw-msg " + (m.sender==="operator" ? "vw-msg--op" : "vw-msg--vis");
         d.innerHTML = Chat.esc(m.text) + '<div class="vw-msg-ts">' + Chat.ts(m.at) + '</div>';
@@ -933,6 +934,9 @@
       panel.classList.remove("is-open");
       btn.innerHTML = vwBtnIcon();
       badge = document.getElementById("vw-badge");
+      if (convId && Chat.getMsgs(convId).length > 0) {
+        Chat.addMsg(convId, "Kunden lukket chatvinduet.", "system");
+      }
     }
 
     btn.addEventListener("click", function () { isOpen ? closePanel() : openPanel(); });
@@ -1142,6 +1146,7 @@
         ".vwca-msg{max-width:75%;padding:.55rem .8rem;border-radius:14px;font-size:.87rem;line-height:1.5;word-break:break-word}",
         ".vwca-msg--op{background:var(--color-primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;box-shadow:0 2px 8px color-mix(in srgb,var(--color-primary) 35%,transparent)}",
         ".vwca-msg--vis{background:#fff;color:#222;align-self:flex-start;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.09),0 0 0 1px rgba(0,0,0,.04)}",
+        ".vwca-msg--sys{background:none;color:var(--color-muted);align-self:stretch;text-align:center;font-size:.72rem;font-style:italic;box-shadow:none;padding:.2rem;max-width:100%;border-radius:0}",
         ".vwca-msg-ts{font-size:.68rem;opacity:.6;margin-top:.2rem}",
         ".vwca-msg--op .vwca-msg-ts{text-align:right}",
         ".vwca-reply{padding:.65rem 1rem;border-top:1px solid var(--color-border);background:var(--color-surface);display:flex;gap:.4rem;align-items:flex-end;position:relative}",
@@ -1496,9 +1501,9 @@
         '<div class="vwca-msgs" id="vwca-msg-list">' +
           (msgs.length
             ? msgs.map(function(m){
-                var cls = m.sender==="operator" ? "vwca-msg--op" : "vwca-msg--vis";
-                return '<div class="vwca-msg '+cls+'">'+Chat.esc(m.text)+
-                  '<div class="vwca-msg-ts">'+Chat.tsDate(m.at)+'</div></div>';
+                var cls = m.sender==="operator" ? "vwca-msg--op" : m.sender==="system" ? "vwca-msg--sys" : "vwca-msg--vis";
+                return '<div class="vwca-msg '+cls+'">' + (m.sender==="system" ? '— '+Chat.esc(m.text)+' —' : Chat.esc(m.text)+
+                  '<div class="vwca-msg-ts">'+Chat.tsDate(m.at)+'</div>') + '</div>';
               }).join("")
             : '<div style="text-align:center;font-size:.82rem;color:var(--color-muted);margin:auto;padding:2rem">Ingen meldingar endå.</div>'
           ) +
@@ -1605,6 +1610,12 @@
       inp.addEventListener("input", function(){
         this.style.height="auto";
         this.style.height = Math.min(this.scrollHeight,160)+"px";
+        // :: trigger — opnar emoji-picker og fjernar :: frå tekstfeltet
+        if (this.value.slice(-2) === "::") {
+          this.value = this.value.slice(0, -2);
+          emojiPicker.classList.add("is-open");
+          this.focus();
+        }
       });
 
       function doSend() {

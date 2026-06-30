@@ -6,25 +6,20 @@
   <title>Vibeverk — Gjør data enkelt og tilgjengelig</title>
 
   <!-- Content-Security-Policy: tillater eksplisitt alle eksterne tjenester denne
-       kodebasen bruker (Google Fonts, Tabler Icons, Plausible, Tidio).
+       kodebasen bruker (Google Fonts, Tabler Icons, Plausible).
        Dersom hosting-plattformen (f.eks. Cloudflare) også setter en CSP-header,
        gjelder den STRENGESTE av de to — oppdater begge steder ved behov. -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     script-src  'self' 'unsafe-inline'
                 https://plausible.io
-                https://code.tidio.co
                 https://cdn.jsdelivr.net;
     connect-src 'self'
                 https://plausible.io
-                https://code.tidio.co
-                https://*.tidio.co
-                wss://*.tidio.co
                 https://cdn.jsdelivr.net
                 https://clzczbyklgdtdhgjphup.supabase.co
                 wss://clzczbyklgdtdhgjphup.supabase.co;
-    frame-src   https://plausible.io
-                https://*.tidio.co;
+    frame-src   https://plausible.io;
     style-src   'self' 'unsafe-inline'
                 https://fonts.googleapis.com
                 https://cdn.jsdelivr.net;
@@ -367,15 +362,15 @@
     .contact__actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
     /* Analyse-fane */
     .an-wrap { max-width: none; }
-    .an-heading { margin: 0 0 .8rem; font-size: 1rem; }
-    .an-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .8rem; margin-bottom: 1.6rem; }
-    .an-card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem 1.1rem; background: var(--color-surface); }
-    .an-card__val { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--color-primary); }
-    .an-card__label { font-size: .85rem; color: var(--color-muted); margin: .3rem 0 .4rem; }
-    .an-card__diff { font-size: .78rem; }
+    .an-heading { margin: 0 0 .6rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--color-muted); }
+    .an-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; margin-bottom: 1.5rem; }
+    .an-card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.1rem 1.2rem; background: var(--color-surface); }
+    .an-card__val { font-size: 1.9rem; font-weight: 700; line-height: 1; color: var(--color-text); letter-spacing: -.02em; }
+    .an-card__label { font-size: .8rem; color: var(--color-muted); margin: .45rem 0 .3rem; font-weight: 500; }
+    .an-card__diff { font-size: .77rem; line-height: 1.5; }
     .an-card__split { display: flex; gap: 1rem; }
     .an-card__split > div { flex: 1; }
-    .an-card__split .an-card__val { font-size: 1.5rem; }
+    .an-card__split .an-card__val { font-size: 1.45rem; }
     .an-cat-list { display: flex; flex-wrap: wrap; gap: .5rem; margin: -.6rem 0 1.6rem; }
     .an-cat-chip { font-size: .82rem; border: 1px solid var(--color-border); border-radius: 999px; padding: .25rem .7rem; background: var(--color-surface); color: var(--color-muted); }
     .backup-summary { list-style: none; margin: 0 0 1.2rem; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
@@ -431,7 +426,10 @@
       box-shadow: 0 30px 80px rgba(0,0,0,.3);
     }
     .modal__panel--wide  { width: min(640px,  100%); }
-    .modal__panel--admin { width: min(1040px, 97vw); max-height: 92vh; }
+    /* Admin-panel: flex-kolonne slik at header/footer er faste og berre kroppen scrollar */
+    .modal__panel--admin { width: min(1040px, 97vw); max-height: 92vh; overflow: hidden; display: flex; flex-direction: column; }
+    .modal__panel--admin .modal__head { flex-shrink: 0; position: relative; }
+    .modal__panel--admin .modal__body { flex: 1; overflow-y: auto; min-height: 0; }
     /* Admin: formatert meldingsvisning */
     .admin-lead-msg { border-top: 1px solid var(--color-border); margin-top: .5rem; padding-top: .5rem; max-height: 180px; overflow-y: auto; }
     /* Footer */
@@ -537,7 +535,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js?v=6"></script>
   <script src="components.js?v=5"></script>
-  <script src="core.js?v=14"></script>
+  <script src="core.js?v=16"></script>
   <!-- Ekstra-moduler lastes her, etter core.js -->
   <script src="module-booking.js?v=5"></script>
   <script src="module-quote.js?v=5"></script>
@@ -546,7 +544,7 @@
   <script src="module-scrollbanner.js?v=5"></script>
   <script src="module-crm.js?v=6"></script>
   <script src="module-mediabank.js?v=5"></script>
-  <script src="module-chat.js?v=8"></script>
+  <script src="module-chat.js?v=9"></script>
   <script src="module-users.js?v=9"></script>
 </body>
 </html>

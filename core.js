@@ -2007,7 +2007,7 @@ window.App = (function () {
     function statCard(label, thisVal, prevVal) {
       const diff = thisVal - prevVal;
       const arrow = diff > 0 ? "▲" : diff < 0 ? "▼" : "–";
-      const color = diff > 0 ? "var(--color-primary)" : diff < 0 ? "#c0392b" : "var(--color-muted)";
+      const color = diff > 0 ? "#16a34a" : diff < 0 ? "#c0392b" : "var(--color-muted)";
       return `<div class="an-card">
         <div class="an-card__val">${thisVal}</div>
         <div class="an-card__label">${C.esc(label)}</div>
@@ -3167,7 +3167,6 @@ window.App = (function () {
   function initAnalytics() {
     const a  = Store.get("analytics", null) || (CFG.analytics || {});
     const pl = (a.plausible || "").trim();
-    const tw = (a.tawkto    || "").trim();
 
     if (pl && !document.getElementById("_pl-script")) {
       const s2 = document.createElement("script");
@@ -3176,16 +3175,6 @@ window.App = (function () {
       s2.defer         = true;
       s2.setAttribute("data-domain", pl);
       document.head.appendChild(s2);
-    }
-
-    // Tidio live chat — lastast berre på offentleg side (ikkje i intranettet)
-    // Tidio brukar ikkje cookies, lagrar i localStorage, EU/EEA-serverar
-    if (tw && !document.getElementById("_tidio-script") && !document.getElementById("intranet")) {
-      var s3   = document.createElement("script");
-      s3.id    = "_tidio-script";
-      s3.async = true;
-      s3.src   = "//code.tidio.co/" + tw.trim() + ".js";
-      document.head.appendChild(s3);
     }
   }
 

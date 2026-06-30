@@ -589,9 +589,7 @@ window.VwConsole = (function () {
 
     wrap.innerHTML =
       '<form id="cs-form">' +
-        '<fieldset class="admin-group"><legend>Analyse og integrasjonar</legend>' +
-          C.field({ id:"cs-an-tawk", label:"Tidio – Public Key", value: an.tawkto || "", placeholder:"abc123defg456",
-            hint:"Finn Public Key under Settings → General i Tidio. Ingen cookies, EU/EEA-serverar." }) +
+        '<fieldset class="admin-group"><legend>Analyse</legend>' +
           C.field({ id:"cs-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"vibeverk.no" }) +
           C.field({ id:"cs-an-plembed", label:"Plausible – delt dashboard-lenke", value: an.plausibleEmbed || "",
             placeholder:"https://plausible.io/share/…",
@@ -603,7 +601,6 @@ window.VwConsole = (function () {
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
       App.store.set("analytics", {
-        tawkto:         wrap.querySelector("#cs-an-tawk").value.trim(),
         plausible:      wrap.querySelector("#cs-an-pl").value.trim(),
         plausibleEmbed: wrap.querySelector("#cs-an-plembed").value.trim()
       });
