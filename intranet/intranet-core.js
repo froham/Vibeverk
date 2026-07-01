@@ -186,8 +186,10 @@ window.Intranet = (function () {
     if (!root) return;
 
     var ctx = getContext();
-    var tenantName = App.store.get("wsp-settings", {}).tenantName
-                     || _workspaceName
+    // Console sitt eksplisitte arbeidsområdenamn (operatør-nivå) skal vinne når det er sett —
+    // elles kunden si eiga "Bedriftsnavn"-innstilling, elles firmanamnet frå config.js.
+    var tenantName = _workspaceName
+                     || App.store.get("wsp-settings", {}).tenantName
                      || (CFG.company && CFG.company.name)
                      || "Arbeidsområde";
 
@@ -409,8 +411,8 @@ window.Intranet = (function () {
     // Oppdater sidebar-brand (kan ha endret tenant-navn)
     var brand = document.querySelector(".i-sidebar__name");
     if (brand) {
-      var name = App.store.get("wsp-settings", {}).tenantName
-                 || _workspaceName
+      var name = _workspaceName
+                 || App.store.get("wsp-settings", {}).tenantName
                  || (CFG.company && CFG.company.name) || "Arbeidsområde";
       brand.textContent = name;
     }

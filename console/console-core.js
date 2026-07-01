@@ -474,7 +474,7 @@ window.VwConsole = (function () {
           '<div id="cs-wsp-name-wrap" style="' + (wsp.name ? "" : "display:none") + '">' +
             C.field({ id:"cs-wsp-name", label:"Arbeidsområdenamn", value: wsp.name || "", placeholder:"T.d. eit kallenamn" }) +
           '</div>' +
-          '<p style="font-size:.78rem;color:var(--color-muted);margin:.5rem 0 0">Merk: kunden kan sjølv setje eit bedriftsnamn i Workspace → Innstillingar — det overstyrer dette valet dersom kunden har sett det.</p>' +
+          '<p style="font-size:.78rem;color:var(--color-muted);margin:.5rem 0 0">Dette valet vinn alltid over kunden si eiga "Bedriftsnavn"-innstilling i Workspace → Innstillingar, når det er aktivert her.</p>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse fargane gjeld berre Workspace — uavhengig av nettside-tema.</p>' +

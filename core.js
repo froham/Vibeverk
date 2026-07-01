@@ -2871,6 +2871,10 @@ window.App = (function () {
                   '<input id="reply-replyto" type="email" placeholder="hei@vibeverk.no" autocomplete="email" style="font:inherit;font-size:.88rem;padding:.55rem .8rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%">' +
                 '</div>' +
                 '<div>' +
+                  '<label style="font-size:.78rem;font-weight:600;color:var(--color-muted);display:block;margin-bottom:.3rem">Emne</label>' +
+                  '<input id="reply-subject" type="text" value="' + C.esc(opts.subject || "") + '" placeholder="Skriv emne" style="font:inherit;font-size:.88rem;padding:.55rem .8rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%">' +
+                '</div>' +
+                '<div>' +
                   '<label style="font-size:.78rem;font-weight:600;color:var(--color-muted);display:block;margin-bottom:.3rem">Melding</label>' +
                   '<div style="border:1.5px solid var(--color-border);border-radius:9px;overflow:hidden">' +
                     '<div id="reply-editor-toolbar" style="display:flex;gap:.15rem;padding:.35rem .5rem;border-bottom:1px solid var(--color-border);background:var(--color-alt);flex-wrap:wrap">' +
@@ -2967,7 +2971,9 @@ window.App = (function () {
         var html    = editor ? editor.innerHTML : "";
         var plain   = editor ? (editor.innerText || editor.textContent || "").trim() : "";
         var replyTo = (root.querySelector("#reply-replyto") || {}).value || "";
+        var subject = ((root.querySelector("#reply-subject") || {}).value || "").trim();
         var st      = root.querySelector("#reply-direct-status");
+        if (!subject) { st.innerHTML = '<span style="color:#c0392b">Emnefeltet er tomt.</span>'; return; }
         if (!plain) { st.innerHTML = '<span style="color:#c0392b">Meldingen er tom.</span>'; return; }
         sendNowBtn.disabled = true;
         st.innerHTML = '<span style="color:var(--color-muted)">Sender…</span>';
@@ -2976,7 +2982,7 @@ window.App = (function () {
           var session = (await sb.auth.getSession()).data.session;
           if (!session) throw new Error("Ikkje innlogga");
           var fnUrl = (window.SITE_CONFIG && window.SITE_CONFIG.supabase && window.SITE_CONFIG.supabase.url) + "/functions/v1/send-reply";
-          var payload = { to_email: opts.email, to_name: opts.name || "", subject: opts.subject || "", body: plain, html: html, reply_to: replyTo };
+          var payload = { to_email: opts.email, to_name: opts.name || "", subject: subject, body: plain, html: html, reply_to: replyTo };
           if (_attachments.length) payload.attachments = _attachments;
           var resp = await fetch(fnUrl, {
             method: "POST",
@@ -2986,7 +2992,7 @@ window.App = (function () {
           var result = await resp.json();
           if (result.error) throw new Error(result.error);
           st.innerHTML = '<span style="color:#16a34a"><i class="ti ti-circle-check"></i> E-post sendt!</span>';
-          if (opts.onSent) opts.onSent({ subject: opts.subject || "", plain: plain, html: html, to_email: opts.email, to_name: opts.name || "" });
+          if (opts.onSent) opts.onSent({ subject: subject, plain: plain, html: html, to_email: opts.email, to_name: opts.name || "" });
           setTimeout(function () { root.remove(); }, 2000);
         } catch (e) {
           sendNowBtn.disabled = false;
