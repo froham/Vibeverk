@@ -35,6 +35,7 @@ Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjen
 
 ## Ideas / Parking lot
 
+- **`hub/tenants.js` — reell autentisering + flytte kundedata til Supabase.** Plaintext-passordet i Hub-innlogginga er trivielt omgåeleg, og sidan repoet (`froham/Vibeverk`) er offentleg, ligg kundedata i `tenants.js` (namn/e-post/Supabase-prosjekt-ID) lesbart i git-historikken uansett kva slags innlogging som står framfor sjølve sida. **Brukar avgjorde 2026-07-01: Hub vert ikkje brukt for kundar no, eksplisitt utanfor scope — parkert her, ingen kodeendring gjort.** Berre relevant den dagen ein reell (ikkje-eigen) kunde skal leggjast inn i Hub; sjå `docs/project/CURRENT_STATE.md` for dei tre alternativa som vart vurdert (Supabase-tabell + Console-stil auth / eige privat repo / status quo).
 - **Steg 10 — AI-native Chat.** Ein AI-assistent bygd inn i den native chat-løysinga (RAG via pgvector, KB/FAQ/CRM/Booking-kontekst, hybrid AI/operatør-modus). Eksplisitt spekulativ forretningsmodell-utforsking (Basis/Pro/Premium-tier), ikkje eit forplikta steg. Føresetnad: Supabase (steg 6) er på plass, som no er tilfellet.
 - Custom design-modul (visuell tema-editor for kunde-sjølvbetjening) — nemnd i tidlegare arkitektnotat, ikkje prioritert.
 - PWA-manifest / Service Worker for Workspace — nemnd i tidlegare arkitektnotat, låg prioritet.
