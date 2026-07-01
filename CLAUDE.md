@@ -97,4 +97,4 @@ All other tests must remain green. Do not silently remove or skip failing tests.
 
 - Production Supabase project: `clzczbyklgdtdhgjphup`
 - Admin access: triple-click footer or `#admin` in URL, password in `config.js → admin.password`
-- Intranet login: Supabase Auth (email + password), role must be `owner` or `admin` in `users` table
+- Intranet login: Supabase Auth (email + password); role (`admin`/`editor`/`member`) governs what's visible after login, not whether login succeeds. Admin/editor/member management UI requires role `admin`.

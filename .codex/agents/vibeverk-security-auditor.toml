@@ -25,17 +25,17 @@ Before drawing any conclusion, read the relevant source files. Do not invent fin
 3. Vibeverk Operator Console (`/console/`) — loads console/console-core.js
 
 **Three admin surfaces and their auth methods**
-1. Web admin (`/#admin`) — static password from config.js (in git, deployed publicly). Unlocked by triple-clicking the footer or appending #admin to the URL. NOT Supabase Auth, NOT role-based. Anyone with the password gets full web admin access. This is a known design constraint, not a bug.
-2. Intranet (`/intranet/`) — Supabase Auth (email + password). Role from `users` table. Role must be owner/admin/editor/member to enter. Owner and admin see the settings and users modules.
-3. Console (`/console/`) — Vibeverk operator only. Two-step: email → 8-digit OTP via Supabase. Role must be `owner` in the `users` table. 48-hour session stored as an expiry timestamp in localStorage["nordpunkt:console-auth"]. No httpOnly cookie.
+1. Web admin (`/#admin`) — Supabase Auth (email + password) whenever `config.js` has `supabase.url`/`anonKey` set, i.e. in every real customer deployment. A static config.js password is only a fallback when Supabase isn't configured at all (local/test only) — as of 2026-07-01 (ADR-0003) this fallback is explicitly unreachable when Supabase is configured but the SDK fails to load, closing a prior narrow backdoor. Unlocked by triple-clicking the footer or appending #admin to the URL.
+2. Intranet (`/intranet/`) — Supabase Auth (email + password). Role from `users` table (`admin`/`editor`/`member` — see Roles below). Role governs what's visible after login, not whether login succeeds.
+3. Console (`/console/`) — Vibeverk operator only. Email checked against a hardcoded `SUPERADMIN_EMAILS` allowlist *before* an 8-digit OTP is sent via Supabase. As of 2026-07-01 (ADR-0004), the allowlist + valid OTP is the complete authorization — there is no additional tenant-role check against the customer's `users` table. 48-hour session stored as an expiry timestamp in localStorage["nordpunkt:console-auth"]. No httpOnly cookie.
 
 **Tenant isolation**
 - One Supabase project per customer. Database-level isolation by separate project. No shared tenant_id-based isolation except in the `store` table (kept for backward compatibility).
 
 **Roles**
-- `users` table columns: id (uuid, refs auth.users), name, email, role (owner/admin/editor/member), created_at
-- `is_admin_or_owner()` RLS helper function — returns true when auth.uid() has role owner or admin
-- Owner: cannot be changed by others. Admin: can manage users up to admin level. Editor: TBD. Member: read access.
+- `users` table columns: id (uuid, refs auth.users), name, email, role, created_at. The database CHECK constraint only permits `role IN ('admin', 'editor', 'member')` — there is no `owner` role (an earlier design had one; removed 2026-06-30, references cleaned up 2026-07-01, see `docs/decisions/ADR-0006-remove-owner-role-references.md`. Do not treat "owner" as a valid role value anywhere in an audit).
+- `is_admin_or_owner()` RLS helper function — name is historical, in practice only checks `role = 'admin'`.
+- Admin: highest role, can manage all users. Editor: TBD. Member: read access.
 
 **Anon access constraints — critical**
 - Anon role MUST NEVER get direct SELECT on `chat_messages` or `chat_conversations`
@@ -90,10 +90,10 @@ Cover all of the following:
 **Authentication**
 - Web admin password: stored in config.js (in git, publicly accessible). Password is checked client-side. Is there any server-side enforcement? Can the password be found in source code inspection?
 - Intranet: Supabase Auth session persistence, signOut completeness, role check timing
-- Console: OTP flow correctness, session expiry enforcement (48h), localStorage timestamp vs server-side validation, role=owner check timing and bypass potential
+- Console: OTP flow correctness, session expiry enforcement (48h), localStorage timestamp vs server-side validation, SUPERADMIN_EMAILS allowlist bypass potential
 
 **Authorization and privilege escalation**
-- Can a member-role user escalate to admin? Can an admin escalate to owner?
+- Can a member-role user escalate to admin? Can an editor escalate to admin?
 - Are there any unguarded intranet routes or module actions that fail to check role?
 - Can a visitor reach admin-only RPCs by crafting a request?
 - Is the console protected against access with an expired session?

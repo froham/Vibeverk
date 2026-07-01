@@ -233,6 +233,10 @@ CREATE TRIGGER on_auth_user_created
 
 -- ── 5. RLS-HJELP-FUNKSJONAR ──────────────────────────────────────────────────
 
+-- Namnet er historisk — "owner" vart fjerna som rolle (rollemodellen er no berre
+-- admin/editor/member, sjå CHECK-constrainten på users.role under). Funksjonen sjekkar
+-- i praksis berre 'admin'. Ikkje omdøypt her sidan mange RLS-policies refererer namnet;
+-- ei omdøyping krev ein eigen, koordinert migrasjon.
 CREATE OR REPLACE FUNCTION is_admin_or_owner()
 RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
   SELECT EXISTS (
@@ -305,7 +309,7 @@ DROP POLICY IF EXISTS store_auth        ON store;
 CREATE POLICY store_anon_read   ON store  FOR SELECT TO anon          USING (true);
 CREATE POLICY store_auth        ON store  FOR ALL    TO authenticated  USING (true) WITH CHECK (true);
 
--- users: alle les, kvar brukar oppdaterer seg sjølv, admin/owner endrar alle
+-- users: alle les, kvar brukar oppdaterer seg sjølv, admin endrar alle
 DROP POLICY IF EXISTS users_read         ON users;
 DROP POLICY IF EXISTS users_self_update  ON users;
 DROP POLICY IF EXISTS users_admin_update ON users;
@@ -348,7 +352,7 @@ CREATE POLICY links_admin       ON links FOR ALL    TO authenticated USING (can_
 -- chat: anon-besøkande kan berre skrive (INSERT) og oppdatere presence.
 -- Les-tilgang skjer utelukkande via SECURITY DEFINER-RPC-ar (get_visitor_conv / get_visitor_msgs)
 -- slik at ein anon ikkje kan lese andre besøkande sine samtalar.
--- Admin/owner-rollen har full tilgang; vanlege members/editors har ikkje chat-tilgang.
+-- Admin-rollen har full tilgang; vanlege members/editors har ikkje chat-tilgang.
 DROP POLICY IF EXISTS chat_conv_anon_insert ON chat_conversations;
 DROP POLICY IF EXISTS chat_conv_anon_select ON chat_conversations;
 DROP POLICY IF EXISTS chat_conv_anon_update ON chat_conversations;

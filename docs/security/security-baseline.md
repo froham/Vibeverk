@@ -66,14 +66,20 @@ Without this, PostgREST will continue serving the old function definition from i
 ## Console authentication
 
 The Vibeverk Console uses OTP-based authentication (not password). After OTP validation, the session is stored as a 48-hour expiry timestamp in `localStorage["nordpunkt:console-auth"]`. Access to the console requires:
-1. A valid OTP code sent to a known email address
-2. The authenticated user having `role = 'owner'` in the `users` table
+1. The email matching a hardcoded `SUPERADMIN_EMAILS` allowlist (checked *before* an OTP is even sent)
+2. A valid OTP code verified via Supabase
+
+As of 2026-07-01 (`docs/decisions/ADR-0004-console-access-decoupled-from-tenant-role.md`), there is no additional check against the customer's `users` table — the allowlist plus a valid OTP is the complete authorization. An earlier `role = 'owner'` check was removed after it blocked the legitimate Vibeverk operator account (which had `role = 'admin'` in the tenant's `users` table — `owner` is not a valid role value at all, see below).
 
 The console session is stored in localStorage, not in an httpOnly cookie. This is a known limitation — the session is accessible to JavaScript.
 
 ## Web admin password
 
-The web admin password is stored in `config.js`, committed to git, and served as a public JS file. Authentication is purely client-side. This is a known design constraint (not a bug). The password is treated as a shared access code for the customer's staff rather than a high-security credential.
+The web admin password (`config.js → admin.password`) is only reachable as an authentication path when Supabase isn't configured for the deployment at all (local/test environments). As of 2026-07-01 (`docs/decisions/ADR-0003-close-admin-auth-fallback.md`), any deployment with Supabase configured requires Supabase Auth (email + password) — the config password is never used as a fallback, even if the Supabase SDK transiently fails to load (that case now shows a retry prompt instead). For genuinely unconfigured local/test environments, the password remains purely client-side and untreated as a high-security credential — a known, accepted design constraint for that narrow case only.
+
+## Roles
+
+The `users` table only permits three roles (database CHECK constraint): `admin`, `editor`, `member`. An earlier `owner` role was removed (commit `2f8a92b`); references were cleaned up repo-wide 2026-07-01 (`docs/decisions/ADR-0006-remove-owner-role-references.md`). `is_admin_or_owner()` is a historically-named RLS helper that in practice only checks `role = 'admin'` — not renamed since many RLS policies reference it by name.
 
 ## Supabase anonKey
 

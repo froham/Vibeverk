@@ -286,7 +286,6 @@ window.SITE_CONFIG = {
   // Kan overstyrast i Super-admin → Workspace-fana.
   workspace: {
     name:        "",   // Tomt = brukar company.name som arbeidsområdenamn
-    accentColor: "",   // Tomt = brukar colors.primary frå nettside-temaet
-    logoUrl:     ""    // Tomt = brukar company.logoUrl
+    accentColor: ""    // Tomt = brukar colors.primary frå nettside-temaet
   }
 };

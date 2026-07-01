@@ -66,29 +66,28 @@ Vibeverk/
 
 ## Brukerstruktur og roller
 
-Vibeverk opererer med to separate brukerlag:
+Vibeverk har tre separate admin-overflater — se `docs/architecture/roles-and-tenants.md` for full detalj:
 
-### Superadmin (Vibeverk-plattform)
-Kun for Vibeverk-operatøren. Tilgang via OTP-innlogging (8-sifret kode sendt på e-post) fra Supabase Magic Link. Åpnes via skjult trippelklikk-meny på nettsiden (`#admin`-panelet). Brukerens e-post verifiseres mot `owner`-rollen i `users`-tabellen.
+### Vibeverk Console (`/console/`) — kun for Vibeverk-operatøren
+Separat produkt fra kunde-adminen. Tilgang: e-post sjekkes mot ei hardkoda `SUPERADMIN_EMAILS`-liste i `console-core.js` *før* ein 8-sifra OTP-kode sendes; etter verifisert OTP er dette den fulle og einaste tilgangssjekken (ingen avhengigheit til rolle i kundens `users`-tabell — se `docs/decisions/ADR-0004-console-access-decoupled-from-tenant-role.md`).
 
-### Kundebrukere (intranett)
-Alle kundeansatte logger inn med e-post + passord via Supabase. Rollen hentes fra `public.users`-tabellen etter autentisering.
+### Kunde-admin (`/#admin`) og Workspace/intranett (`/intranet/`)
+Kundeansatte logger inn med e-post + passord via Supabase. Rollen hentes fra `public.users`-tabellen etter autentisering. Databasen tillèt kun tre roller (CHECK-constraint på `users.role`):
 
-| Rolle | Hvem | Tilgang |
-|-------|------|---------|
-| `owner` | Bedriftseier (én per tenant) | Full tilgang: alt inkl. backup, brukeradmin, innstillinger |
-| `admin` | Utpekt ansattadmin | Nær full tilgang; kan ikke endre owner eller slette seg selv |
-| `editor` | Redaktør | Kan opprette og redigere innhold (artikler, KB, lenker, oppgaver) |
-| `member` | Vanlig ansatt | Les alt, egne notater, kan oppdatere tildelte oppgaver |
+| Rolle | Tilgang |
+|-------|---------|
+| `admin` | Full tilgang: alt inkl. backup, brukeradmin, innstillinger. Høgaste rolle i dag. |
+| `editor` | Kan opprette og redigere innhold (artikler, KB, lenker, oppgaver) |
+| `member` | Les alt, egne notater, kan oppdatere tildelte oppgaver |
 
 Maks **50 brukere per tenant** (håndhevet av Edge Function).
 
 Rollen lagres i `sessionStorage` etter innlogging og synkroniseres av `onAuthStateChange` i `core.js`. `getAuthRole()` leses derfra av admin-panelet for å styre hvilke faner og funksjoner som vises.
 
 ### Invitasjonsflyt
-1. Owner/admin fyller inn e-post og rolle i *Innstillinger → Brukere*
+1. Admin fyller inn e-post og rolle i *Innstillinger → Brukere*
 2. `module-users.js` kaller Edge Function `manage-user` med `action: "invite"`
-3. Edge Function verifiserer kallerens rolle mot `users`-tabellen (service_role-nøkkel)
+3. Edge Function verifiserer at kalleren har rolle `admin` i `users`-tabellen (service_role-nøkkel)
 4. Supabase sender invitasjonslenke til den nye brukeren
 5. Brukeren setter passord via lenken og får tilgang
 
@@ -102,16 +101,16 @@ Fjerning skjer tilsvarende med `action: "remove"`.
 Row Level Security er aktivert på alle tabeller. To hjelpefunksjoner i databasen:
 
 ```sql
-is_admin_or_owner()   -- owner og admin
-can_edit_content()    -- owner, admin og editor
+is_admin_or_owner()   -- namnet er historisk (frå før rollemodellen vart forenkla), sjekkar i praksis kun 'admin'
+can_edit_content()    -- admin og editor
 ```
 
 | Tabell | Lese | Skrive |
 |--------|------|--------|
 | `store` | Alle innloggede | Alle innloggede |
-| `users` | Alle innloggede | Selv (eget profil), admin/owner (alle) |
+| `users` | Alle innloggede | Selv (eget profil), admin (alle) |
 | `notes` | Kun egen bruker | Kun egen bruker |
-| `tasks` | Alle innloggede | editor+ (opprette/slette), tildelt bruker (oppdatere status) |
+| `tasks` | Alle innloggede | editor+ (opprette/slette), tildelt bruker (oppdatere status), kun admin kan tildele til andre |
 | `announcements` | Alle innloggede | editor+ |
 | `kb_articles` | Alle innloggede | editor+ |
 | `links` | Alle innloggede | editor+ |
@@ -120,14 +119,14 @@ can_edit_content()    -- owner, admin og editor
 
 ### Edge Function (`manage-user`)
 - Kjøres server-side i Deno med Supabase service_role-nøkkel — aldri eksponert til klient
-- Verifiserer at kalleren har gyldig JWT og er `owner` eller `admin` før handling utføres
+- Verifiserer at kalleren har gyldig JWT og rolle `admin` før handling utføres
 - Blokkerer selvsletting
 - Håndhever maks 50 brukere per tenant
 
-### Superadmin OTP
-- Krever gyldig Supabase-konto med `role = 'owner'` i `users`-tabellen
+### Console-tilgang (OTP)
+- E-post sjekkes mot `SUPERADMIN_EMAILS` *før* OTP-kode sendes — ingen andre e-postar kan i det heile starte innlogging
 - 8-sifret OTP sendes per e-post; verifiseres av `_sb.auth.verifyOtp()`
-- Etter verifisering sjekkes rollen på nytt mot databasen — et gyldig token uten riktig rolle gir ikke tilgang
+- Ingen ytterlegare rollesjekk mot kundens `users`-tabell (sjå ADR-0004) — allowlista + gyldig OTP er den fulle tilgangssjekken
 
 ### Klientsideadmin (`config.js`)
 Admin-panelet på nettsiden er beskyttet av passord fra `config.js`. Dette er **ikke** produksjonssikkerhet — passordet er synlig i kildekoden. Det er ment som en enkel skranke, ikke tilgangskontroll. For reell tilgangskontroll brukes Supabase-autentisering (intranettet).
@@ -260,7 +259,7 @@ Skrive-gjennom til Supabase skjer automatisk. Hydratering (`hydrateFromSupabase(
 2. Kjør `supabase/migration.sql` i **SQL Editor** — idempotent, trygt å kjøre på nytt.
 3. Deploy Edge Function: `supabase functions deploy manage-user`
 4. Sett `supabase.url` og `supabase.anonKey` i `config.js`.
-5. Opprett første `owner`-bruker manuelt i Supabase Authentication, og sett `role = 'owner'` i `users`-tabellen.
+5. Opprett første admin-bruker manuelt i Supabase Authentication, og sett `role = 'admin'` i `users`-tabellen.
 
 ---
 

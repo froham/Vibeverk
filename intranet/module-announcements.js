@@ -26,12 +26,12 @@
 
   function canEdit(ctx) {
     var role = (ctx && ctx.role) || Intranet.getContext().role;
-    return role === "owner" || role === "admin" || role === "editor";
+    return role === "admin" || role === "editor";
   }
 
   function canDelete(ctx) {
     var role = (ctx && ctx.role) || Intranet.getContext().role;
-    return role === "owner" || role === "admin";
+    return role === "admin";
   }
 
   /* =========================================================================

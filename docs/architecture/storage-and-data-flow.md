@@ -77,12 +77,12 @@ Anon role NEVER gets direct `SELECT` on `chat_messages` or `chat_conversations`.
 | Table | What it stores | Access |
 |---|---|---|
 | `store` | Key/value config, superconfig | Authenticated only (RLS) |
-| `users` | User accounts, roles | RLS: owner/admin can manage, users see own row |
+| `users` | User accounts, roles (`admin`/`editor`/`member` — no `owner`, see `docs/decisions/ADR-0006-remove-owner-role-references.md`) | RLS: admin can manage, users see own row |
 | `notes` | Private user notes | RLS: `user_id = auth.uid()` — never shared |
-| `tasks` | Tasks with assignments | RLS: all authenticated read, admin/owner write, assigned user can update status |
-| `announcements` | News/announcements with images and attachments | RLS: admin/owner write, all authenticated read |
-| `kb_articles` | Knowledge base articles | RLS: admin/owner write, all authenticated read; published articles visible to all |
-| `links` | Intranet quick links | RLS: admin/owner write, all authenticated read |
+| `tasks` | Tasks with assignments | RLS: all authenticated read, admin write, assigned user can update status. Only admin can assign a task to another user. |
+| `announcements` | News/announcements with images and attachments | RLS: admin write, all authenticated read |
+| `kb_articles` | Knowledge base articles | RLS: admin write, all authenticated read; published articles visible to all |
+| `links` | Intranet quick links | RLS: admin write, all authenticated read |
 | `chat_conversations` | Chat sessions with visitor metadata | RLS: authenticated only; anon via SECURITY DEFINER RPC only |
 | `chat_messages` | Chat messages | RLS: authenticated only; anon via SECURITY DEFINER RPC only |
 

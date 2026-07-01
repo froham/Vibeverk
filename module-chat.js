@@ -940,15 +940,15 @@
       panel.classList.remove("is-open");
       btn.innerHTML = vwBtnIcon();
       badge = document.getElementById("vw-badge");
-      if (convId && Chat.getMsgs(convId).length > 0) {
-        Chat.addMsg(convId, "Kunden lukket chatvinduet.", "system");
-      }
     }
 
     btn.addEventListener("click", function () { isOpen ? closePanel() : openPanel(); });
     panel.querySelector("#vw-min-btn").addEventListener("click", closePanel);
     panel.querySelector("#vw-end-btn").addEventListener("click", function () {
       if (!convId || !Chat.getConv(convId)) return;
+      if (Chat.getMsgs(convId).length > 0) {
+        Chat.addMsg(convId, "Kunden lukket chatvinduet.", "system");
+      }
       saveConvAsLead(convId);
       setLeadResolved(convId);
       Chat.setStatus(convId, "closed");

@@ -71,7 +71,7 @@ window.confirm = () => true;
 
 // Auth via eval (same jsdom-kontekst)
 const _NS = window.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
-window.eval(`sessionStorage.setItem("${_NS}:intranet-auth","owner")`);
+window.eval(`sessionStorage.setItem("${_NS}:intranet-auth","admin")`);
 
 window.document.dispatchEvent(new window.Event("DOMContentLoaded", { bubbles: true }));
 const doc = window.document;
@@ -182,7 +182,7 @@ assert(!!doc.querySelector("[data-note-open]"), "i6: note-open knapp");
 /* --- J) KUNNSKAPSBASE ----------------------------------------------------- */
 nav("#/settings"); nav("#/kb");
 assert(!!doc.querySelector("#kb-root"),    "j1: kb-root");
-assert(!!doc.querySelector("#kb-new-btn"), "j2: ny-artikkel-knapp (owner)");
+assert(!!doc.querySelector("#kb-new-btn"), "j2: ny-artikkel-knapp (admin)");
 doc.querySelector("#kb-new-btn").dispatchEvent(new window.Event("click",{bubbles:true}));
 // Editor er no ein modal i document.body
 const kbEd = doc.querySelector("#kb-edit-modal-bd") || doc.querySelector("#kb-editor-area");
@@ -206,7 +206,7 @@ assert(App.store.get("wsp-media-index",[]).length===1, "k3: filindeks ok");
 /* --- L) ANNOUNCEMENTS ----------------------------------------------------- */
 nav("#/announcements");
 assert(!!doc.querySelector("#ann-root"),    "l1: ann-root");
-assert(!!doc.querySelector("#ann-new-btn"), "l2: ny-melding (owner)");
+assert(!!doc.querySelector("#ann-new-btn"), "l2: ny-melding (admin)");
 doc.querySelector("#ann-new-btn").dispatchEvent(new window.Event("click",{bubbles:true}));
 doc.querySelector("#ann-title").value = "Testmelding";
 doc.querySelector("#ann-important").checked = true;

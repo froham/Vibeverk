@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.4.0";
+  var VIBEVERK_VERSION = "0.5.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -467,7 +467,14 @@ window.VwConsole = (function () {
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Identitet</legend>' +
-          C.field({ id:"cs-wsp-name", label:"Arbeidsområdenamn", value: wsp.name || "", placeholder:"Tomt = brukar firmanamnet" }) +
+          '<label class="cs-checkbox-label" style="margin-bottom:.6rem">' +
+            '<input type="checkbox" id="cs-wsp-use-name"' + (wsp.name ? " checked" : "") + '> ' +
+            'Bruk eige namn for arbeidsområdet (i staden for bedriftsnamnet)' +
+          '</label>' +
+          '<div id="cs-wsp-name-wrap" style="' + (wsp.name ? "" : "display:none") + '">' +
+            C.field({ id:"cs-wsp-name", label:"Arbeidsområdenamn", value: wsp.name || "", placeholder:"T.d. eit kallenamn" }) +
+          '</div>' +
+          '<p style="font-size:.78rem;color:var(--color-muted);margin:.5rem 0 0">Merk: kunden kan sjølv setje eit bedriftsnamn i Workspace → Innstillingar — det overstyrer dette valet dersom kunden har sett det.</p>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse fargane gjeld berre Workspace — uavhengig av nettside-tema.</p>' +
@@ -504,6 +511,10 @@ window.VwConsole = (function () {
         saveBtn() +
       '</form>';
 
+    wrap.querySelector("#cs-wsp-use-name").addEventListener("change", function () {
+      wrap.querySelector("#cs-wsp-name-wrap").style.display = this.checked ? "" : "none";
+    });
+
     wrap.querySelectorAll("[data-wsp-pair]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var p = FONT_PAIRS[parseInt(btn.getAttribute("data-wsp-pair"), 10)];
@@ -532,8 +543,9 @@ window.VwConsole = (function () {
       e.preventDefault();
       var primary = wrap.querySelector("#cs-wsp-primary").value;
       var sc2 = getSC();
+      var useCustomName = wrap.querySelector("#cs-wsp-use-name").checked;
       sc2.workspace = Object.assign({}, sc2.workspace || {}, {
-        name:        wrap.querySelector("#cs-wsp-name").value.trim(),
+        name:        useCustomName ? wrap.querySelector("#cs-wsp-name").value.trim() : "",
         accentColor: primary,
         colors: {
           primary:    primary,
@@ -650,7 +662,7 @@ window.VwConsole = (function () {
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Nettside-admin (for kunden)</legend>' +
           C.field({ id:"cs-apass", label:"Passord for #admin-inngang", value: (CFG.admin && CFG.admin.password) || "" }) +
-          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Kunden brukar dette for å opne web-admin via #admin-lenkja. Aktiv ved neste sideopplasting.</p>' +
+          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Verkar berre viss Supabase IKKJE er konfigurert for kunden (reint lokalt/test-miljø). For alle ekte, konfigurerte kundar krevst innlogging med e-post + passord via Supabase — dette feltet har då ingen effekt (sjå ADR-0003).</p>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Supabase-prosjekt</legend>' +
           '<div style="font-size:.87rem;color:var(--color-muted);display:grid;gap:.4rem">' +

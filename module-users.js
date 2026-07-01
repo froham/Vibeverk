@@ -63,7 +63,6 @@
           "border-bottom:2px solid var(--color-border)}",
         ".vwu-table td{padding:.55rem .7rem;border-bottom:1px solid var(--color-border);vertical-align:middle}",
         ".vwu-role{font-size:.75rem;padding:.15rem .5rem;border-radius:999px;font-weight:600;border:1.5px solid}",
-        ".vwu-role--owner{border-color:#7c3aed;color:#7c3aed;background:color-mix(in srgb,#7c3aed 8%,transparent)}",
         ".vwu-role--admin{border-color:var(--color-primary);color:var(--color-primary);background:color-mix(in srgb,var(--color-primary) 8%,transparent)}",
         ".vwu-role--member{border-color:var(--color-border);color:var(--color-muted);background:transparent}",
         ".vwu-role-sel{font-size:.82rem;border:1.5px solid var(--color-border);border-radius:8px;",
@@ -113,24 +112,18 @@
           }
           var users = res.data || [];
           var me_user = users.find(function (u) { return u.id === me.id; }) || {};
-          var isOwnerAdmin = ["owner", "admin"].includes(me_user.role);
-
-          // Skjul owner for ikkje-eigarar (editor/member treng ikkje sjå/endre eigaren)
-          var visibleUsers = me_user.role === "owner"
-            ? users
-            : users.filter(function (u) { return u.role !== "owner"; });
+          var isAdmin = me_user.role === "admin";
 
           function roleTag(role) {
             return '<span class="vwu-role vwu-role--' + esc(role) + '">' + esc(role) + '</span>';
           }
 
-          var rows = visibleUsers.map(function (u) {
+          var rows = users.map(function (u) {
             var isSelf = u.id === me.id;
-            // Owner-kontoen er aldri redigerbar av andre
-            var canEdit = isOwnerAdmin && !isSelf && u.role !== "owner";
+            var canEdit = isAdmin && !isSelf;
             var roleHtml = canEdit
               ? '<select class="vwu-role-sel" data-uid="' + esc(u.id) + '" data-cur-role="' + esc(u.role) + '">' +
-                  ['member', 'editor', 'admin', 'owner'].map(function (r) {
+                  ['member', 'editor', 'admin'].map(function (r) {
                     return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + r + '</option>';
                   }).join("") +
                 '</select>'
@@ -147,7 +140,7 @@
             '</tr>';
           }).join("");
 
-          var inviteHtml = isOwnerAdmin
+          var inviteHtml = isAdmin
             ? '<div class="vwu-invite">' +
                 '<h4>Inviter ny brukar</h4>' +
                 '<div class="vwu-row">' +
@@ -158,14 +151,13 @@
                       '<option value="member">member</option>' +
                       '<option value="editor">editor</option>' +
                       '<option value="admin">admin</option>' +
-                      (me_user.role === "owner" ? '<option value="owner">owner</option>' : '') +
                     '</select>' +
                   '</div>' +
                   '<button class="vwu-invite-btn" id="vwu-invite-btn">Send invitasjon</button>' +
                 '</div>' +
                 '<div id="vwu-msg"></div>' +
               '</div>'
-            : '<p style="font-size:.82rem;color:var(--color-muted);margin-top:.8rem">Berre eigar/admin kan invitere brukarar.</p>';
+            : '<p style="font-size:.82rem;color:var(--color-muted);margin-top:.8rem">Berre admin kan invitere brukarar.</p>';
 
           container.innerHTML =
             '<div class="vwu">' +

@@ -79,7 +79,7 @@ window.App = (function () {
       _isAuthed = !!session;
       if (session && session.user) {
         _sb.from("users").select("role").eq("id", session.user.id).single().then(function (r) {
-          var role = (r.data && r.data.role) || "owner";
+          var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
           sessionStorage.setItem(NS + ":admin", role);
         });
       } else if (event === "SIGNED_OUT") {
@@ -827,9 +827,9 @@ window.App = (function () {
      ======================================================================== */
   function getAuthRole() {
     const v = sessionStorage.getItem(NS + ":admin");
-    // Supabase-roller: owner | admin | editor | member
+    // Supabase-roller: admin | editor | member
     // Eldre fallback-rolle: employee (= member)
-    if (v === "owner" || v === "admin" || v === "editor" || v === "member" || v === "employee") return v;
+    if (v === "admin" || v === "editor" || v === "member" || v === "employee") return v;
     return null;
   }
   function isAuthed() { return !!getAuthRole(); }
@@ -852,7 +852,7 @@ window.App = (function () {
     { id: "konto",         label: "Min konto" }
   ];
   // Kva faner kvar rolle ser i web-adminen:
-  //   owner/admin → alt (innhold + henvendelser + innstillinger)
+  //   admin       → alt (innhold + henvendelser + innstillinger)
   //   editor      → innhald og henvendelser (ikkje innstillinger)
   //   member/employee → berre henvendelser
   function allowedCategoriesForRole(role) {
@@ -889,7 +889,7 @@ window.App = (function () {
     // Admin ser full sikkerhetskopi (med per-modul-eksport)
     // Andre roller ser forenkla versjon
     const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "admin") : "admin";
-    if (_backupRole === "admin" || _backupRole === "owner") {
+    if (_backupRole === "admin") {
       tabs.push({ id: "sikkerhetskopi", label: "Sikkerhetskopi", category: "innstillinger" });
     } else {
       tabs.push({ id: "admin-backup",   label: "Sikkerhetskopi", category: "innstillinger" });
@@ -897,7 +897,7 @@ window.App = (function () {
     if (_sb) {
       tabs.push({ id: "min-konto", label: "Min konto", category: "konto" });
     }
-    if (_sb && (_backupRole === "admin" || _backupRole === "owner")) {
+    if (_sb && (_backupRole === "admin")) {
       tabs.push({ id: "brukarar",  label: "Brukarar",  category: "innstillinger" });
     }
     return tabs;

@@ -422,6 +422,24 @@ window.Intranet = (function () {
   function renderLogin() {
     var root = document.getElementById("intranet");
     if (!root) return;
+
+    // Skil "Supabase er ikkje konfigurert" (lokalt/testmiljø — passord-fallback OK) frå
+    // "Supabase ER konfigurert men SDK-en feila å laste" (skal ALDRI falle tilbake til
+    // passordet). Same prinsipp som core.js sin renderAdminLogin() — sjå ADR-0005.
+    var supabaseConfigured = !!(CFG.supabase && CFG.supabase.url && CFG.supabase.anonKey);
+    if (supabaseConfigured && !_sb) {
+      root.innerHTML =
+        '<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--color-bg);padding:1.5rem">' +
+          '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2.5rem;width:min(460px,100%);box-shadow:0 8px 40px rgba(0,0,0,.12);text-align:center">' +
+            '<p style="margin:0 0 1rem">Kunne ikkje laste innloggingstenesta. Sjekk internettforbindelsen og prøv igjen.</p>' +
+            '<button id="intranet-login-retry" class="btn btn--primary">Prøv igjen</button>' +
+          '</div>' +
+        '</div>';
+      var retryBtn = root.querySelector("#intranet-login-retry");
+      if (retryBtn) retryBtn.addEventListener("click", function () { location.reload(); });
+      return;
+    }
+
     root.innerHTML =
       '<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--color-bg);padding:1.5rem">' +
         '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2.5rem;width:min(460px,100%);box-shadow:0 8px 40px rgba(0,0,0,.12)">' +
@@ -472,7 +490,7 @@ window.Intranet = (function () {
             return;
           }
           _sb.from("users").select("role, display_name").eq("id", result.data.user.id).single().then(function(r) {
-            var role = (r.data && r.data.role) || "admin";
+            var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
             context.userId      = result.data.user.id;
             context.displayName = (r.data && r.data.display_name) || result.data.user.email;
             context.role        = role;
@@ -586,7 +604,7 @@ window.Intranet = (function () {
         }
         history.replaceState(null, "", location.pathname + location.search);
         _sb.from("users").select("role, display_name").eq("id", result.data.user.id).single().then(function(r) {
-          var role = (r.data && r.data.role) || "admin";
+          var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
           context.userId      = result.data.user.id;
           context.displayName = (r.data && r.data.display_name) || result.data.user.email;
           context.role        = role;
@@ -645,7 +663,7 @@ window.Intranet = (function () {
         var session = result.data && result.data.session;
         if (session) {
           _sb.from("users").select("role, display_name").eq("id", session.user.id).single().then(function(r) {
-            var role = (r.data && r.data.role) || "admin";
+            var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
             context.userId      = session.user.id;
             context.displayName = (r.data && r.data.display_name) || session.user.email;
             context.role        = role;

@@ -11,18 +11,19 @@ This model means:
 
 ## Roles in the users table
 
-Authenticated workspace users have a role stored in the `users` table:
+Authenticated workspace users have a role stored in the `users` table. The database enforces exactly three roles via a CHECK constraint (`supabase/migration.sql`): `role IN ('admin', 'editor', 'member')`.
 
 | Role | Access |
 |---|---|
-| `owner` | Full access to all intranet modules including settings and user management. The owner row is visible to the owner themselves. The owner's role cannot be changed by anyone else. |
-| `admin` | Can manage users (except the owner), edit content, change user roles up to and including `admin`. Sees settings and user management modules. |
+| `admin` | Full access: manage users, edit content, change roles, sees settings and user management modules. Highest role today. |
 | `editor` | TBD — not fully implemented across all modules. Intended for content editing without full admin access. |
 | `member` | Read access in the workspace. Cannot change content or manage users. |
 
+**Note on "owner":** an earlier design had a fourth role, `owner`, above `admin`. It was removed in commit `2f8a92b` ("forenkla rollemodell til admin/editor/member") and is **not** a valid value in the current database — but references lingered in code comments, `is_admin_or_owner()`'s name, and a UI bug in `module-users.js` (which offered "owner" as an assignable role option that would have failed the DB constraint if selected). Cleaned up 2026-07-01 — see `docs/decisions/ADR-0006-remove-owner-role-references.md`. If a tier above `admin` is wanted in the future, that would be a new, deliberate product decision (its own ADR), not a restoration of the old value.
+
 ## is_admin_or_owner() RLS helper
 
-The Supabase function `is_admin_or_owner()` returns `true` when the currently authenticated user (`auth.uid()`) has a role of `owner` or `admin` in the `users` table. This function is used in RLS policies for tables that require admin or owner access to write (tasks, announcements, KB articles, links, etc.).
+The Supabase function `is_admin_or_owner()` returns `true` when the currently authenticated user (`auth.uid()`) has a role of `admin` in the `users` table. The name is historical (predates the role simplification above) — it is **not** renamed because many RLS policies reference it by name; renaming would require a coordinated migration. This function is used in RLS policies for tables that require admin access to write (tasks, announcements, KB articles, links, etc.).
 
 Private notes use a different check: `user_id = auth.uid()` — notes are visible only to the user who created them.
 

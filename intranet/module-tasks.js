@@ -24,6 +24,12 @@
      ====================================================================== */
   function uid() { return Intranet.getContext().userId; }
 
+  // Kun admin kan tildele oppgåver til andre. Hierarki/avdelingsstyrt utviding kjem seinare.
+  function canAssignTasks() {
+    var ctx = Intranet.getContext();
+    return !!ctx && ctx.role === "admin";
+  }
+
   function loadTasks(cb) {
     if (!_sb) {
       _tasks = App.store.get(STORE_KEY, []) || [];
@@ -189,8 +195,7 @@
   function renderList(root) {
     var me   = uid();
     var ctx  = Intranet.getContext();
-    var role = ctx && ctx.role;
-    var isAdminRole = role === "owner" || role === "admin";
+    var isAdminRole = ctx && ctx.role === "admin";
 
     // Mine: tildelt meg, eller opprettet av meg utan tildeling
     function isMine(t) {
@@ -341,8 +346,16 @@
         STATUS_LABELS[s] + '</option>';
     }).join("");
 
+    // Kun admin kan tildele/endre tildeling. Andre roller ser noverande tildeling read-only.
+    var canAssign = canAssignTasks();
     var assigneeField;
-    if (_users.length > 0) {
+    if (!canAssign) {
+      var currentAssignee = task && task.assigned_to
+        ? _users.find(function (u) { return u.id === task.assigned_to; })
+        : null;
+      assigneeField = '<input type="text" value="' + C.esc(currentAssignee ? (currentAssignee.display_name || currentAssignee.id) : "— Ingen —") + '" disabled data-readonly-assignee ' +
+        'style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-alt);color:var(--color-muted);width:100%">';
+    } else if (_users.length > 0) {
       assigneeField = '<select id="tm-assignee" style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-surface);color:var(--color-text);width:100%">' +
         '<option value="">— Ingen —</option>' +
         _users.map(function (u) {
@@ -404,7 +417,9 @@
       var body        = modal.querySelector("#tm-body").value.trim();
       var status      = modal.querySelector("#tm-status").value;
       var assigneeEl  = modal.querySelector("#tm-assignee");
-      var assigned_to = assigneeEl && !assigneeEl.disabled ? (assigneeEl.value || null) : null;
+      var assigned_to = canAssign
+        ? (assigneeEl && !assigneeEl.disabled ? (assigneeEl.value || null) : null)
+        : (task ? task.assigned_to : null);
       var msg         = modal.querySelector("#tm-status-msg");
 
       if (!title) { msg.textContent = "Tittel er påkrevd."; msg.className = "form__status is-err"; return; }

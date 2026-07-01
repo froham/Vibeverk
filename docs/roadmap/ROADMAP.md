@@ -12,7 +12,7 @@ Brukaren har uttalt eit konkret mål: kome dit at Vibeverk kan **deploye ein eks
 
 **Fase 1 — Full sikkerheitsaudit og personvern-gjennomgang** av heile kodebasen slik han står no (ikkje berre nyleg diff). Security Auditor (`.codex/agents/vibeverk-security-auditor.toml`) og Privacy/Compliance Advisor (`.claude/agents/vibeverk-privacy-compliance.md`), med `docs/compliance/data-map-template.md` og `customer-go-live-checklist.md` som utgangspunkt. Alle BLOCKER/HIGH-funn rettast før Fase 2 startar.
 
-Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjenoppretta, `admin/index.html`-drift retta) vart fullført 2026-07-01, sjå `docs/project/CHANGELOG.md` 0.3.0 og `docs/decisions/ADR-0003-close-admin-auth-fallback.md`.
+Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjenoppretta, `admin/index.html`-drift retta) og ei brukartesta oppfølgingsrunde same dag (chat-bug, oppgåve-tildeling-bug, Console-feltklarheit, intranett-login-bakveg lukka, owner-rolle-opprydding, CRM e-post-konsistens) vart fullført 2026-07-01, sjå `docs/project/CHANGELOG.md` 0.3.0/0.5.0 og ADR-0003 til ADR-0006. Éin uløyst funn frå denne runda: `intranet/module-crm.js` er oppdaga som daud kode testa av `test-intranet.js` men aldri lasta i produksjon — treng eiga avgjerd, ikkje del av Fase 1.
 
 ## Next
 

@@ -5,7 +5,7 @@
    – Basis: kundeoversikt, kundekort, kontaktinfo, historikk (alltid)
    – Med CRM: kommunikasjon, tidslinje, oppgåver, dokument, AI-panel
    – Kommunikasjon er IKKJE ein eigen modul — det er ein del av kundekortet
-   – E-postmotor er abstrakt (EmailProvider) — kan bytast til Outlook/Gmail seinare
+   – E-post: delt App.openReplyModal (same som Kontakt/Booking/Tilbud, styrt av crmFull)
 
    Nye lagrings-nøklar:
    – crm-comms   : alle kommunikasjons-hendingar per kunde
@@ -64,19 +64,7 @@
     var idx  = list.findIndex(function (c) { return c.id === id; });
     if (idx >= 0) { list[idx] = Object.assign({}, list[idx], patch); setComms(list); }
   }
-
-  /* =========================================================================
-     E-POST ABSTRAKSJON  (EmailProvider-grensesnitt)
-     ====================================================================== */
-  var EmailProvider = {
-    name:         "mock",
-    label:        "Demo (ikke koblet)",
-    sendEmail:    function (opts, cb) { setTimeout(function () { cb(null, { id: "mock-" + Date.now() }); }, 600); },
-    archiveEmail: function (email, cb) { cb(null); },
-    getConversation: function (email, cb) { cb(null, []); },
-    importEmail:  function (data, cb)  { cb(null); }
-    // Fremtidige implementasjoner: OutlookProvider, GmailProvider, IMAPProvider
-  };
+  function newThreadId() { return "th-" + Date.now() + "-" + Math.random().toString(36).slice(2, 5); }
 
   /* =========================================================================
      TIDSLINJE-KONFIGURASJON
@@ -769,33 +757,21 @@
       C.esc(label) + '</label>' + inp + '</div>';
   }
 
+  // Delt openReplyModal — respekterer crmFull identisk med Web-admin og med
+  // Kontakt/Booking/Tilbud (docs/decisions/ADR-0002, arkitektnotat 2026-07-01).
   function openEmailDrawer(c, refresh) {
-    Intranet.openDrawer({
-      title:    "Ny e-post til " + (c.name || c.email),
-      bodyHtml:
-        drwField("drw-email-to",      "Til",     "email",    c.email, "") +
-        drwField("drw-email-subject", "Emne",    "text",     "",      "Skriv inn emne") +
-        drwField("drw-email-body",    "Melding", "textarea", "",      "Skriv melding…") +
-        '<p style="font-size:.75rem;color:var(--color-muted);margin:.5rem 0 0">' +
-          '<i class="ti ti-info-circle"></i> Sendes via: <strong>' + C.esc(EmailProvider.label) + '</strong></p>',
-      footHtml:
-        '<button class="btn btn--primary" id="drw-email-send">Send</button>' +
-        '<button class="btn btn--ghost"   id="drw-email-cancel">Avbryt</button>',
-      onMount: function (dr) {
-        dr.querySelector("#drw-email-cancel").addEventListener("click", Intranet.closeDrawer);
-        dr.querySelector("#drw-email-send").addEventListener("click", function () {
-          var subject = dr.querySelector("#drw-email-subject").value.trim();
-          var body    = dr.querySelector("#drw-email-body").value.trim();
-          if (!subject) { dr.querySelector("#drw-email-subject").focus(); return; }
-          var sendBtn = dr.querySelector("#drw-email-send");
-          sendBtn.disabled = true; sendBtn.textContent = "Sender…";
-          EmailProvider.sendEmail({ to: c.email, subject: subject, body: body }, function () {
-            addComm({ customerId: c.id, type: "email_sent", title: subject,
-              subject: subject, body: body, to: c.email, provider: EmailProvider.name });
-            Intranet.logActivity({ type: "crm_email", label: "E-post sendt: " + (c.name||c.email) });
-            Intranet.closeDrawer(); refresh();
-          });
-        });
+    var threadId = newThreadId();
+    App.openReplyModal({
+      name: c.name, email: c.email,
+      subject: "",
+      templateKey: "crm",
+      defaultTemplate: "",
+      onSent: function (payload) {
+        addComm({ customerId: c.id, type: "email_sent", title: payload.subject,
+          subject: payload.subject, body: (payload.plain || "").slice(0, 200), html: payload.html || "",
+          to: payload.to_email, threadId: threadId });
+        Intranet.logActivity({ type: "crm_email", label: "E-post sendt: " + (c.name || c.email) });
+        refresh();
       }
     });
   }

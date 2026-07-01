@@ -141,14 +141,6 @@
   function newThreadId() { return "th-"+Date.now()+"-"+Math.random().toString(36).slice(2,5); }
 
   /* =========================================================================
-     E-POST ABSTRAKSJON
-     ====================================================================== */
-  var EmailProvider = {
-    name:"mock", label:"Demo (ikke koblet)",
-    sendEmail: function (opts, cb) { setTimeout(function () { cb(null, {id:"mock-"+Date.now()}); }, 600); }
-  };
-
-  /* =========================================================================
      TIDSLINJE-KONFIG
      ====================================================================== */
   var TL_CONF = {
@@ -1090,55 +1082,27 @@
   }
 
   /* =========================================================================
-     E-POST DIALOG (signatur + tråd)
+     E-POST (delt openReplyModal — respekterer crmFull identisk med
+     Kontakt/Booking/Tilbud, sjå docs/decisions/ADR-0002 og arkitektnotat 2026-07-01)
      ====================================================================== */
   function openEmailDialog(c, refresh, replyToComm) {
     var isReply  = !!replyToComm;
-    var threadId = isReply?(replyToComm.threadId||newThreadId()):newThreadId();
-    var subject  = isReply?"Re: "+(replyToComm.subject||""):"";
-    var s        = getCrmSettings();
-    var hasSigs  = s.signatureCompany||s.signaturePersonal;
-    openDialog({
-      title: isReply?"Svar på e-post":"Ny e-post til "+(c.name||c.email),
-      bodyHtml:
-        dlgField("dlg-em-to","Til","email",c.email,"")+dlgField("dlg-em-subject","Emne","text",subject,"Skriv emne") +
-        rtField("dlg-em-body","Melding","") +
-        (hasSigs
-          ? '<div style="display:grid;gap:.3rem"><label style="font-size:.85rem;font-weight:600">Signatur</label>' +
-            '<div style="display:flex;gap:.4rem">'+
-              [["none","Ingen"],["company","Bedrift"],["personal","Personleg"]].filter(function(t){return t[0]==="none"||s["signature"+t[0].charAt(0).toUpperCase()+t[0].slice(1)];}).map(function(t,i){var a=i===0;return'<button type="button" data-sig-sel="'+t[0]+'" style="padding:.28rem .65rem;border-radius:999px;font:inherit;font-size:.78rem;font-weight:600;cursor:pointer;border:1.5px solid '+(a?"var(--color-primary)":"var(--color-border)")+';background:'+(a?"var(--color-primary)":"transparent")+';color:'+(a?"#fff":"var(--color-text)")+'">'+esc(t[1])+'</button>';}).join("") +
-            '</div>' +
-            '<div data-sig-preview style="font-size:.82rem;color:var(--color-muted);padding:.5rem .7rem;background:var(--color-alt,#f9fafb);border-radius:8px;min-height:1.2rem;white-space:pre-wrap">'+(s.signatureCompany?"—\n"+C.stripHtml(s.signatureCompany):"")+'</div></div>'
-          : "") +
-        '<p style="font-size:.75rem;color:var(--color-muted);margin:0"><i class="ti ti-info-circle"></i> Via: <strong>'+esc(EmailProvider.label)+'</strong></p>',
-      footHtml: C.button({label:"Send",variant:"primary",attrs:'id="dlg-em-send"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-em-cancel"'}),
-      onMount:function(dl){
-        bindRt(dl);
-        var selSig="none";
-        dl.querySelectorAll("[data-sig-sel]").forEach(function(btn){
-          btn.addEventListener("click",function(){
-            selSig=btn.getAttribute("data-sig-sel");
-            dl.querySelectorAll("[data-sig-sel]").forEach(function(b){var a=b===btn;b.style.borderColor=a?"var(--color-primary)":"var(--color-border)";b.style.background=a?"var(--color-primary)":"transparent";b.style.color=a?"#fff":"var(--color-text)";});
-            var prev=dl.querySelector("[data-sig-preview]"); if(!prev) return;
-            var sigKey="signature"+selSig.charAt(0).toUpperCase()+selSig.slice(1);
-            var html=selSig!=="none"?(s[sigKey]||""):"";
-            prev.textContent=html?"—\n"+C.stripHtml(html):"";
-          });
+    var threadId = isReply ? (replyToComm.threadId || newThreadId()) : newThreadId();
+    var subject  = isReply ? "Re: " + (replyToComm.subject || "") : "";
+    App.openReplyModal({
+      name: c.name, email: c.email,
+      subject: subject,
+      templateKey: "crm",
+      defaultTemplate: "",
+      previewHtml: isReply ? (replyToComm.html || (replyToComm.body ? esc(replyToComm.body) : "")) : "",
+      onSent: function (payload) {
+        addComm({
+          customerId: c.id, type: "email_sent",
+          title: payload.subject, subject: payload.subject,
+          body: (payload.plain || "").slice(0, 200), html: payload.html || "",
+          to: payload.to_email, threadId: threadId
         });
-        dl.querySelector("#dlg-em-cancel").addEventListener("click",function(){dl.close();dl.remove();});
-        dl.querySelector("#dlg-em-send").addEventListener("click",function(){
-          var subject2=dl.querySelector("#dlg-em-subject").value.trim();
-          var html=readRt(dl,"dlg-em-body"), plain=plainRt(html);
-          if (!subject2){dl.querySelector("#dlg-em-subject").focus();return;}
-          var sendBtn=dl.querySelector("#dlg-em-send"); sendBtn.disabled=true; sendBtn.textContent="Sender…";
-          var sigKey="signature"+selSig.charAt(0).toUpperCase()+selSig.slice(1);
-          var sigHtml=selSig!=="none"?(s[sigKey]||""):"";
-          var fullHtml=html+(sigHtml?"<hr style='margin:1rem 0;border:0;border-top:1px solid #eee'>"+sigHtml:"");
-          EmailProvider.sendEmail({to:c.email,subject:subject2,body:fullHtml},function(){
-            addComm({customerId:c.id,type:"email_sent",title:subject2,subject:subject2,body:plain.slice(0,200),html:fullHtml,to:c.email,threadId:threadId});
-            dl.close(); dl.remove(); refresh();
-          });
-        });
+        refresh();
       }
     });
   }
