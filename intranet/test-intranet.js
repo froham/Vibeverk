@@ -256,3 +256,4 @@ assert(App.store.get("wsp-prefs",{}).theme==="dark", "p2: dark theme lagra");
 const ok  = globalThis.__ok  || 0;
 const err = globalThis.__err || 0;
 console.log(`\n${ok+err} tester — ${ok} OK, ${err} FEIL`);
+process.stdout.write("", () => process.exit(process.exitCode || 0));

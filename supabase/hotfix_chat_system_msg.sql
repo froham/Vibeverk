@@ -1,4 +1,8 @@
 -- hotfix_chat_system_msg.sql  (v2 — idempotent, køyr heile fila på nytt)
+-- FOLDA INN i migration.sql (2026-07-01, sikkerheitsaudit) — begge fiksane
+-- under ligg no i den idempotente fullskjemafila. Denne fila kan framleis
+-- køyrast trygt (idempotent) på ein eksisterande database som ikkje har
+-- fått siste migration.sql enno.
 -- Fix 1: Tillater at anon kan sette inn systemmeldingar frå visitor-widget
 -- Fix 2: chat_messages CHECK-constraint blokkerte sender = 'system'
 

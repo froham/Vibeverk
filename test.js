@@ -253,7 +253,7 @@ window.HTMLCanvasElement.prototype.toDataURL = () => "data:image/jpeg;base64,QUJ
 class FakeImg { set src(v){ this._s=v; this.width=2000; this.height=1000; setTimeout(()=>this.onload&&this.onload(),0);} get src(){return this._s;} }
 window.Image = FakeImg;
 
-(async () => {
+const __asyncTests = (async () => {
   function fire(el,type){ el.dispatchEvent(new window.Event(type,{bubbles:true,cancelable:true})); }
   // Klikker en admin-underfane, og bytter kategori først hvis fanen ligger i en
   // annen kategori enn den som er aktiv nå (etter admin-oppdelingen i tre kategorier).
@@ -1629,3 +1629,13 @@ window.Image = FakeImg;
 
   console.log("\nResultat: OK " + (globalThis.__ok||0) + " / FEIL " + (globalThis.__err||0));
 })();
+
+// Den asynkrone testblokken over startar ikkje synkront ferdig — vent på at
+// han faktisk er ferdig (inkl. alle await-steg) før vi avsluttar prosessen.
+// Appen startar setInterval-ar (t.d. admin-badge-refresh) som jsdom ikkje
+// eksponerer som ekte Node-timerar (ingen .unref()) — dei held elles Node-
+// prosessen open for alltid. Ventar på at stdout er flush først, elles kan
+// siste linje ("Resultat: ...") kuttast bort når output vert omdirigert/pipa.
+__asyncTests
+  .catch((e) => { console.error("FEIL: async testblokk kasta", e); process.exitCode = 1; })
+  .then(() => { process.stdout.write("", () => process.exit(process.exitCode || 0)); });

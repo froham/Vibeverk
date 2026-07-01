@@ -48,6 +48,32 @@ serve(async (req) => {
       return json({ error: "Manglande felt: to_email, subject, body" }, 400);
     }
 
+    // Grunnleggande input-avgrensingar — hindrar misbruk av ein autorisert konto
+    // (t.d. spam-utsending eller uforholdsmessig store nyttelaster) og openbre feilinntastingar.
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!EMAIL_RE.test(to_email)) {
+      return json({ error: "Ugyldig e-postadresse" }, 400);
+    }
+    if (subject.length > 300) {
+      return json({ error: "Emnefeltet er for langt (maks 300 teikn)" }, 400);
+    }
+    if (body.length > 50000 || (typeof html === "string" && html.length > 100000)) {
+      return json({ error: "Meldinga er for lang" }, 400);
+    }
+    if (Array.isArray(attachments)) {
+      if (attachments.length > 5) {
+        return json({ error: "For mange vedlegg (maks 5)" }, 400);
+      }
+      const totalBase64Len = attachments.reduce(
+        (sum: number, a: { content?: string }) => sum + (a?.content?.length ?? 0),
+        0,
+      );
+      // Base64 er ~4/3 av rå byte-storleik — 15 000 000 teikn er grovt ~11 MB totalt.
+      if (totalBase64Len > 15_000_000) {
+        return json({ error: "Vedlegga er for store til saman (maks ca. 11 MB)" }, 400);
+      }
+    }
+
     const apiKey = Deno.env.get("RESEND_API_KEY");
     if (!apiKey) return json({ error: "RESEND_API_KEY ikkje satt i secrets" }, 500);
 

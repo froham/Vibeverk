@@ -2968,7 +2968,7 @@ window.App = (function () {
     if (sendNowBtn) {
       sendNowBtn.addEventListener("click", async function () {
         var editor  = root.querySelector("#reply-direct-body");
-        var html    = editor ? editor.innerHTML : "";
+        var html    = editor ? C.sanitizeRichHtml(editor.innerHTML) : "";
         var plain   = editor ? (editor.innerText || editor.textContent || "").trim() : "";
         var replyTo = (root.querySelector("#reply-replyto") || {}).value || "";
         var subject = ((root.querySelector("#reply-subject") || {}).value || "").trim();

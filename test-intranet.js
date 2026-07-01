@@ -267,3 +267,9 @@ assert(App.store.get("wsp-prefs",{}).theme==="dark", "p2: dark theme lagra");
 const ok  = globalThis.__ok  || 0;
 const err = globalThis.__err || 0;
 console.log(`\n${ok+err} tester — ${ok} OK, ${err} FEIL`);
+
+// Appen startar setInterval-ar (t.d. admin-badge-refresh) som jsdom ikkje
+// eksponerer som ekte Node-timerar (ingen .unref()) — dei held elles Node-
+// prosessen open. Ventar på at stdout er flush først, elles kan siste
+// linje kuttast bort når output vert omdirigert/pipa.
+process.stdout.write("", () => process.exit(process.exitCode || 0));

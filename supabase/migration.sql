@@ -303,13 +303,18 @@ ALTER TABLE links             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
 
--- store: anon kan lese (offentleg innhald), innlogga brukarar kan skrive
+-- store: anon kan lese (offentleg innhald), innlogga brukarar kan skrive.
+-- Nøkkelen 'superconfig' (feature-flagg, tema, personverntekst, admin-passord-
+-- fallback) krev admin; alle andre nøklar krev minst can_edit_content().
 DROP POLICY IF EXISTS store_anon_read   ON store;
 DROP POLICY IF EXISTS store_auth        ON store;
 CREATE POLICY store_anon_read   ON store  FOR SELECT TO anon          USING (true);
-CREATE POLICY store_auth        ON store  FOR ALL    TO authenticated  USING (true) WITH CHECK (true);
+CREATE POLICY store_auth        ON store  FOR ALL    TO authenticated
+  USING      (CASE WHEN key = 'superconfig' THEN is_admin_or_owner() ELSE can_edit_content() END)
+  WITH CHECK (CASE WHEN key = 'superconfig' THEN is_admin_or_owner() ELSE can_edit_content() END);
 
--- users: alle les, kvar brukar oppdaterer seg sjølv, admin endrar alle
+-- users: alle les, kvar brukar oppdaterer seg sjølv (men ikkje eiga rolle —
+-- sjå prevent_self_role_escalation-triggeren under), admin endrar alle
 DROP POLICY IF EXISTS users_read         ON users;
 DROP POLICY IF EXISTS users_self_update  ON users;
 DROP POLICY IF EXISTS users_admin_update ON users;
@@ -318,6 +323,24 @@ CREATE POLICY users_read         ON users  FOR SELECT TO authenticated USING (tr
 CREATE POLICY users_self_update  ON users  FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 CREATE POLICY users_admin_update ON users  FOR UPDATE TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
 CREATE POLICY users_admin_delete ON users  FOR DELETE TO authenticated USING (is_admin_or_owner());
+
+-- RLS er rad-nivå og kan ikkje åleine hindre at ein brukar patchar sin eigen
+-- rad med ei ny rolle (users_self_update sjekkar berre auth.uid() = id).
+-- Trigger blokkerer role-endring med mindre kallaren alt er admin.
+CREATE OR REPLACE FUNCTION prevent_self_role_escalation()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role AND NOT is_admin_or_owner() THEN
+    RAISE EXCEPTION 'Berre admin kan endre rolle';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_prevent_self_role_escalation ON users;
+CREATE TRIGGER trg_prevent_self_role_escalation
+  BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION prevent_self_role_escalation();
 
 -- notes: berre eiga brukar
 DROP POLICY IF EXISTS notes_own         ON notes;
@@ -330,6 +353,30 @@ DROP POLICY IF EXISTS tasks_assignee    ON tasks;
 CREATE POLICY tasks_read        ON tasks  FOR SELECT TO authenticated USING (true);
 CREATE POLICY tasks_admin       ON tasks  FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
 CREATE POLICY tasks_assignee    ON tasks  FOR UPDATE TO authenticated USING (assigned_to = auth.uid()) WITH CHECK (assigned_to = auth.uid());
+
+-- Tildelt brukar (ikkje admin/editor) skal berre kunne endre status, ikkje
+-- tittel/beskrivelse/frist/tildeling — tasks_assignee sin WITH CHECK er rad-nivå
+-- og kan ikkje åleine avgrense kolonnar.
+CREATE OR REPLACE FUNCTION restrict_assignee_task_columns()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT can_edit_content() AND OLD.assigned_to = auth.uid() THEN
+    IF NEW.title       IS DISTINCT FROM OLD.title
+       OR NEW.description IS DISTINCT FROM OLD.description
+       OR NEW.assigned_to IS DISTINCT FROM OLD.assigned_to
+       OR NEW.due_date    IS DISTINCT FROM OLD.due_date
+       OR NEW.created_by  IS DISTINCT FROM OLD.created_by THEN
+      RAISE EXCEPTION 'Tildelt brukar kan berre endre status';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_restrict_assignee_task_columns ON tasks;
+CREATE TRIGGER trg_restrict_assignee_task_columns
+  BEFORE UPDATE ON tasks
+  FOR EACH ROW EXECUTE FUNCTION restrict_assignee_task_columns();
 
 -- announcements: alle les, editor+ skriv
 DROP POLICY IF EXISTS ann_read          ON announcements;
@@ -369,9 +416,11 @@ CREATE POLICY chat_conv_anon_insert ON chat_conversations FOR INSERT TO anon
 CREATE POLICY chat_conv_anon_update ON chat_conversations FOR UPDATE TO anon
     USING (true) WITH CHECK (true);
 
--- Anon INSERT på meldingar: berre visitor-meldingar, aldri operator
+-- Anon INSERT på meldingar: visitor-meldingar, samt 'system' (visitorwidgeten
+-- postar sjølv ei systemmelding når vedkomande avsluttar EIGEN samtale — t.d.
+-- "Kunden lukket chatvinduet"). Aldri 'operator'.
 CREATE POLICY chat_msg_anon_insert ON chat_messages FOR INSERT TO anon
-    WITH CHECK (sender = 'visitor');
+    WITH CHECK (sender IN ('visitor', 'system'));
 
 -- Auth (chat-admin): berre admin — ikkje editor/member
 CREATE POLICY chat_conv_auth ON chat_conversations FOR ALL TO authenticated
@@ -442,4 +491,4 @@ CREATE POLICY "media_insert" ON storage.objects
 
 CREATE POLICY "media_delete" ON storage.objects
   FOR DELETE TO authenticated
-  USING (bucket_id = 'media');
+  USING (bucket_id = 'media' AND (owner = auth.uid() OR can_edit_content()));
