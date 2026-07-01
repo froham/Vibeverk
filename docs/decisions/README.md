@@ -44,3 +44,4 @@ Link to a prior or replacement ADR, if applicable. Omit if not relevant.
 | [ADR-0001](ADR-0001-documentation-governance.md) | Documentation governance model | Accepted |
 | [ADR-0002](ADR-0002-crmfull-email-tiering.md) | `crmFull` flag governs direct email sending, independent of Web/Workspace context | Accepted |
 | [ADR-0003](ADR-0003-close-admin-auth-fallback.md) | Close the web-admin password fallback whenever Supabase is configured | Accepted |
+| [ADR-0004](ADR-0004-console-access-decoupled-from-tenant-role.md) | Console access is governed solely by the superadmin email allowlist, not by tenant role | Accepted |

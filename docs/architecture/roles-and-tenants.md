@@ -46,8 +46,8 @@ Private notes use a different check: `user_id = auth.uid()` — notes are visibl
 
 ### 3. Vibeverk Operator Console (`/console/`)
 
-- **Authentication:** Two-step OTP flow. Step 1: enter email. Step 2: Supabase sends an 8-digit code to that email. User enters the code. Supabase Auth validates it.
-- **Access control:** After OTP validation, the console checks that the authenticated user has `role = 'owner'` in the `users` table of the customer's Supabase project. If not, access is denied.
+- **Authentication:** Two-step OTP flow. Step 1: enter email, checked against a hardcoded `SUPERADMIN_EMAILS` allowlist before an OTP is even sent. Step 2: Supabase sends an 8-digit code to that email. User enters the code. Supabase Auth validates it.
+- **Access control:** Being on `SUPERADMIN_EMAILS` plus a successfully verified OTP is the complete authorization — no tenant-role lookup. As of 2026-07-01 (`docs/decisions/ADR-0004-console-access-decoupled-from-tenant-role.md`), Console explicitly does **not** check the customer's `users` table at all; the Vibeverk operator is not a customer user and doesn't need a role in any tenant's database.
 - **Session:** A 48-hour expiry timestamp is stored in `localStorage["nordpunkt:console-auth"]`. Every console action should verify this timestamp has not expired.
 - **Scope:** Vibeverk operator only. Used to set `productMode`, override feature flags, set workspace colors and fonts, inspect deployment configuration, and write to `superconfig` in the Supabase store.
 - **Security note:** The session is stored in localStorage as a timestamp, not in an httpOnly cookie. This means the session is accessible to JavaScript running on the page. XSS on the console page would expose the session.

@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.3.0";
+  var VIBEVERK_VERSION = "0.4.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -251,13 +251,11 @@ window.VwConsole = (function () {
           document.getElementById("cs-otp").focus();
           return;
         }
-        _sb.from("users").select("role").eq("id", vr.data.user.id).single().then(function (ur) {
-          if (!ur.data || ur.data.role !== "owner") {
-            err.textContent = "Tilgang nekta — ikkje owner-konto."; err.style.color = "#c0392b"; return;
-          }
-          setAuthed();
-          buildShell();
-        });
+        // SUPERADMIN_EMAILS (sjekka før OTP vart sendt) er den fulle tilgangssjekken —
+        // Vibeverk-operatøren er ikkje ein kundebrukar og skal ikkje trenge ei rad i
+        // denne kundens users-tabell. Sjå docs/decisions/ADR-0004.
+        setAuthed();
+        buildShell();
       });
     });
     document.getElementById("cs-resend").addEventListener("click", function () {
