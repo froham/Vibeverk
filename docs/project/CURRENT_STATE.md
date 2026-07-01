@@ -56,7 +56,7 @@ Concise, factual summary of what is actually implemented right now. Not a wishli
 ### Fixed in code, 2026-07-01 (0.7.0) — no Supabase change needed
 - Stored XSS in `openReplyModal`'s rich-text editor (see above).
 - Hardcoded CSP `connect-src` (see above).
-- Missing input limits on `send-reply` Edge Function (email format, length caps, attachment count/size) — fixed in `supabase/functions/send-reply/index.ts`, **not yet redeployed to production** (code-only until redeployed via the Supabase Dashboard).
+- Missing input limits on `send-reply` Edge Function (email format, length caps, attachment count/size) — fixed in `supabase/functions/send-reply/index.ts` and **redeployed to production 2026-07-01** via the Supabase Dashboard's Edge Function editor (first attempt failed with a bundler parse error caused by an editor paste artifact, same failure mode as the earlier `manage-user` corruption; resolved by clearing the editor before pasting). Confirmed live by user.
 - Test harness silently truncating ~93% of `test.js`'s assertions on every run (see above) — not a security finding per se, but discovered via the same reconciliation pass and worth flagging since it means the "372/1 passing" baseline claimed in earlier sessions was **not actually being verified** for most of that period.
 
 ### Fixed in production, confirmed run by user 2026-07-01
