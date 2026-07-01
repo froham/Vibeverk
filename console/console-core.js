@@ -19,6 +19,9 @@ window.VwConsole = (function () {
   // Superadmin: hardkoda e-post for Vibeverk-operatør. Ikkje eit kundeVal.
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
+  // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/CHANGELOG.md
+  var VIBEVERK_VERSION = "0.2.0";
+
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
     if (errEl) errEl.innerHTML = '<p style="padding:2rem;color:#c0392b;font-family:sans-serif">Feil: core.js / components.js ikkje lasta. Sjekk konsollen.</p>';
@@ -100,7 +103,7 @@ window.VwConsole = (function () {
     newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg",
     social:"Sosiale lenker", booking:"Booking", quote:"Tilbud",
     references:"Referansar", faq:"FAQ", siteSearch:"Søk i toppmeny",
-    crm:"Kunder", mediabank:"Mediebank", scrollbanner:"Banner", chat:"Chat"
+    crm:"Kunder", crmFull:"Kunder — direkte e-post (Resend)", mediabank:"Mediebank", scrollbanner:"Banner", chat:"Chat"
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
@@ -286,6 +289,7 @@ window.VwConsole = (function () {
           '</nav>' +
           '<div class="cs-sidebar__foot">' +
             '<button type="button" class="cs-logout-btn"><span class="ti ti-logout"></span> Logg ut</button>' +
+            '<div class="cs-version" title="Sjå docs/CHANGELOG.md for endringshistorikk">Vibeverk v' + C.esc(VIBEVERK_VERSION) + '</div>' +
           '</div>' +
         '</aside>' +
         '<main class="cs-main"><div class="cs-content" id="cs-content"></div></main>' +

@@ -159,6 +159,9 @@ window.SITE_CONFIG = {
     faq:         true,   // ← FAQ-modul.         Krever module-faq.js
     siteSearch:  true,   // ← Søk på heile sida (søkikon i toppmenyen)
     crm:         true,   // ← Kunder-modul (lett CRM). Krever module-crm.js
+    crmFull:     true,   // ← Full CRM: direkte e-postsending via Resend (send-reply), i Web OG Workspace.
+                         //   IKKJE default for nye kundar (sjå Console → Modular). Krev crm:true.
+                         //   Utan denne: Outlook (mailto) er einaste svaralternativ, konsistent overalt.
     mediabank:     true,  // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
     scrollbanner:  true,  // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js
     chat:          true   // ← Native chat-boble. Krever module-chat.js

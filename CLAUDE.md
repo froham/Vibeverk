@@ -35,6 +35,26 @@ test-intranet.js     jsdom harness for intranet
 
 Bump `?v=N` on the script tag in `index.html` for every file you change. Only bump the files that actually changed.
 
+## Versioning and changelog
+
+- `docs/project/CHANGELOG.md` is the authoritative, repo-visible log of platform changes — one version number for the whole platform (site + Workspace + Console), semver-style `0.MINOR.PATCH` until real production launch (then `1.0.0`).
+- Current version lives in `VIBEVERK_VERSION` in `console/console-core.js` and is displayed in Console (sidebar footer).
+- **At the start of any non-trivial task**, read the last 2–3 entries in `docs/project/CHANGELOG.md` before making changes — this is how continuity across sessions and agents is maintained.
+- **After a meaningful change**, add a new entry at the top of `docs/project/CHANGELOG.md` (date + what/why) and bump `VIBEVERK_VERSION`. Small experiments, pure Q&A, or reverted attempts don't need an entry.
+
+## Documentation workflow
+
+- `docs/README.md` is the map — start there when documentation context is needed; it defines the source-of-truth order (code/config/schema/tests → Git history → accepted ADRs → `docs/project/CURRENT_STATE.md` → architecture docs → changelog → roadmap-as-planning-only).
+- Documentation is helpful context, not a substitute for inspecting actual code and configuration.
+- For non-trivial tasks, inspect relevant `docs/architecture/` files, `docs/project/CURRENT_STATE.md` and accepted ADRs in `docs/decisions/` before implementation — and inspect the actual code before relying on what the docs claim.
+- Keep implementation changes small and aligned with existing conventions.
+- The Builder (this session) owns first-pass documentation updates: for meaningful completed changes, update the relevant docs and include a "Documentation impact" section in the completion summary.
+- Never update roadmap priorities (`docs/roadmap/ROADMAP.md`) unless explicitly instructed. Never record an ADR without confirmed decision evidence — a code pattern existing is not, by itself, evidence of a decision.
+- The **Project Historian** (`.claude/agents/vibeverk-project-historian.md`) is the documentation-consistency and change-history gate — invoke it after meaningful changes to verify docs actually match code/decisions, not just to have "something" updated.
+- Auditors and reviewers (Codex Reviewer, Security Auditor, Privacy/Compliance Advisor, UX/Mobile Reviewer) must always inspect the Git diff and actual code first — never accept a documentation claim as proof that code or remote configuration is secure, correct, or compliant.
+- Invoke the **Architect** (`.claude/agents/vibeverk-architect.md`) before major architecture, data-model or cross-module changes, in addition to the existing "before any medium or large feature" trigger.
+- Use the reusable `vibeverk-handoff` skill after meaningful completed work (not after every tiny CSS or text tweak) to classify the change, confirm docs were updated, and route to the right review path.
+
 ## Testing
 
 ```

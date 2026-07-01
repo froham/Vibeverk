@@ -2828,7 +2828,8 @@ window.App = (function () {
     const bodyText = fillTemplate(tpl, opts.vars || {}).slice(0, 1800);
     const mailtoFull  = buildMailtoUrl(opts.email, opts.subject, bodyText);
     const mailtoBlank = buildMailtoUrl(opts.email, opts.subject, "");
-    const canSendDirect = !!(window.Intranet && window.App && window.App.supabase);
+    // Styrt av kundens funksjonspakke, ikkje av kor koden køyrer (Web/Workspace skal vera likt).
+    const canSendDirect = !!(CFG.features && CFG.features.crm && CFG.features.crmFull && window.App && window.App.supabase);
     const initHtml = bodyText ? C.esc(bodyText).replace(/\n/g, '<br>') : '';
 
     const root = document.createElement("div");

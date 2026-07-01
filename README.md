@@ -264,21 +264,6 @@ Skrive-gjennom til Supabase skjer automatisk. Hydratering (`hydrateFromSupabase(
 
 ---
 
-## Roadmap
+## Dokumentasjon og roadmap
 
-| Steg | Status | Innhold |
-|------|--------|---------|
-| 1 — Kjernefunksjonalitet | ✅ | Nettside, intranett, admin, chat, superadmin |
-| 2 — Evaluering | ✅ | Test på ekte kundesituasjon |
-| 3 — Kodeopprydding | ✅ | CSS-duplikater, i18n, README |
-| 4 — Backup-gjennomgang | ✅ | Alle moduler i backup, per-modul-eksport |
-| 5a — Tilgangsstyring (RLS) | ✅ | Roller: owner/admin/editor/member, RLS-policiar |
-| 5b — Brukeradministrasjon UI | ✅ | `module-users.js`, Edge Function invite/remove |
-| 6a — Supabase store | ✅ | Write-through, hydratering ved innlogging |
-| 6b — Intranett-moduler | ✅ | Notes, tasks, announcements, KB, links i Supabase |
-| 6c — Store write-through | ✅ | Alle store-metodar skriv til Supabase |
-| 6d — Chat Realtime | ✅ | Supabase Realtime for besøkende og admin |
-| 7 — Kundedokumentasjon | ⏳ | Kontrakt, DPA (GDPR), brukerguide |
-| 8 — Betalingsintegrasjon | ⏳ | Stripe eller tilsvarende |
-| 9 — Statistikk / rapportar | ⏳ | Dashboard-rapportar, eksport |
-| 10 — AI-native chat | 🔜 | RAG, Claude API, pgvector (ad hoc seinare) |
+Full dokumentasjonsstruktur (arkitektur, sikkerhet, personvern, avgjerder, status og roadmap) ligger i [`docs/`](docs/README.md). For nåværende, verifisert status: [`docs/project/CURRENT_STATE.md`](docs/project/CURRENT_STATE.md). For planlagt (ikke bygget) arbeid: [`docs/roadmap/ROADMAP.md`](docs/roadmap/ROADMAP.md).
