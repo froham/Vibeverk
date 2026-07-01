@@ -888,7 +888,7 @@ window.App = (function () {
     }
     // Admin ser full sikkerhetskopi (med per-modul-eksport)
     // Andre roller ser forenkla versjon
-    const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "admin") : "admin";
+    const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "member") : "member";
     if (_backupRole === "admin") {
       tabs.push({ id: "sikkerhetskopi", label: "Sikkerhetskopi", category: "innstillinger" });
     } else {
@@ -1025,7 +1025,7 @@ window.App = (function () {
             return;
           }
           _sb.from("users").select("role").eq("id", result.data.user.id).single().then(function (r) {
-            const role = (r.data && r.data.role) || "admin";
+            const role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
             setAuthed(role);
             hydrateFromSupabase(function () {
               if (role === "member") activeCategory = "henvendelser";
@@ -1051,7 +1051,7 @@ window.App = (function () {
 
   // Selve panelet
   function renderAdminPanel(root) {
-    const role = getAuthRole() || "admin";
+    const role = getAuthRole() || "member";
     const allowedCats = allowedCategoriesForRole(role);
     const allTabs = buildAdminTabs();
     const visibleTabs = allTabs.filter(function (t) {

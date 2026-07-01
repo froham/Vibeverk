@@ -38,7 +38,7 @@ serve(async (req) => {
       .eq("id", user.id)
       .single();
 
-    if (!["owner", "admin", "editor"].includes(userRow?.role ?? "")) {
+    if (!["admin", "editor"].includes(userRow?.role ?? "")) {
       return json({ error: "Ikkje tilgang" }, 403);
     }
 

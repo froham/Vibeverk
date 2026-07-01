@@ -161,7 +161,7 @@
 
           container.innerHTML =
             '<div class="vwu">' +
-              '<h3 style="margin:0 0 .9rem;font-size:1rem">Brukarar (' + visibleUsers.length + ')</h3>' +
+              '<h3 style="margin:0 0 .9rem;font-size:1rem">Brukarar (' + users.length + ')</h3>' +
               '<table class="vwu-table"><thead><tr>' +
                 '<th>Namn</th><th>E-post</th><th>Rolle</th><th></th>' +
               '</tr></thead><tbody>' + rows + '</tbody></table>' +
