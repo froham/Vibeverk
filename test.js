@@ -72,7 +72,20 @@ const navIds2 = [...doc.querySelectorAll(".nav__link")].map(a => a.getAttribute(
 assert(JSON.stringify(navIds2) === JSON.stringify(["hjem","om-oss","tjenester","referanser","aktuelt","faq","mediabank","booking","dummytest","tilbud","kontakt"]),
   "ny modul plassert riktig i meny (order 47): " + navIds2.join(","));
 
+// 6b) ADR-0003: Supabase konfigurert (ekte url/anonKey frå config.js) men SDK ikkje lasta
+// (jsdom lastar aldri window.supabase) → skal vise feilmelding/prøv-igjen, ALDRI passord-skjema
+window.App.openAdmin();
+assert(!doc.querySelector("#admin-pass"), "ADR-0003: ingen passord-fallback når Supabase er konfigurert men SDK ikkje lasta");
+assert(!!doc.querySelector("[data-login-retry]"), "ADR-0003: viser prøv-igjen ved manglande Supabase-SDK");
+doc.querySelector(".modal__close[data-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
 // 7) Admin: feil passord avvises, riktig slipper inn
+// Config-passord-fallback gjeld berre når Supabase ikkje er konfigurert i det heile (sjå
+// ADR-0003) — jsdom lastar aldri den ekte Supabase-SDK-en (window.supabase er alltid
+// undefined her), så vi må simulere "ikkje konfigurert" eksplisitt for å teste fallback-
+// stien, i staden for å stole på at CFG.supabase alt var tom.
+const realSupabaseCfg = window.SITE_CONFIG.supabase;
+window.SITE_CONFIG.supabase = { url: "", anonKey: "" };
 window.App.openAdmin();
 let loginForm = doc.querySelector("[data-login]");
 assert(!!loginForm, "admin krever innlogging");
@@ -82,6 +95,7 @@ assert(!!doc.querySelector("[data-login]"), "feil passord avvist");
 doc.querySelector("#admin-pass").value = "test";
 doc.querySelector("[data-login]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
 assert(!!doc.querySelector(".tabs"), "riktig passord åpner panelet");
+window.SITE_CONFIG.supabase = realSupabaseCfg;
 assert(!!doc.querySelector(".admin-catbar"), "admin-panelet har en kategori-bar (eier ser alle tre kategorier)");
 var catLabels = [...doc.querySelectorAll(".admin-cat")].map(c => c.textContent);
 assert(JSON.stringify(catLabels) === JSON.stringify(["Innhold","Henvendelser","Innstillinger"]), "tre kategorier i riktig rekkefølge: " + catLabels.join(","));

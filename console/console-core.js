@@ -19,8 +19,8 @@ window.VwConsole = (function () {
   // Superadmin: hardkoda e-post for Vibeverk-operatør. Ikkje eit kundeVal.
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
-  // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.2.0";
+  // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
+  var VIBEVERK_VERSION = "0.3.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -289,7 +289,7 @@ window.VwConsole = (function () {
           '</nav>' +
           '<div class="cs-sidebar__foot">' +
             '<button type="button" class="cs-logout-btn"><span class="ti ti-logout"></span> Logg ut</button>' +
-            '<div class="cs-version" title="Sjå docs/CHANGELOG.md for endringshistorikk">Vibeverk v' + C.esc(VIBEVERK_VERSION) + '</div>' +
+            '<div class="cs-version" title="Sjå docs/project/CHANGELOG.md for endringshistorikk">Vibeverk v' + C.esc(VIBEVERK_VERSION) + '</div>' +
           '</div>' +
         '</aside>' +
         '<main class="cs-main"><div class="cs-content" id="cs-content"></div></main>' +

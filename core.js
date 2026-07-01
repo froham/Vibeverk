@@ -976,7 +976,26 @@ window.App = (function () {
 
   // Innlogging — Supabase for nivå 1–3, OTP for superadmin (nivå 4, sjå openSuperAdmin).
   function renderAdminLogin(root) {
+    // Skil "Supabase er ikkje konfigurert" (lokalt/testmiljø — passord-fallback OK) frå
+    // "Supabase ER konfigurert men SDK-en feila å laste" (produksjon — skal ALDRI falle
+    // tilbake til passordet, berre Supabase-autentisering er tillate).
+    const supabaseConfigured = !!(CFG.supabase && CFG.supabase.url && CFG.supabase.anonKey);
     const useSupabase = !!_sb;
+
+    if (supabaseConfigured && !useSupabase) {
+      root.innerHTML = C.modal({
+        title: "Logg inn",
+        label: "Admin innlogging",
+        body:
+          '<p class="prose prose--muted">Kunne ikkje laste innloggingstenesta. Sjekk internettforbindelsen og prøv igjen.</p>' +
+          C.button({ label: "Prøv igjen", type: "button", variant: "primary", attrs: "data-login-retry" })
+      });
+      bindModalClose(root);
+      const retryBtn = root.querySelector("[data-login-retry]");
+      if (retryBtn) retryBtn.addEventListener("click", function () { location.reload(); });
+      return;
+    }
+
     root.innerHTML = C.modal({
       title: "Logg inn",
       label: "Admin innlogging",
