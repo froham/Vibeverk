@@ -271,20 +271,39 @@ nav("#/notes"); nav("#/crm");
 assert(navIds.includes("crm") || !!doc.querySelector('[data-inav="crm"]'), "r1: CRM i Workspace-nav (registrert av rot-module-crm.js sin Intranet.registerModule-gren)");
 assert(!!doc.querySelector("[data-crm-root]"), "r2: CRM-root rendrer i Workspace (test-intranet.js lastar aktiv module-crm.js, ikkje daud intranet/module-crm.js)");
 
-// r3-r4: CRM (kundedata) er avgrensa til admin/editor på RUTE-nivå — oppdaga
-// manglande under Privacy/Compliance-review 2026-07-02 (module-crm.js hadde ingen
-// roles:[...] i det heile, i motsetnad til module-users.js sin roles:["admin"]).
-// Retta same økt. NB: sidebar-navet (renderNav()) byggjast berre éin gong ved
-// oppstart/buildShell() og oppdaterast ikkje reaktivt ved rolleendring midt i ein
-// økt (matchar produksjon — rolleendring krev ny innlogging/reload) — den faktiske
-// sikkerheitssperra er rute-nivået (intranet-core.js sin handleRoute()→mountModule()),
-// testa direkte her, ikkje nav-lenkja si synlegheit.
+// r3-r6: CRM for member — 2026-07-02-presisering. Ei tidlegare økt same dag la
+// mellombels til roles:["admin","editor"] i module-crm.js sin
+// Intranet.registerModule()-kall, utleia av ein Privacy/Compliance-subagent —
+// det var ALDRI eit uttrykkeleg brukarkrav. Brukaren presiserte seinare same
+// dag at member skal ha normal CRM-tilgang (opprette/redigere kundar, bedrifter,
+// kundehandlingar, malar, snippets, signaturar). roles-sperra vart difor fjerna
+// att. Det einaste CRM-unntaket for member er CSV-eksport av heile kundelista:
+// knappen er skjult OG handlaren har ei eiga rolle-sjekk (sjå isWorkspaceMember()
+// i module-crm.js) som forsvar i djupna dersom knappen skulle bli synleg via ein
+// stale-DOM-tilstand. Server-side er skrivetilgang til crm-*-nøklane for member
+// handheva via ei nøkkel-spesifikk store_auth-utviding (ikkje generell
+// store-tilgang) — sjå supabase/hotfix_crm_member_access_2026-07-02.sql.
 window.sessionStorage.setItem(_NS + ":admin", "member");
 nav("#/notes"); nav("#/crm");
-assert(!doc.querySelector("[data-crm-root]"), "r3: member kan ikkje montere CRM-ruta (roles:[\"admin\",\"editor\"] handhevast i intranet-core.js si route()-sperre)");
+assert(!!doc.querySelector("[data-crm-root]"), "r3: member KAN montere CRM-ruta (roles-sperra frå tidlegare same økt er fjerna att)");
+assert(!!doc.querySelector("[data-crm-new]"), "r3b: member ser «Ny kontakt»-knappen (normal CRM-skrivetilgang)");
+assert(!doc.querySelector("[data-crm-export]"), "r3c: member ser IKKJE CSV-eksportknappen (einaste CRM-unntaket)");
 window.sessionStorage.setItem(_NS + ":admin", "editor");
 nav("#/notes"); nav("#/crm");
 assert(!!doc.querySelector("[data-crm-root]"), "r4: editor har framleis tilgang til CRM");
+var exportBtnEditor = doc.querySelector("[data-crm-export]");
+assert(!!exportBtnEditor, "r5: editor ser framleis CSV-eksportknappen");
+var csvCalled = false;
+var origDownloadCsv = App.downloadCsv;
+App.downloadCsv = function () { csvCalled = true; };
+// Stale-DOM-scenario: knappen vart rendra medan rolla var editor, men rolla
+// endrar seg til member før klikket vert handsama (t.d. rolleendring i ein
+// annan fane). Handler-nivå-sperra i module-crm.js skal likevel avvise
+// eksporten sjølv om knappen framleis ligg i DOM-et.
+window.sessionStorage.setItem(_NS + ":admin", "member");
+exportBtnEditor.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!csvCalled, "r6: eksport-handlaren avviser direkte kall når rolla er member, sjølv om knappen (stale DOM) framleis er synleg");
+App.downloadCsv = origDownloadCsv;
 window.sessionStorage.setItem(_NS + ":admin", "admin"); // gjenopprett for resten av suiten
 nav("#/notes"); nav("#/dashboard");
 
@@ -371,9 +390,20 @@ assert(ownEditModal.querySelector("#tm-title").value === "Member sin eigen oppg�
 assert(!!ownEditModal.querySelector("[data-readonly-assignee]"), "u6c: tildelt-feltet er read-only sjølv i eiga oppgåve (kan ikkje tildele andre)");
 ownEditModal.querySelector("#tm-cancel").dispatchEvent(new window.Event("click", { bubbles: true }));
 
-// Rad-klikk på oppgåve tildelt av nokon annan skal IKKJE opne redigeringsmodal
+// Rad-klikk på oppgåve tildelt av nokon annan skal opne ein REIN LESEDETALJ —
+// presisert av brukar 2026-07-02 ("Member skal ikke kunne endre noe, inkludert
+// status"), ei innstramming frå den tidlegare "status-only"-regelen same dag.
 assignedTaskRow2.dispatchEvent(new window.Event("click", { bubbles: true }));
-assert(!doc.getElementById("task-modal-bd"), "u7: klikk på oppgåve tildelt av nokon annan opnar ikkje redigeringsmodal for member");
+const readOnlyModal = doc.getElementById("task-modal-bd");
+assert(!!readOnlyModal, "u7: klikk på oppgåve tildelt av nokon annan opnar lesedetaljen for member");
+assert(readOnlyModal.textContent.includes("Tildelt member av admin"), "u7b: lesedetaljen viser rett tittel");
+assert(!readOnlyModal.querySelector("#tm-title"), "u7c: lesedetaljen har IKKJE tittel-inputfeltet frå redigeringsmodalen");
+assert(!readOnlyModal.querySelector("#tm-status"), "u7d: lesedetaljen har IKKJE status-nedtrekket frå redigeringsmodalen (kan ikkje endre status)");
+assert(!readOnlyModal.querySelector("#tm-save"), "u7e: lesedetaljen har ingen lagre-knapp");
+assert(!readOnlyModal.querySelector("[data-task-status-select]"), "u7f: lesedetaljen har ikkje noko redigerbart status-nedtrekk i det heile");
+assert(!!readOnlyModal.querySelector("#tmr-back"), "u7g: lesedetaljen har ein tilbake-knapp");
+readOnlyModal.querySelector("#tmr-back").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!doc.getElementById("task-modal-bd"), "u7h: tilbake-knappen lukkar lesedetaljen");
 
 // «Ny oppgave»-knappen skal opne opprett-modalen og lagre ei sjølvvalt/utildelt oppgåve
 doc.querySelector("#tasks-new-btn").dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -422,6 +452,94 @@ assert(!doc.querySelector("[data-od-edit]"), "w6: member ser ikkje «Rediger»-k
 
 window.sessionStorage.setItem(_NS + ":admin", "admin"); // gjenopprett admin-rolle for resten av suiten
 nav("#/notes"); nav("#/dashboard");
+
+/* --- X) MALAR + #-SNIPPETS I OPENREPLYMODAL (Workspace: Kontakt/Booking/Tilbud) --- */
+// canSendDirect (den rike editoren med malvelger/snippet-knapp) krev at
+// App.supabase er sett — normalt ikkje konfigurert i testmiljøet. Stubbast her,
+// som i test.js sin tilsvarande test for Web-admin-sida.
+(function () {
+  var origSupabase = App.supabase;
+  var origExecCommand = doc.execCommand;
+  App.supabase = {};
+  App.store.set("crm-settings", Object.assign({}, App.store.get("crm-settings", {}), {
+    snippets: [{ id: "sn1", shortcode: "hils", title: "Helsing", body: "Med vennlig hilsen" }]
+  }));
+
+  // Kontakt
+  App.store.set("leads", [{ id: "wc1", name: "Ole Kontakt", email: "ole@test.no", message: "Ei vanleg henvending", time: Date.now(), status: "ny" }]);
+  nav("#/notes"); nav("#/contact");
+  var cReplyBtn = doc.querySelector('[data-contact-reply="wc1"]');
+  assert(!!cReplyBtn, "x1: Kontakt (Workspace): svarknapp finst");
+  cReplyBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var cModal = doc.getElementById("reply-modal-root");
+  assert(!!cModal, "x2: Kontakt (Workspace): rik svar-editor åpnes");
+  assert(!!cModal.querySelector("#reply-tpl-pick"), "x3: Kontakt (Workspace): malvelger vises (samme stil som CRM)");
+  assert(!!cModal.querySelector("#reply-snippet-btn"), "x4: Kontakt (Workspace): #-snippet-knapp vises i verktøylinja");
+  cModal.remove();
+
+  // Booking
+  App.store.set("booking-assets", [{ id: "wbas1", name: "Sal A" }]);
+  App.store.set("booking-bookings", [{ id: "wbk1", assetId: "wbas1", name: "Booking Kunde", email: "bk@test.no", date: "2026-09-01", time: "12:00", status: "ny", referenceNumber: 555, createdAt: Date.now() }]);
+  nav("#/notes"); nav("#/booking");
+  var bAvbookBtn = doc.querySelector('[data-bk-avbook="wbk1"]');
+  assert(!!bAvbookBtn, "x5: Booking (Workspace): avbook-knapp finst");
+  bAvbookBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var bModal = doc.getElementById("reply-modal-root");
+  assert(!!bModal, "x6: Booking (Workspace): rik svar-editor åpnes for avbook");
+  var bTplPick = bModal.querySelector("#reply-tpl-pick");
+  assert(!!bTplPick, "x7: Booking (Workspace): malvelger vises");
+  assert(bTplPick.querySelectorAll("option").length >= 3, "x8: Booking (Workspace): malvelger har både avbookings- og svarmal (kontekstspesifikke malar i same stil)");
+  assert(!!bModal.querySelector("#reply-snippet-btn"), "x9: Booking (Workspace): #-snippet-knapp vises");
+  bModal.remove();
+
+  // Tilbud
+  App.store.set("leads", App.store.get("leads", []).concat([{ id: "wq1", name: "Kari Tilbud", email: "kari-w@test.no", message: "Tilbudsforespørsel: terrasse", time: Date.now(), status: "ny" }]));
+  nav("#/notes"); nav("#/quote");
+  var qReplyBtn = doc.querySelector('[data-quote-reply="wq1"]');
+  assert(!!qReplyBtn, "x10: Tilbud (Workspace): svarknapp finst");
+  qReplyBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var qModal = doc.getElementById("reply-modal-root");
+  assert(!!qModal, "x11: Tilbud (Workspace): rik svar-editor åpnes");
+  assert(!!qModal.querySelector("#reply-tpl-pick"), "x12: Tilbud (Workspace): malvelger vises");
+  var qSnipBtn = qModal.querySelector("#reply-snippet-btn");
+  assert(!!qSnipBtn, "x13: Tilbud (Workspace): #-snippet-knapp vises");
+
+  // #-snippet-lista deler datakjelde med CRM (crm-settings.snippets) — ingen
+  // duplikat datamodell. Test klikk-innsetting via den delte bindReplySnippets()-
+  // infrastrukturen i core.js.
+  var execCalls = [];
+  doc.execCommand = function (cmd, ui, val) { execCalls.push({ cmd: cmd, val: val }); return true; };
+  qSnipBtn.dispatchEvent(new window.Event("mousedown", { bubbles: true, cancelable: true }));
+  var dd = doc.querySelector(".reply-snippet-dd");
+  assert(!!dd, "x14: Tilbud (Workspace): #-knappen opner snippet-lista (delt datakjelde med CRM)");
+  var item = dd.querySelector(".reply-snippet-item");
+  item.dispatchEvent(new window.Event("mousedown", { bubbles: true, cancelable: true }));
+  assert(execCalls.some(function (c) { return c.cmd === "insertText" && c.val.indexOf("Med vennlig hilsen") > -1; }), "x15: klikk på snippet set inn tekst via execCommand insertText");
+  assert(!doc.querySelector(".reply-snippet-dd"), "x16: snippet-lista lukkast etter val");
+
+  doc.execCommand = origExecCommand;
+  qModal.remove();
+  App.supabase = origSupabase;
+  nav("#/notes"); nav("#/dashboard");
+})();
+
+/* --- Y) AKTUELT-TOOLTIP: HJELPEIKON I BILETFELTET (Merking) --------------- */
+(function () {
+  nav("#/notes"); nav("#/announcements");
+  doc.querySelector("#ann-new-btn").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var helpBtn = doc.querySelector('[data-help-toggle]');
+  assert(!!helpBtn, "y1: hjelpeikonet («?») for Merking finst i biletfeltet i Aktuelt-editoren (C.helpIcon()-mønster)");
+  assert(!helpBtn.classList.contains("is-open"), "y2: hjelpebobla er lukka som standard");
+  helpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(helpBtn.classList.contains("is-open"), "y3: klikk på hjelpeikonet opnar hjelpebobla");
+  helpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(!helpBtn.classList.contains("is-open"), "y4: nytt klikk på same ikon lukkar hjelpebobla att");
+  helpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(helpBtn.classList.contains("is-open"), "y5: hjelpebobla opnar seg på nytt");
+  doc.body.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(!helpBtn.classList.contains("is-open"), "y6: klikk utanfor lukkar hjelpebobla (delegert bindHelpIcons()-handsamar, kalla éin gong i intranet-core.js sin init())");
+  nav("#/notes"); nav("#/dashboard");
+})();
 
 /* --- RESULTAT ------------------------------------------------------------- */
 const ok  = globalThis.__ok  || 0;

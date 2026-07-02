@@ -106,6 +106,10 @@
         subject: "Avbooking – " + (asset ? asset.name : "") + " " + formatDate(lead.date) + (lead.time ? " kl. " + lead.time : "") + (lead.referenceNumber ? " (#" + lead.referenceNumber + ")" : ""),
         templateKey: "booking-avbook",
         defaultTemplate: DEFAULT_AVBOOK_TEMPLATE,
+        templateOptions: App.buildTemplateOptions([
+          { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
+          { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
+        ]),
         vars: { navn: lead.name || "", epost: lead.email || "", dato: lead.date || "", klokkeslett: lead.time || "", ressurs: asset ? asset.name : "", referanse: lead.referenceNumber || "" },
         onSent: function (info) {
           if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -124,6 +128,10 @@
         subject: "Re: Bookingforespørsel fra " + (lead.name || ""),
         templateKey: "booking-svar",
         defaultTemplate: DEFAULT_SVAR_TEMPLATE,
+        templateOptions: App.buildTemplateOptions([
+          { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
+          { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
+        ]),
         vars: { navn: lead.name || "", epost: lead.email || "", dato: lead.date || "", klokkeslett: lead.time || "", ressurs: asset ? asset.name : "", referanse: lead.referenceNumber || "" },
         onSent: function (info) {
           if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -288,6 +296,10 @@
             subject: "Avbooking – " + (asset ? asset.name : "") + " " + formatDate(bk.date) + (bk.time ? " kl. " + bk.time : "") + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
             templateKey: "booking-avbook",
             defaultTemplate: DEFAULT_AVBOOK_TEMPLATE,
+            templateOptions: App.buildTemplateOptions([
+              { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
+              { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
+            ]),
             vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", klokkeslett: bk.time || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" },
             onSent: function (info) {
               if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -316,6 +328,10 @@
             subject: "Re: Bookingforespørsel fra " + (bk.name || ""),
             templateKey: "booking-svar",
             defaultTemplate: DEFAULT_SVAR_TEMPLATE,
+            templateOptions: App.buildTemplateOptions([
+              { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
+              { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
+            ]),
             vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", klokkeslett: bk.time || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" },
             onSent: function (info) {
               if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {

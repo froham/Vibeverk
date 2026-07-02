@@ -318,14 +318,55 @@ ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
 -- (som berre skulle avgrense SKRIVING). store_read_authenticated under gjev
 -- SELECT tilbake til alle innlogga brukarar (Postgres OR-ar fleire permissive
 -- policyar for same kommando) utan å svekke skrive-avgrensinga i store_auth.
-DROP POLICY IF EXISTS store_anon_read       ON store;
-DROP POLICY IF EXISTS store_auth            ON store;
+-- 'crm-customers'/'crm-bedrifter'/'crm-comms'/'crm-settings': member skal ha
+-- normal CRM-tilgang (opprette/redigere kundar, bedrifter, malar, snippets,
+-- signaturar) — presisert av brukar 2026-07-02 etter at ei tidlegare, agent-
+-- inferert roles:["admin","editor"]-avgrensing i module-crm.js vart fjerna att
+-- (sjå docs/project/CHANGELOG.md). Nøkkel-spesifikk carve-out, IKKJE generell
+-- store-tilgang for member. Det einaste attverande CRM-unntaket (CSV-eksport av
+-- heile kundelista) er UI-lag/handler-nivå, ikkje ei RLS-avgrensing (RLS kan
+-- ikkje skilje "les éin kunde" frå "eksporter alle" innanfor same nøkkel).
+-- MERK (funne under security-review 2026-07-02): store_auth var opphavleg éin
+-- FOR ALL-policy — det dekker og DELETE, ikkje berre INSERT/UPDATE. Med CRM-
+-- nøklane sett til bare "true" hadde det gjeve member ein ubetinga rett til å
+-- slette HEILE kunde-/bedrift-/kommunikasjons-/CRM-innstillingsblobben i éin
+-- REST-kall (`DELETE FROM store WHERE key='crm-customers'`) — langt breiare enn
+-- "opprette/redigere kundar" som var det faktiske kravet. store_auth er difor
+-- delt i tre kommando-spesifikke policyar under: INSERT/UPDATE opnar for CRM-
+-- nøklane (member), DELETE krev framleis can_edit_content() (admin/editor) for
+-- ALLE nøklar, inkludert CRM-nøklane.
+DROP POLICY IF EXISTS store_anon_read          ON store;
+DROP POLICY IF EXISTS store_auth               ON store;
 DROP POLICY IF EXISTS store_read_authenticated ON store;
+DROP POLICY IF EXISTS store_insert_auth        ON store;
+DROP POLICY IF EXISTS store_update_auth        ON store;
+DROP POLICY IF EXISTS store_delete_auth        ON store;
 CREATE POLICY store_anon_read       ON store  FOR SELECT TO anon          USING (true);
 CREATE POLICY store_read_authenticated ON store FOR SELECT TO authenticated USING (true);
-CREATE POLICY store_auth            ON store  FOR ALL    TO authenticated
-  USING      (CASE WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner() ELSE can_edit_content() END)
-  WITH CHECK (CASE WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner() ELSE can_edit_content() END);
+CREATE POLICY store_insert_auth     ON store  FOR INSERT TO authenticated
+  WITH CHECK (CASE
+    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
+    ELSE can_edit_content()
+  END);
+CREATE POLICY store_update_auth     ON store  FOR UPDATE TO authenticated
+  USING      (CASE
+    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
+    ELSE can_edit_content()
+  END)
+  WITH CHECK (CASE
+    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
+    ELSE can_edit_content()
+  END);
+-- DELETE er bevisst IKKJE gjeve til CRM-nøklane — sjå notat over. Same
+-- superconfig/wsp-orgdrift-avgrensing som før, elles can_edit_content().
+CREATE POLICY store_delete_auth     ON store  FOR DELETE TO authenticated
+  USING (CASE
+    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    ELSE can_edit_content()
+  END);
 
 -- users: alle les, kvar brukar oppdaterer seg sjølv (men ikkje eiga rolle —
 -- sjå prevent_self_role_escalation-triggeren under), admin endrar alle
@@ -360,18 +401,25 @@ CREATE TRIGGER trg_prevent_self_role_escalation
 DROP POLICY IF EXISTS notes_own         ON notes;
 CREATE POLICY notes_own         ON notes  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
--- tasks: alle les, editor+ skriv, tildelt/opprettar kan oppdatere eiga oppgåve
--- (avgrensa av restrict_assignee_task_columns()-triggeren under)
+-- tasks: alle les, editor+ skriv fritt, member kan berre oppdatere/opprette
+-- SINE EIGNE oppretta oppgåver (kolonneavgrensing i triggeren under).
+-- Presisert av brukar 2026-07-02 (to rundar): (1) member skal kunne opprette
+-- til seg sjølv, (2) member skal kunne REDIGERE (ikkje berre status på) eigne
+-- oppretta oppgåver fullt ut, MEN ei oppgåve TILDELT av nokon annan er rein
+-- lesevisning — ikkje eingong status kan endrast der. Tidlegare versjon av
+-- denne policyen (køyrd 2026-07-01/02) tillet tildelt-brukar å endre status;
+-- det er no fjerna att.
 DROP POLICY IF EXISTS tasks_read        ON tasks;
 DROP POLICY IF EXISTS tasks_admin       ON tasks;
 DROP POLICY IF EXISTS tasks_assignee    ON tasks;
 CREATE POLICY tasks_read        ON tasks  FOR SELECT TO authenticated USING (true);
 CREATE POLICY tasks_admin       ON tasks  FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
--- Både tildelt OG opprettar kan oppdatere raden (kolonneavgrensing skjer i
--- triggeren under, ikkje her — RLS kan berre avgrense radar, ikkje kolonnar).
+-- Berre OPPRETTAR (ikkje lenger "eller tildelt") kan oppdatere raden for
+-- ikkje-admin/editor — ei oppgåve tildelt av nokon annan skal ikkje kunne
+-- oppdaterast i det heile av member, ikkje eingong status.
 CREATE POLICY tasks_assignee    ON tasks  FOR UPDATE TO authenticated
-  USING      (assigned_to = auth.uid() OR created_by = auth.uid())
-  WITH CHECK (assigned_to = auth.uid() OR created_by = auth.uid());
+  USING      (created_by = auth.uid())
+  WITH CHECK (created_by = auth.uid());
 
 -- Member kan opprette oppgåver til seg sjølv (sjølvvalt/utildelt), men ikkje
 -- tildele til andre — tasks_admin (over) er einaste veg til å opprette ei
@@ -382,12 +430,13 @@ CREATE POLICY tasks_self_create ON tasks FOR INSERT TO authenticated
   WITH CHECK (created_by = auth.uid() AND (assigned_to = auth.uid() OR assigned_to IS NULL));
 
 -- Kolonneavgrensing for ikkje-admin/editor (RLS over er rad-nivå og kan ikkje
--- åleine avgrense kolonnar). Presisert 2026-07-02 etter brukartilbakemelding:
--- - Eiga OPPRETTA oppgåve (OLD.created_by = seg sjølv): fri redigering av
---   tittel/beskriving/frist/status — men ALDRI tildeling til NOKON ANNAN enn
---   seg sjølv (blokkert nedanfor, uavhengig av opphav).
--- - Oppgåve TILDELT av nokon annan (OLD.created_by ≠ seg sjølv, assigned_to =
---   seg sjølv): berre status kan endrast — uendra frå 2026-07-01-tryggleiksfiksen.
+-- åleine avgrense kolonnar). Sidan tasks_assignee sin USING no krev
+-- created_by = auth.uid(), når denne triggeren berre eigne oppretta oppgåver
+-- for ikkje-admin/editor — "tildelt av nokon annan, status-only"-grenen frå
+-- 2026-07-01-fiksen er fjerna att (uråkbar no, og ikkje lenger ønska åtferd).
+-- Attverande regel: ingen ikkje-admin/editor kan nokon gong tildele oppgåva
+-- til NOKON ANNAN enn seg sjølv, uavhengig av at dei elles har frie hender på
+-- si eiga oppgåve.
 CREATE OR REPLACE FUNCTION restrict_assignee_task_columns()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -395,29 +444,12 @@ BEGIN
     RETURN NEW; -- admin/editor: inga avgrensing
   END IF;
 
-  -- Ingen ikkje-admin/editor kan nokon gong tildele oppgåva til NOKON ANNAN
-  -- enn seg sjølv (eller nullstille tildelinga) — uavhengig av om dei sjølv
-  -- oppretta oppgåva.
   IF NEW.assigned_to IS DISTINCT FROM OLD.assigned_to
      AND NEW.assigned_to IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION 'Berre admin/editor kan tildele oppgåve til ein annan brukar';
   END IF;
 
-  -- Eiga oppretta oppgåve: fri redigering av dei andre felta.
-  IF OLD.created_by = auth.uid() THEN
-    RETURN NEW;
-  END IF;
-
-  -- Tildelt av nokon annan: berre status kan endrast.
-  IF OLD.assigned_to = auth.uid() THEN
-    IF NEW.title       IS DISTINCT FROM OLD.title
-       OR NEW.description IS DISTINCT FROM OLD.description
-       OR NEW.due_date    IS DISTINCT FROM OLD.due_date
-       OR NEW.created_by  IS DISTINCT FROM OLD.created_by THEN
-      RAISE EXCEPTION 'Tildelt brukar kan berre endre status';
-    END IF;
-  END IF;
-  RETURN NEW;
+  RETURN NEW; -- tasks_assignee sin USING (created_by = auth.uid()) sikrar at berre eigne oppretta oppgåver når hit i det heile
 END;
 $$;
 

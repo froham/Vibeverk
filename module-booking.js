@@ -779,6 +779,10 @@
           name: bk.name, email: bk.email,
           subject: "Avbooking – " + (a ? a.name : "") + " " + C.formatDate(bk.date) + " kl. " + bk.time + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
           templateKey: "booking-avbook", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE,
+          templateOptions: App.buildTemplateOptions([
+            { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
+            { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
+          ]),
           vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
         });
         renderBookingArea(root);
@@ -796,6 +800,10 @@
           name: bk.name, email: bk.email,
           subject: "Angående din reservasjon – " + (a ? a.name : "") + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
           templateKey: "booking-svar", defaultTemplate: DEFAULT_SVAR_TEMPLATE,
+          templateOptions: App.buildTemplateOptions([
+            { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
+            { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
+          ]),
           vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
         });
         renderBookingArea(root);

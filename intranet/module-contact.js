@@ -145,6 +145,7 @@
       subject:         "Re: Henvendelse fra " + (lead.name || ""),
       templateKey:     "kontakt",
       defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+      templateOptions: App.buildTemplateOptions([{ key: "kontakt", label: "Standardmal for kontakt", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
       vars: {
         navn:      lead.name  || "",
         epost:     lead.email || "",

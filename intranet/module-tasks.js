@@ -30,8 +30,9 @@
     return !!ctx && ctx.role === "admin";
   }
 
-  // Member kan endre status på eigne tildelte oppgåver, men ikkje opprette/redigere
-  // felt (tittel/beskriving/tildeling/frist) via opprettings-/redigeringsflyten.
+  // Member kan opprette og fullt redigere (inkl. status) oppgåver dei sjølv
+  // har oppretta. Ei oppgåve TILDELT av nokon annan er rein lesevisning — kan
+  // IKKJE endre noko, heller ikkje status (presisert av brukar 2026-07-02).
   function isMemberRole() {
     var ctx = Intranet.getContext();
     return !!ctx && ctx.role === "member";
@@ -199,11 +200,11 @@
     });
   }
 
-  // Kan brukaren opne FULL redigeringsflyt (tittel/beskriving/frist) for denne
-  // oppgåva? Admin/editor: alltid. Member: berre for oppgåver dei sjølv har
-  // OPPRETTA — ei oppgåve TILDELT av nokon annan er framleis status-only via
-  // rad-nedtrekket (uendra sikkerheitsgrense frå 2026-07-01-tryggleiksfiksen,
-  // sjå restrict_assignee_task_columns()-triggeren i migration.sql). Member kan
+  // Kan brukaren opne FULL redigeringsflyt (tittel/beskriving/status/frist) for
+  // denne oppgåva? Admin/editor: alltid. Member: berre for oppgåver dei sjølv
+  // har OPPRETTA — ei oppgåve TILDELT av nokon annan er rein lesevisning, ikkje
+  // eingong status kan endrast der (presisert av brukar 2026-07-02, sjå
+  // restrict_assignee_task_columns()-triggeren i migration.sql). Member kan
   // aldri tildele til nokon annan enn seg sjølv, uansett kven som eig oppgåva —
   // assigneeField er read-only for alle utan canAssignTasks().
   function canEditTask(t, me, isMemberRow) {
@@ -296,14 +297,69 @@
         '</div>' +
       '</div>' +
       '<div class="task-row__actions">' +
-        statusSelect(t.status, t.id) +
         (canEdit
-          ? '<button class="btn btn--ghost btn--sm" data-task-edit="' + C.esc(t.id) + '" style="padding:.3rem .5rem">' +
+          ? statusSelect(t.status, t.id) +
+            '<button class="btn btn--ghost btn--sm" data-task-edit="' + C.esc(t.id) + '" style="padding:.3rem .5rem">' +
               '<i class="ti ti-pencil"></i>' +
             '</button>'
-          : '') +
+          // Tildelt av nokon annan (member, ikkje sjølv oppretta): read-only
+          // status-merke i staden for redigerbart nedtrekk — presisert av brukar
+          // 2026-07-02: "Member skal ikke kunne endre noe, inkludert status."
+          // Rada opnar ein rein lesedetalj ved klikk, sjå bindList().
+          : '<span class="i-badge ' + C.esc(STATUS_BADGE[t.status] || "") + '" style="font-size:.75rem;font-weight:600;padding:.2rem .6rem;border-radius:999px">' + C.esc(STATUS_LABELS[t.status] || t.status) + '</span>') +
       '</div>' +
     '</div>';
+  }
+
+  // Rein lesedetalj for ei oppgåve member IKKJE sjølv har oppretta (tildelt av
+  // admin/editor). Ingen redigerbare felt — berre lukk. Presisert av brukar
+  // 2026-07-02.
+  function openTaskReadOnlyModal(task) {
+    if (!task) return;
+    var existing = document.getElementById("task-modal-bd");
+    if (existing) existing.remove();
+
+    var bd = document.createElement("div");
+    bd.id = "task-modal-bd";
+    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem";
+
+    var modal = document.createElement("div");
+    // max-height/overflow-y: ei lang skildring kan elles skuve "Tilbake"-
+    // knappen utanfor skjermen på liggande mobilvisning, utan noko måte å
+    // scrolle ned til han på (funne under UX-review 2026-07-02).
+    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(500px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3)";
+
+    var assigneeName = userDisplayName(task.assigned_to) || "— Ingen —";
+
+    modal.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border)">' +
+        '<strong>Oppgave (lesevisning)</strong>' +
+        '<button id="tmr-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+      '</div>' +
+      '<div style="padding:1.2rem;display:grid;gap:.9rem">' +
+        '<p style="font-size:.78rem;color:var(--color-muted);margin:0"><i class="ti ti-lock"></i> Denne oppgaven er tildelt deg av noen andre — du kan se den, men ikke endre den her.</p>' +
+        '<div class="i-field"><label>Tittel</label><p style="margin:0;font-size:.92rem;font-weight:600">' + C.esc(task.title || "") + '</p></div>' +
+        (task.description ? '<div class="i-field"><label>Beskriving</label><p style="margin:0;font-size:.88rem;white-space:pre-wrap">' + C.esc(task.description) + '</p></div>' : '') +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">' +
+          '<div class="i-field"><label>Status</label><p style="margin:0"><span class="i-badge ' + C.esc(STATUS_BADGE[task.status] || "") + '" style="font-size:.78rem;font-weight:600;padding:.2rem .6rem;border-radius:999px">' + C.esc(STATUS_LABELS[task.status] || task.status) + '</span></p></div>' +
+          '<div class="i-field"><label>Tildelt</label><p style="margin:0;font-size:.88rem">' + C.esc(assigneeName) + '</p></div>' +
+        '</div>' +
+        '<div class="i-field"><label>Opprettet</label><p style="margin:0;font-size:.88rem">' + C.esc(formatDate(task.created_at)) + (task.due_date ? " · Frist: " + C.esc(formatDate(task.due_date)) : "") + '</p></div>' +
+        '<div style="display:flex;gap:.5rem;padding-top:.2rem">' +
+          '<button class="btn btn--ghost btn--sm" id="tmr-back">Tilbake</button>' +
+        '</div>' +
+      '</div>';
+
+    bd.appendChild(modal);
+    document.body.appendChild(bd);
+
+    function closeModal() { bd.remove(); Intranet.navigate("tasks"); }
+    modal.querySelector("#tmr-close").addEventListener("click", closeModal);
+    modal.querySelector("#tmr-back").addEventListener("click", closeModal);
+    bd.addEventListener("click", function (e) { if (e.target === bd) closeModal(); });
+    document.addEventListener("keydown", function escH(e) {
+      if (e.key === "Escape") { closeModal(); document.removeEventListener("keydown", escH); }
+    });
   }
 
   function bindList(root) {
@@ -337,6 +393,13 @@
       var row = e.target.closest("[data-task-id]");
       if (row) {
         var id = row.getAttribute("data-task-id");
+        var task = _tasks.find(function (t) { return t.id === id; });
+        // Member på ei oppgåve dei ikkje sjølv har oppretta: rein lesedetalj,
+        // ikkje redigeringsmodalen (presisert av brukar 2026-07-02).
+        if (isMemberRole() && !canEditTask(task, uid(), true)) {
+          openTaskReadOnlyModal(task);
+          return;
+        }
         openTaskModal(id, root);
         Intranet.navigate("tasks", id);
       }

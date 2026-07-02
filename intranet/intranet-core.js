@@ -554,6 +554,18 @@ window.Intranet = (function () {
     context.role = getRole();
     applyWorkspaceTheme();
     buildShell();
+    // C.helpIcon()-tooltipar (t.d. «Merking» i bildefeltet): bindHelpIcons()
+    // vart FØRST kalla eksplisitt her same økt, ut frå ei feil anslag om at
+    // Workspace aldri trigga han. Feil diagnose — core.js sin eigen
+    // document-nivå DOMContentLoaded→App.init()-bootstrap køyrer alltid, på
+    // alle sider (App.init()->boot()->bindHelpIcons() rundt line 3244),
+    // sjølv når #app manglar (buildShell()/renderMain() no-opar trygt då).
+    // Eit ekstra kall her batt TO klikk-lyttarar på document, som
+    // kansellerte kvarandre for kvart klikk — tooltipen vart då UMOGLEG å
+    // opne i det heile (verre enn det opphavlege problemet, som berre var
+    // manglande CSS). Retta 2026-07-02: kallet fjerna att — berre CSS-en i
+    // intranet/index.html var det faktiske manglande stykket. Sjå
+    // test-intranet.js «Y)».
     started = true;
     window.addEventListener("hashchange", handleRoute);
     if (!location.hash || location.hash === "#" || location.hash === "#/") {

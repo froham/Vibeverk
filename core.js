@@ -2312,6 +2312,7 @@ window.App = (function () {
             name: lead.name, email: lead.email,
             subject: "Re: Henvendelse fra " + (lead.name || ""),
             templateKey: "kontakt", defaultTemplate: DEFAULT_REPLY_TEMPLATE,
+            templateOptions: buildTemplateOptions([{ key: "kontakt", label: "Standardmal for kontakt", defaultTemplate: DEFAULT_REPLY_TEMPLATE }]),
             vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDateTime(lead.time), melding: cleanMessageText(lead.message), referanse: lead.referenceNumber || "" },
             previewHtml: messageToHtml(lead.message),
             chatId: (lead.source === "chat" && lead.chatId) ? lead.chatId : null
@@ -2755,6 +2756,26 @@ window.App = (function () {
     });
   }
 
+  // Deler datakjelde med module-crm.js sine CRM-innstillingar (opprettast/
+  // redigerast der: Kunder → CRM-innstillingar). Ingen duplikat lagringsnøkkel.
+  var CRM_SETTINGS_KEY = "crm-settings";
+  function getSharedCrmSettings() { return Store.get(CRM_SETTINGS_KEY, {}) || {}; }
+  function getSharedSnippets()    { return getSharedCrmSettings().snippets || []; }
+
+  // Bygg ein kombinert malvelgar-liste: kontekstspesifikke maler (t.d. Kontakt
+  // sin eine standardmal, eller Booking sine to: avbook/svar) pluss alle CRM-
+  // malar (Kunder → CRM-innstillingar → E-postmaler) — same malvelgar-stil og
+  // datakjelde overalt, ingen parallelle løysingar. entries: [{ key, label,
+  // defaultTemplate }]. Kontekst-malane sin "subject" er tomt med vilje, slik at
+  // dei ikkje overskriv den dynamisk bygde emnelinja når dei blir valgt.
+  function buildTemplateOptions(entries) {
+    const ctxOpts = (entries || []).map(function (e) {
+      const body = getEmailTemplate(e.key, e.defaultTemplate || "");
+      return { id: "ctx-" + e.key, name: e.label, subject: "", body: body ? C.esc(body).replace(/\n/g, "<br>") : "" };
+    });
+    return ctxOpts.concat(getSharedCrmSettings().templates || []);
+  }
+
   function buildMailtoUrl(email, subject, body) {
     let url = "mailto:" + encodeURIComponent(email || "") + "?subject=" + encodeURIComponent(subject || "");
     if (body) url += "&body=" + encodeURIComponent(body);
@@ -2894,9 +2915,12 @@ window.App = (function () {
                       '<button type="button" data-cmd="underline"           title="Understrek" style="background:none;border:1.5px solid transparent;border-radius:5px;padding:.2rem .5rem;cursor:pointer;text-decoration:underline;font-size:.85rem;color:var(--color-text)">U</button>' +
                       '<span style="display:inline-block;width:1px;background:var(--color-border);margin:.1rem .2rem;align-self:stretch"></span>' +
                       '<button type="button" data-cmd="insertUnorderedList" title="Punktliste" style="background:none;border:1.5px solid transparent;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.88rem;color:var(--color-text)"><i class="ti ti-list"></i></button>' +
+                      '<span style="display:inline-block;width:1px;background:var(--color-border);margin:.1rem .2rem;align-self:stretch"></span>' +
+                      '<button type="button" id="reply-snippet-btn" title="Sett inn standardtekst (#nøkkelord)" style="background:none;border:1.5px solid transparent;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--color-text)">#</button>' +
                     '</div>' +
-                    '<div id="reply-direct-body" contenteditable="true" style="min-height:180px;max-height:320px;overflow-y:auto;padding:.65rem .85rem;font-size:.87rem;line-height:1.6;outline:none;color:var(--color-text)">' + initHtml + '</div>' +
+                    '<div id="reply-direct-body" contenteditable="true" style="position:relative;min-height:180px;max-height:320px;overflow-y:auto;padding:.65rem .85rem;font-size:.87rem;line-height:1.6;outline:none;color:var(--color-text)">' + initHtml + '</div>' +
                   '</div>' +
+                  '<p style="font-size:.76rem;color:var(--color-muted);margin:.3rem 0 0">Skriv <strong>#</strong> for å sette inn en lagret standardtekst.</p>' +
                 '</div>' +
                 (opts.signatureOptions && (opts.signatureOptions.company || opts.signatureOptions.personal)
                   ? '<div style="display:flex;gap:.4rem;flex-wrap:wrap">' +
@@ -2974,6 +2998,154 @@ window.App = (function () {
     if (sigCoBtn) sigCoBtn.addEventListener("click", function () { insertSignature(opts.signatureOptions.company); });
     var sigPeBtn = root.querySelector("#reply-sig-personal");
     if (sigPeBtn) sigPeBtn.addEventListener("click", function () { insertSignature(opts.signatureOptions.personal); });
+
+    // Snippets/standardtekster (#nøkkelord) — tilgjengelig i ALLE e-postdialogar
+    // som går via openReplyModal (Kontakt/Booking/Tilbud/Kunder), ikke bare CRM.
+    // Deler datakjelde med CRM sine standardtekster (crm-settings.snippets) og
+    // chat sin tilsvarende #-autocomplete i module-chat.js — ingen duplikat
+    // datamodell. Innsetting via execCommand("insertText",...) sidan snippet-
+    // tekst er ren tekst, ikke HTML — trygt inni ein contenteditable, øydelegg
+    // ikke eksisterende formatering rundt.
+    (function bindReplySnippets() {
+      var editorEl = root.querySelector("#reply-direct-body");
+      var snipBtn  = root.querySelector("#reply-snippet-btn");
+      if (!editorEl) return;
+      var dd = null;
+
+      function closeDd() { if (dd && dd.parentNode) dd.parentNode.removeChild(dd); dd = null; }
+
+      function caretTextBefore() {
+        var sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return null;
+        var range = sel.getRangeAt(0);
+        if (!editorEl.contains(range.startContainer)) return null;
+        var pre = range.cloneRange();
+        pre.selectNodeContents(editorEl);
+        pre.setEnd(range.startContainer, range.startOffset);
+        return pre.toString();
+      }
+
+      function getMatches(forceAll) {
+        var snippets = getSharedSnippets();
+        if (forceAll) return snippets;
+        var before = caretTextBefore();
+        if (before == null) return [];
+        var hashIdx = before.lastIndexOf("#");
+        if (hashIdx === -1) return [];
+        var after = before.slice(hashIdx + 1);
+        if (/\s/.test(after)) return [];
+        var q = after.toLowerCase();
+        return snippets.filter(function (s) { return !q || s.shortcode.toLowerCase().indexOf(q) === 0; });
+      }
+
+      function positionDd(ddEl) {
+        var sel = window.getSelection();
+        var rect = null;
+        // Same vakt som caretTextBefore(): bruk berre markør-rektangelet når
+        // markøren faktisk står inni editoren. Elles (t.d. #-knappen klikka
+        // utan at editoren har fokus, med ei att-verande markering ein annan
+        // stad på sida) fall trygt tilbake til editoren sitt eige rektangel i
+        // staden for å risikere å lese eit ugyldig/utanfor-kontekst Range.
+        if (sel && sel.rangeCount && editorEl.contains(sel.getRangeAt(0).startContainer)) {
+          var r = sel.getRangeAt(0).cloneRange();
+          rect = (r.getClientRects && r.getClientRects()[0]) || r.getBoundingClientRect();
+        }
+        if (!rect || (!rect.top && !rect.left)) rect = editorEl.getBoundingClientRect();
+        ddEl.style.position = "fixed";
+        // Klemmer posisjonen innanfor viewporten — utan dette kunne lista
+        // rendre delvis/heilt utanfor skjermen på smale mobilskjermar når
+        // markøren står nær høgre kant, eller under det synlege området når
+        // det virtuelle tastaturet dekker nedre del av skjermen.
+        var ddW = ddEl.offsetWidth || 260, ddH = ddEl.offsetHeight || 160;
+        var vw = window.innerWidth || document.documentElement.clientWidth;
+        var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight || document.documentElement.clientHeight;
+        var left = Math.min(Math.round(rect.left), Math.max(4, vw - ddW - 4));
+        left = Math.max(4, left);
+        var top = Math.round(rect.bottom + 4);
+        if (top + ddH > vh - 4) top = Math.max(4, Math.round(rect.top - ddH - 4));
+        ddEl.style.left = left + "px";
+        ddEl.style.top = top + "px";
+      }
+
+      function openDd(matches, isExplicit) {
+        closeDd();
+        // Ved eksplisitt #-knapp-klikk (isExplicit) med tomme standardtekster:
+        // vis ei tydeleg tomtilstand i staden for å ikkje reagere synleg i det
+        // heile — ein fyrstegongsbrukar kan elles tru knappen er øydelagd.
+        // Ved skriving av "#..." med ingen treff (ikkje eksplisitt) held vi
+        // fram med å ikkje vise noko, sidan brukaren kanskje berre skriv ein
+        // vanleg #-hashtag/kommentar, ikkje eit forsøk på autocomplete.
+        if (!matches.length) {
+          if (!isExplicit) return;
+          dd = document.createElement("div");
+          dd.className = "reply-snippet-dd";
+          var empty = document.createElement("div");
+          empty.className = "reply-snippet-item";
+          empty.style.cursor = "default";
+          empty.style.color = "var(--color-muted)";
+          empty.textContent = "Ingen standardtekster ennå — legg til i Kunder → CRM-innstillinger.";
+          dd.appendChild(empty);
+          document.body.appendChild(dd);
+          positionDd(dd);
+          return;
+        }
+        dd = document.createElement("div");
+        dd.className = "reply-snippet-dd";
+        matches.forEach(function (s) {
+          var item = document.createElement("div");
+          item.className = "reply-snippet-item";
+          item.innerHTML = '<span class="reply-snippet-code">#' + C.esc(s.shortcode) + '</span>' + C.esc(s.title);
+          item.addEventListener("mousedown", function (e) { e.preventDefault(); insertSnippet(s); });
+          dd.appendChild(item);
+        });
+        document.body.appendChild(dd);
+        positionDd(dd);
+      }
+
+      function insertSnippet(s) {
+        var vars = opts.vars || {};
+        var body = fillTemplate(s.body || "", vars);
+        var sel = window.getSelection();
+        if (sel && sel.rangeCount) {
+          var range = sel.getRangeAt(0);
+          var before = caretTextBefore();
+          var hashIdx = before != null ? before.lastIndexOf("#") : -1;
+          if (hashIdx !== -1) {
+            var removeLen = before.length - hashIdx;
+            var node = range.startContainer, offset = range.startOffset - removeLen;
+            if (node.nodeType === 3 && offset >= 0) {
+              range.setStart(node, offset);
+              range.deleteContents();
+            }
+          }
+        }
+        editorEl.focus();
+        document.execCommand("insertText", false, body);
+        closeDd();
+      }
+
+      editorEl.addEventListener("input", function () {
+        var m = getMatches(false);
+        if (m.length) openDd(m); else closeDd();
+      });
+      editorEl.addEventListener("blur", function () { setTimeout(closeDd, 160); });
+      editorEl.addEventListener("keydown", function (e) {
+        if (dd) {
+          var items = dd.querySelectorAll(".reply-snippet-item");
+          var focused = dd.querySelector(".reply-snippet-item.is-focused");
+          var idx = focused ? [].indexOf.call(items, focused) : -1;
+          if (e.key === "ArrowDown") { e.preventDefault(); if (focused) focused.classList.remove("is-focused"); var n = items[idx + 1] || items[0]; if (n) n.classList.add("is-focused"); return; }
+          if (e.key === "ArrowUp")   { e.preventDefault(); if (focused) focused.classList.remove("is-focused"); var p = items[idx - 1] || items[items.length - 1]; if (p) p.classList.add("is-focused"); return; }
+          if (e.key === "Enter" && focused) { e.preventDefault(); var mm = getMatches(false); if (mm[idx]) insertSnippet(mm[idx]); return; }
+          if (e.key === "Escape") { closeDd(); return; }
+        }
+      });
+      if (snipBtn) snipBtn.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        openDd(getMatches(true), true);
+        editorEl.focus();
+      });
+    })();
 
     // Vedlegg
     var attachInput = root.querySelector("#reply-attachments");
@@ -3377,6 +3549,7 @@ window.App = (function () {
     emailTemplateCard:   emailTemplateCard,
     bindEmailTemplateCard: bindEmailTemplateCard,
     DEFAULT_REPLY_TEMPLATE: DEFAULT_REPLY_TEMPLATE,
+    buildTemplateOptions: buildTemplateOptions,   // kombinerer kontekstmalar + CRM-malar for openReplyModal sin malvelgar
     computeDefaultPrivacyText: computeDefaultPrivacyText,
     applySuperConfig: applySuperConfig,
     reloadConfig: function () { applySuperConfig(); applyTheme(); render(); },
@@ -3422,6 +3595,7 @@ window.App = (function () {
       bindRichTextFields: bindRichTextFields,        // kobler opp verktøylinje for alle rik-tekst-felt i et område
       readRichTextField: readRichTextField,           // (scope, id) → sanert HTML-streng
       textToRichHtml: textToRichHtml,                 // ren tekst (\n\n avsnitt) → trygg HTML, for migrering av gammel plain-text inn i rik-tekst-felt
+      bindHelpIcons: bindHelpIcons,                   // C.helpIcon()-klikk-toggle — kall ÉIN gong per side (delegert på document), Web-admin gjer dette sjølv via init()
       hydrateFromSupabase: hydrateFromSupabase        // kall ved innlogging (6b) for cross-device sync
     },
     supabase: _sb                                     // delt Supabase-klient (intranet brukar same instans)

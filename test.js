@@ -1709,6 +1709,96 @@ const __asyncTests = (async () => {
     window.App.supabase = origSupabase;
   })();
 
+  // --- Malar + #-snippets for Kontakt/Booking/Tilbud i den rike svar-editoren ---
+  // (canSendDirect-grenen er normalt av i testmiljøet sidan window.App.supabase
+  // ikkje er konfigurert — stubbast her, akkurat som i CRM-testen over, for å
+  // eksponere den rike editoren/malvelgaren/snippet-knappen desse tre kontekstane
+  // no òg får via App.buildTemplateOptions().)
+  console.log("\n— Malar + #-snippets for Kontakt/Booking/Tilbud —");
+  (function () {
+    var origSupabase = window.App.supabase;
+    var origExecCommand = doc.execCommand;
+    window.App.supabase = {};
+    window.SITE_CONFIG.features.crm = true;
+    window.SITE_CONFIG.features.crmFull = true;
+    window.App.store.set("crm-settings", Object.assign({}, window.App.store.get("crm-settings", {}), {
+      snippets: [
+        { id: "sn1", shortcode: "hils", title: "Helsing", body: "Med vennlig hilsen, {navn}" },
+        { id: "sn2", shortcode: "frist", title: "Frist", body: "Svarfrist er {dato}." }
+      ]
+    }));
+
+    // Kontakt
+    window.App.openAdmin();
+    clickAdminTab("leads");
+    var kReplyBtn = doc.querySelector('[data-reply-lead="' + newLead.id + '"]');
+    assert(!!kReplyBtn, "Kontakt: svarknapp finst framleis");
+    fire(kReplyBtn, "click");
+    var kModal = doc.getElementById("reply-modal-root");
+    assert(!!kModal, "Kontakt: rik svar-editor åpnes når direkte sending er tilgjengelig");
+    var kTplPick = kModal.querySelector("#reply-tpl-pick");
+    assert(!!kTplPick, "Kontakt: malvelger vises i den rike editoren (samme stil som CRM)");
+    assert(kTplPick.querySelectorAll("option").length >= 2, "Kontakt: malvelger har minst tom-valg + kontaktmalen");
+    assert(!!kModal.querySelector("#reply-snippet-btn"), "Kontakt: #-snippet-knapp vises i verktøylinja");
+    kModal.remove();
+
+    // Booking — avbook og svar skal begge tilby BÅDE avbookings- og svarmalen
+    // (kontekstspesifikke malar vist i same malvelgerstil, uavhengig av hvilken
+    // knapp som ble klikket).
+    clickAdminTab("mod-booking");
+    var bkFaneBtnC = doc.querySelector('[data-bk-fane-btn="bookinger"]');
+    if (bkFaneBtnC) fire(bkFaneBtnC, "click");
+    var bAvbookBtn = doc.querySelector("[data-bk-avbook]");
+    assert(!!bAvbookBtn, "Booking: avbook-knapp finst framleis");
+    fire(bAvbookBtn, "click");
+    var bModal = doc.getElementById("reply-modal-root");
+    assert(!!bModal, "Booking: rik svar-editor åpnes for avbook");
+    var bTplPick = bModal.querySelector("#reply-tpl-pick");
+    assert(!!bTplPick, "Booking: malvelger vises");
+    assert(bTplPick.querySelectorAll("option").length >= 3, "Booking: malvelger har både avbookings- og svarmal (kontekstspesifikke malar i same stil), ikke bare den som trigget dialogen");
+    assert(!!bModal.querySelector("#reply-snippet-btn"), "Booking: #-snippet-knapp vises");
+    bModal.remove();
+
+    // Tilbud
+    window.App.openAdmin();
+    clickAdminTab("mod-tilbud");
+    var tReplyBtn = doc.querySelector("[data-qt-reply]");
+    assert(!!tReplyBtn, "Tilbud: svarknapp finst framleis");
+    fire(tReplyBtn, "click");
+    var tModal = doc.getElementById("reply-modal-root");
+    assert(!!tModal, "Tilbud: rik svar-editor åpnes");
+    var tTplPick = tModal.querySelector("#reply-tpl-pick");
+    assert(!!tTplPick, "Tilbud: malvelger vises");
+    assert(tTplPick.querySelectorAll("option").length >= 2, "Tilbud: malvelger har minst tom-valg + tilbudsmalen");
+    var tSnipBtn = tModal.querySelector("#reply-snippet-btn");
+    assert(!!tSnipBtn, "Tilbud: #-snippet-knapp vises");
+
+    // #-snippet-lista deler datakjelde med CRM (crm-settings.snippets) — ingen
+    // duplikat datamodell. Test klikk-innsetting + tastaturnavigasjon.
+    fire(tSnipBtn, "mousedown");
+    var dd = doc.querySelector(".reply-snippet-dd");
+    assert(!!dd, "Tilbud: #-knappen opner snippet-lista");
+    var items = dd.querySelectorAll(".reply-snippet-item");
+    assert(items.length === 2, "snippet-lista viser begge delte standardtekstene");
+    assert(items[0].textContent.indexOf("hils") > -1, "snippet-lista viser #-kortkoden for kvar standardtekst");
+
+    var editorEl = tModal.querySelector("#reply-direct-body");
+    editorEl.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    assert(items[0].classList.contains("is-focused"), "pil ned flytter fokus til første snippet (tastaturnavigasjon)");
+    editorEl.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    assert(items[1].classList.contains("is-focused") && !items[0].classList.contains("is-focused"), "pil ned flytter fokus videre til neste snippet");
+
+    var execCalls = [];
+    doc.execCommand = function (cmd, ui, val) { execCalls.push({ cmd: cmd, val: val }); return true; };
+    fire(items[0], "mousedown");
+    assert(execCalls.some(function (c) { return c.cmd === "insertText" && c.val.indexOf("Med vennlig hilsen") > -1; }), "klikk på snippet setter inn tekst via execCommand insertText");
+    assert(!doc.querySelector(".reply-snippet-dd"), "snippet-lista lukkes etter valg");
+
+    doc.execCommand = origExecCommand;
+    tModal.remove();
+    window.App.supabase = origSupabase;
+  })();
+
   // --- Variabelhjelp: Kontakt/Booking-e-postmaler viser kun faktisk støttede variabler ---
   console.log("\n— Variabelhjelp for e-postmaler —");
   (function () {

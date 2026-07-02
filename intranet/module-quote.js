@@ -105,6 +105,7 @@
         subject: "Re: Tilbudsforespørsel fra " + (lead.name || ""),
         templateKey: "tilbud",
         defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+        templateOptions: App.buildTemplateOptions([{ key: "tilbud", label: "Standardmal for tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
         vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDate(lead.time), melding: lead.message || "", referanse: lead.referenceNumber || "" },
         onSent: function (info) {
           if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -215,6 +216,7 @@
             subject: "Re: Tilbudsforespørsel fra " + (quote.name || ""),
             templateKey: "tilbud",
             defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+            templateOptions: App.buildTemplateOptions([{ key: "tilbud", label: "Standardmal for tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
             vars: { navn: quote.name || "", epost: quote.email || "", dato: formatDate(quote.time), melding: quote.message || "", referanse: quote.referenceNumber || "" },
             onSent: function (info) {
               if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {

@@ -33,6 +33,15 @@
   var crmSubView = "kontaktar"; // "kontaktar" | "bedrifter"
   var _pendingCrmOpen = null; // sett frå chat-modul via window.CrmAdmin
 
+  // Member har full CRM-tilgang (opprette/redigere kundar, bedrifter, malar,
+  // snippets, signaturar) — det EINASTE unntaket er CSV-eksport av heile
+  // kundelista. I Web-admin finst ikkje "member"-omgrepet (éin delt passord),
+  // så denne returnerer alltid false der. Returnerer true berre i Workspace
+  // for rolla "member".
+  function isWorkspaceMember() {
+    return !!(window.Intranet && window.Intranet.getContext && window.Intranet.getContext().role === "member");
+  }
+
   window.CrmAdmin = {
     openCustomer: function (id) { _pendingCrmOpen = id; },
     logEmailSent: function (opts) {
@@ -355,6 +364,7 @@
   function renderAdmin(body) {
     autoImport();
     var customers = getCustomers(), bedrifter = getBedrifter();
+    var canExport = !isWorkspaceMember();
     body.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.9rem;flex-wrap:wrap">' +
         '<div style="display:flex;gap:.3rem">' +
@@ -365,7 +375,7 @@
           (crmSubView==="kontaktar"
             ? C.button({label:"Ny kontakt",variant:"primary",attrs:'data-crm-new style="font-size:.82rem"'})+
               C.button({label:"Importer",variant:"ghost",attrs:'data-crm-import style="font-size:.82rem"'})+
-              C.button({label:"CSV",variant:"ghost",attrs:'data-crm-export style="font-size:.82rem"'})
+              (canExport ? C.button({label:"CSV",variant:"ghost",attrs:'data-crm-export style="font-size:.82rem"'}) : '')
             : C.button({label:"Ny bedrift",variant:"primary",attrs:'data-crm-new-bed style="font-size:.82rem"'})) +
           '<button data-crm-sig title="CRM-innstillinger" style="background:none;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;padding:.35rem .5rem;cursor:pointer;color:var(--color-muted);font-size:.85rem;line-height:1"><i class="ti ti-settings"></i></button>' +
         '</div>' +
@@ -382,7 +392,15 @@
     var impBtn = body.querySelector("[data-crm-import]");
     if (impBtn) impBtn.addEventListener("click",function(){autoImport();renderAdmin(body);});
     var expBtn = body.querySelector("[data-crm-export]");
+    // Handler-sperre i tillegg til skjult knapp: CSV-eksport av heile kundelista
+    // er det einaste CRM-unntaket for member. MERK (dokumentert ærleg, ikkje
+    // selt inn som reell datasikring): denne sperra hindrar berre EKSPORT-KNAPPEN
+    // i UI-et. Ein teknisk member-brukar kan uansett hente identisk (eller meir
+    // oppdatert) kundedata direkte via Supabase REST-API, sidan member alt har
+    // legitim SELECT+skrivetilgang til crm-customers/crm-bedrifter (naudsynt for
+    // å kunne opprette/redigere kundar i det heile). Sjå docs/security/security-baseline.md.
     if (expBtn) expBtn.addEventListener("click",function(){
+      if (isWorkspaceMember()) return;
       App.downloadCsv("kunder.csv",
         ["Navn","E-post","Kundenummer","Bedrift","Tlf","Adresse","Notat","Opprettet"],
         getCustomers().map(function(c){var b=bedriftFor(c);return[c.name||"",c.email||"",c.customerNumber||"",b?b.name:"",c.phone||"",c.address||"",c.note||"",c.created||""];}));
@@ -1254,16 +1272,16 @@
       navLabel: "Kunder",
       icon:     "users",
       order:    35,
-      // Kundedata (namn/e-post/telefon/notat/kommunikasjonslogg) — same avgrensing
-      // som module-users.js sin roles:["admin"], men CRM er også opna for editor,
-      // sidan editor alt kan opprette CRM-malar/signaturar. Member er ekskludert.
-      // Oppdaga 2026-07-02 (Privacy/Compliance-review): CRM hadde INGEN rolleavgrensing
-      // i det heile — kombinert med den nye store_read_authenticated-SQL-en (som gjev
-      // alle autentiserte SELECT på "store", inkl. crm-customers/leads) ville member
-      // fått både UI- og direkte API-lesetilgang til kundedata. Retta her (UI/rute-nivå,
-      // jf. roles-mekanismen i intranet-core.js), i tillegg til at direkte store-lesing
-      // for ikkje-CRM-relaterte nøklar framleis er tillate for member (uendra).
-      roles: ["admin", "editor"],
+      // MERK (rettinghistorikk): 2026-07-02 vart CRM mellombels avgrensa til
+      // roles:["admin","editor"] etter ei Privacy/Compliance-subagent-vurdering
+      // — det var ei agent-inferert forsiktigheitsavgjerd, ALDRI eit uttrykkeleg
+      // brukarkrav. Brukaren presiserte same dag at member skal ha normal
+      // CRM-tilgang (opprette/redigere kundar, bedrifter, kundehandlingar, malar,
+      // snippets, signaturar) — det einaste unntaket er CSV-eksport av heile
+      // kundelista (sjå isWorkspaceMember()/data-crm-export over). roles-avgrensinga
+      // er difor fjerna att. Skrivetilgang til crm-*-nøklane for member er
+      // handheva server-side via ei nøkkel-spesifikk store_auth-utviding (ikkje
+      // generell store-tilgang) — sjå supabase/hotfix_crm_member_access_2026-07-02.sql.
       render: function () { return '<div data-crm-root></div>'; },
       mount:  function (outlet, ctx, sub) {
         var root = outlet.querySelector("[data-crm-root]") || outlet;
