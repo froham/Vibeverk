@@ -30,6 +30,85 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.8.0 — 2026-07-02
+
+Samla regresjons- og kvalitetsretting (rollemodell, booking/CRM e-postmalar, bildefelt, chat-polling, kontaktskjema-flagg, personvern-rich-text). Sjå `docs/project/CURRENT_STATE.md` for full status, `docs/architecture/roles-and-tenants.md` for den endelege rollematrisa.
+
+### Supabase CLI — prosjektbunde oppsett
+- Installert `supabase@2.109.0` som lokal dev-avhengnad, køyrbar som `npx supabase`, og oppretta `supabase/config.toml` + CLI-generert `.gitignore` for lokale mellombelse data.
+- Brukaren fullførte nettlesarinnlogginga; lokal prosjektref og skrivebeskytta funksjonslisting stadfesta kopling til produksjonsprosjektet `clzczbyklgdtdhgjphup` (`manage-user` og `send-reply` aktive). Ingen SQL eller Edge Function vart deploya under oppsettet.
+- Edge Functions kan no deployast direkte frå repoet etter uttrykkeleg brukargodkjenning. Eksisterande `migration.sql`/`hotfix_*.sql` er framleis manuelle Dashboard-script, ikkje CLI-migrasjonar som `db push` oppdagar.
+- Oppdaterte både `CLAUDE.md` og `AGENTS.md` med den faktiske CLI-flyten, prosjektrefen og godkjenningssperra, slik at nye agentøkter ikkje fell tilbake til den utdaterte påstanden om at repoet manglar CLI.
+
+### Backdraft-bevis (git-verifisert)
+- **Booking-e-postmalar i Workspace var ein reell tilbakerulling, ikkje ein manglande funksjon.** `.admin-form--card`/`.email-tpl-card`-CSS-en vart lagt til `intranet/index.html` i commit `7923ee4` ("Endret i VS", 2026-06-24 01:09), men fjerna att same dag i commit `f34bc67` ("Add files via upload", 12:56) — eit opplastings-overskriv-redigering-mønster. CSS-en er no porta tilbake.
+- CRM-signaturvalet som fanst før commit `9165782` var kobla til ein aldri-fungerande e-post-mock (`EmailProvider`) — reell funksjonsregresjon i signaturvalg-UI, men ingen reell e-postleveranse gjekk tapt (den var aldri ekte). Lukka no ved å utvide `openReplyModal` i staden for å attreise den gamle, ikkje-fungerande dialogen.
+- Bildefeltet sin tomme-tilstand og chat-adminpollinga sin if/else-if-feil har inga git-bevis for tidlegare fungerande åtferd — klassifisert som ufullstendig opprinneleg implementasjon/designfeil, ikkje revert.
+
+### Rollemodell — funn under Privacy/Compliance-review, retta same økt
+- **`module-crm.js` hadde ingen rollegating i det heile** for Workspace (`Intranet.registerModule`) — i motsetnad til `module-users.js` sin `roles:["admin"]`. Enhver innlogga rolle, inkludert member, kunne både sjå «Kunder»-fana og opne kundekort med namn/e-post/telefon/notat/kommunikasjonslogg. Kombinert med `store_read_authenticated`-SQL-en over (som gjev alle autentiserte direkte API-lesetilgang til `store`, inkl. `crm-customers`/`leads`), ville dette gjeve member både UI- og API-tilgang til kundedata. Retta ved å leggje til `roles:["admin","editor"]` på CRM-modulen sin Workspace-registrering, same mønster som `module-users.js`. Handhevast av den eksisterande `intranet-core.js` sin `roles`-sperre (nav-skjuling + rute-nivå-blokkering, ikkje berre UI).
+- **Merk:** `store_anon_read` (uendra, ikkje del av denne økta) gjev allereie **anonyme** besøkjande full SELECT på heile `store`-tabellen — eit separat, allereie dokumentert CRITICAL-funn (`docs/project/CURRENT_STATE.md` "Still open"). CRM-rollefiksen over løyser IKKJE dette — den hindrar berre at ein innlogga member-brukar via appen sitt UI/rute-nivå får tilgang dei ikkje skal ha. Ein fullstendig fiks krev den allereie planlagde arkitekturendringa (skilje offentleg config frå privat kundedata i eigne tabellar/nøklar).
+
+### Rollemodell — presisert av brukar i to steg etter første leveranse same dag
+- **Steg 1 — member skal kunne opprette oppgåver til seg sjølv, berre ikkje tildele andre.** Første versjon av rollematrisa blokkerte member frå å opprette oppgåver heilt (matcha opphavleg spesifikasjon). Brukaren presiserte at member sjølvsagt skal kunne lage oppgåver til seg sjølv.
+- **Steg 2 — member skal og kunne REDIGERE eigne oppgåver fullt ut, ikkje berre opprette.** Første retting (steg 1) blokkerte framleis all redigering av eksisterande oppgåver for member, inkludert deira eigne — for strengt. Brukaren presiserte: «de kan redigere egne oppgåver såklart». Endeleg regel, implementert i `intranet/module-tasks.js`:
+  - Oppgåve **member sjølv har oppretta** (`created_by = seg sjølv`): full redigering (tittel/beskriving/frist/status) via redigeringsmodalen — rad-klikk og blyant er no synleg/tillate for eigne oppgåver.
+  - Oppgåve **tildelt av nokon annan** (ikkje sjølv oppretta): uendra frå 2026-07-01-tryggleiksfiksen — berre status via rad-nedtrekket, `openTaskModal()` avviser å opne redigeringsmodalen.
+  - **Ingen ikkje-admin/editor kan nokon gong tildele ei oppgåve til NOKON ANNAN enn seg sjølv** — handheva i triggeren uavhengig av kven som oppretta oppgåva. Tildelt-feltet er alltid read-only for member (`canAssignTasks()`), same om oppgåva er sjølv oppretta eller ikkje.
+  - `intranet/module-dashboard.js` sin «Ny oppgave»-hurtighandling er vist for alle roller att.
+- **SQL-policyar køyrde mot produksjon, stadfesta av brukar 2026-07-02** (`supabase/hotfix_tasks_member_self_create_2026-07-02.sql`, folda inn i `migration.sql`): ny `tasks_self_create` INSERT-policy, ei utvida `tasks_assignee` UPDATE-policy (matchar no `created_by = auth.uid()` i tillegg til `assigned_to`), og ein omskriven `restrict_assignee_task_columns()`-trigger som handhevar dei tre reglane over. Køyrd via `npx supabase db query --linked --file ...` (fyrste gong CLI-en er brukt til å køyre SQL i dette prosjektet, etter eksplisitt brukargodkjenning), og verifisert direkte mot `pg_policies`/`pg_proc` i produksjon same økt — alle tre endringane stadfesta korrekt til stades.
+
+### Rollemodell (admin/editor/member) i Workspace
+- `intranet/module-dashboard.js`: member ser ikkje hurtighandlingane «Ny kunngjering»/«Ny KB-artikkel» (behelder «Ny oppgave» — sjå presisering over — «Nytt notat» og «Innstillinger»).
+- `intranet/module-tasks.js`: member kan opprette OG fullt ut redigere oppgåver dei sjølv har oppretta, men berre endre status (via rad-nedtrekket) på oppgåver tildelt dei av nokon annan — sjå presisering over.
+- `intranet/module-mediabank-internal.js`: member får rein lesevisning (ingen kategori-input/dropzone/filinput/slett-knapp); handlarane (`startUpload`, slett) avviser direkte kall for member i tillegg.
+- `intranet/module-orgdrift.js`: «Ny» skjult for editor+member (ikkje berre editor, sjå arkitekturgrunngjeving under). `openEditor()` verifiserer admin ved direkte kall.
+- **Arkitekturavgjerd (Arkitekten):** heile `wsp-orgdrift`-nøkkelen ligg som éin JSON-blob i `store` — RLS kan ikkje skilje "opprett kort" frå "rediger eksisterande kort" inni blobben. Difor er ALL skriving (ny/rediger/slett), ikkje berre oppretting, gjort admin-only server-side (same mønster som `superconfig`). Editor er dermed read-only for orgdrift, strengare enn den opphavlege "«Ny» skjules for editor"-teksten i oppdraget — grunngjeve fordi UI-skjuling åleine ikkje er ei reell avgrensing når backend uansett ikkje kan skilje dei to handlingane.
+- **Oppdaga under arbeidet, ikkje del av opphavleg oppdrag:** `store_auth`-policyen i `supabase/migration.sql` er ein `FOR ALL`-policy, så USING-klausulen styrte òg SELECT — med berre `can_edit_content()` i USING kunne ein "member" ikkje lese SINE EIGNE `store`-rader i det heile (t.d. eigne dashboard-snarvegar), truleg ein utilsikta biverknad av 2026-07-01-tryggleiksfiksen. Retta med ein ny, brei `store_read_authenticated`-SELECT-policy (sjå SQL under).
+
+### SQL — køyrd mot produksjon, stadfesta av brukar 2026-07-02
+Samla i `supabase/hotfix_role_enforcement_2026-07-02.sql` og folda inn i `supabase/migration.sql`. Køyrd manuelt av brukaren i Supabase Dashboard → SQL Editor mot `clzczbyklgdtdhgjphup`, stadfesta same dag:
+- `store_auth`: la til `wsp-orgdrift` i den admin-only nøkkel-avgrensinga (same mønster som `superconfig`).
+- `store_read_authenticated`: ny SELECT-policy som gjev alle autentiserte lesetilgang til `store` (rettar det oppdaga latente lesetilgang-hòlet over, utan å svekke skrive-avgrensinga).
+- `media_insert` (Supabase Storage): kravde tidlegare berre `authenticated`, ingen rollesjekk — no krev `can_edit_content()` (admin/editor), i tråd med `media_delete` som alt var korrekt.
+
+### Booking e-postmalar i Workspace
+- Porta `.admin-form--card`/`.email-tpl-card`/`.imgfield__*`-CSS til `intranet/index.html` (fanst berre i `index.html`).
+- La til «Avbook»-knapp og -handlar i `intranet/module-booking.js` (både bookingrad og detaljmodal) — Workspace speilar no Web-admin sin Avbook/Svar-todeling. Avbookingsmalen kunne før ikkje brukast frå Workspace i det heile.
+- La til kort forklaring ved kvar mal (Kontakt/Booking) om kva knapp/handling som brukar han.
+
+### CRM-maler, signatur og variablar i openReplyModal
+- Utvida den delte `App.openReplyModal()` (`core.js`) med valgfrie, bakoverkompatible parametre: `templateOptions` (malvelgar) og `signatureOptions` (signatur-innsetjingsknappar). Kontakt/Booking/Tilbud sender ingen av delane og er difor 100 % uendra.
+- `module-crm.js` sin `openEmailDialog()` sender no CRM-malar og signaturar (frå `Kunder → CRM-innstillingar`) inn i den same dialogen — malar kan no faktisk gjenbrukast slik teksten i UI-et alt hevda.
+- Malinnhald og signatur saneres (`C.sanitizeRichHtml`) før innsetjing i tillegg til før sending.
+- CRM-signaturtekst retta frå «vises automatisk» til å skildre den faktiske, eksplisitte «Sett inn»-knapp-åtferda.
+- Retta `test-intranet.js` til å laste den aktive `module-crm.js` (rot-fila) i staden for den daude `intranet/module-crm.js` — CRM har no fyrste gong dedikert Workspace-testdekning.
+- Retta variabel-mismatch: `intranet/module-quote.js` sende ikkje `{melding}` (Web-sida gjorde det) — no identisk mellom Web og Workspace.
+
+### Bilderamme / Aktuelt-bug
+- Root cause: `bindImageFields()` (`core.js`) tvang tomt bildefelt til `width:100%`/`aspect-ratio:16/9` uansett kontekst. Retta til ei kompakt tom-tilstand (`clamp(96px, 20vw, 140px)` høgd via CSS), som ekspanderer når eit bilde faktisk er valt. Delt kode — verkar likt i Web-admin og Workspace (som i tillegg mangla heile `.imgfield__*`-CSS-blokka, no porta inn).
+
+### Chat: meldingar utan at mottakaren må sende noko
+- `module-chat.js` sin admin-pollingsløkke bygde samtalelista OG henta nye meldingar for aktiv samtale i eit if/else-if — ei ny melding (som óg oppdaterer `chat_conversations.last_at`) kunne difor bli fanga av metadata-grenen og aldri hente sjølve meldinga same pollrunde. Omstrukturert til to uavhengige sjekkar. Realtime-abonnementet (ueendra) dekkjer normalt dette live; pollinga er no ein reell fallback-garanti.
+- La til umiddelbar avstemming ved montering (ventar ikkje på første intervall).
+- La til ein regresjonstest i `supabase/chat-tests.js` som reproduserer race-scenarioet på dataflyt-nivå.
+
+### features.contactForm (nytt, bakoverkompatibelt flagg)
+- Nytt flagg i `config.js → features.contactForm` (standard `true` — uendra åtferd for eksisterande kundar). Når `false`: kontaktskjema, samtykkeboks og send-knapp vert ikkje rendra, men Kontakt-seksjonen og all kontaktinformasjon (e-post/telefon/adresse/ekstrafelt/sosiale lenker) vert framleis vist. `bindContactForm()` no-oper trygt når skjemaet ikkje finst.
+- `computeDefaultPrivacyText()` tek no omsyn til flagget — påstår ikkje lenger innsamling via kontaktskjema når det er avslått.
+- Synleg i Console → Modular som «Kontaktskjema».
+
+### Console
+- `features.crmFull` sin brukarretta etikett endra frå «Kunder — direkte e-post (Resend)» til «Native e-post», med kort hjelpetekst. Sjølve konfignøkkelen `crmFull` er UENDRA (ADR-0002).
+- Personverneditoren bruker no det delte rik-tekst-mønsteret (`C.richTextField`/`App.ui.bindRichTextFields`/`readRichTextField`) i staden for eit vanleg textarea. Gammal rein-tekst-personverntekst vert migrert éin gong, idempotent, til HTML (avsnitt/linjeskift bevart) via ein ny delt hjelpefunksjon `App.ui.textToRichHtml`.
+
+### Testar
+- 33 nye assertions i `test.js` (405 OK/1 kjend FEIL, opp frå 372/1), 41 nye i `test-intranet.js` (106 tester, 105 OK/1 kjend FEIL, opp frå 65/64/1) — talet steig undervegs (99/98/1 → 101/100/1 etter CRM-rollefiksen → 106/105/1 etter member-oppretter-eigne-oppgåver-presiseringa). Dei to kjende feila er dei same som før (uendra).
+
+### Ikkje gjort (dokumentert, krev eiga avgjerd)
+- Workspace sin Tilbud-modul (`intranet/module-quote.js`) manglar framleis ein eigen «E-postmalar»-fane (i motsetnad til Booking, som no har ein) — malen kan i dag berre redigerast frå Web-admin. Ikkje bygd, då det ikkje var eksplisitt bede om i dette oppdraget.
+- Språkstrategi (nb/nn-blanding, ingen i18n-infrastruktur) er dokumentert i `docs/project/CURRENT_STATE.md`, men ingen avgjerd er teken — krev brukarstadfesting før vidare arbeid.
+
 ## 0.7.0 — 2026-07-01
 
 Oppfølging av 0.6.0-sikkerheitsaudit, sammenstilt mot ein uavhengig Codex/GPT-review. Codex sine funn stemte i hovudsak overeins med Claude sin eigen audit (same BLOCKER-funn, same HIGH-funn); dei fann i tillegg to reelle gap Claude sin audit ikkje hadde fanga opp (sjå under). Delt i (a) trygge kodefiksar gjort no, og (b) SQL-endringar samla i eiga fil for eksplisitt godkjenning før noko køyrast mot Supabase, per `CLAUDE.md`.

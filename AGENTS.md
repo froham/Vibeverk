@@ -52,6 +52,9 @@ Flag these explicitly before proposing any change that touches:
 
 ## Supabase SQL rules
 
+- Supabase CLI is a local dev dependency; invoke it as `npx supabase`. This working copy is linked to project ref `clzczbyklgdtdhgjphup`
+- Existing `supabase/migration.sql` and `supabase/hotfix_*.sql` files are standalone Dashboard scripts, not CLI migrations under `supabase/migrations/`; `supabase db push` does not deploy them
+- Edge Functions may be deployed with `npx supabase functions deploy <name> --project-ref clzczbyklgdtdhgjphup`, only after explicit user approval
 - Functions must be `SECURITY DEFINER STABLE SET search_path = public`
 - Explicit signatures in `REVOKE`/`GRANT`: `GRANT EXECUTE ON FUNCTION f(text, text) TO anon`
 - After any function create/replace: `NOTIFY pgrst, 'reload schema';`

@@ -185,6 +185,8 @@
     var activity  = Intranet.getActivity ? Intranet.getActivity() : [];
     var henv      = getHenvendelser();
     var shortcuts = getShortcuts();
+    var ctx       = Intranet.getContext();
+    var isMember  = !!ctx && ctx.role === "member";
 
     var taskCounts = { todo:0, in_progress:0, done:0 };
     tasks.forEach(function (t) { if (taskCounts[t.status] !== undefined) taskCounts[t.status]++; });
@@ -216,10 +218,13 @@
       '<div class="i-card" style="margin-bottom:1rem">' +
         '<p class="i-section-label">Hurtighandlinger</p>' +
         '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+          // Member kan opprette oppgåver til seg sjølv (sjølvvalt/utildelt) —
+          // sjå intranet/module-tasks.js sin openTaskModal()/tasks_self_create-RLS.
+          // Berre TILDELING til andre er avgrensa til admin.
           quickAction("#/tasks",         "ti-plus",         "Ny oppgave",      "data-dash-new-task") +
           (feat("notes")         ? quickAction("#/notes",         "ti-notes",        "Nytt notat",          "data-dash-new-note")   : "") +
-          (feat("announcements") ? quickAction("#/announcements", "ti-speakerphone", "Ny kunngjering",      "data-dash-new-ann")    : "") +
-          (feat("kb")            ? quickAction("#/kb",            "ti-book",         "Ny KB-artikkel",      "data-dash-new-kb")     : "") +
+          (!isMember && feat("announcements") ? quickAction("#/announcements", "ti-speakerphone", "Ny kunngjering",      "data-dash-new-ann")    : "") +
+          (!isMember && feat("kb")            ? quickAction("#/kb",            "ti-book",         "Ny KB-artikkel",      "data-dash-new-kb")     : "") +
           quickAction("#/settings",      "ti-settings",     "Innstillinger") +
         '</div>' +
       '</div>' +

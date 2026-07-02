@@ -84,6 +84,7 @@
         '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">' +
           '<label style="font-size:.85rem;font-weight:600">Status:</label>' +
           '<select id="lead-detail-status" style="font-size:.88rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)">' + statusOptions + '</select>' +
+          '<button id="lead-detail-avbook-btn" class="btn btn--ghost btn--sm"><i class="ti ti-calendar-x"></i> Avbook</button>' +
           '<button id="lead-detail-svar-btn" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</button>' +
         '</div>' +
       '</div>';
@@ -94,6 +95,24 @@
     document.addEventListener("keydown", function escH(e) { if (e.key === "Escape") { bd.remove(); document.removeEventListener("keydown", escH); } });
     modal.querySelector("#lead-detail-status").addEventListener("change", function () {
       if (typeof onStatusChange === "function") onStatusChange(modal.querySelector("#lead-detail-status").value);
+    });
+    modal.querySelector("#lead-detail-avbook-btn").addEventListener("click", function () {
+      bd.remove();
+      if (!App.openReplyModal) { window.location.href = "mailto:" + lead.email; return; }
+      var asset = getAssets().find(function (a) { return a.id === lead.assetId; });
+      updateStatus(lead.id, "løst");
+      App.openReplyModal({
+        name: lead.name, email: lead.email,
+        subject: "Avbooking – " + (asset ? asset.name : "") + " " + formatDate(lead.date) + (lead.time ? " kl. " + lead.time : "") + (lead.referenceNumber ? " (#" + lead.referenceNumber + ")" : ""),
+        templateKey: "booking-avbook",
+        defaultTemplate: DEFAULT_AVBOOK_TEMPLATE,
+        vars: { navn: lead.name || "", epost: lead.email || "", dato: lead.date || "", klokkeslett: lead.time || "", ressurs: asset ? asset.name : "", referanse: lead.referenceNumber || "" },
+        onSent: function (info) {
+          if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
+            window.CrmAdmin.logEmailSent({ email: lead.email, name: lead.name, subject: info.subject, plain: info.plain });
+          }
+        }
+      });
     });
     modal.querySelector("#lead-detail-svar-btn").addEventListener("click", function () {
       bd.remove();
@@ -155,9 +174,9 @@
     if (_activeFane === "malar") {
       fc.innerHTML =
         App.emailTemplateCard("booking-avbook", "E-postmal for avbooking", DEFAULT_AVBOOK_TEMPLATE,
-          "Variablar: {navn}, {referanse}, {ressurs}, {dato}, {klokkeslett}") +
+          "Vert brukt av «Avbook»-knappen på ein booking. Variablar: {navn}, {epost}, {referanse}, {ressurs}, {dato}, {klokkeslett}") +
         App.emailTemplateCard("booking-svar", "E-postmal for svar", DEFAULT_SVAR_TEMPLATE,
-          "Variablar: {navn}, {referanse}, {ressurs}, {dato}, {klokkeslett}");
+          "Vert brukt av «Svar»-knappen på ein booking. Variablar: {navn}, {epost}, {referanse}, {ressurs}, {dato}, {klokkeslett}");
       App.bindEmailTemplateCard(fc, "booking-avbook", DEFAULT_AVBOOK_TEMPLATE);
       App.bindEmailTemplateCard(fc, "booking-svar", DEFAULT_SVAR_TEMPLATE);
     } else {
@@ -215,7 +234,10 @@
                   '</div>' +
                   '<div class="admin-row__actions" style="flex-direction:column;align-items:flex-end;gap:.3rem">' +
                     (b.email
-                      ? '<button class="btn btn--primary btn--sm" data-bk-reply="' + C.esc(b.id) + '"><i class="ti ti-mail-forward"></i> Svar</button>'
+                      ? '<div style="display:flex;gap:.3rem">' +
+                        '<button class="btn btn--ghost btn--sm" data-bk-avbook="' + C.esc(b.id) + '" title="Send avbookingsmal"><i class="ti ti-calendar-x"></i> Avbook</button>' +
+                        '<button class="btn btn--primary btn--sm" data-bk-reply="' + C.esc(b.id) + '" title="Send svarmal"><i class="ti ti-mail-forward"></i> Svar</button>' +
+                        '</div>'
                       : '') +
                     '<select data-bk-status="' + C.esc(b.id) + '" style="font-size:.8rem;padding:.3rem .5rem;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg)">' +
                       STATUS_ORDER.map(function (s) {
@@ -249,6 +271,34 @@
           "Booking",
           function (newStatus) { updateStatus(id, newStatus); renderList(root); }
         );
+      });
+    });
+
+    /* Avbook-knapp */
+    root.querySelectorAll("[data-bk-avbook]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-bk-avbook");
+        var bk = getBookings().find(function (b) { return b.id === id; });
+        if (!bk) return;
+        updateStatus(id, "løst");
+        if (App.openReplyModal) {
+          var asset = getAssets().find(function (a) { return a.id === bk.assetId; });
+          App.openReplyModal({
+            name: bk.name, email: bk.email,
+            subject: "Avbooking – " + (asset ? asset.name : "") + " " + formatDate(bk.date) + (bk.time ? " kl. " + bk.time : "") + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
+            templateKey: "booking-avbook",
+            defaultTemplate: DEFAULT_AVBOOK_TEMPLATE,
+            vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", klokkeslett: bk.time || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" },
+            onSent: function (info) {
+              if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
+                window.CrmAdmin.logEmailSent({ email: bk.email, name: bk.name, subject: info.subject, plain: info.plain });
+              }
+            }
+          });
+        } else {
+          window.location.href = "mailto:" + bk.email;
+        }
+        renderList(root);
       });
     });
 

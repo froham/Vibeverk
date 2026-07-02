@@ -1675,64 +1675,77 @@
       setTimeout(function(){ if(inp) inp.focus(); }, 50);
     }
 
-    /* Poll — hentar frå Supabase (eller localStorage som fallback) */
-    if (!container._pollId) {
-      container._pollId = setInterval(function () {
-        if (!document.body.contains(container)) { clearInterval(container._pollId); return; }
-        if (showSettings) return;
-        if (_sb) {
-          _sb.from("chat_conversations").select("*").order("last_at", { ascending: false, nullsFirst: false })
-            .then(function (res) {
-              if (!res.data) return;
-              var mapped = res.data.map(function (c) {
-                return { id: c.id, name: c.visitor_name || "Gjest", email: c.visitor_email || "",
-                         status: c.status || "open", unread: c.unread || 0,
-                         lastMsg: c.last_msg || "", lastAt: c.last_at || new Date(c.created_at).getTime(),
-                         createdAt: new Date(c.created_at).getTime(),
-                         pageUrl: c.page_url || null, referrer: c.referrer || null,
-                         language: c.language || null, browser: c.browser || null,
-                         os: c.os || null, screen: c.screen || null,
-                         visitorActive: c.visitor_active || false,
-                         lastSeenAt: c.last_seen_at || null, visitorReadAt: c.visitor_read_at || null };
-              });
-              var latestLocal = convs.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
-              var latestSb    = mapped.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
-              if (mapped.length !== convs.length || latestSb > latestLocal) {
-                convs = mapped; _adminConvs = mapped; buildUI();
-              } else if (activeId) {
-                var localMsgs = Chat.getMsgs(activeId);
-                var lastAt = localMsgs.reduce(function (t, m) { return Math.max(t, m.at || 0); }, 0);
-                _sb.from("chat_messages").select("id,text,sender,at,created_at")
-                  .eq("conversation_id", activeId).gt("at", lastAt || 0)
-                  .then(function (mres) {
-                    if (!mres.data || !mres.data.length) return;
-                    var changed = false;
-                    mres.data.forEach(function (m) {
-                      if (!localMsgs.find(function (x) { return x.id === m.id; })) {
-                        localMsgs.push({ id: m.id, convId: activeId, text: m.text, sender: m.sender,
-                                        at: m.at || new Date(m.created_at).getTime() });
-                        changed = true;
-                      }
-                    });
-                    if (changed) {
-                      Chat.setMsgs(activeId, localMsgs);
-                      var msgList = container.querySelector("#vwca-msg-list");
-                      if (msgList) renderView();
+    /* Poll — hentar frå Supabase (eller localStorage som fallback).
+       Samtalemetadata og aktiv samtales meldingar vert avstemt UAVHENGIG i same
+       runde (to separate if-blokker, ikkje if/else-if) — elles kan ei ny melding
+       (som óg oppdaterer chat_conversations.last_at) bli fanga av metadata-grenen
+       og aldri hente den faktiske nye meldinga same pollrunde. Realtime (under)
+       dekkjer normalt dette live, men polling er den eksplisitte fallback-
+       garantien når Realtime er nede. */
+    function pollTick() {
+      if (!document.body.contains(container)) { clearInterval(container._pollId); return; }
+      if (showSettings) return;
+      if (_sb) {
+        _sb.from("chat_conversations").select("*").order("last_at", { ascending: false, nullsFirst: false })
+          .then(function (res) {
+            if (!res.data) return;
+            var mapped = res.data.map(function (c) {
+              return { id: c.id, name: c.visitor_name || "Gjest", email: c.visitor_email || "",
+                       status: c.status || "open", unread: c.unread || 0,
+                       lastMsg: c.last_msg || "", lastAt: c.last_at || new Date(c.created_at).getTime(),
+                       createdAt: new Date(c.created_at).getTime(),
+                       pageUrl: c.page_url || null, referrer: c.referrer || null,
+                       language: c.language || null, browser: c.browser || null,
+                       os: c.os || null, screen: c.screen || null,
+                       visitorActive: c.visitor_active || false,
+                       lastSeenAt: c.last_seen_at || null, visitorReadAt: c.visitor_read_at || null };
+            });
+            var latestLocal = convs.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
+            var latestSb    = mapped.reduce(function (t, c) { return Math.max(t, c.lastAt || 0); }, 0);
+            if (mapped.length !== convs.length || latestSb > latestLocal) {
+              convs = mapped; _adminConvs = mapped; buildUI();
+            }
+            if (activeId) {
+              var localMsgs = Chat.getMsgs(activeId);
+              var lastAt = localMsgs.reduce(function (t, m) { return Math.max(t, m.at || 0); }, 0);
+              _sb.from("chat_messages").select("id,text,sender,at,created_at")
+                .eq("conversation_id", activeId).gt("at", lastAt || 0)
+                .then(function (mres) {
+                  if (!mres.data || !mres.data.length) return;
+                  var changed = false;
+                  mres.data.forEach(function (m) {
+                    if (!localMsgs.find(function (x) { return x.id === m.id; })) {
+                      localMsgs.push({ id: m.id, convId: activeId, text: m.text, sender: m.sender,
+                                      at: m.at || new Date(m.created_at).getTime() });
+                      changed = true;
                     }
                   });
-              }
-            });
-        } else {
-          var fresh = Chat.getConvs();
-          if (JSON.stringify(fresh) !== JSON.stringify(convs)) {
-            convs = fresh; _adminConvs = fresh; buildUI();
-          } else if (activeId) {
-            var msgs = Chat.getMsgs(activeId);
-            var msgList = container.querySelector("#vwca-msg-list");
-            if (msgList && msgList.children.length !== msgs.length) renderView();
-          }
+                  if (changed) {
+                    Chat.setMsgs(activeId, localMsgs);
+                    var msgList = container.querySelector("#vwca-msg-list");
+                    if (msgList) renderView();
+                  }
+                }, function (err) {
+                  console.warn("[chat] admin-poll melding-henting feila:", err && err.message);
+                });
+            }
+          }, function (err) {
+            console.warn("[chat] admin-poll samtale-henting feila:", err && err.message);
+          });
+      } else {
+        var fresh = Chat.getConvs();
+        if (JSON.stringify(fresh) !== JSON.stringify(convs)) {
+          convs = fresh; _adminConvs = fresh; buildUI();
+        } else if (activeId) {
+          var msgs = Chat.getMsgs(activeId);
+          var msgList = container.querySelector("#vwca-msg-list");
+          if (msgList && msgList.children.length !== msgs.length) renderView();
         }
-      }, OPT.pollInterval);
+      }
+    }
+    if (!container._pollId) {
+      pollTick(); // umiddelbar avstemming ved montering, ikkje vent på første intervall
+      container._pollId = setInterval(pollTick, OPT.pollInterval);
     }
 
     /* Realtime — abonner éin gong per container på nye samtalar og meldingar */

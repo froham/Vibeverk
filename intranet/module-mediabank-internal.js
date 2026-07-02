@@ -30,6 +30,13 @@
 
   var INDEX_KEY = "wsp-media-index";
 
+  // Member: rein lesevisning (søk/last ned), ingen opplasting/sletting — verken
+  // via UI eller direkte handlarkall.
+  function isMemberRole() {
+    var ctx = Intranet.getContext ? Intranet.getContext() : null;
+    return !!ctx && ctx.role === "member";
+  }
+
   /* =========================================================================
      LAGRING
      ====================================================================== */
@@ -216,10 +223,11 @@
   }
 
   function renderPage(root) {
-    var cats  = getCategories();
-    var st    = storageStatus();
-    var files = getIndex();
-    var warn  = st.pct >= 80;
+    var cats     = getCategories();
+    var st       = storageStatus();
+    var files    = getIndex();
+    var warn     = st.pct >= 80;
+    var isMember = isMemberRole();
 
     root.innerHTML =
       '<div class="i-page-head">' +
@@ -253,7 +261,8 @@
         (warn ? '<p style="font-size:.75rem;color:#c0392b;margin:.2rem 0 0">Lagringen er nesten full. Slett filer for å frigjøre plass.</p>' : '') +
       '</div>' +
 
-      /* Opplasting */
+      /* Opplasting (skjult for member — rein lesevisning) */
+      (isMember ? '' :
       '<div class="i-card" style="margin-bottom:1rem">' +
         '<p class="i-section-label">Last opp</p>' +
         '<div style="display:flex;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap">' +
@@ -271,7 +280,7 @@
           '<div class="wsp-progress"><div class="wsp-progress__bar" id="wsp-progress-bar" style="width:0%"></div></div>' +
           '<p id="wsp-progress-text" style="font-size:.78rem;color:var(--color-muted);margin:0"></p>' +
         '</div>' +
-      '</div>' +
+      '</div>') +
 
       /* Filter + søk */
       '<div style="display:flex;gap:.5rem;margin-bottom:.8rem;flex-wrap:wrap">' +
@@ -287,7 +296,7 @@
       '</div>' +
 
       /* Filgrid */
-      '<div id="wsp-media-grid-wrap">' + renderGrid(null, null) + '</div>';
+      '<div id="wsp-media-grid-wrap">' + renderGrid(null, null, isMember) + '</div>';
 
     bindPage(root);
 
@@ -304,7 +313,7 @@
     }
   }
 
-  function renderGrid(query, category) {
+  function renderGrid(query, category, isMember) {
     var files = filterFiles(query, category);
     if (!files.length) {
       return '<p style="color:var(--color-muted);font-size:.88rem">' +
@@ -327,7 +336,7 @@
             '<div class="wsp-media-card__actions">' +
               '<button class="wsp-media-card__btn" data-wsp-copy="' + C.esc(f.id) + '" title="Kopier referanse"><i class="ti ti-copy"></i></button>' +
               (fileUrl ? '<a class="wsp-media-card__btn" href="' + C.esc(fileUrl) + '" download="' + C.esc(f.name) + '" title="Last ned"><i class="ti ti-download"></i></a>' : '') +
-              '<button class="wsp-media-card__btn" data-wsp-del="' + C.esc(f.id) + '" title="Slett" style="margin-left:auto;color:#c0392b"><i class="ti ti-trash"></i></button>' +
+              (isMember ? '' : '<button class="wsp-media-card__btn" data-wsp-del="' + C.esc(f.id) + '" title="Slett" style="margin-left:auto;color:#c0392b"><i class="ti ti-trash"></i></button>') +
             '</div>' +
           '</div>' +
         '</div>';
@@ -349,6 +358,7 @@
      BINDING
      ====================================================================== */
   function bindPage(root) {
+    var isMember   = isMemberRole();
     var dropzone   = root.querySelector("#wsp-dropzone");
     var fileInput  = root.querySelector("#wsp-file-input");
     var catInput   = root.querySelector("#wsp-upload-category");
@@ -362,12 +372,14 @@
     function refreshGrid() {
       if (gridWrap) gridWrap.innerHTML = renderGrid(
         searchInp ? searchInp.value : null,
-        catSelect ? catSelect.value : null
+        catSelect ? catSelect.value : null,
+        isMember
       );
       bindGrid(root, gridWrap);
     }
 
     function startUpload(files) {
+      if (isMemberRole()) return; // member: opplasting er verken vist eller tillate
       if (!files || !files.length) return;
       var cat = (catInput && catInput.value.trim()) || "Generelt";
       progWrap.style.display = "";
@@ -393,23 +405,25 @@
       );
     }
 
-    /* Klikk på dropzone */
-    dropzone.addEventListener("click", function () { fileInput.click(); });
-    fileInput.addEventListener("change", function () { startUpload(fileInput.files); fileInput.value = ""; });
+    /* Klikk på dropzone (element finst ikkje for member — rein lesevisning) */
+    if (dropzone && fileInput) {
+      dropzone.addEventListener("click", function () { fileInput.click(); });
+      fileInput.addEventListener("change", function () { startUpload(fileInput.files); fileInput.value = ""; });
 
-    /* Drag-and-drop */
-    dropzone.addEventListener("dragover", function (e) {
-      e.preventDefault();
-      dropzone.classList.add("is-over");
-    });
-    dropzone.addEventListener("dragleave", function () {
-      dropzone.classList.remove("is-over");
-    });
-    dropzone.addEventListener("drop", function (e) {
-      e.preventDefault();
-      dropzone.classList.remove("is-over");
-      startUpload(e.dataTransfer && e.dataTransfer.files);
-    });
+      /* Drag-and-drop */
+      dropzone.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        dropzone.classList.add("is-over");
+      });
+      dropzone.addEventListener("dragleave", function () {
+        dropzone.classList.remove("is-over");
+      });
+      dropzone.addEventListener("drop", function (e) {
+        e.preventDefault();
+        dropzone.classList.remove("is-over");
+        startUpload(e.dataTransfer && e.dataTransfer.files);
+      });
+    }
 
     /* Søk + filter */
     if (searchInp) searchInp.addEventListener("input", refreshGrid);
@@ -472,9 +486,10 @@
       });
     });
 
-    /* Slett */
+    /* Slett (member: knappen finst ikkje i DOM, men vern handlaren likevel) */
     gridWrap.querySelectorAll("[data-wsp-del]").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        if (isMemberRole()) return;
         var id    = btn.getAttribute("data-wsp-del");
         var entry = getIndex().find(function (f) { return f.id === id; });
         if (!confirm('Slett "' + (entry ? entry.name : "filen") + '"?')) return;

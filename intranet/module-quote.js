@@ -105,7 +105,7 @@
         subject: "Re: Tilbudsforespørsel fra " + (lead.name || ""),
         templateKey: "tilbud",
         defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
-        vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDate(lead.time), referanse: lead.referenceNumber || "" },
+        vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDate(lead.time), melding: lead.message || "", referanse: lead.referenceNumber || "" },
         onSent: function (info) {
           if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
             window.CrmAdmin.logEmailSent({ email: lead.email, name: lead.name, subject: info.subject, plain: info.plain });
@@ -215,7 +215,7 @@
             subject: "Re: Tilbudsforespørsel fra " + (quote.name || ""),
             templateKey: "tilbud",
             defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
-            vars: { navn: quote.name || "", epost: quote.email || "", dato: formatDate(quote.time), referanse: quote.referenceNumber || "" },
+            vars: { navn: quote.name || "", epost: quote.email || "", dato: formatDate(quote.time), melding: quote.message || "", referanse: quote.referenceNumber || "" },
             onSent: function (info) {
               if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
                 window.CrmAdmin.logEmailSent({ email: quote.email, name: quote.name, subject: info.subject, plain: info.plain });

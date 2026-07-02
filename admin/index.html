@@ -139,7 +139,8 @@
     .attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .attach-size { color: var(--color-muted); font-size: .8rem; margin-left: auto; }
     .attach-item .btn { padding: .3rem .5rem; }
-    .imgfield__preview { position: relative; border: 1px solid var(--color-border); border-radius: 10px; background: #15171a; overflow: hidden; aspect-ratio: 16 / 9; display: grid; place-items: center; }
+    .imgfield__preview { position: relative; border: 1px solid var(--color-border); border-radius: 10px; background: #15171a; overflow: hidden; display: grid; place-items: center; }
+    .imgfield__preview:not(.is-set) { height: clamp(96px, 20vw, 140px); }
     .imgfield__preview.is-set { cursor: grab; }
     .imgfield__preview.is-grabbing { cursor: grabbing; }
     .cropper__img { width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; -webkit-user-drag: none; touch-action: none; }
@@ -294,19 +295,19 @@
   <div id="app" style="display:none"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="../config.js?v=7"></script>
-  <script src="../components.js?v=5"></script>
-  <script src="../core.js?v=23"></script>
+  <script src="../config.js?v=8"></script>
+  <script src="../components.js?v=6"></script>
+  <script src="../core.js?v=24"></script>
 
   <!-- Same modular som index.html — slik at alle admin-faner er tilgjengelege -->
-  <script src="../module-booking.js?v=5"></script>
-  <script src="../module-quote.js?v=5"></script>
+  <script src="../module-booking.js?v=6"></script>
+  <script src="../module-quote.js?v=6"></script>
   <script src="../module-references.js?v=5"></script>
   <script src="../module-faq.js?v=5"></script>
   <script src="../module-scrollbanner.js?v=5"></script>
-  <script src="../module-crm.js?v=8"></script>
+  <script src="../module-crm.js?v=9"></script>
   <script src="../module-mediabank.js?v=5"></script>
-  <script src="../module-chat.js?v=11"></script>
+  <script src="../module-chat.js?v=12"></script>
   <script src="../module-users.js?v=11"></script>
 
   <script>

@@ -306,12 +306,26 @@ ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
 -- store: anon kan lese (offentleg innhald), innlogga brukarar kan skrive.
 -- Nøkkelen 'superconfig' (feature-flagg, tema, personverntekst, admin-passord-
 -- fallback) krev admin; alle andre nøklar krev minst can_edit_content().
-DROP POLICY IF EXISTS store_anon_read   ON store;
-DROP POLICY IF EXISTS store_auth        ON store;
-CREATE POLICY store_anon_read   ON store  FOR SELECT TO anon          USING (true);
-CREATE POLICY store_auth        ON store  FOR ALL    TO authenticated
-  USING      (CASE WHEN key = 'superconfig' THEN is_admin_or_owner() ELSE can_edit_content() END)
-  WITH CHECK (CASE WHEN key = 'superconfig' THEN is_admin_or_owner() ELSE can_edit_content() END);
+-- 'wsp-orgdrift' (Organisasjon & drift) ligg som éin JSON-blob per nøkkel —
+-- RLS kan ikkje skilje "opprett kort" frå "rediger eksisterande kort" inni
+-- blobben, så heile nøkkelen er admin-only (same mønster som 'superconfig').
+-- Sjå docs/architecture/roles-and-tenants.md.
+-- MERK (funne under 2026-07-02-gjennomgangen): store_auth er ein FOR ALL-policy,
+-- så USING-klausulen styrer óg SELECT, ikkje berre skriving. Med berre
+-- can_edit_content() i USING kunne ein "member" (som ikkje er admin/editor)
+-- ikkje lese SINE EIGNE store-rader i det heile — t.d. eigne dashboard-
+-- snarvegar. Truleg ein utilsikta biverknad av 2026-07-01-tryggleiksfiksen
+-- (som berre skulle avgrense SKRIVING). store_read_authenticated under gjev
+-- SELECT tilbake til alle innlogga brukarar (Postgres OR-ar fleire permissive
+-- policyar for same kommando) utan å svekke skrive-avgrensinga i store_auth.
+DROP POLICY IF EXISTS store_anon_read       ON store;
+DROP POLICY IF EXISTS store_auth            ON store;
+DROP POLICY IF EXISTS store_read_authenticated ON store;
+CREATE POLICY store_anon_read       ON store  FOR SELECT TO anon          USING (true);
+CREATE POLICY store_read_authenticated ON store FOR SELECT TO authenticated USING (true);
+CREATE POLICY store_auth            ON store  FOR ALL    TO authenticated
+  USING      (CASE WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner() ELSE can_edit_content() END)
+  WITH CHECK (CASE WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner() ELSE can_edit_content() END);
 
 -- users: alle les, kvar brukar oppdaterer seg sjølv (men ikkje eiga rolle —
 -- sjå prevent_self_role_escalation-triggeren under), admin endrar alle
@@ -346,24 +360,58 @@ CREATE TRIGGER trg_prevent_self_role_escalation
 DROP POLICY IF EXISTS notes_own         ON notes;
 CREATE POLICY notes_own         ON notes  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
--- tasks: alle les, editor+ skriv, tildelt brukar kan oppdatere status
+-- tasks: alle les, editor+ skriv, tildelt/opprettar kan oppdatere eiga oppgåve
+-- (avgrensa av restrict_assignee_task_columns()-triggeren under)
 DROP POLICY IF EXISTS tasks_read        ON tasks;
 DROP POLICY IF EXISTS tasks_admin       ON tasks;
 DROP POLICY IF EXISTS tasks_assignee    ON tasks;
 CREATE POLICY tasks_read        ON tasks  FOR SELECT TO authenticated USING (true);
 CREATE POLICY tasks_admin       ON tasks  FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
-CREATE POLICY tasks_assignee    ON tasks  FOR UPDATE TO authenticated USING (assigned_to = auth.uid()) WITH CHECK (assigned_to = auth.uid());
+-- Både tildelt OG opprettar kan oppdatere raden (kolonneavgrensing skjer i
+-- triggeren under, ikkje her — RLS kan berre avgrense radar, ikkje kolonnar).
+CREATE POLICY tasks_assignee    ON tasks  FOR UPDATE TO authenticated
+  USING      (assigned_to = auth.uid() OR created_by = auth.uid())
+  WITH CHECK (assigned_to = auth.uid() OR created_by = auth.uid());
 
--- Tildelt brukar (ikkje admin/editor) skal berre kunne endre status, ikkje
--- tittel/beskrivelse/frist/tildeling — tasks_assignee sin WITH CHECK er rad-nivå
--- og kan ikkje åleine avgrense kolonnar.
+-- Member kan opprette oppgåver til seg sjølv (sjølvvalt/utildelt), men ikkje
+-- tildele til andre — tasks_admin (over) er einaste veg til å opprette ei
+-- oppgåve tildelt NOKON ANNAN, og krev framleis can_edit_content() (admin/editor).
+-- Lagt til 2026-07-02 etter brukarpresisering av rollematrisa.
+DROP POLICY IF EXISTS tasks_self_create ON tasks;
+CREATE POLICY tasks_self_create ON tasks FOR INSERT TO authenticated
+  WITH CHECK (created_by = auth.uid() AND (assigned_to = auth.uid() OR assigned_to IS NULL));
+
+-- Kolonneavgrensing for ikkje-admin/editor (RLS over er rad-nivå og kan ikkje
+-- åleine avgrense kolonnar). Presisert 2026-07-02 etter brukartilbakemelding:
+-- - Eiga OPPRETTA oppgåve (OLD.created_by = seg sjølv): fri redigering av
+--   tittel/beskriving/frist/status — men ALDRI tildeling til NOKON ANNAN enn
+--   seg sjølv (blokkert nedanfor, uavhengig av opphav).
+-- - Oppgåve TILDELT av nokon annan (OLD.created_by ≠ seg sjølv, assigned_to =
+--   seg sjølv): berre status kan endrast — uendra frå 2026-07-01-tryggleiksfiksen.
 CREATE OR REPLACE FUNCTION restrict_assignee_task_columns()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF NOT can_edit_content() AND OLD.assigned_to = auth.uid() THEN
+  IF can_edit_content() THEN
+    RETURN NEW; -- admin/editor: inga avgrensing
+  END IF;
+
+  -- Ingen ikkje-admin/editor kan nokon gong tildele oppgåva til NOKON ANNAN
+  -- enn seg sjølv (eller nullstille tildelinga) — uavhengig av om dei sjølv
+  -- oppretta oppgåva.
+  IF NEW.assigned_to IS DISTINCT FROM OLD.assigned_to
+     AND NEW.assigned_to IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Berre admin/editor kan tildele oppgåve til ein annan brukar';
+  END IF;
+
+  -- Eiga oppretta oppgåve: fri redigering av dei andre felta.
+  IF OLD.created_by = auth.uid() THEN
+    RETURN NEW;
+  END IF;
+
+  -- Tildelt av nokon annan: berre status kan endrast.
+  IF OLD.assigned_to = auth.uid() THEN
     IF NEW.title       IS DISTINCT FROM OLD.title
        OR NEW.description IS DISTINCT FROM OLD.description
-       OR NEW.assigned_to IS DISTINCT FROM OLD.assigned_to
        OR NEW.due_date    IS DISTINCT FROM OLD.due_date
        OR NEW.created_by  IS DISTINCT FROM OLD.created_by THEN
       RAISE EXCEPTION 'Tildelt brukar kan berre endre status';
@@ -481,13 +529,14 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- Innlogga brukarar kan laste opp og slette eigne filer
+-- admin/editor kan laste opp og slette filer; member er lesevisning (kan
+-- framleis lese/laste ned via media_read under, men ikkje skrive)
 DROP POLICY IF EXISTS "media_insert" ON storage.objects;
 DROP POLICY IF EXISTS "media_delete" ON storage.objects;
 
 CREATE POLICY "media_insert" ON storage.objects
   FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'media');
+  WITH CHECK (bucket_id = 'media' AND can_edit_content());
 
 CREATE POLICY "media_delete" ON storage.objects
   FOR DELETE TO authenticated

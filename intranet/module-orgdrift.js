@@ -70,6 +70,15 @@
 
   var sortState = { type: "", key: "", dir: "asc" };
 
+  // Heile "wsp-orgdrift" ligg som éin JSON-blob under éin store-nøkkel — RLS kan
+  // difor ikkje skilje "opprett kort" frå "rediger eksisterande kort" inni blobben.
+  // Minste sikre løysing (jf. Arkitekten): all skriving (ny/rediger/slett) er
+  // admin-only, både i UI og i handlarane. Editor/member er read-only.
+  function isAdminRole() {
+    var ctx = Intranet.getContext ? Intranet.getContext() : null;
+    return !!ctx && ctx.role === "admin";
+  }
+
   function uid(prefix) {
     return prefix + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
   }
@@ -224,6 +233,7 @@
   function draw(root, tab, q) {
     var data = getData();
     var view = getView();
+    var isAdmin = isAdminRole();
 
     root.innerHTML =
       '<div class="od-head">' +
@@ -231,11 +241,11 @@
       '</div>' +
       stats(data) +
       tabs(tab) +
-      '<div class="od-help">' + esc(TAB_HELP[tab] || "") + '</div>' +
-      tools(view, q) +
-      '<div data-od-content>' + content(tab, data, q || "", view) + '</div>';
+      '<div class="od-help">' + esc(TAB_HELP[tab] || "") + (isAdmin ? "" : ' Kun lesetilgang for din rolle.') + '</div>' +
+      tools(view, q, isAdmin) +
+      '<div data-od-content>' + content(tab, data, q || "", view, isAdmin) + '</div>';
 
-    bind(root, tab);
+    bind(root, tab, isAdmin);
   }
 
   function stats(data) {
@@ -268,14 +278,14 @@
     }).join("") + '</div>';
   }
 
-  function tools(view, q) {
+  function tools(view, q, isAdmin) {
     return '<div class="od-tools">' +
       '<input class="od-search" data-od-search type="search" placeholder="Søk eller bruk felt: verdi, f.eks. Avdeling: drift" value="' + esc(q || "") + '">' +
       '<div class="od-view-toggle">' +
         '<button data-od-view="cards" class="' + (view === "cards" ? "is-active" : "") + '">Kort</button>' +
         '<button data-od-view="list" class="' + (view === "list" ? "is-active" : "") + '">Liste</button>' +
       '</div>' +
-      '<button data-od-new class="od-view-toggle-btn od-new-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Ny</button>' +
+      (isAdmin ? '<button data-od-new class="od-view-toggle-btn od-new-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Ny</button>' : '') +
     '</div>';
   }
 
@@ -347,32 +357,32 @@
     return Object.keys(seen).sort();
   }
 
-  function content(tab, data, q, view) {
+  function content(tab, data, q, view, isAdmin) {
     var items;
 
     if (tab === "people") {
       items = smartSearch("people", data.people, q);
-      return renderCollection(tab, items, view, personDef());
+      return renderCollection(tab, items, view, personDef(), isAdmin);
     }
 
     if (tab === "responsibilities") {
       items = smartSearch("responsibilities", data.responsibilities, q);
-      return renderCollection(tab, items, view, respDef());
+      return renderCollection(tab, items, view, respDef(), isAdmin);
     }
 
     if (tab === "vendors") {
       items = smartSearch("vendors", data.vendors, q);
-      return renderCollection(tab, items, view, vendorDef());
+      return renderCollection(tab, items, view, vendorDef(), isAdmin);
     }
 
     if (tab === "systems") {
       items = smartSearch("systems", data.systems, q);
-      return renderCollection(tab, items, view, systemDef());
+      return renderCollection(tab, items, view, systemDef(), isAdmin);
     }
 
     if (tab === "purchasing") {
       items = smartSearch("purchasing", data.purchasing, q);
-      return renderCollection(tab, items, view, purchaseDef());
+      return renderCollection(tab, items, view, purchaseDef(), isAdmin);
     }
 
     return "";
@@ -565,28 +575,28 @@
     });
   }
 
-  function renderCollection(type, items, view, def) {
+  function renderCollection(type, items, view, def, isAdmin) {
     if (!items.length) return '<div class="od-empty">Ingen oppføringer funnet.</div>';
-    if (view === "list") return listView(type, items, def);
-    return cardView(type, items, def);
+    if (view === "list") return listView(type, items, def, isAdmin);
+    return cardView(type, items, def, isAdmin);
   }
 
-  function cardView(type, items, def) {
+  function cardView(type, items, def, isAdmin) {
     return '<div class="od-grid">' + items.map(function (item) {
       var rows = def.rows(item);
       return '<article class="od-card" data-od-open="' + esc(type) + ':' + esc(item.id) + '">' +
         '<span class="od-pill">' + esc(def.pill(item)) + '</span>' +
         '<h3>' + esc(def.title(item)) + '</h3>' +
         '<div class="od-kv">' + rows.slice(0, 5).map(kvRow).join("") + '</div>' +
-        '<div class="od-actions">' +
+        (isAdmin ? '<div class="od-actions">' +
           '<button class="btn btn--ghost btn--sm" data-od-edit="' + esc(type) + ':' + esc(item.id) + '">Rediger</button>' +
           '<button class="btn btn--ghost btn--sm" data-od-del="' + esc(type) + ':' + esc(item.id) + '">Slett</button>' +
-        '</div>' +
+        '</div>' : '') +
       '</article>';
     }).join("") + '</div>';
   }
 
-  function listView(type, items, def) {
+  function listView(type, items, def, isAdmin) {
     var sorted = sortItems(type, items);
     return '<div class="od-table-wrap"><table class="od-table">' +
       '<thead><tr>' + def.cols.map(function (c) {
@@ -596,7 +606,7 @@
       '<tbody>' + sorted.map(function (item) {
         return '<tr data-od-open="' + esc(type) + ':' + esc(item.id) + '">' +
           def.cols.map(function (c) { return '<td>' + valueHtml(item[c[1]]) + '</td>'; }).join("") +
-          '<td><button class="btn btn--ghost btn--sm" data-od-edit="' + esc(type) + ':' + esc(item.id) + '">Rediger</button></td>' +
+          '<td>' + (isAdmin ? '<button class="btn btn--ghost btn--sm" data-od-edit="' + esc(type) + ':' + esc(item.id) + '">Rediger</button>' : '') + '</td>' +
         '</tr>';
       }).join("") + '</tbody></table></div>';
   }
@@ -672,7 +682,7 @@
     };
   }
 
-  function bind(root, tab) {
+  function bind(root, tab, isAdmin) {
     root.querySelectorAll("[data-od-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var next = btn.getAttribute("data-od-tab");
@@ -685,7 +695,7 @@
     var search = root.querySelector("[data-od-search]");
     if (search) {
       search.addEventListener("input", function (e) {
-        root.querySelector("[data-od-content]").innerHTML = content(tab, getData(), e.target.value, getView());
+        root.querySelector("[data-od-content]").innerHTML = content(tab, getData(), e.target.value, getView(), isAdmin);
         bindDynamic(root, tab);
       });
     }
@@ -700,6 +710,7 @@
     var newBtn = root.querySelector("[data-od-new]");
     if (newBtn) {
       newBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return; // «Ny» skal aldri fungere for editor/member, sjølv ved direkte kall
         openEditor(root, tab, null);
       });
     }
@@ -732,6 +743,7 @@
     root.querySelectorAll("[data-od-edit]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
+        if (!isAdminRole()) return;
         var parts = btn.getAttribute("data-od-edit").split(":");
         openEditor(root, parts[0], parts[1]);
       });
@@ -740,6 +752,7 @@
     root.querySelectorAll("[data-od-del]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
+        if (!isAdminRole()) return;
         var parts = btn.getAttribute("data-od-del").split(":");
         if (!confirm("Slette denne oppføringen?")) return;
         var data = getData();
@@ -771,18 +784,21 @@
     if (!item) return;
 
     var def = defFor(type);
+    var isAdmin = isAdminRole();
     var body = '<div class="od-kv">' + def.rows(item).map(function (r) {
       return '<div><strong>' + esc(r[0]) + ':</strong> ' + richValue(r[1]) + '</div>';
     }).join("") + '</div>' +
     attachmentsView(item) +
     '<div class="od-actions">' +
-      '<button class="btn btn--primary btn--sm" data-od-modal-edit>Rediger</button>' +
+      (isAdmin ? '<button class="btn btn--primary btn--sm" data-od-modal-edit>Rediger</button>' : '') +
       '<button class="btn btn--ghost btn--sm" data-od-modal-close>Lukk</button>' +
     '</div>';
 
     openModal(def.title(item), '<span class="od-pill">' + esc(def.pill(item)) + '</span>' + body, function (modal) {
       modal.querySelector("[data-od-modal-close]").addEventListener("click", closeModal);
-      modal.querySelector("[data-od-modal-edit]").addEventListener("click", function () {
+      var editBtn = modal.querySelector("[data-od-modal-edit]");
+      if (editBtn) editBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
         closeModal();
         openEditor(root, type, idValue);
       });
@@ -827,6 +843,7 @@
   }
 
   function openEditor(root, type, itemId) {
+    if (!isAdminRole()) return; // server (RLS) vil uansett avvise skriving frå ikkje-admin
     var data = getData();
     var item = itemId ? (data[type] || []).find(function (x) { return x.id === itemId; }) : null;
     var html = editorHtml(type, item);

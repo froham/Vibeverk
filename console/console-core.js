@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.7.0";
+  var VIBEVERK_VERSION = "0.8.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -101,9 +101,13 @@ window.VwConsole = (function () {
   ];
   var FEAT_LABELS = {
     newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg",
-    social:"Sosiale lenker", booking:"Booking", quote:"Tilbud",
+    social:"Sosiale lenker", contactForm:"Kontaktskjema", booking:"Booking", quote:"Tilbud",
     references:"Referansar", faq:"FAQ", siteSearch:"Søk i toppmeny",
-    crm:"Kunder", crmFull:"Kunder — direkte e-post (Resend)", mediabank:"Mediebank", scrollbanner:"Banner", chat:"Chat"
+    crm:"Kunder", crmFull:"Native e-post", mediabank:"Mediebank", scrollbanner:"Banner", chat:"Chat"
+  };
+  var FEAT_HINTS = {
+    crmFull: "Sender e-post direkte frå Vibeverk via Resend. Krev Kunder/CRM. Gjeld både Web og Workspace. Omfattar ikkje mottak av e-post.",
+    contactForm: "Av: skjult skjema/samtykke/send-knapp. Kontaktinfo (e-post/telefon/adresse) vert framleis vist."
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
@@ -143,13 +147,16 @@ window.VwConsole = (function () {
     setTimeout(function () { if (el) el.textContent = ""; }, 3500);
   }
 
-  function checkboxGrid(obj, labels, attr) {
+  function checkboxGrid(obj, labels, attr, hints) {
     return '<div class="cs-checkbox-grid">' +
       Object.keys(obj).map(function (k) {
-        return '<label class="cs-checkbox-label">' +
-          '<input type="checkbox" data-' + attr + '="' + C.esc(k) + '"' + (obj[k] !== false ? " checked" : "") + '> ' +
-          C.esc(labels[k] || k) +
-        '</label>';
+        return '<div class="cs-checkbox-item">' +
+          '<label class="cs-checkbox-label">' +
+            '<input type="checkbox" data-' + attr + '="' + C.esc(k) + '"' + (obj[k] !== false ? " checked" : "") + '> ' +
+            C.esc(labels[k] || k) +
+          '</label>' +
+          (hints && hints[k] ? '<p class="cs-checkbox-hint">' + C.esc(hints[k]) + '</p>' : '') +
+        '</div>';
       }).join("") +
     '</div>';
   }
@@ -576,7 +583,7 @@ window.VwConsole = (function () {
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Nettside</legend>' +
-          checkboxGrid(ft, FEAT_LABELS, "cs-feat") +
+          checkboxGrid(ft, FEAT_LABELS, "cs-feat", FEAT_HINTS) +
         '</fieldset>' +
         '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Workspace</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Dashboard, Oppgåver og Innstillingar er alltid på og visast ikkje her.</p>' +
@@ -622,25 +629,38 @@ window.VwConsole = (function () {
     });
   }
 
+  // Gammal lagra personverntekst var rein tekst (\n\n mellom avsnitt, \n for
+  // linjeskift — sjå computeDefaultPrivacyText() i core.js). Rik-tekst-editoren
+  // krev HTML. Konverter éin gong, idempotent: køyrer berre når teksten IKKJE
+  // alt inneheld HTML-taggar, så alt konvertert innhald let vi vera i fred.
+  function migrateLegacyPrivacyText(text) {
+    var t = String(text || "");
+    if (!t || /<[a-z][\s\S]*>/i.test(t)) return t;
+    return App.ui.textToRichHtml(t);
+  }
+
   function renderPersonvern(sc, wrap) {
     var priv = Object.assign({}, CFG.privacy || {}, sc.privacy || {});
+    var textHtml = migrateLegacyPrivacyText(priv.text || "");
 
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Personvernerklæring</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, og via «Personvern»-lenka i footer.</p>' +
           C.field({ id:"cs-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
-          C.field({ id:"cs-priv-text", label:"Tekst", multiline:true, rows:10, value: priv.text || "" }) +
+          C.richTextField({ id:"cs-priv-text", label:"Tekst", value: textHtml }) +
         '</fieldset>' +
         saveBtn() +
       '</form>';
+
+    App.ui.bindRichTextFields(wrap);
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
       var sc2 = getSC();
       sc2.privacy = {
         heading: wrap.querySelector("#cs-priv-heading").value.trim(),
-        text:    wrap.querySelector("#cs-priv-text").value
+        text:    App.ui.readRichTextField(wrap, "cs-priv-text")
       };
       saveSC(sc2);
       statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);

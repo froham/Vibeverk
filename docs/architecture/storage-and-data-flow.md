@@ -33,7 +33,7 @@ store (
 
 The `tenant_id` column is retained for backward compatibility. All other tables in the schema are single-tenant (one Supabase project per customer, so no tenant_id needed elsewhere). The `store` table's `tenant_id` must not be removed.
 
-RLS on `store`: `auth_only` policy — only `authenticated` role can read or write. Anon visitors have no access to the `store` table.
+RLS on `store` as defined in `supabase/migration.sql` (verified 2026-07-02): anon has `SELECT` on all rows (`store_anon_read`, `USING (true)`) — this is a known, separately-tracked finding (`docs/project/CURRENT_STATE.md` "Still open" — anon can read CRM customer/lead data stored in this table). Authenticated users get `SELECT` on all rows via `store_read_authenticated`. Writes (`store_auth`, a `FOR ALL` policy) require `is_admin_or_owner()` for the `superconfig` and `wsp-orgdrift` keys, `can_edit_content()` (admin/editor) for every other key — `member` cannot write any `store` key. `store_read_authenticated` and the `wsp-orgdrift` write carve-out were added 2026-07-02 (`supabase/hotfix_role_enforcement_2026-07-02.sql`) — **run against production and confirmed by the user 2026-07-02** (see `docs/security/security-baseline.md`).
 
 ## superconfig
 
@@ -64,7 +64,7 @@ Visitor → (anon RPC) → chat_conversations / chat_messages → (authenticated
 
 1. Visitor sends a message: browser calls `send_visitor_msg` RPC with `visitor_id`, name, email, message. The RPC validates visitor_id ownership and inserts into `chat_messages`.
 2. Visitor retrieves messages: browser calls `get_visitor_msgs` RPC with `visitor_id`. The RPC returns only messages belonging to that visitor_id.
-3. Admin polls for new conversations and messages via authenticated RPCs. The authenticated session provides a JWT that is verified by Supabase RLS.
+3. Admin polls for new conversations and messages via authenticated RPCs. The authenticated session provides a JWT that is verified by Supabase RLS. As of 2026-07-02, the admin poll loop (`module-chat.js`) fetches conversation-list changes and the active conversation's new messages as two independent checks per cycle (previously an if/else-if structure could let a conversation-metadata change swallow that round's message fetch). Supabase Realtime (`postgres_changes` on both tables) is the live-update path; polling is the explicit fallback guarantee.
 
 Visitor's `visitor_id` is a random string stored in localStorage. It is not a cryptographic identity. Ownership is validated inside every visitor-scoped RPC — if a visitor presents someone else's `visitor_id`, the RPC denies access.
 
@@ -76,7 +76,7 @@ Anon role NEVER gets direct `SELECT` on `chat_messages` or `chat_conversations`.
 
 | Table | What it stores | Access |
 |---|---|---|
-| `store` | Key/value config, superconfig | Authenticated only (RLS) |
+| `store` | Key/value config, superconfig, CRM customers/leads/quotes/bookings (same table, no key-level RLS split) | See "Supabase store table" above — as designed (not yet fully live, see caveat there): anon `SELECT` on all rows (known finding), authenticated `SELECT` on all rows, writes gated by key |
 | `users` | User accounts, roles (`admin`/`editor`/`member` — no `owner`, see `docs/decisions/ADR-0006-remove-owner-role-references.md`) | RLS: admin can manage, users see own row |
 | `notes` | Private user notes | RLS: `user_id = auth.uid()` — never shared |
 | `tasks` | Tasks with assignments | RLS: all authenticated read, admin write, assigned user can update status. Only admin can assign a task to another user. |

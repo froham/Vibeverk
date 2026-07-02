@@ -153,6 +153,7 @@ window.SITE_CONFIG = {
     search:      true,   // ← Søkefelt i arkivet (krever newsArchive)
     attachments: true,   // ← Vedlegg på aktuelt-innlegg
     social:      true,   // ← Sosiale lenker i kontaktseksjonen
+    contactForm: true,   // ← Kontaktskjema (skjema+samtykke+send). Av: kontaktinfo/e-post/telefon/adresse vises framleis.
     booking:     true,   // ← Booking-modul. Krever module-booking.js
     quote:       true,   // ← Tilbud-modul.  Krever module-quote.js
     references:  true,   // ← Referanser-modul. Krever module-references.js

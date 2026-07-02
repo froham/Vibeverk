@@ -72,7 +72,9 @@ All other tests must remain green. Do not silently remove or skip failing tests.
 ## Supabase rules
 
 - SQL changes go to `supabase/migration.sql` (idempotent) and, if urgent, to a `hotfix_*.sql`
-- Run SQL manually in Supabase Dashboard → SQL Editor — there is no Supabase CLI in this project
+- Supabase CLI is installed locally (`supabase` dev dependency); always invoke it as `npx supabase`. The local working copy is linked to project ref `clzczbyklgdtdhgjphup`
+- Existing `migration.sql`/`hotfix_*.sql` files are standalone Dashboard scripts, not timestamped files under `supabase/migrations/`; do not claim `supabase db push` will deploy them. Run them manually in Dashboard until a migration conversion is explicitly approved
+- Edge Functions may be deployed from `supabase/functions/` with `npx supabase functions deploy <name> --project-ref clzczbyklgdtdhgjphup`, but only after the explicit approval required below
 - After adding or replacing any function: `NOTIFY pgrst, 'reload schema';`
 - All anon-facing functions must be `SECURITY DEFINER STABLE SET search_path = public`
 - Use explicit function signatures in `REVOKE`/`GRANT`: `REVOKE EXECUTE ON FUNCTION f(text, text) FROM PUBLIC`

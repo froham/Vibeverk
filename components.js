@@ -548,6 +548,7 @@ window.Components = (function () {
             ${extra}
             ${social.length ? `<div class="contact__social">${social.join("")}</div>` : ""}
           </div>
+          ${(window.SITE_CONFIG && window.SITE_CONFIG.features && window.SITE_CONFIG.features.contactForm === false) ? "" : `
           <form class="contact__form" data-contact-form novalidate>
             ${field({ id: "lead-name",    label: "Navn",    required: true,  placeholder: "Ditt navn" })}
             ${field({ id: "lead-email",   label: "E-post",  required: true,  type: "email", placeholder: "deg@eksempel.no" })}
@@ -560,7 +561,7 @@ window.Components = (function () {
                 : ""}
             </div>
             <p class="form__status" data-form-status role="status" aria-live="polite"></p>
-          </form>
+          </form>`}
         </div>
       </section>`;
   }

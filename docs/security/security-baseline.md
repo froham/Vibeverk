@@ -36,7 +36,14 @@ Every visitor-scoped RPC must validate that the provided `visitor_id` matches th
 
 The `is_admin_or_owner()` PostgreSQL function returns `true` when `auth.uid()` belongs to a user with role `owner` or `admin` in the `users` table. This helper is used in RLS policies for tables where write access requires elevated role.
 
-The `store` table uses an `auth_only` RLS policy: only `authenticated` role can read or write. Anon visitors have no access to the store table.
+The `store` table's RLS as defined in `supabase/migration.sql` (corrected 2026-07-02, see `docs/architecture/storage-and-data-flow.md` — this describes the repo's target/source-of-truth state for fresh deployments, not confirmed to be what's actually live against the current production project): anon has `SELECT` on all rows (a separately-tracked finding, not a hard constraint), authenticated users have `SELECT` on all rows, and writes require `is_admin_or_owner()` for the `superconfig`/`wsp-orgdrift` keys or `can_edit_content()` (admin/editor) for every other key. `member` cannot write any `store` key. **The authenticated-`SELECT` policy (`store_read_authenticated`) and the `wsp-orgdrift` write carve-out are prepared, NOT yet executed against production** — see "SQL prepared, not executed" immediately below. Until that hotfix is run, the last confirmed-run production state (2026-07-01) has `store_auth` as a single `FOR ALL` policy with no separate SELECT policy, gating both read and write by `can_edit_content()`/`is_admin_or_owner()` (superconfig only) — meaning a `member`'s own `store` rows (e.g. their own dashboard shortcuts) are likely **not readable in production today**. This read gap is exactly the bug `store_read_authenticated` was written to fix.
+
+### SQL run against production, confirmed by user — 2026-07-02 role/access remediation
+
+`supabase/hotfix_role_enforcement_2026-07-02.sql`, folded into `supabase/migration.sql`. Run manually by the user in the Supabase Dashboard SQL Editor against `clzczbyklgdtdhgjphup`, confirmed the same day.
+- `wsp-orgdrift` added to `store_auth`'s admin-only key carve-out — the whole org-drift record is one JSON blob per `store` row, so RLS cannot distinguish "create" from "edit" inside it; the entire key is admin-only server-side (editor/member UI restrictions alone would not have been a real security boundary).
+- `store_read_authenticated`: new SELECT policy restoring read access for all authenticated users, fixing the member-read regression above without weakening the write restriction.
+- `media_insert` (Supabase Storage): now requires `can_edit_content()`, closing a gap where any authenticated user (including member) could upload directly via the Storage API regardless of UI restrictions. `media_delete` was already correctly gated.
 
 ## REVOKE and GRANT
 

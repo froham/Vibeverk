@@ -121,6 +121,14 @@ All keys are namespaced automatically with the `nordpunkt:` prefix. **Do not use
 
 `storageKey: "nordpunkt"` in `config.js` MUST NEVER be changed. All existing Supabase `store` rows and all localStorage entries are keyed with this prefix. Renaming it would silently corrupt all existing data and break hydration for existing users.
 
+## Shared component CSS must exist in every entry point that uses it
+
+Several UI helpers in `components.js`/`core.js` (`imageField`/`bindImageFields`, `richTextField`/`bindRichTextFields`, `emailTemplateCard`/`bindEmailTemplateCard`) are shared JS but ship their CSS only in the `<style>` block of the HTML entry point where they were first built — usually `index.html`. Because there is no bundler, that CSS is **not** automatically available to other entry points (`intranet/index.html`, `admin/index.html`, `console/index.html`) even though the same JS function can be called from any of them.
+
+**Verified gap, fixed 2026-07-02** (see `docs/project/CHANGELOG.md` 0.8.0): `intranet/index.html` was missing the `.imgfield__*`/`.cropper__*` and `.admin-form`/`.email-tpl-card*` CSS blocks entirely — Workspace's booking email-template cards rendered as unstyled, near-collapsed `<details>` elements, and image fields had no dedicated styling at all. `console/index.html` was missing `.rtfield__*` (rich-text editor) CSS until the Console privacy-text editor started using it the same session.
+
+**When adding a new call site for one of these shared components in an entry point that hasn't used it before**, check that entry point's `<style>` block for the matching CSS class names first — do not assume it's already there just because the JS function works elsewhere. Copy the CSS block verbatim (it's small, self-contained, and namespaced by class prefix) rather than restructuring into a shared stylesheet, consistent with the no-bundler constraint.
+
 ## Cache busting
 
 Every time a module file is changed, the corresponding `?v=N` version number in `index.html` (and `intranet/index.html` for intranet modules) must be incremented by 1. Only increment the version for files that actually changed. Do not bump all versions on every commit.

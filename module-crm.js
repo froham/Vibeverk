@@ -966,7 +966,7 @@
   function crmsRenderSig(c) {
     var s=getCrmSettings();
     c.innerHTML=
-      '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .7rem">Signaturer vises automatisk under meldingen når du sender e-post.</p>' +
+      '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .7rem">Signaturene blir tilgjengelige som «Sett inn»-knapper i e-postdialogen — de settes ikke inn automatisk, slik at du velger bevisst hvilken (eller ingen) som skal med.</p>' +
       rtField("crms-sig-co","Bedriftssignatur (felles)",s.signatureCompany||"")+
       rtField("crms-sig-pe","Min personlige signatur",s.signaturePersonal||"")+
       '<div style="display:flex;gap:.4rem;align-items:center;margin-top:.5rem">'+
@@ -1001,6 +1001,7 @@
       (editing!==null
         ? '<div style="border-top:1px solid var(--color-border);padding-top:.9rem;margin-top:.9rem;display:grid;gap:.55rem">' +
             '<h5 style="margin:0 0 .2rem;font-size:.88rem">'+(editId==="new"?"Ny mal":"Rediger mal")+'</h5>' +
+            '<p style="font-size:.78rem;color:var(--color-muted);margin:0">Kan brukast i emne og innhald — fyllast inn automatisk når malen vert valgt i e-postdialogen: {navn}, {epost}, {bedrift}, {kundenummer}. Ukjende plassholdarar vert ikkje erstatta.</p>' +
             dlgField("crms-mal-name","Navn *","text",editing.name||"","Tilbudssvar") +
             dlgField("crms-mal-subj","Emne","text",editing.subject||"","Svar på din forespørsel") +
             rtField("crms-mal-body","Innhold",editing.body||"") +
@@ -1032,7 +1033,7 @@
     var editing=editId?(editId==="new"?{}:snippets.find(function(s){return s.id===editId;})||null):null;
     c.innerHTML=
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem">' +
-        '<span style="font-size:.82rem;color:var(--color-muted)">Skriv <strong>#nøkkelord</strong> i chat-svarruten for å sette inn tekst raskt</span>' +
+        '<span style="font-size:.82rem;color:var(--color-muted)">Skriv <strong>#nøkkelord</strong> i chat-svarruten for å sette inn tekst raskt. Støtter {namn} og {epost} — fylles inn fra samtalen. Ukjende plassholdarar vert ikkje erstatta.</span>' +
         (editing===null?C.button({label:"Nytt svar",icon:"plus",variant:"primary",attrs:'id="crms-ny-sn" style="font-size:.82rem"'}):'') +
       '</div>' +
       (snippets.length===0&&editing===null
@@ -1089,12 +1090,17 @@
     var isReply  = !!replyToComm;
     var threadId = isReply ? (replyToComm.threadId || newThreadId()) : newThreadId();
     var subject  = isReply ? "Re: " + (replyToComm.subject || "") : "";
+    var s        = getCrmSettings();
+    var bedrift  = bedriftFor(c);
     App.openReplyModal({
       name: c.name, email: c.email,
       subject: subject,
       templateKey: "crm",
       defaultTemplate: "",
       previewHtml: isReply ? (replyToComm.html || (replyToComm.body ? esc(replyToComm.body) : "")) : "",
+      templateOptions: s.templates || [],
+      signatureOptions: { company: s.signatureCompany || "", personal: s.signaturePersonal || "" },
+      vars: { navn: c.name || "", epost: c.email || "", bedrift: bedrift ? (bedrift.name || "") : "", kundenummer: c.customerNumber || "" },
       onSent: function (payload) {
         addComm({
           customerId: c.id, type: "email_sent",
@@ -1248,6 +1254,16 @@
       navLabel: "Kunder",
       icon:     "users",
       order:    35,
+      // Kundedata (namn/e-post/telefon/notat/kommunikasjonslogg) — same avgrensing
+      // som module-users.js sin roles:["admin"], men CRM er også opna for editor,
+      // sidan editor alt kan opprette CRM-malar/signaturar. Member er ekskludert.
+      // Oppdaga 2026-07-02 (Privacy/Compliance-review): CRM hadde INGEN rolleavgrensing
+      // i det heile — kombinert med den nye store_read_authenticated-SQL-en (som gjev
+      // alle autentiserte SELECT på "store", inkl. crm-customers/leads) ville member
+      // fått både UI- og direkte API-lesetilgang til kundedata. Retta her (UI/rute-nivå,
+      // jf. roles-mekanismen i intranet-core.js), i tillegg til at direkte store-lesing
+      // for ikkje-CRM-relaterte nøklar framleis er tillate for member (uendra).
+      roles: ["admin", "editor"],
       render: function () { return '<div data-crm-root></div>'; },
       mount:  function (outlet, ctx, sub) {
         var root = outlet.querySelector("[data-crm-root]") || outlet;

@@ -30,6 +30,13 @@
     return !!ctx && ctx.role === "admin";
   }
 
+  // Member kan endre status på eigne tildelte oppgåver, men ikkje opprette/redigere
+  // felt (tittel/beskriving/tildeling/frist) via opprettings-/redigeringsflyten.
+  function isMemberRole() {
+    var ctx = Intranet.getContext();
+    return !!ctx && ctx.role === "member";
+  }
+
   function loadTasks(cb) {
     if (!_sb) {
       _tasks = App.store.get(STORE_KEY, []) || [];
@@ -192,10 +199,23 @@
     });
   }
 
+  // Kan brukaren opne FULL redigeringsflyt (tittel/beskriving/frist) for denne
+  // oppgåva? Admin/editor: alltid. Member: berre for oppgåver dei sjølv har
+  // OPPRETTA — ei oppgåve TILDELT av nokon annan er framleis status-only via
+  // rad-nedtrekket (uendra sikkerheitsgrense frå 2026-07-01-tryggleiksfiksen,
+  // sjå restrict_assignee_task_columns()-triggeren i migration.sql). Member kan
+  // aldri tildele til nokon annan enn seg sjølv, uansett kven som eig oppgåva —
+  // assigneeField er read-only for alle utan canAssignTasks().
+  function canEditTask(t, me, isMemberRow) {
+    if (!isMemberRow) return true;
+    return !!t && t.created_by === me;
+  }
+
   function renderList(root) {
     var me   = uid();
     var ctx  = Intranet.getContext();
-    var isAdminRole = ctx && ctx.role === "admin";
+    var isAdminRole  = ctx && ctx.role === "admin";
+    var isMemberRow  = isMemberRole();
 
     // Mine: tildelt meg, eller opprettet av meg utan tildeling
     function isMine(t) {
@@ -218,13 +238,15 @@
     var others      = isAdminRole ? _tasks.filter(isOther) : [];
     var done        = _tasks.filter(function (t) { return t.status === "done"; });
 
+    function rowFn(t) { return taskRow(t, canEditTask(t, me, isMemberRow)); }
+
     function groupHtml(label, list, id) {
       if (!list.length) return "";
       return '<div class="task-group">' +
         '<p class="i-section-label">' + C.esc(label) +
           ' <span style="font-weight:400;opacity:.6">(' + list.length + ')</span></p>' +
         '<div class="task-group__list" ' + (id ? 'id="' + id + '"' : '') + '>' +
-          list.map(taskRow).join("") +
+          list.map(rowFn).join("") +
         '</div>' +
       '</div>';
     }
@@ -236,7 +258,7 @@
             'Ferdig <span style="font-weight:400;opacity:.6">(' + done.length + ')</span>' +
           '</button>' +
           '<div id="task-done-list" style="display:none">' +
-            '<div class="task-group__list">' + done.map(taskRow).join("") + '</div>' +
+            '<div class="task-group__list">' + done.map(rowFn).join("") + '</div>' +
           '</div>' +
         '</div>'
       : "";
@@ -246,6 +268,9 @@
     root.innerHTML =
       '<div class="i-page-head">' +
         '<h2>Oppgaver</h2>' +
+        // Member kan opprette (sjølvvalt/utildelt, jf. tasks_self_create-RLS),
+        // difor vist for alle roller — men kan ikkje redigere eksisterande, sjå
+        // taskRow() (blyant skjult for member) og bindList() sin klikk-sperre.
         '<button class="btn btn--primary btn--sm" id="tasks-new-btn"><i class="ti ti-plus"></i> Ny oppgave</button>' +
       '</div>' +
       (hasAny
@@ -259,9 +284,9 @@
     bindList(root);
   }
 
-  function taskRow(t) {
+  function taskRow(t, canEdit) {
     var assigneeName = userDisplayName(t.assigned_to);
-    return '<div class="task-row" data-task-id="' + C.esc(t.id) + '">' +
+    return '<div class="task-row" data-task-id="' + C.esc(t.id) + '"' + (canEdit ? ' data-task-editable' : '') + '>' +
       '<div class="task-row__main">' +
         '<div class="task-row__title">' + C.esc(t.title) + '</div>' +
         (t.description ? '<div class="task-row__body">' + C.esc(t.description.slice(0, 100)) + '</div>' : '') +
@@ -272,9 +297,11 @@
       '</div>' +
       '<div class="task-row__actions">' +
         statusSelect(t.status, t.id) +
-        '<button class="btn btn--ghost btn--sm" data-task-edit="' + C.esc(t.id) + '" style="padding:.3rem .5rem">' +
-          '<i class="ti ti-pencil"></i>' +
-        '</button>' +
+        (canEdit
+          ? '<button class="btn btn--ghost btn--sm" data-task-edit="' + C.esc(t.id) + '" style="padding:.3rem .5rem">' +
+              '<i class="ti ti-pencil"></i>' +
+            '</button>'
+          : '') +
       '</div>' +
     '</div>';
   }
@@ -296,6 +323,9 @@
     });
 
     root.addEventListener("click", function (e) {
+      // Rolle-/eigarskapssjekk skjer inne i openTaskModal() sjølv (éin kjelde
+      // til sanning) — han no-oper for member på oppgåver dei ikkje sjølv har
+      // oppretta, sjølv om rada ikkje har data-task-editable av ein eller anna grunn.
       var editBtn = e.target.closest("[data-task-edit]");
       if (editBtn) {
         var id = editBtn.getAttribute("data-task-edit");
@@ -330,6 +360,15 @@
   function openTaskModal(id, root) {
     var task  = id ? _tasks.find(function (t) { return t.id === id; }) : null;
     var isNew = !task;
+    // Member: kan opprette nye oppgåver til seg sjølv, OG redigere fullt ut
+    // (tittel/beskriving/frist/status) oppgåver DEI SJØLV HAR OPPRETTA — men
+    // ikkje opne full redigeringsflyt for ei oppgåve TILDELT dei av nokon annan
+    // (status på slike endrast framleis berre via rad-nedtrekket, jf. den
+    // eksisterande restrict_assignee_task_columns()-triggeren i migration.sql
+    // frå 2026-07-01-tryggleiksfiksen). Tildeling til ANDRE krev framleis admin
+    // (canAssignTasks()) — assigneeField under er read-only for alle andre,
+    // uansett om oppgåva er sjølv oppretta eller ikkje.
+    if (isMemberRole() && !isNew && !canEditTask(task, uid(), true)) return;
 
     var existing = document.getElementById("task-modal-bd");
     if (existing) existing.remove();

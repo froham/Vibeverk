@@ -1287,12 +1287,13 @@ window.App = (function () {
         const src = Media.resolve(state.src);
         if (!src) {
           preview.classList.remove("is-set");
-          preview.style.aspectRatio = "16 / 9"; preview.style.width = "100%";
+          preview.style.aspectRatio = ""; preview.style.width = "100%";
           preview.innerHTML = '<span class="imgfield__empty">' + C.icon("photo") + ' Ingen bilde</span>';
           if (hint) hint.textContent = "Last opp en fil eller lim inn en bilde-URL.";
           crop = null; return;
         }
         preview.classList.add("is-set");
+        preview.style.aspectRatio = ""; preview.style.width = "";
         preview.innerHTML = '<img class="cropper__img" draggable="false" alt="" src="' + src + '">' +
                             '<div class="cropper__window" data-crop-window></div>';
         if (hint) hint.textContent = "Dra det lyse utsnittet for å velge hva som vises på siden.";
@@ -2261,7 +2262,8 @@ window.App = (function () {
     }).join("") : '<li class="prose prose--muted" style="padding:.5rem 0">Ingen henvendingar med valgt status.</li>';
 
     body.innerHTML =
-      `${emailTemplateCard("kontakt", "E-postmal for svar", DEFAULT_REPLY_TEMPLATE)}
+      `${emailTemplateCard("kontakt", "E-postmal for svar", DEFAULT_REPLY_TEMPLATE,
+        "Brukes av «Svar»-knappen på en henvendelse. Plassholdere fylles inn automatisk når e-posten åpnes: {navn}, {epost}, {dato}, {melding}, {referanse}")}
        <div style="margin-bottom:1rem">${C.button({ label: "Eksporter henvendelser (CSV)", icon: "table-export", variant: "ghost", attrs: 'data-export-leads' })}</div>
        ${statusFilterBar("kontakt", counts)}
        <ul class="admin-list">${rows}</ul>
@@ -2874,6 +2876,15 @@ window.App = (function () {
                   '<label style="font-size:.78rem;font-weight:600;color:var(--color-muted);display:block;margin-bottom:.3rem">Emne</label>' +
                   '<input id="reply-subject" type="text" value="' + C.esc(opts.subject || "") + '" placeholder="Skriv emne" style="font:inherit;font-size:.88rem;padding:.55rem .8rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%">' +
                 '</div>' +
+                (opts.templateOptions && opts.templateOptions.length
+                  ? '<div>' +
+                      '<label style="font-size:.78rem;font-weight:600;color:var(--color-muted);display:block;margin-bottom:.3rem">Mal</label>' +
+                      '<select id="reply-tpl-pick" style="font:inherit;font-size:.88rem;padding:.55rem .8rem;border-radius:9px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%">' +
+                        '<option value="">— Velg mal (valgfritt) —</option>' +
+                        opts.templateOptions.map(function (t, i) { return '<option value="' + i + '">' + C.esc(t.name || "Uten navn") + '</option>'; }).join("") +
+                      '</select>' +
+                    '</div>'
+                  : '') +
                 '<div>' +
                   '<label style="font-size:.78rem;font-weight:600;color:var(--color-muted);display:block;margin-bottom:.3rem">Melding</label>' +
                   '<div style="border:1.5px solid var(--color-border);border-radius:9px;overflow:hidden">' +
@@ -2887,6 +2898,12 @@ window.App = (function () {
                     '<div id="reply-direct-body" contenteditable="true" style="min-height:180px;max-height:320px;overflow-y:auto;padding:.65rem .85rem;font-size:.87rem;line-height:1.6;outline:none;color:var(--color-text)">' + initHtml + '</div>' +
                   '</div>' +
                 '</div>' +
+                (opts.signatureOptions && (opts.signatureOptions.company || opts.signatureOptions.personal)
+                  ? '<div style="display:flex;gap:.4rem;flex-wrap:wrap">' +
+                      (opts.signatureOptions.company ? C.button({ label: "Sett inn bedriftssignatur", variant: "ghost", attrs: 'type="button" id="reply-sig-company" style="font-size:.78rem"' }) : '') +
+                      (opts.signatureOptions.personal ? C.button({ label: "Sett inn personlig signatur", variant: "ghost", attrs: 'type="button" id="reply-sig-personal" style="font-size:.78rem"' }) : '') +
+                    '</div>'
+                  : '') +
                 '<div>' +
                   '<label style="cursor:pointer;font-size:.82rem;color:var(--color-primary);font-weight:600;display:inline-flex;align-items:center;gap:.3rem">' +
                     '<i class="ti ti-paperclip"></i> Legg til vedlegg' +
@@ -2928,6 +2945,35 @@ window.App = (function () {
         document.execCommand(btn.getAttribute("data-cmd"), false, null);
       });
     });
+
+    // Malvelger (valgfritt — kun når opts.templateOptions er gitt, f.eks. CRM).
+    // Kontakt/Booking/Tilbud sender aldri templateOptions, så denne blokken
+    // er alltid fraværende der og påvirker ikke deres oppførsel.
+    var tplPick = root.querySelector("#reply-tpl-pick");
+    if (tplPick && opts.templateOptions) {
+      tplPick.addEventListener("change", function () {
+        if (tplPick.value === "") return;
+        var tpl = opts.templateOptions[parseInt(tplPick.value, 10)];
+        if (!tpl) return;
+        var vars = opts.vars || {};
+        var editorEl = root.querySelector("#reply-direct-body");
+        if (editorEl) editorEl.innerHTML = C.sanitizeRichHtml(fillTemplate(tpl.body || "", vars));
+        var subjEl = root.querySelector("#reply-subject");
+        if (subjEl && tpl.subject) subjEl.value = fillTemplate(tpl.subject, vars);
+      });
+    }
+
+    // Signaturinnsetting (valgfritt — kun når opts.signatureOptions er gitt).
+    function insertSignature(html) {
+      var editorEl = root.querySelector("#reply-direct-body");
+      if (!editorEl || !html) return;
+      editorEl.focus();
+      document.execCommand("insertHTML", false, C.sanitizeRichHtml(html));
+    }
+    var sigCoBtn = root.querySelector("#reply-sig-company");
+    if (sigCoBtn) sigCoBtn.addEventListener("click", function () { insertSignature(opts.signatureOptions.company); });
+    var sigPeBtn = root.querySelector("#reply-sig-personal");
+    if (sigPeBtn) sigPeBtn.addEventListener("click", function () { insertSignature(opts.signatureOptions.personal); });
 
     // Vedlegg
     var attachInput = root.querySelector("#reply-attachments");
@@ -3196,21 +3242,26 @@ window.App = (function () {
   // funksjonar som faktisk er aktive. Brukes som startpunkt ved første oppstart
   // (før noe er lagra). Kan kallast frå Konsollen for å generere eit nytt forslag.
   function computeDefaultPrivacyText() {
+    const hasContactForm = !(CFG.features && CFG.features.contactForm === false);
     const hasTilbud  = modules.some(function (m) { return m.id === "tilbud"; });
     const hasBooking = modules.some(function (m) { return m.id === "booking"; });
     const an = Store.get("analytics", null) || (CFG.analytics || {});
     const hasAnalytics = !!(an.plausible || an.plausibleEmbed);
 
-    const collectBits = ["en henvendelse"];
+    const collectBits = [];
+    if (hasContactForm) collectBits.push("en henvendelse");
     if (hasTilbud)  collectBits.push("ber om tilbud");
     if (hasBooking) collectBits.push("reserverer en booking");
+    if (!collectBits.length) collectBits.push("tar kontakt med oss");
     const collectPhrase = collectBits.length > 1
       ? collectBits.slice(0, -1).join(", ") + " eller " + collectBits[collectBits.length - 1]
       : collectBits[0];
 
-    const storedBits = ["henvendelser"];
+    const storedBits = [];
+    if (hasContactForm) storedBits.push("henvendelser");
     if (hasTilbud)  storedBits.push("tilbud");
     if (hasBooking) storedBits.push("bookinger");
+    if (!storedBits.length) storedBits.push("kontaktopplysninger");
     const storedPhrase = storedBits.length > 1
       ? storedBits.slice(0, -1).join(", ") + " og " + storedBits[storedBits.length - 1]
       : storedBits[0];
@@ -3370,6 +3421,7 @@ window.App = (function () {
       termsAccepted:    termsAccepted,               // (container, idPrefix) → bool
       bindRichTextFields: bindRichTextFields,        // kobler opp verktøylinje for alle rik-tekst-felt i et område
       readRichTextField: readRichTextField,           // (scope, id) → sanert HTML-streng
+      textToRichHtml: textToRichHtml,                 // ren tekst (\n\n avsnitt) → trygg HTML, for migrering av gammel plain-text inn i rik-tekst-felt
       hydrateFromSupabase: hydrateFromSupabase        // kall ved innlogging (6b) for cross-device sync
     },
     supabase: _sb                                     // delt Supabase-klient (intranet brukar same instans)

@@ -32,7 +32,9 @@ Internal superadmin surface for Vibeverk operators. Used to manage customer conf
 
 **Frontend:** `git push main` triggers GitHub Pages to deploy. No build step. Files are served as-is.
 
-**SQL / schema:** All changes to `supabase/migration.sql` or `hotfix_*.sql` must be run manually in the Supabase Dashboard SQL Editor. There is no Supabase CLI in this project. After any `CREATE OR REPLACE FUNCTION`, run `NOTIFY pgrst, 'reload schema';`.
+**Supabase CLI / Edge Functions:** Supabase CLI is installed locally as a development dependency and invoked with `npx supabase`. The working copy can be linked to the customer project and deploy version-controlled Edge Functions from `supabase/functions/`, but every remote deploy still requires explicit user approval.
+
+**SQL / schema:** `supabase/migration.sql` and the standalone `supabase/hotfix_*.sql` files are not timestamped files under `supabase/migrations/`, so `supabase db push` does not discover or deploy them. Until the SQL workflow is deliberately converted to standard CLI migrations, these files must still be run manually in the Supabase Dashboard SQL Editor. After any `CREATE OR REPLACE FUNCTION`, run `NOTIFY pgrst, 'reload schema';`.
 
 **No automated deployment:** No `git push`, Supabase SQL, or production action may happen without explicit user approval.
 

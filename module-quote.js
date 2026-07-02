@@ -383,7 +383,8 @@
       '</li>';
     }).join("") : '<li class="prose prose--muted">Ingen tilbudsforespørsler med valgt status.</li>';
 
-    body.innerHTML = App.emailTemplateCard("tilbud", "E-postmal for svar", App.DEFAULT_REPLY_TEMPLATE) +
+    body.innerHTML = App.emailTemplateCard("tilbud", "E-postmal for svar", App.DEFAULT_REPLY_TEMPLATE,
+        "Brukes av «Svar»-knappen på en tilbudsforespørsel (Web og Workspace). Plassholdere: {navn}, {epost}, {dato}, {melding}, {referanse}") +
       '<div style="margin-bottom:.8rem">' + C.button({ label:"Eksporter tilbudsforespørsler (CSV)", icon:"table-export", variant:"ghost", attrs:'data-qt-export' }) + '</div>' +
       App.statusFilterBar("tilbud", counts) + '<ul class="admin-list">' + rows + '</ul>';
 

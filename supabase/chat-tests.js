@@ -230,6 +230,62 @@
     record("anon_sender_enforcement", true, null);
   }
 
+  /* ── test 8: admin poll — conversation-metadata change does not hide a new
+     message in the same poll round (regression for the if/else-if bug fixed
+     2026-07-02 in module-chat.js's admin pollTick). This test reproduces the
+     exact race at the data layer: a conversation whose last_at is bumped by a
+     genuinely new message, queried the same way pollTick now does — as two
+     INDEPENDENT queries (conversation list, then active-conversation messages)
+     rather than one gating the other. It proves the data both queries need is
+     simultaneously available; it does not assert DOM rendering (chat-tests.js
+     has no DOM harness) — pair with the manual two-browser test plan in
+     docs/architecture/system-overview.md or the chat section of the handoff
+     summary for full end-to-end verification. */
+  async function test_admin_poll_independent_fetch() {
+    var sb = sbClient();
+    var { data: { session } } = await sb.auth.getSession();
+    if (!session) { record("admin_poll_independent_fetch", true, "SKIPPED (no auth session)"); return; }
+
+    var convId = "test-pollrace-" + Date.now();
+    var t0 = Date.now();
+    await sb.from("chat_conversations").insert({
+      id: convId, visitor_name: "Pollrace", visitor_email: "pr@test.no",
+      visitor_id: "pr-" + t0, status: "open", unread: 0, last_msg: "hei", last_at: t0
+    });
+
+    // Simulate: admin already has this conversation open (activeId === convId)
+    // and has already seen messages up to t0. A new visitor message arrives,
+    // which both inserts a chat_messages row AND bumps chat_conversations.last_at
+    // — the exact combination that used to make the metadata branch swallow the
+    // message fetch.
+    var newAt = t0 + 50;
+    var msgRes = await sb.from("chat_messages").insert({
+      id: "prm-" + Date.now(), conversation_id: convId, text: "ny melding", sender: "visitor", at: newAt
+    });
+    assert(!msgRes.error, "message insert: " + (msgRes.error && msgRes.error.message));
+    await sb.from("chat_conversations").update({ last_msg: "ny melding", last_at: newAt }).eq("id", convId);
+
+    // Query 1 — same shape as pollTick's conversation-list fetch
+    var convRes = await sb.from("chat_conversations").select("*").order("last_at", { ascending: false, nullsFirst: false });
+    assert(!convRes.error, "conversation list fetch: " + (convRes.error && convRes.error.message));
+    var found = (convRes.data || []).find(function (c) { return c.id === convId; });
+    assert(found, "conversation not found in list fetch");
+    assert(found.last_at === newAt, "conversation last_at not updated as expected");
+
+    // Query 2 — same shape as pollTick's active-conversation message fetch,
+    // must run and return the new message REGARDLESS of query 1's outcome
+    // (independent, not else-if gated on it).
+    var msgFetch = await sb.from("chat_messages").select("id,text,sender,at,created_at")
+      .eq("conversation_id", convId).gt("at", t0);
+    assert(!msgFetch.error, "message fetch: " + (msgFetch.error && msgFetch.error.message));
+    assert((msgFetch.data || []).length === 1, "expected the new message to be independently fetchable, got " + (msgFetch.data || []).length);
+    assert(msgFetch.data[0].text === "ny melding", "fetched message text mismatch");
+
+    // Cleanup
+    await sb.from("chat_conversations").delete().eq("id", convId);
+    record("admin_poll_independent_fetch", true, null);
+  }
+
   /* ── runner ── */
   async function run() {
     RESULTS = [];
@@ -241,7 +297,8 @@
       test_admin_reply_retrieved,
       test_visitor_reload_restore,
       test_rpc_failure_visible,
-      test_anon_sender_enforcement
+      test_anon_sender_enforcement,
+      test_admin_poll_independent_fetch
     ];
     for (var i = 0; i < tests.length; i++) {
       var t = tests[i];

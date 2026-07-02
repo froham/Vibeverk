@@ -428,9 +428,9 @@
     } else if (activeFane === "malar") {
       fc.innerHTML =
         App.emailTemplateCard("booking-avbook", "E-postmal for avbooking", DEFAULT_AVBOOK_TEMPLATE,
-          "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}, {referanse}") +
+          "Brukes av «Avbook»-knappen på en booking. Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}, {referanse}") +
         App.emailTemplateCard("booking-svar", "E-postmal for svar", DEFAULT_SVAR_TEMPLATE,
-          "Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}, {referanse}");
+          "Brukes av «Svar»-knappen på en booking. Plassholdere: {navn}, {epost}, {ressurs}, {dato}, {klokkeslett}, {referanse}");
       App.bindEmailTemplateCard(fc, "booking-avbook", DEFAULT_AVBOOK_TEMPLATE);
       App.bindEmailTemplateCard(fc, "booking-svar", DEFAULT_SVAR_TEMPLATE);
       return; // Ikkje treng å binde resten

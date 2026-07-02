@@ -1602,6 +1602,130 @@ const __asyncTests = (async () => {
   window.App.downloadCsv = origDownloadCsv;
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
+  // --- Bildefelt: kompakt tom-tilstand, ekspanderer ved valgt bilde (regresjonstest) ---
+  console.log("\n— Bildefelt: kompakt tom-tilstand —");
+  (function () {
+    var div = doc.createElement("div");
+    div.innerHTML = window.App.ui.imageField("t-empty-img", "Testbilde", "", 16 / 9);
+    doc.body.appendChild(div);
+    window.App.ui.bindImageFields(div);
+    var preview = div.querySelector("[data-imgfield-preview]");
+    assert(!preview.classList.contains("is-set"), "tomt bildefelt: ikke is-set før bilde velges");
+    assert(preview.style.aspectRatio === "", "tomt bildefelt: aspect-ratio ikke tvunget inline til 16:9 (CSS clamp(96px,20vw,140px) styrer kompakt høyde i stedet): '" + preview.style.aspectRatio + "'");
+    var urlInput = div.querySelector("[data-imgfield-url]");
+    urlInput.value = "https://eksempel.no/kompakt-test.jpg";
+    fire(urlInput, "input");
+    assert(preview.classList.contains("is-set"), "bildefelt: is-set etter valgt bilde (ekspanderer)");
+    div.remove();
+  })();
+
+  // --- features.contactForm: skjuler skjema, beholder kontaktinfo (regresjonstest) ---
+  console.log("\n— Kontaktskjema av/på —");
+  (function () {
+    assert(!!doc.querySelector("#kontakt [data-contact-form]"), "kontaktskjema vises når features.contactForm ikke er satt til false (standard)");
+    assert(!!doc.querySelector("#kontakt .contact__list"), "kontaktinfo (e-post/telefon/adresse) vises når skjema er på");
+
+    window.App.store.set("superconfig", { features: { contactForm: false } });
+    window.App.reloadConfig();
+    assert(!doc.querySelector("#kontakt [data-contact-form]"), "kontaktskjema skjules når features.contactForm=false");
+    assert(!doc.querySelector("#kontakt .terms-row"), "samtykkeboks skjules sammen med skjemaet");
+    assert(!!doc.querySelector("#kontakt .contact__list"), "kontaktinfo (e-post/telefon/adresse) beholdes når skjema er skjult");
+    assert(!!doc.getElementById("kontakt"), "Kontakt-seksjonen selv beholdes (kun skjemaet skjules, ikke hele seksjonen)");
+    assert(!!doc.querySelector('.nav__link[data-nav="kontakt"]'), "Kontakt-navlenke beholdes når skjema er skjult");
+
+    // bindContactForm skal no-op-e uten feil når skjemaet ikke finnes i DOM-en
+    var threw = false;
+    try { window.App.reloadConfig(); } catch (e) { threw = true; }
+    assert(!threw, "reloadConfig/bindContactForm kaster ikke feil når kontaktskjemaet er skjult");
+
+    window.App.store.set("superconfig", { features: { contactForm: true } });
+    window.App.reloadConfig();
+    assert(!!doc.querySelector("#kontakt [data-contact-form]"), "kontaktskjema vises igjen når features.contactForm=true");
+    window.App.store.remove("superconfig");
+    window.App.reloadConfig();
+  })();
+
+  // --- computeDefaultPrivacyText: tar hensyn til deaktivert kontaktskjema ---
+  console.log("\n— Personvern-standardtekst og kontaktskjema —");
+  (function () {
+    window.App.store.set("superconfig", { features: { contactForm: false } });
+    window.App.reloadConfig();
+    var textNoForm = window.App.computeDefaultPrivacyText();
+    assert(!/henvendelse/i.test(textNoForm) || /tilbud|booking/i.test(textNoForm), "standardtekst påstår ikke innsamling via kontaktskjema når det er deaktivert (med mindre tilbud/booking fortsatt samler inn): " + textNoForm.slice(0, 120));
+    window.App.store.remove("superconfig");
+    window.App.reloadConfig();
+    var textWithForm = window.App.computeDefaultPrivacyText();
+    assert(/henvendelse/i.test(textWithForm), "standardtekst nevner henvendelse når kontaktskjema er på (standard)");
+  })();
+
+  // --- CRM-maler og signatur i den delte openReplyModal (regresjonstest) ---
+  console.log("\n— CRM-maler/signatur i openReplyModal —");
+  (function () {
+    var origSupabase = window.App.supabase;
+    var origExecCommand = doc.execCommand;
+    window.App.supabase = {}; // stub: canSendDirect krev berre at window.App.supabase er truthy her
+    window.SITE_CONFIG.features.crm = true;
+    window.SITE_CONFIG.features.crmFull = true;
+
+    // 1) Kontakt/Booking/Tilbud (ingen templateOptions/signatureOptions) — uendra
+    window.App.openReplyModal({ name: "Ola", email: "ola@test.no", subject: "Vanlig svar", templateKey: "kontakt", defaultTemplate: "" });
+    assert(!doc.getElementById("reply-tpl-pick"), "ingen malvelger når templateOptions ikke er gitt (Kontakt/Booking/Tilbud uendra)");
+    assert(!doc.getElementById("reply-sig-company") && !doc.getElementById("reply-sig-personal"), "ingen signaturknapper når signatureOptions ikke er gitt");
+    doc.getElementById("reply-modal-root").remove();
+
+    // 2) CRM: templateOptions + signatureOptions + vars
+    var maliciousBody = "<p>Hei {navn}, ditt kundenummer er {kundenummer}. Ukjent: {ukjent}</p><script>alert(1)</script>";
+    window.App.openReplyModal({
+      name: "Kari", email: "kari@test.no", subject: "Opprinnelig emne",
+      templateKey: "crm", defaultTemplate: "",
+      templateOptions: [{ id: "t1", name: "Testmal", subject: "Mal-emne til {navn}", body: maliciousBody }],
+      signatureOptions: { company: "<p>Bedrift AS</p><script>alert(2)</script>", personal: "" },
+      vars: { navn: "Kari", epost: "kari@test.no", kundenummer: "1234" }
+    });
+    var tplPick = doc.getElementById("reply-tpl-pick");
+    assert(!!tplPick, "malvelger vises når templateOptions er gitt (CRM)");
+    assert(tplPick.querySelectorAll("option").length === 2, "malvelger har tom-valg + 1 mal");
+
+    tplPick.value = "0";
+    fire(tplPick, "change");
+    var editorEl = doc.getElementById("reply-direct-body");
+    assert(editorEl.innerHTML.indexOf("<script>") === -1, "valgt CRM-mal saneres (script-tag fjernet) ved innsetting");
+    assert(editorEl.innerHTML.indexOf("Kari") > -1, "kjent variabel {navn} fylt inn fra kundekortet");
+    assert(editorEl.innerHTML.indexOf("1234") > -1, "kjent variabel {kundenummer} fylt inn fra kundekortet");
+    assert(editorEl.innerHTML.indexOf("{ukjent}") > -1, "ukjent variabel {ukjent} IKKE erstattet med feil innhold — forblir synlig");
+    assert(doc.getElementById("reply-subject").value === "Mal-emne til Kari", "malens emne fylles også inn ved valg");
+
+    assert(!!doc.getElementById("reply-sig-company"), "signaturknapp for bedriftssignatur vises (company er satt)");
+    assert(!doc.getElementById("reply-sig-personal"), "ingen knapp for personlig signatur når den er tom");
+
+    var execCalls = [];
+    doc.execCommand = function (cmd, ui, val) { execCalls.push({ cmd: cmd, val: val }); return true; };
+    fire(doc.getElementById("reply-sig-company"), "click");
+    assert(execCalls.length === 1 && execCalls[0].cmd === "insertHTML", "signaturknapp setter inn via insertHTML");
+    assert(execCalls[0].val.indexOf("<script>") === -1 && execCalls[0].val.indexOf("Bedrift AS") > -1, "CRM-signatur saneres (script fjernet) før innsetting: " + execCalls[0].val);
+
+    doc.execCommand = origExecCommand;
+    doc.getElementById("reply-modal-root").remove();
+    window.App.supabase = origSupabase;
+  })();
+
+  // --- Variabelhjelp: Kontakt/Booking-e-postmaler viser kun faktisk støttede variabler ---
+  console.log("\n— Variabelhjelp for e-postmaler —");
+  (function () {
+    window.App.openAdmin();
+    clickAdminTab("leads");
+    var kontaktHint = doc.querySelector('[data-email-tpl="kontakt"]');
+    var kontaktCard = kontaktHint ? kontaktHint.closest(".email-tpl-card") : null;
+    var kontaktHintText = kontaktCard ? kontaktCard.querySelector(".email-tpl-card__hint").textContent : "";
+    ["{navn}", "{epost}", "{dato}", "{melding}", "{referanse}"].forEach(function (v) {
+      assert(kontaktHintText.indexOf(v) > -1, "Kontakt-malhint nevner faktisk støttet variabel " + v);
+    });
+    doc.getElementById("admin-root") && doc.getElementById("admin-root").remove();
+
+    assert(window.App.fillTemplate("Hei {navn}, ukjent: {zzz}", { navn: "Ola" }) === "Hei Ola, ukjent: {zzz}",
+      "fillTemplate lar ukjente plassholdere stå urørt i stedet for å erstatte med feil innhold");
+  })();
+
   // --- Chat: statuspersistens (regresjonstest) ---
   console.log("\n— Chat: statuspersistens —");
   (function () {
