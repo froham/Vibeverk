@@ -34,6 +34,9 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 Samla regresjons- og kvalitetsretting (rollemodell, booking/CRM e-postmalar, bildefelt, chat-polling, kontaktskjema-flagg, personvern-rich-text). Sjå `docs/project/CURRENT_STATE.md` for full status, `docs/architecture/roles-and-tenants.md` for den endelege rollematrisa.
 
+### Console → Modular: fjerna hjelpetekstar (brukarpresisering, etter push)
+- `FEAT_HINTS`-hjelpetekstane lagt til under `crmFull`/`contactForm` i avkryssingsgridet øydela formateringa av boksen (gridet er kolonnebasert med fast minstebreidde, ikkje bygd for lengre setningar). Brukaren presiserte at forklaring uansett ikkje trengst, sidan det er operatøren sjølv som styrer desse flagga. Fjerna `FEAT_HINTS`, `.cs-checkbox-hint`-CSS og `.cs-checkbox-item`-wrapperen; `checkboxGrid()` er attende til den enkle, opphavlege forma. Etikett-endringa `crmFull` → «Native e-post» og `contactForm` → «Kontaktskjema» er UENDRA (kun sjølve hjelpeteksten er fjerna).
+
 ### Supabase CLI — prosjektbunde oppsett
 - Installert `supabase@2.109.0` som lokal dev-avhengnad, køyrbar som `npx supabase`, og oppretta `supabase/config.toml` + CLI-generert `.gitignore` for lokale mellombelse data.
 - Brukaren fullførte nettlesarinnlogginga; lokal prosjektref og skrivebeskytta funksjonslisting stadfesta kopling til produksjonsprosjektet `clzczbyklgdtdhgjphup` (`manage-user` og `send-reply` aktive). Ingen SQL eller Edge Function vart deploya under oppsettet.

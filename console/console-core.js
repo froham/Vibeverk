@@ -105,10 +105,6 @@ window.VwConsole = (function () {
     references:"Referansar", faq:"FAQ", siteSearch:"Søk i toppmeny",
     crm:"Kunder", crmFull:"Native e-post", mediabank:"Mediebank", scrollbanner:"Banner", chat:"Chat"
   };
-  var FEAT_HINTS = {
-    crmFull: "Sender e-post direkte frå Vibeverk via Resend. Krev Kunder/CRM. Gjeld både Web og Workspace. Omfattar ikkje mottak av e-post.",
-    contactForm: "Av: skjult skjema/samtykke/send-knapp. Kontaktinfo (e-post/telefon/adresse) vert framleis vist."
-  };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
     mediaInternal:"Mediebank", links:"Lenker", orgdrift:"Org & drift",
@@ -147,16 +143,13 @@ window.VwConsole = (function () {
     setTimeout(function () { if (el) el.textContent = ""; }, 3500);
   }
 
-  function checkboxGrid(obj, labels, attr, hints) {
+  function checkboxGrid(obj, labels, attr) {
     return '<div class="cs-checkbox-grid">' +
       Object.keys(obj).map(function (k) {
-        return '<div class="cs-checkbox-item">' +
-          '<label class="cs-checkbox-label">' +
-            '<input type="checkbox" data-' + attr + '="' + C.esc(k) + '"' + (obj[k] !== false ? " checked" : "") + '> ' +
-            C.esc(labels[k] || k) +
-          '</label>' +
-          (hints && hints[k] ? '<p class="cs-checkbox-hint">' + C.esc(hints[k]) + '</p>' : '') +
-        '</div>';
+        return '<label class="cs-checkbox-label">' +
+          '<input type="checkbox" data-' + attr + '="' + C.esc(k) + '"' + (obj[k] !== false ? " checked" : "") + '> ' +
+          C.esc(labels[k] || k) +
+        '</label>';
       }).join("") +
     '</div>';
   }
@@ -583,7 +576,7 @@ window.VwConsole = (function () {
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Nettside</legend>' +
-          checkboxGrid(ft, FEAT_LABELS, "cs-feat", FEAT_HINTS) +
+          checkboxGrid(ft, FEAT_LABELS, "cs-feat") +
         '</fieldset>' +
         '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Workspace</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Dashboard, Oppgåver og Innstillingar er alltid på og visast ikkje her.</p>' +
