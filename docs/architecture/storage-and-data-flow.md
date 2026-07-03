@@ -51,7 +51,7 @@ RLS: **no anon access at all** (the actual fix). Admin/editor: full access via `
 
 `module-crm.js`'s data layer reads/writes these tables via a synchronous local cache (`_customers`/`_bedrifter`/`_comms`, populated by `loadCrmData()`), matching `intranet/module-tasks.js`'s established `_tasks`/`loadTasks()` pattern, so the ~60 existing call sites in that module continue to work unchanged. `core.js` (dashboard count, GDPR erasure, search/analytics, CSV export) and `module-chat.js` (CRM customer lookup for a chat visitor) no longer read `store`/`localStorage` directly for this data — they go through a `window.CrmAdmin` accessor API (`getCustomers()`, `getBedrifter()`, `deleteCustomersByEmail()`) that reads the same cache.
 
-Migration for existing production data: `supabase/hotfix_crm_data_migration_2026-07-03.sql`, idempotent, does not delete the old `store` rows (a separate, explicitly-approved cleanup step is included but commented out). As of this writing, neither the new table DDL nor the data migration has been run against production.
+Migration for existing production data: `supabase/hotfix_crm_data_migration_2026-07-03.sql`, idempotent, does not delete the old `store` rows (a separate, explicitly-approved cleanup step is included but commented out). **Both the table DDL and the data migration were run against production and confirmed 2026-07-03** via `npx supabase db query --linked` — row counts verified directly (`crm_bedrifter` 3/3, `crm_comms` 8/8, `crm_customers` 22/23; the one-row gap is a pre-existing duplicate-id collision in the old test data, not a migration bug — confirmed acceptable by the user). Old `store` rows for these three keys have not been deleted yet.
 
 ## superconfig
 
