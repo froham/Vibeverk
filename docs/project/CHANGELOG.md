@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.12.1 — 2026-07-03
+
+### KRITISK produksjonsfeil retta: `authenticated` mangla GRANT på leads/bookings/CRM-tabellane
+- Oppdaga via manuell sluttest same dag: innlogga admin sendte inn Kontakt-skjemaet på nettsida → dukka opp i Web-admin (optimistisk lokal oppdatering), men ALDRI i Workspace, og forsvann frå Web-admin ved refresh.
+- Rotårsak: `leads`/`bookings`/`crm_customers`/`crm_bedrifter`/`crm_comms` (frå 0.10.0/0.11.0/0.12.0) fekk RLS-policiar, men vart ALDRI lagt til `migration.sql` sitt grunnleggande `GRANT SELECT, INSERT, UPDATE, DELETE ... TO authenticated`-steg — det same steget `store`/`tasks`/`announcements`/`kb_articles`/`links` alt har. Utan tabellnivå-GRANT avviser Postgres alle operasjonar frå `authenticated` med «permission denied for table X» FØR RLS i det heile vert evaluert, uansett kor open RLS-policyen er. Stadfesta direkte via `information_schema.role_table_grants`: `authenticated` hadde null rettar på alle fem tabellane.
+- Praktisk konsekvens: sidan `_sb.from("leads").insert(…).then(function(){})` er fire-and-forget utan feilhandtering, feila den ekte INSERT-en stille, mens den optimistiske lokale cache-oppdateringa i `core.js` gjorde det SÅG ut som det virka — heilt til neste `loadLeads()` (t.d. ved refresh) henta ferskt frå Supabase og fann ingenting. Truleg har CRM/leads/bookings vore stille øydelagt for all autentisert lesing/skriving i produksjon sidan kvar tabell sin migrasjon først vart køyrd — uoppdaga fordi ingen levande UI-sluttest vart gjort for CRM (0.10.0) eller leads (0.11.0) tidlegare, berre `pg_tables`/`pg_policies`-sjekkar på skjemanivå. Dette er første gong nokon av dei tre tabellane faktisk vart øvd gjennom den ekte app-UI-en.
+- Retta: la til dei fem tabellane i `migration.sql` sitt GRANT-steg. Ny `supabase/hotfix_missing_table_grants_2026-07-03.sql` (rein GRANT, ingen datarisiko, RLS uendra/ikkje svekt — GRANT er det SQL-standard "kan denne rolla i det heile teke på tabellen"-gjerdet, RLS smalnar vidare inn per-rad/per-kommando oppå, same tolags-mønster som `store`/`tasks` alt brukar).
+- **SQL køyrt mot produksjon og stadfesta 2026-07-03**: `information_schema.role_table_grants` viser no SELECT/INSERT/UPDATE/DELETE for `authenticated` på alle fem tabellane. Stadfesta at `anon` framleis er fullt blokkert (401 på alle fem via direkte REST-kall med anon-nøkkelen) — fiksen påverkar berre `authenticated`.
+- Ingen kodeendring, berre SQL. `VIBEVERK_VERSION` 0.12.0 → 0.12.1 (cache-bust: console-core.js 27 → 28).
+
 ## 0.12.0 — 2026-07-03
 
 ### Bookingar flytta ut av `store` — tredje og siste steg, CRITICAL-funnet no FULLT LØYST

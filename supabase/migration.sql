@@ -767,7 +767,8 @@ CREATE POLICY chat_msg_auth  ON chat_messages      FOR ALL TO authenticated
 -- ── 7. GRANTS ────────────────────────────────────────────────────────────────
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-  store, users, notes, tasks, announcements, kb_articles, links
+  store, users, notes, tasks, announcements, kb_articles, links,
+  leads, bookings, crm_customers, crm_bedrifter, crm_comms
 TO authenticated;
 
 GRANT USAGE, SELECT ON SEQUENCE store_id_seq TO authenticated;
