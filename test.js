@@ -1093,6 +1093,68 @@ const __asyncTests = (async () => {
   assert(!!doc.querySelector("[data-gdpr-form]"), "GDPR-slette-skjema finst i Kontakt-fanen");
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
+  // --- CRM: feltmapping Supabase<->JS (crm_customers/crm_bedrifter/crm_comms) ---
+  // module-crm.js sin _sb (Supabase-klient) vert fanga ÉIN gong ved modul-
+  // oppstart (same mønster som intranet/module-tasks.js), så å setje
+  // window.App.supabase seinare i eit testløp treffer aldri det faktiske
+  // nettverkskallet — App.supabase er uansett ikkje konfigurert i jsdom, og
+  // INGEN modul i kodebasen (heller ikkje tasks) har nokon gong automatisert-
+  // testa det ekte Supabase-kallet. Desse testane verifiserer i staden at
+  // sjølve felt-mappinga (dbXToJs/jsXToDb) er korrekt og round-trip-trygg —
+  // akkurat den typen feil (t.d. id/created som ved eit uhell dukka opp
+  // dobbelt, både som ekte kolonne OG inni `data` jsonb) som elles ville
+  // feila stille i produksjon utan å nokon gong synast i eit testløp.
+  console.log("\n— CRM: feltmapping Supabase<->JS —");
+  (function () {
+    var T = window.CrmAdmin._test;
+    assert(!!T, "CrmAdmin._test er eksponert for feltmapping-testing");
+
+    // --- crm_customers ---
+    var dbCust = { id: "cust-1", email: "a@b.no", alt_emails: ["c@d.no"], name: "Ada", phone: "123", address: "Gate 1", note: "Notat", customer_number: "123456", bedrift_id: "bed-1", created_at: "2026-07-03T10:00:00.000Z" };
+    var jsCust = T.dbCustomerToJs(dbCust);
+    assert(jsCust.altEmails[0] === "c@d.no" && jsCust.customerNumber === "123456" && jsCust.bedriftId === "bed-1" && jsCust.created === dbCust.created_at,
+      "dbCustomerToJs() mappar snake_case til camelCase korrekt");
+    var backToDb = T.jsCustomerToDb(jsCust);
+    assert(backToDb.alt_emails[0] === "c@d.no" && backToDb.customer_number === "123456" && backToDb.bedrift_id === "bed-1",
+      "jsCustomerToDb() mappar camelCase attende til snake_case korrekt (round-trip)");
+
+    // --- crm_bedrifter ---
+    var dbBed = { id: "bed-1", name: "Firma AS", customer_number: "654321", org_nr: "999", website: "firma.no", phone: "1", address: "A", invoice_email: "f@f.no", invoice_address: "B", note: "N", created_at: "2026-07-03T10:00:00.000Z" };
+    var jsBed = T.dbBedriftToJs(dbBed);
+    assert(jsBed.orgNr === "999" && jsBed.invoiceEmail === "f@f.no" && jsBed.invoiceAddress === "B" && jsBed.customerNumber === "654321",
+      "dbBedriftToJs() mappar snake_case til camelCase korrekt");
+    var bedBackToDb = T.jsBedriftToDb(jsBed);
+    assert(bedBackToDb.org_nr === "999" && bedBackToDb.invoice_email === "f@f.no" && bedBackToDb.invoice_address === "B",
+      "jsBedriftToDb() mappar camelCase attende til snake_case korrekt (round-trip)");
+
+    // --- crm_comms: polymorf, type-spesifikke felt i `data` jsonb ---
+    // phone_note har heilt andre felt enn email_sent — testar begge for å
+    // stadfeste at `data`-splittinga er generisk, ikkje hardkoda per type.
+    var phoneNoteItem = { id: "cm-1", customerId: "cust-1", type: "phone_note", title: "Telefonsamtale", created: "2026-07-03T10:00:00.000Z",
+      callDate: "2026-07-03", callTime: "10:00", duration: "5", contact: "Ada", note: "Ringte om tilbud", noteHtml: "<p>Ringte om tilbud</p>", followup: "", followupHtml: "" };
+    var phoneNoteDb = T.jsCommToDb(phoneNoteItem);
+    assert(phoneNoteDb.customer_id === "cust-1" && phoneNoteDb.type === "phone_note" && phoneNoteDb.title === "Telefonsamtale",
+      "jsCommToDb() mappar dei kjende felta (customerId/type/title) til ekte kolonnar");
+    assert(phoneNoteDb.data.callDate === "2026-07-03" && phoneNoteDb.data.contact === "Ada" && phoneNoteDb.data.noteHtml === "<p>Ringte om tilbud</p>",
+      "jsCommToDb() legg dei type-spesifikke felta (callDate/contact/noteHtml osv.) i `data` jsonb");
+    assert(phoneNoteDb.data.id === undefined && phoneNoteDb.data.created === undefined && phoneNoteDb.data.customerId === undefined && phoneNoteDb.data.type === undefined && phoneNoteDb.data.title === undefined,
+      "jsCommToDb() dupliserer IKKJE id/created/customerId/type/title inni `data` (fanga feil frå første forsøk)");
+
+    var emailItem = { id: "cm-2", customerId: "cust-1", type: "email_sent", title: "E-post sendt", created: "2026-07-03T11:00:00.000Z",
+      subject: "Angående tilbud", body: "Hei Ada, her er tilbudet.", to: "a@b.no", threadId: "th-1" };
+    var emailDb = T.jsCommToDb(emailItem);
+    assert(emailDb.data.subject === "Angående tilbud" && emailDb.data.to === "a@b.no" && emailDb.data.threadId === "th-1",
+      "jsCommToDb() handsamar email_sent sine felt (subject/to/threadId) same generiske veg");
+
+    // dbCommToJs(): DB-rad → flat JS-objekt att, type-spesifikke felt frå
+    // `data` skal dukke opp som vanlege topp-nivå-felt (ikkje nøsta).
+    var phoneNoteRow = { id: "cm-1", customer_id: "cust-1", type: "phone_note", title: "Telefonsamtale", created_at: "2026-07-03T10:00:00.000Z", data: phoneNoteDb.data };
+    var phoneNoteJs = T.dbCommToJs(phoneNoteRow);
+    assert(phoneNoteJs.customerId === "cust-1" && phoneNoteJs.created === "2026-07-03T10:00:00.000Z", "dbCommToJs() mappar customer_id/created_at til camelCase");
+    assert(phoneNoteJs.callDate === "2026-07-03" && phoneNoteJs.contact === "Ada" && phoneNoteJs.noteHtml === "<p>Ringte om tilbud</p>",
+      "dbCommToJs() flatar ut `data` jsonb-felta til vanlege topp-nivå-felt att (round-trip frå jsCommToDb)");
+  })();
+
   // --- Status-system (Ny/Lest/Løst) ---
   console.log("\n— Status-system (Ny/Lest/Løst) —");
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));

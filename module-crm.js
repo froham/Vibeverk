@@ -25,10 +25,15 @@
   /* =========================================================================
      NØKLAR + TILSTAND
      ====================================================================== */
-  var CUST_KEY     = "crm-customers";
-  var BEDRIFT_KEY  = "crm-bedrifter";
-  var COMMS_KEY    = "crm-comms";
-  var SETTINGS_KEY = "crm-settings";
+  var CUST_KEY     = "crm-customers"; // FØR 2026-07-03: no berre brukt som localStorage-fallback-nøkkel når Supabase ikkje er konfigurert, og som éin-gongs migreringskjelde. Ekte data ligg i crm_customers-tabellen.
+  var BEDRIFT_KEY  = "crm-bedrifter"; // same som over, for crm_bedrifter
+  var COMMS_KEY    = "crm-comms";     // same som over, for crm_comms
+  var SETTINGS_KEY = "crm-settings";  // uendra — malar/snippets/signaturar, ingen PII, vert verande i store
+
+  var _sb = App.supabase;
+  var _customers = [];
+  var _bedrifter = [];
+  var _comms     = [];
 
   var crmSubView = "kontaktar"; // "kontaktar" | "bedrifter"
   var _pendingCrmOpen = null; // sett frå chat-modul via window.CrmAdmin
@@ -49,6 +54,35 @@
       var customer = getCustomers().find(function (c) { return (c.email || "").toLowerCase() === email; });
       if (!customer) return;
       addComm({ customerId: customer.id, type: "email_sent", title: opts.subject || "E-post sendt", subject: opts.subject || "", body: (opts.plain || "").slice(0, 200), to: opts.email });
+    },
+    // Synkrone lesarar av den lokale cachen (fylt av loadCrmData(), kalla
+    // proaktivt ved modul-oppstart under, ikkje berre når Kunder-fana opnast)
+    // — brukt av core.js sitt dashboard, GDPR-sletting, søk/analyse og CSV-
+    // eksport, som elles las crm-customers/crm-bedrifter direkte frå store,
+    // og difor ville fått frose/forelda data etter at desse nøklane vart
+    // flytta ut av store 2026-07-03.
+    getCustomers: function () { return getCustomers(); },
+    getBedrifter: function () { return getBedrifter(); },
+    // Brukt av core.js sin GDPR-sletting ("slett alt for e-post"). Returnerer
+    // talet på sletta kundar (same kontrakt som den gamle Store.get/set-baserte
+    // koden i core.js hadde, som rekna differansen sjølv).
+    deleteCustomersByEmail: function (email) {
+      var e = (email || "").toLowerCase();
+      var matches = getCustomers().filter(function (c) { return (c.email || "").toLowerCase() === e; });
+      matches.forEach(function (c) { deleteCustomer(c.id); });
+      return matches.length;
+    },
+    // Eksponerer dei reine JS<->DB-feltmappingsfunksjonane for testing (sjå
+    // test.js "CRM: feltmapping Supabase<->JS"). Desse vert ALDRI kalla via
+    // ekte nettverkskall i testmiljøet (App.supabase er ikkje konfigurert i
+    // jsdom, og _sb vert uansett berre fanga éin gong ved modul-oppstart —
+    // sjå kommentaren over loadCrmData()) — testane over verifiserer difor
+    // berre at mappinga sjølv er korrekt og round-trip-trygg, ikkje at det
+    // faktiske nettverkskallet fungerer.
+    _test: {
+      dbCustomerToJs: dbCustomerToJs, jsCustomerToDb: jsCustomerToDb,
+      dbBedriftToJs:  dbBedriftToJs,  jsBedriftToDb:  jsBedriftToDb,
+      dbCommToJs:     dbCommToJs,     jsCommToDb:     jsCommToDb
     }
   };
 
@@ -75,77 +109,166 @@
   function deleteSnippet(id) { var s=getCrmSettings(); saveCrmSettings(Object.assign(s,{snippets:(s.snippets||[]).filter(function(x){return x.id!==id;})})); }
 
   /* =========================================================================
+     DATALAG — crm_bedrifter/crm_customers/crm_comms i Supabase, med
+     localStorage-fallback (CUST_KEY/BEDRIFT_KEY/COMMS_KEY) når Supabase ikkje
+     er konfigurert. _customers/_bedrifter/_comms er synkrone lokale cache-
+     array fylt éin gong av loadCrmData() ved oppstart — same mønster som
+     _tasks i intranet/module-tasks.js. getX()-funksjonane under les berre frå
+     cachen og gjer ALDRI eit nettverkskall sjølv, så all eksisterande
+     rendering-kode som kallar getCustomers()/getBedrifter()/getComms()
+     synkront held fram uendra. Flytta ut av store 2026-07-03 (retta CRITICAL-
+     funnet om ubetinga anon-SELECT på heile store-tabellen).
+     ====================================================================== */
+  function dbCustomerToJs(row) {
+    return { id: row.id, email: row.email || "", altEmails: row.alt_emails || [], name: row.name || "",
+      phone: row.phone || "", address: row.address || "", note: row.note || "",
+      created: row.created_at, customerNumber: row.customer_number, bedriftId: row.bedrift_id };
+  }
+  function jsCustomerToDb(c) {
+    return { email: c.email || "", alt_emails: c.altEmails || [], name: c.name || "", phone: c.phone || "",
+      address: c.address || "", note: c.note || "", customer_number: c.customerNumber || null,
+      bedrift_id: c.bedriftId || null };
+  }
+  function dbBedriftToJs(row) {
+    return { id: row.id, name: row.name || "", customerNumber: row.customer_number, orgNr: row.org_nr || "",
+      website: row.website || "", phone: row.phone || "", address: row.address || "",
+      invoiceEmail: row.invoice_email || "", invoiceAddress: row.invoice_address || "", note: row.note || "",
+      created: row.created_at };
+  }
+  function jsBedriftToDb(b) {
+    return { name: b.name || "", customer_number: b.customerNumber || null, org_nr: b.orgNr || "",
+      website: b.website || "", phone: b.phone || "", address: b.address || "",
+      invoice_email: b.invoiceEmail || "", invoice_address: b.invoiceAddress || "", note: b.note || "" };
+  }
+  // crm_comms er polymorf (sjå migration.sql) — kjende kolonnar (customerId/
+  // type/title) er ekte felt, resten (subject/body/to/threadId/callDate/...)
+  // ligg samla i `data` jsonb. Framtidige nye comm-typar/felt treng ingen
+  // endring her, dei hamnar automatisk i `data`.
+  function dbCommToJs(row) {
+    return Object.assign({ id: row.id, customerId: row.customer_id, type: row.type, title: row.title,
+      created: row.created_at }, row.data || {});
+  }
+  function jsCommToDb(data) {
+    // id/created er handsama separat (som id/created_at-kolonnar) av kallaren
+    // (addComm/updateComm) — må ekskluderast her óg, elles hamnar dei
+    // DUPLISERT inni `data` jsonb-en i tillegg til dei ekte kolonnane.
+    var known = { id: 1, created: 1, customerId: 1, type: 1, title: 1 };
+    var extra = {};
+    Object.keys(data).forEach(function (k) { if (!known[k]) extra[k] = data[k]; });
+    return { customer_id: data.customerId, type: data.type, title: data.title || null, data: extra };
+  }
+
+  function loadCrmData(cb) {
+    if (!_sb) {
+      _bedrifter = App.store.get(BEDRIFT_KEY, []) || [];
+      _customers = App.store.get(CUST_KEY, []) || [];
+      _comms     = App.store.get(COMMS_KEY, []) || [];
+      cb && cb();
+      return;
+    }
+    var pending = 3;
+    function done() { if (--pending === 0) cb && cb(); }
+    _sb.from("crm_bedrifter").select("*").then(function (r) { _bedrifter = (r.data || []).map(dbBedriftToJs); done(); });
+    _sb.from("crm_customers").select("*").then(function (r) { _customers = (r.data || []).map(dbCustomerToJs); done(); });
+    _sb.from("crm_comms").select("*").order("created_at", { ascending: false }).then(function (r) { _comms = (r.data || []).map(dbCommToJs); done(); });
+  }
+
+  /* =========================================================================
      KUNDAR
      ====================================================================== */
-  function getCustomers() { return App.store.get(CUST_KEY, []) || []; }
-  function setCustomers(v) { App.store.set(CUST_KEY, v); }
-  function customerEmails(c) { return [c.email].concat(c.altEmails || []).filter(Boolean); }
+  function getCustomers() { return _customers; }
 
-  function mergeCustomers(ids) {
-    var list = getCustomers();
-    var toMerge = list.filter(function (c) { return ids.indexOf(c.id) > -1; });
-    if (toMerge.length < 2) return;
-    toMerge.sort(function (a, b) { return (a.created||"").localeCompare(b.created||""); });
-    var primary = toMerge[0], allEmails = [];
-    toMerge.forEach(function (c) {
-      customerEmails(c).forEach(function (e) { if (allEmails.indexOf(e) === -1) allEmails.push(e); });
-    });
-    primary.email = allEmails[0]; primary.altEmails = allEmails.slice(1);
-    primary.note = toMerge.map(function (c) { return (c.note||"").trim(); }).filter(Boolean).join(" / ");
-    if (!primary.name) { var wn = toMerge.find(function (c) { return c.name; }); if (wn) primary.name = wn.name; }
-    if (!primary.bedriftId) { var wb = toMerge.find(function (c) { return c.bedriftId; }); if (wb) primary.bedriftId = wb.bedriftId; }
-    setCustomers(list.filter(function (c) { return ids.indexOf(c.id) === -1 || c.id === primary.id; }));
+  // Synkron retur + fire-and-forget Supabase-skriving i bakgrunnen — same
+  // filosofi som App.store.set() (write-through, ikkje ventа på), berre for
+  // eit einskild rad i staden for ein heil JSON-blob. Klienten genererer IDen
+  // (text, ikkje uuid — sjå migration.sql), så me treng ikkje ein tur-retur
+  // for å få ho, og all eksisterande synkron kallar-kode (t.d.
+  // findOrCreateBedrift() sin bruk av det tilsvarande bedrift-mønsteret)
+  // held fram uendra.
+  function createCustomer(data) {
+    var c = Object.assign({ id: "cust-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), created: new Date().toISOString() }, data);
+    _customers.unshift(c);
+    if (_sb) _sb.from("crm_customers").insert(Object.assign(jsCustomerToDb(c), { id: c.id, created_at: c.created })).then(function () {});
+    else App.store.set(CUST_KEY, _customers);
+    return c;
   }
+  function updateCustomer(id, patch) {
+    var idx = _customers.findIndex(function (c) { return c.id === id; });
+    if (idx >= 0) Object.assign(_customers[idx], patch);
+    if (_sb) _sb.from("crm_customers").update(jsCustomerToDb(idx >= 0 ? _customers[idx] : patch)).eq("id", id).then(function () {});
+    else App.store.set(CUST_KEY, _customers);
+  }
+  function deleteCustomer(id) {
+    _customers = _customers.filter(function (c) { return c.id !== id; });
+    if (_sb) _sb.from("crm_customers").delete().eq("id", id).then(function () {});
+    else App.store.set(CUST_KEY, _customers);
+  }
+  function customerEmails(c) { return [c.email].concat(c.altEmails || []).filter(Boolean); }
 
   /* =========================================================================
      BEDRIFTER
      ====================================================================== */
-  function getBedrifter() { return App.store.get(BEDRIFT_KEY, []) || []; }
-  function setBedrifter(v) { App.store.set(BEDRIFT_KEY, v); }
+  function getBedrifter() { return _bedrifter; }
   function bedriftFor(c) {
     if (!c || !c.bedriftId) return null;
-    return getBedrifter().find(function (b) { return b.id === c.bedriftId; }) || null;
+    return _bedrifter.find(function (b) { return b.id === c.bedriftId; }) || null;
   }
   function contactsFor(bedriftId) {
-    return getCustomers().filter(function (c) { return c.bedriftId === bedriftId; });
+    return _customers.filter(function (c) { return c.bedriftId === bedriftId; });
+  }
+  function createBedrift(data) {
+    var b = Object.assign({ id: "bed-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), created: new Date().toISOString() }, data);
+    _bedrifter.push(b);
+    if (_sb) _sb.from("crm_bedrifter").insert(Object.assign(jsBedriftToDb(b), { id: b.id, created_at: b.created })).then(function () {});
+    else App.store.set(BEDRIFT_KEY, _bedrifter);
+    return b;
+  }
+  function updateBedrift(id, patch) {
+    var idx = _bedrifter.findIndex(function (b) { return b.id === id; });
+    if (idx >= 0) Object.assign(_bedrifter[idx], patch);
+    if (_sb) _sb.from("crm_bedrifter").update(jsBedriftToDb(idx >= 0 ? _bedrifter[idx] : patch)).eq("id", id).then(function () {});
+    else App.store.set(BEDRIFT_KEY, _bedrifter);
+  }
+  function deleteBedrift(id) {
+    _bedrifter = _bedrifter.filter(function (b) { return b.id !== id; });
+    if (_sb) _sb.from("crm_bedrifter").delete().eq("id", id).then(function () {});
+    else App.store.set(BEDRIFT_KEY, _bedrifter);
   }
   function findOrCreateBedrift(name, extra) {
     var n = (name||"").trim(); if (!n) return null;
-    var list = getBedrifter();
-    var ex = list.find(function (b) { return b.name.toLowerCase() === n.toLowerCase(); });
-    if (ex) { if (extra) { Object.assign(ex, extra); setBedrifter(list); } return ex; }
-    var nums = list.map(function (b) { return b.customerNumber; }).filter(Boolean);
-    var fresh = Object.assign({
-      id: "bed-"+Date.now()+"-"+Math.random().toString(36).slice(2,6),
-      name: n, customerNumber: App.generateUniqueNumber(nums),
-      created: new Date().toISOString(),
+    var ex = _bedrifter.find(function (b) { return b.name.toLowerCase() === n.toLowerCase(); });
+    if (ex) { if (extra) updateBedrift(ex.id, extra); return ex; }
+    var nums = _bedrifter.map(function (b) { return b.customerNumber; }).filter(Boolean);
+    return createBedrift(Object.assign({
+      customerNumber: App.generateUniqueNumber(nums),
       orgNr:"", website:"", phone:"", address:"",
-      invoiceEmail:"", invoiceAddress:"", note:""
-    }, extra||{});
-    list.push(fresh); setBedrifter(list); return fresh;
+      invoiceEmail:"", invoiceAddress:"", note:"", name: n
+    }, extra||{}, { name: n }));
   }
-  function updateBedrift(id, patch) {
-    var list = getBedrifter(), idx = list.findIndex(function (b) { return b.id === id; });
-    if (idx >= 0) { Object.assign(list[idx], patch); setBedrifter(list); }
-  }
-  function deleteBedrift(id) { setBedrifter(getBedrifter().filter(function (b) { return b.id !== id; })); }
 
   /* =========================================================================
      KOMMUNIKASJON
      ====================================================================== */
-  function getComms() { return App.store.get(COMMS_KEY, []) || []; }
-  function setComms(v) { App.store.set(COMMS_KEY, v); }
-  function getCommsFor(cid) { return getComms().filter(function (c) { return c.customerId === cid; }); }
+  function getComms() { return _comms; }
+  function getCommsFor(cid) { return _comms.filter(function (c) { return c.customerId === cid; }); }
   function addComm(data) {
-    var list = getComms();
     var item = Object.assign({ id:"cm-"+Date.now()+"-"+Math.random().toString(36).slice(2,5),
       created: new Date().toISOString() }, data);
-    list.unshift(item); setComms(list); return item;
+    _comms.unshift(item);
+    if (_sb) _sb.from("crm_comms").insert(Object.assign(jsCommToDb(item), { id: item.id, created_at: item.created })).then(function () {});
+    else App.store.set(COMMS_KEY, _comms);
+    return item;
   }
-  function deleteComm(id) { setComms(getComms().filter(function (c) { return c.id !== id; })); }
+  function deleteComm(id) {
+    _comms = _comms.filter(function (c) { return c.id !== id; });
+    if (_sb) _sb.from("crm_comms").delete().eq("id", id).then(function () {});
+    else App.store.set(COMMS_KEY, _comms);
+  }
   function updateComm(id, patch) {
-    var list = getComms(), idx = list.findIndex(function (c) { return c.id === id; });
-    if (idx >= 0) { list[idx] = Object.assign({}, list[idx], patch); setComms(list); }
+    var idx = _comms.findIndex(function (c) { return c.id === id; });
+    if (idx >= 0) _comms[idx] = Object.assign({}, _comms[idx], patch);
+    if (_sb) _sb.from("crm_comms").update(jsCommToDb(idx >= 0 ? _comms[idx] : patch)).eq("id", id).then(function () {});
+    else App.store.set(COMMS_KEY, _comms);
   }
   function newThreadId() { return "th-"+Date.now()+"-"+Math.random().toString(36).slice(2,5); }
 
@@ -233,22 +356,20 @@
   function autoImport() {
     var leads    = App.getLeads ? App.getLeads() : [];
     var bookings = App.store.get("booking-bookings",[]) || [];
-    var list     = getCustomers(); var changed = false;
     function upsert(email, name, bedInfo) {
       if (!email) return;
       var e   = email.toLowerCase();
       var bed = bedInfo ? findOrCreateBedrift(bedInfo.name, bedInfo) : null;
-      var ex  = list.find(function (c) { return customerEmails(c).some(function (x) { return x.toLowerCase()===e; }); });
+      var ex  = _customers.find(function (c) { return customerEmails(c).some(function (x) { return x.toLowerCase()===e; }); });
       if (!ex) {
-        var nums = list.map(function (c) { return c.customerNumber; }).filter(Boolean);
-        list.unshift({ id:"cust-"+Date.now()+"-"+Math.random().toString(36).slice(2,6),
-          email:email, altEmails:[], name:name||"", phone:"", address:"", note:"",
-          created:new Date().toISOString(), customerNumber:App.generateUniqueNumber(nums),
-          bedriftId: bed ? bed.id : null });
-        changed = true;
+        var nums = _customers.map(function (c) { return c.customerNumber; }).filter(Boolean);
+        createCustomer({ email:email, altEmails:[], name:name||"", phone:"", address:"", note:"",
+          customerNumber:App.generateUniqueNumber(nums), bedriftId: bed ? bed.id : null });
       } else {
-        if (name&&!ex.name)             { ex.name=name;           changed=true; }
-        if (bed&&!ex.bedriftId)         { ex.bedriftId=bed.id;    changed=true; }
+        var patch = {};
+        if (name && !ex.name)     patch.name = name;
+        if (bed  && !ex.bedriftId) patch.bedriftId = bed.id;
+        if (Object.keys(patch).length) updateCustomer(ex.id, patch);
       }
     }
     leads.forEach(function (l) {
@@ -259,7 +380,6 @@
       upsert(l.email, nm ? nm[1].trim() : l.name, bedInfo);
     });
     bookings.forEach(function (b) { if (b.email) upsert(b.email, b.name, null); });
-    if (changed) setCustomers(list);
   }
 
   /* =========================================================================
@@ -313,10 +433,10 @@
     if (App.getLeads) App.store.set("leads",(App.getLeads()||[]).filter(function(l){return es.indexOf((l.email||"").toLowerCase())===-1;}));
     var bk = App.store.get("booking-bookings",[])||[];
     App.store.set("booking-bookings",bk.filter(function(b){return es.indexOf((b.email||"").toLowerCase())===-1;}));
-    setComms(getComms().filter(function(c){
-      var cu=getCustomers().find(function(x){return x.id===c.customerId;}); if(!cu) return true;
-      return !customerEmails(cu).some(function(e){return es.indexOf(e.toLowerCase())>-1;});
-    }));
+    _comms.filter(function(c){
+      var cu=_customers.find(function(x){return x.id===c.customerId;}); if(!cu) return false;
+      return customerEmails(cu).some(function(e){return es.indexOf(e.toLowerCase())>-1;});
+    }).forEach(function(c){ deleteComm(c.id); });
     if (window.VwChat&&window.VwChat.deleteConv&&window.VwChat.getConvs)
       window.VwChat.getConvs().filter(function(cv){return es.indexOf((cv.email||"").toLowerCase())>-1;}).forEach(function(cv){window.VwChat.deleteConv(cv.id);});
   }
@@ -484,7 +604,7 @@
         e.stopPropagation();
         var id=btn.getAttribute("data-crm-del"), c=getCustomers().find(function(x){return x.id===id;});
         if (!c||!confirm("Slett ALL data for "+c.email+"?")) return;
-        deleteAllForEmail(customerEmails(c)); setCustomers(getCustomers().filter(function(x){return x.id!==id;}));
+        deleteAllForEmail(customerEmails(c)); deleteCustomer(id);
         renderAdmin(body);
       });
     });
@@ -540,7 +660,7 @@
         e.stopPropagation();
         var id=btn.getAttribute("data-bed-del"), b=getBedrifter().find(function(x){return x.id===id;});
         if (!b||!confirm("Slett bedriften «"+b.name+"»? Kontakter blir ikke slettet, bare frakoblet.")) return;
-        var cu=getCustomers(); cu.forEach(function(c){if(c.bedriftId===id)c.bedriftId=null;}); setCustomers(cu);
+        getCustomers().filter(function(c){return c.bedriftId===id;}).forEach(function(c){updateCustomer(c.id,{bedriftId:null});});
         deleteBedrift(id); renderAdmin(body);
       });
     });
@@ -681,8 +801,8 @@
           var bedInput=dl.querySelector("#dlg-nc-bedrift").value.trim();
           var bed=bedInput?findOrCreateBedrift(bedInput):(preBed||null);
           var nums=list.map(function(c){return c.customerNumber;}).filter(Boolean);
-          list.unshift({id:"cust-"+Date.now()+"-"+Math.random().toString(36).slice(2,6),email:email,altEmails:[],name:dl.querySelector("#dlg-nc-name").value.trim(),phone:dl.querySelector("#dlg-nc-phone").value.trim(),address:"",note:dl.querySelector("#dlg-nc-note").value.trim(),created:new Date().toISOString(),customerNumber:App.generateUniqueNumber(nums),bedriftId:bed?bed.id:null});
-          setCustomers(list); dl.close(); dl.remove(); renderAdmin(body);
+          createCustomer({email:email,altEmails:[],name:dl.querySelector("#dlg-nc-name").value.trim(),phone:dl.querySelector("#dlg-nc-phone").value.trim(),address:"",note:dl.querySelector("#dlg-nc-note").value.trim(),customerNumber:App.generateUniqueNumber(nums),bedriftId:bed?bed.id:null});
+          dl.close(); dl.remove(); renderAdmin(body);
         });
       }
     });
@@ -787,15 +907,14 @@
       e.preventDefault();
       var idx=customers.findIndex(function(x){return x.id===id;}); if(idx<0) return;
       var bi=body.querySelector("#ce-bedrift").value.trim();
-      customers[idx]=Object.assign({},customers[idx],{name:body.querySelector("#ce-name").value.trim(),email:body.querySelector("#ce-email").value.trim(),phone:body.querySelector("#ce-phone").value.trim(),address:body.querySelector("#ce-address").value.trim(),note:body.querySelector("#ce-note").value.trim(),bedriftId:bi?findOrCreateBedrift(bi).id:null});
-      setCustomers(customers);
+      updateCustomer(id,{name:body.querySelector("#ce-name").value.trim(),email:body.querySelector("#ce-email").value.trim(),phone:body.querySelector("#ce-phone").value.trim(),address:body.querySelector("#ce-address").value.trim(),note:body.querySelector("#ce-note").value.trim(),bedriftId:bi?findOrCreateBedrift(bi).id:null});
       var st=body.querySelector("[data-ce-status]"); st.textContent="Lagret."; st.className="form__status is-ok";
       setTimeout(function(){if(st)st.textContent="";refresh();},800);
     });
     var delBtn=body.querySelector("[data-crm-del-cust]");
     if (delBtn) delBtn.addEventListener("click",function(){
       if (!confirm("Slett ALL data for "+c.email+"?")) return;
-      deleteAllForEmail(customerEmails(c)); setCustomers(getCustomers().filter(function(x){return x.id!==id;}));
+      deleteAllForEmail(customerEmails(c)); deleteCustomer(id);
       if (opts.fromBedrift) renderBedrift(body,opts.fromBedrift); else renderAdmin(body);
     });
     function qa(attr,fn){var b=body.querySelector("[data-qa='"+attr+"']");if(b)b.addEventListener("click",fn);}
@@ -919,28 +1038,55 @@
         dl.querySelector("#dlg-merge-ok").addEventListener("click",function(){
           var sel=dl.querySelector("input[name='merge-primary']:checked");
           if (!sel) return;
-          doMerge(toMerge,sel.value);
-          closeDlg(); renderAdmin(body);
+          doMerge(toMerge,sel.value,function(){ closeDlg(); renderAdmin(body); });
         });
       }
     });
   }
 
-  function doMerge(toMerge, primaryId) {
-    var list=getCustomers(), primary=list.find(function(c){return c.id===primaryId;}); if(!primary) return;
-    var allEmails=[], allNotes=[], bedriftId=primary.bedriftId;
-    toMerge.forEach(function(c){
-      customerEmails(c).forEach(function(e){if(allEmails.indexOf(e)===-1)allEmails.push(e);});
-      if(c.note&&c.note.trim()) allNotes.push(c.note.trim());
-      if(!bedriftId&&c.bedriftId) bedriftId=c.bedriftId;
+  // cb() kalt når sammenslåinga er ferdig lagra. Bruker atomisk RPC server-side
+  // (merge_crm_customers() i migration.sql, med brukarvald primærkunde) når
+  // Supabase er konfigurert — eit fleir-steg klient-orkestrert merge (N-1
+  // delete + 1 update) kunne elles skilje dupliserte/foreldrelause rader att
+  // viss nettverket feila midtvegs. RPC-en flyttar òg kommunikasjonshistorikken
+  // (crm_comms) til den overlevande kunden FØR sletting av dei andre — den
+  // gamle store-baserte versjonen av denne funksjonen gjorde ALDRI dette
+  // (historikken vart verande i comms-arrayen, men ikkje lenger nåbar, sidan
+  // ingen kunde-rad lenger peika på ho). Med ekte FOREIGN KEY + ON DELETE
+  // CASCADE ville same åtferd blitt reell datatap i staden for berre
+  // uoppdageleg data.
+  function doMerge(toMerge, primaryId, cb) {
+    var ids = toMerge.map(function (c) { return c.id; });
+    if (!_sb) {
+      var list=getCustomers(), primary=list.find(function(c){return c.id===primaryId;}); if(!primary) { cb && cb(); return; }
+      var allEmails=[], allNotes=[], bedriftId=primary.bedriftId;
+      toMerge.forEach(function(c){
+        customerEmails(c).forEach(function(e){if(allEmails.indexOf(e)===-1)allEmails.push(e);});
+        if(c.note&&c.note.trim()) allNotes.push(c.note.trim());
+        if(!bedriftId&&c.bedriftId) bedriftId=c.bedriftId;
+      });
+      var primEmail=primary.email;
+      allEmails=[primEmail].concat(allEmails.filter(function(e){return e!==primEmail;}));
+      primary.email=allEmails[0]; primary.altEmails=allEmails.slice(1);
+      primary.note=allNotes.join(" / "); primary.bedriftId=bedriftId;
+      if (!primary.name) { var wn=toMerge.find(function(c){return c.id!==primaryId&&c.name;}); if(wn) primary.name=wn.name; }
+      var drop=ids.filter(function(id){return id!==primaryId;});
+      _customers = list.filter(function(c){return drop.indexOf(c.id)===-1;});
+      App.store.set(CUST_KEY, _customers);
+      cb && cb();
+      return;
+    }
+    _sb.rpc("merge_crm_customers", { p_ids: ids, p_primary_id: primaryId }).then(function (r) {
+      if (r.error || !r.data) { cb && cb(); return; }
+      var merged = dbCustomerToJs(r.data);
+      _customers = _customers.filter(function (c) { return ids.indexOf(c.id) === -1 || c.id === merged.id; });
+      var idx = _customers.findIndex(function (c) { return c.id === merged.id; });
+      if (idx >= 0) _customers[idx] = merged;
+      // Historikken vart flytta server-side (sjå RPC) — oppdater lokal cache
+      // sin customerId-referanse for dei sammenslegne kundane sine comms.
+      _comms.forEach(function (c) { if (ids.indexOf(c.customerId) > -1) c.customerId = merged.id; });
+      cb && cb();
     });
-    var primEmail=primary.email;
-    allEmails=[primEmail].concat(allEmails.filter(function(e){return e!==primEmail;}));
-    primary.email=allEmails[0]; primary.altEmails=allEmails.slice(1);
-    primary.note=allNotes.join(" / "); primary.bedriftId=bedriftId;
-    if (!primary.name) { var wn=toMerge.find(function(c){return c.id!==primaryId&&c.name;}); if(wn) primary.name=wn.name; }
-    var drop=toMerge.map(function(c){return c.id;}).filter(function(id){return id!==primaryId;});
-    setCustomers(list.filter(function(c){return drop.indexOf(c.id)===-1;}));
   }
 
   /* =========================================================================
@@ -1256,11 +1402,13 @@
       render:function(){return'<div data-crm-root></div>';},
       mount:function(body){
         var root = body.querySelector("[data-crm-root]") || body;
-        renderAdmin(root);
-        if (_pendingCrmOpen) {
-          var pid = _pendingCrmOpen; _pendingCrmOpen = null;
-          renderCustomer(root, pid);
-        }
+        loadCrmData(function () {
+          renderAdmin(root);
+          if (_pendingCrmOpen) {
+            var pid = _pendingCrmOpen; _pendingCrmOpen = null;
+            renderCustomer(root, pid);
+          }
+        });
       }
     }
   });
@@ -1285,15 +1433,24 @@
       render: function () { return '<div data-crm-root></div>'; },
       mount:  function (outlet, ctx, sub) {
         var root = outlet.querySelector("[data-crm-root]") || outlet;
-        renderAdmin(root);
-        if (_pendingCrmOpen) {
-          var pid = _pendingCrmOpen; _pendingCrmOpen = null;
-          renderCustomer(root, pid);
-        } else if (sub) {
-          renderCustomer(root, sub);
-        }
+        loadCrmData(function () {
+          renderAdmin(root);
+          if (_pendingCrmOpen) {
+            var pid = _pendingCrmOpen; _pendingCrmOpen = null;
+            renderCustomer(root, pid);
+          } else if (sub) {
+            renderCustomer(root, sub);
+          }
+        });
       }
     });
   }
+
+  // Lastar CRM-cachen proaktivt ved modul-oppstart — ikkje berre når Kunder-
+  // fana faktisk opnast (mount() over gjer det òg, men no-oper viss cachen
+  // alt er fylt). Naudsynt sidan core.js sitt dashboard/GDPR-sletting/søk/
+  // CSV-eksport (via window.CrmAdmin over) kan trengast før nokon nokon gong
+  // opnar Kunder-fana i det heile.
+  loadCrmData(function () {});
 
 })();

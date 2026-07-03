@@ -350,6 +350,21 @@ window.App = (function () {
 
   // Leads (innsendte kontaktskjema)
   function getLeads() { return Store.get("leads", []) || []; }
+
+  // crm-customers/crm-bedrifter flytta ut av store til eigne tabellar
+  // (crm_customers/crm_bedrifter) 2026-07-03 — module-crm.js si lokale cache
+  // (fylt proaktivt ved modul-oppstart) er no den einaste sanninga, eksponert
+  // via window.CrmAdmin. Store.get("crm-customers"/"crm-bedrifter") er berre
+  // ein historisk/forelda blob som ikkje lenger vert oppdatert når Supabase
+  // er konfigurert — desse hjelparane brukar CrmAdmin når han finst, og fell
+  // tilbake til det gamle direkte Store.get-kallet berre viss CRM-modulen
+  // ikkje er lasta i det heile (feature avslått, eller ikkje lasta enno).
+  function crmCustomers() {
+    return (window.CrmAdmin && window.CrmAdmin.getCustomers) ? window.CrmAdmin.getCustomers() : (Store.get("crm-customers", []) || []);
+  }
+  function crmBedrifter() {
+    return (window.CrmAdmin && window.CrmAdmin.getBedrifter) ? window.CrmAdmin.getBedrifter() : (Store.get("crm-bedrifter", []) || []);
+  }
   function saveLeads(list) { Store.set("leads", list); }
   // Lagre en innsendt henvendelse (brukes av kontaktskjemaet og av moduler).
   function addLead(lead) {
@@ -2098,7 +2113,7 @@ window.App = (function () {
     }
     if (hasModule("faq"))       contentCards.push(countCard("FAQ-spørsmål", (Store.get("faq-items", []) || []).length));
     if (hasModule("mediabank")) contentCards.push(countCard("Bilder i Mediebank", (Store.get("mediabank-images", []) || []).length));
-    if (hasModule("crm"))       contentCards.push(countCard("Kunder", (Store.get("crm-customers", []) || []).length));
+    if (hasModule("crm"))       contentCards.push(countCard("Kunder", crmCustomers().length));
 
     // Innstillingene konfigureres kun av Vibeverk i super-admin — kunden ser bare resultatet.
     const a = Store.get("analytics", null) || (CFG.analytics || {});
@@ -2208,11 +2223,16 @@ window.App = (function () {
     const bkAfter = bk.filter(function (b) { return (b.email || "").toLowerCase() !== email; });
     Store.set("booking-bookings", bkAfter);
     count += bk.length - bkAfter.length;
-    // CRM-kundar (om modulen er aktiv)
-    const customers = Store.get("crm-customers", []) || [];
-    const custAfter = customers.filter(function (c) { return (c.email || "").toLowerCase() !== email; });
-    Store.set("crm-customers", custAfter);
-    count += customers.length - custAfter.length;
+    // CRM-kundar (om modulen er aktiv) — via window.CrmAdmin, sidan crm-customers
+    // ikkje lenger er ein store-blob (flytta til crm_customers-tabellen 2026-07-03).
+    if (window.CrmAdmin && window.CrmAdmin.deleteCustomersByEmail) {
+      count += window.CrmAdmin.deleteCustomersByEmail(email);
+    } else {
+      const customers = Store.get("crm-customers", []) || [];
+      const custAfter = customers.filter(function (c) { return (c.email || "").toLowerCase() !== email; });
+      Store.set("crm-customers", custAfter);
+      count += customers.length - custAfter.length;
+    }
     // Chat-samtalar
     if (window.VwChat && window.VwChat.getConvs && window.VwChat.deleteConv) {
       const chats = window.VwChat.getConvs()
@@ -2446,7 +2466,7 @@ window.App = (function () {
     const leads     = getLeads().filter(function (l) { return !l.message || l.message.indexOf("Tilbudsforesp") !== 0; });
     const quotes    = getLeads().filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
     const bookings  = Store.get("booking-bookings",  []) || [];
-    const customers = Store.get("crm-customers",     []) || [];
+    const customers = crmCustomers();
     const refs      = Store.get("ref-items",         []) || [];
     const faqs      = Store.get("faq-items",         []) || [];
     const images    = Store.get("mediabank-images",  []) || [];
@@ -2518,8 +2538,8 @@ window.App = (function () {
           if (!App.downloadCsv) return;
           App.downloadCsv("kunder-" + stamp + ".csv",
             ["Navn","E-post","Kundenummer","Bedrift","Notat","Opprettet"],
-            (Store.get("crm-customers",[]) || []).map(function(c){
-              var bed = (Store.get("crm-bedrifter",[]) || []).find(function(b){return b.id===c.bedriftId;});
+            crmCustomers().map(function(c){
+              var bed = crmBedrifter().find(function(b){return b.id===c.bedriftId;});
               return [c.name||"",c.email||"",c.customerNumber||"",bed?bed.name:"",c.note||"",c.created||""];
             })
           );
@@ -2576,7 +2596,7 @@ window.App = (function () {
 
     const leads    = getLeads ? getLeads() : [];
     const bookings = Store.get("booking-bookings", []) || [];
-    const customers= Store.get("crm-customers",    []) || [];
+    const customers= crmCustomers();
     const custConvs= Store.get("chat:convs",       []) || [];
 
     body.innerHTML = `

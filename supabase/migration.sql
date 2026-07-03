@@ -137,6 +137,64 @@ CREATE TABLE IF NOT EXISTS links (
   created_at  timestamptz  NOT NULL DEFAULT now()
 );
 
+-- CRM: bedrifter/kundar/kommunikasjon. Flytta ut av store-tabellen 2026-07-03
+-- (funne 2026-07-01, retta no) — store sin anon-SELECT-policy ga ubetinga
+-- lesetilgang til heile kundedatasettet via REST-API, sidan store ikkje kan
+-- skilje offentleg config frå privat kundedata på nøkkel-nivå åleine.
+-- id er `text`, ikkje `uuid` — same mønster som chat_conversations/
+-- chat_messages lenger oppe i denne fila: klienten genererer IDen sjølv
+-- ("cust-"+Date.now()+..., "bed-"+Date.now()+...), IKKJE databasen. Dette er
+-- naudsynt fordi mykje av module-crm.js sin eksisterande kode (t.d.
+-- findOrCreateBedrift()) forventar å få IDen synkront tilbake med éin gong,
+-- ikkje via ein async-tur-retur til Supabase — å byte til DB-genererte uuid-ar
+-- ville kravd eit MYKJE større omskriv av heile modulen sin synkrone struktur.
+-- crm_bedrifter MÅ opprettast før crm_customers (FK-rekkefølgje).
+CREATE TABLE IF NOT EXISTS crm_bedrifter (
+  id              text         PRIMARY KEY,
+  name            text         NOT NULL,
+  customer_number text,
+  org_nr          text                  DEFAULT '',
+  website         text                  DEFAULT '',
+  phone           text                  DEFAULT '',
+  address         text                  DEFAULT '',
+  invoice_email   text                  DEFAULT '',
+  invoice_address text                  DEFAULT '',
+  note            text                  DEFAULT '',
+  created_at      timestamptz  NOT NULL DEFAULT now(),
+  updated_at      timestamptz  NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS crm_customers (
+  id              text         PRIMARY KEY,
+  email           text         NOT NULL DEFAULT '',
+  alt_emails      text[]       NOT NULL DEFAULT '{}',
+  name            text                  DEFAULT '',
+  phone           text                  DEFAULT '',
+  address         text                  DEFAULT '',
+  note            text                  DEFAULT '',
+  customer_number text,
+  bedrift_id      text         REFERENCES crm_bedrifter(id) ON DELETE SET NULL,
+  created_at      timestamptz  NOT NULL DEFAULT now(),
+  updated_at      timestamptz  NOT NULL DEFAULT now()
+);
+
+-- crm_comms er polymorf — kvar "type" (email_sent/email_received, phone_note,
+-- internal_note, document, task) har eit ulikt sett tilleggsfelt (t.d.
+-- phone_note har callDate/callTime/duration/contact/followup, task har
+-- dueDate/done, email har subject/body/to/threadId). Felles felt (id,
+-- customer_id, type, title, created_at) er ekte kolonnar; resten ligg i
+-- `data` jsonb, same mønster som announcements.attachments jsonb elles i
+-- denne fila — unngår eit dusin sjeldan-brukte, type-spesifikke nullable
+-- kolonnar for eit polymorft datasett.
+CREATE TABLE IF NOT EXISTS crm_comms (
+  id          text         PRIMARY KEY,
+  customer_id text         NOT NULL REFERENCES crm_customers(id) ON DELETE CASCADE,
+  type        text         NOT NULL,
+  title       text,
+  data        jsonb                 DEFAULT '{}',
+  created_at  timestamptz  NOT NULL DEFAULT now()
+);
+
 -- Chat-samtalar (anon-besøkande skriv, admin les/svarar)
 CREATE TABLE IF NOT EXISTS chat_conversations (
   id              text         PRIMARY KEY,
@@ -194,6 +252,8 @@ DROP TRIGGER IF EXISTS notes_updated_at         ON notes;
 DROP TRIGGER IF EXISTS tasks_updated_at         ON tasks;
 DROP TRIGGER IF EXISTS announcements_updated_at ON announcements;
 DROP TRIGGER IF EXISTS kb_articles_updated_at   ON kb_articles;
+DROP TRIGGER IF EXISTS crm_bedrifter_updated_at ON crm_bedrifter;
+DROP TRIGGER IF EXISTS crm_customers_updated_at ON crm_customers;
 
 CREATE TRIGGER store_updated_at         BEFORE UPDATE ON store         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER users_updated_at         BEFORE UPDATE ON users         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -201,6 +261,8 @@ CREATE TRIGGER notes_updated_at         BEFORE UPDATE ON notes         FOR EACH 
 CREATE TRIGGER tasks_updated_at         BEFORE UPDATE ON tasks         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER announcements_updated_at BEFORE UPDATE ON announcements FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER kb_articles_updated_at   BEFORE UPDATE ON kb_articles   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER crm_bedrifter_updated_at BEFORE UPDATE ON crm_bedrifter FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER crm_customers_updated_at BEFORE UPDATE ON crm_customers FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 DROP TRIGGER IF EXISTS chat_msg_update_conv ON chat_messages;
 CREATE TRIGGER chat_msg_update_conv
@@ -302,6 +364,9 @@ ALTER TABLE kb_articles       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE links             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_bedrifter     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_customers     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_comms         ENABLE ROW LEVEL SECURITY;
 
 -- store: anon kan lese (offentleg innhald), innlogga brukarar kan skrive.
 -- Nøkkelen 'superconfig' (feature-flagg, tema, personverntekst, admin-passord-
@@ -367,6 +432,113 @@ CREATE POLICY store_delete_auth     ON store  FOR DELETE TO authenticated
     WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
     ELSE can_edit_content()
   END);
+-- MERK: 'crm-customers'/'crm-bedrifter'/'crm-comms'-greinene i CASE-ane over
+-- er no daude — data flytta til crm_customers/crm_bedrifter/crm_comms under,
+-- 2026-07-03 (retta CRITICAL-funnet om ubetinga anon-SELECT på heile store).
+-- Dei gamle store-radene er ikkje sletta enno (jf. migreringsnotatet i
+-- hotfix_crm_data_migration_2026-07-03.sql) — behald desse CASE-greinene
+-- urørt til dei gamle radene er stadfesta rydda, fjern så i eigen opprydding.
+-- 'crm-settings' (malar/snippets/signaturar, ingen PII) vert verande i store.
+
+-- crm_bedrifter/crm_customers/crm_comms: ingen anon-tilgang i det heile (dette
+-- er heile poenget med flyttinga). Member får same tilgang som til CRM-nøklane
+-- i store før: SELECT+INSERT+UPDATE ope, DELETE krev can_edit_content()
+-- (admin/editor) — presisert av brukar 2026-07-03 (utvida member-tilgang frå
+-- berre CRM til òg å gjelde her, sidan desse tre tabellane ER CRM).
+DROP POLICY IF EXISTS crm_bedrifter_select ON crm_bedrifter;
+DROP POLICY IF EXISTS crm_bedrifter_insert ON crm_bedrifter;
+DROP POLICY IF EXISTS crm_bedrifter_update ON crm_bedrifter;
+DROP POLICY IF EXISTS crm_bedrifter_delete ON crm_bedrifter;
+CREATE POLICY crm_bedrifter_select ON crm_bedrifter FOR SELECT TO authenticated USING (true);
+CREATE POLICY crm_bedrifter_insert ON crm_bedrifter FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY crm_bedrifter_update ON crm_bedrifter FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY crm_bedrifter_delete ON crm_bedrifter FOR DELETE TO authenticated USING (can_edit_content());
+
+DROP POLICY IF EXISTS crm_customers_select ON crm_customers;
+DROP POLICY IF EXISTS crm_customers_insert ON crm_customers;
+DROP POLICY IF EXISTS crm_customers_update ON crm_customers;
+DROP POLICY IF EXISTS crm_customers_delete ON crm_customers;
+CREATE POLICY crm_customers_select ON crm_customers FOR SELECT TO authenticated USING (true);
+CREATE POLICY crm_customers_insert ON crm_customers FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY crm_customers_update ON crm_customers FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY crm_customers_delete ON crm_customers FOR DELETE TO authenticated USING (can_edit_content());
+
+DROP POLICY IF EXISTS crm_comms_select ON crm_comms;
+DROP POLICY IF EXISTS crm_comms_insert ON crm_comms;
+DROP POLICY IF EXISTS crm_comms_update ON crm_comms;
+DROP POLICY IF EXISTS crm_comms_delete ON crm_comms;
+CREATE POLICY crm_comms_select ON crm_comms FOR SELECT TO authenticated USING (true);
+CREATE POLICY crm_comms_insert ON crm_comms FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY crm_comms_update ON crm_comms FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY crm_comms_delete ON crm_comms FOR DELETE TO authenticated USING (can_edit_content());
+
+-- Slår saman fleire kundar til éin, med brukarvald primærkunde (module-crm.js
+-- sin doMerge()-dialog let brukaren velje kven som skal overleve — ikkje ei
+-- automatisk "eldste vinn"-regel) — atomisk RPC i staden for klient-
+-- orkestrert multi-steg (N-1 delete + 1 update), sidan ein nettverksfeil
+-- midtvegs elles kunne skilje dupliserte eller foreldrelause rader att.
+-- Flyttar òg kommunikasjonshistorikken (crm_comms) til den overlevande
+-- kunden FØR sletting av dei andre — den gamle store-baserte doMerge() gjorde
+-- ALDRI dette (historikken til dei sammenslegne kundane vart verande i
+-- comms-arrayen, men ikkje lenger nåbar via UI-et, sidan ingen kunde-rad
+-- lenger peika på ho). Med ekte FOREIGN KEY + ON DELETE CASCADE ville same
+-- åtferd blitt reell datatap i staden for berre uoppdageleg data — retta
+-- her til å faktisk flytte historikken, ikkje mista ho.
+CREATE OR REPLACE FUNCTION merge_crm_customers(p_ids text[], p_primary_id text)
+RETURNS crm_customers
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_alt_emails  text[];
+  v_note        text;
+  v_name        text;
+  v_bedrift_id  text;
+  result        crm_customers;
+BEGIN
+  IF NOT can_edit_content() THEN
+    RAISE EXCEPTION 'Berre admin/editor kan slå saman kundar';
+  END IF;
+  IF p_ids IS NULL OR array_length(p_ids, 1) < 2 THEN
+    RAISE EXCEPTION 'Treng minst to kundar for å slå saman';
+  END IF;
+  IF p_primary_id IS NULL OR NOT (p_primary_id = ANY(p_ids)) THEN
+    RAISE EXCEPTION 'Den valde primærkunden må vere blant dei sammenslegne kundane';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM crm_customers WHERE id = p_primary_id) THEN
+    RAISE EXCEPTION 'Fann ikkje den valde primærkunden';
+  END IF;
+
+  SELECT array_agg(DISTINCT e) INTO v_alt_emails FROM (
+    SELECT email AS e FROM crm_customers WHERE id = ANY(p_ids) AND email <> ''
+    UNION
+    SELECT unnest(alt_emails) AS e FROM crm_customers WHERE id = ANY(p_ids)
+  ) x WHERE e <> '';
+  SELECT string_agg(NULLIF(trim(note), ''), ' / ') INTO v_note
+    FROM crm_customers WHERE id = ANY(p_ids);
+  SELECT name INTO v_name FROM crm_customers WHERE id = ANY(p_ids) AND id <> p_primary_id AND name <> '' LIMIT 1;
+  SELECT bedrift_id INTO v_bedrift_id FROM crm_customers WHERE id = ANY(p_ids) AND bedrift_id IS NOT NULL LIMIT 1;
+
+  -- Primary sin eigen e-post/namn/bedrift vinn viss han alt har ein —
+  -- fallback-verdiane over vert berre brukt viss primary manglar dei.
+  UPDATE crm_customers SET
+    email      = COALESCE(NULLIF(email, ''), v_alt_emails[1], ''),
+    alt_emails = ARRAY(SELECT e FROM unnest(v_alt_emails) e WHERE e <> COALESCE(NULLIF(email, ''), v_alt_emails[1], '')),
+    note       = COALESCE(v_note, ''),
+    name       = COALESCE(NULLIF(name, ''), v_name),
+    bedrift_id = COALESCE(bedrift_id, v_bedrift_id)
+  WHERE id = p_primary_id
+  RETURNING * INTO result;
+
+  UPDATE crm_comms SET customer_id = p_primary_id
+  WHERE customer_id = ANY(p_ids) AND customer_id <> p_primary_id;
+
+  DELETE FROM crm_customers WHERE id = ANY(p_ids) AND id <> p_primary_id;
+
+  RETURN result;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION merge_crm_customers(text[], text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION merge_crm_customers(text[], text) TO authenticated;
 
 -- users: alle les, kvar brukar oppdaterer seg sjølv (men ikkje eiga rolle —
 -- sjå prevent_self_role_escalation-triggeren under), admin endrar alle

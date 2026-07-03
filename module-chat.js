@@ -990,11 +990,15 @@
     return '<span class="vwca-vis-away">Forlot for ' + Math.round(mins / 60) + ' t siden</span>';
   }
 
+  // Las tidlegare rått frå localStorage sin crm-customers-nøkkel direkte —
+  // denne vart flytta til ein eigen crm_customers-tabell 2026-07-03 og er
+  // ikkje lenger ein store-blob i det heile, så det direkte localStorage-
+  // kallet ville lese frose/forelda data. Brukar no window.CrmAdmin sin
+  // synkrone cache-lesar (same kjelde module-crm.js sjølv brukar).
   function findCrmCustomer(email) {
-    if (!email) return null;
-    var key = _CHAT_NS ? _CHAT_NS + ":crm-customers" : "crm-customers";
-    try { return (JSON.parse(localStorage.getItem(key) || "[]") || []).find(function(c){ return (c.email||"").toLowerCase() === email.toLowerCase(); }) || null; }
-    catch(e) { return null; }
+    if (!email || !window.CrmAdmin || !window.CrmAdmin.getCustomers) return null;
+    var e = email.toLowerCase();
+    return window.CrmAdmin.getCustomers().find(function(c){ return (c.email||"").toLowerCase() === e; }) || null;
   }
 
   function buildInfoPanelHtml(conv) {

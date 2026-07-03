@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.9.5";
+  var VIBEVERK_VERSION = "0.10.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
