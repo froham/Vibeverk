@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.9.1 — 2026-07-03
+
+### Tasks tildelt av admin til member — reverterte gårsdagens "heilt read-only"-innstramming
+- Brukaren presiserte i dag at 0.9.0-innstramminga («member skal ikkje kunne endre status heller, berre sjå») var feil — å endre status på ei oppgåve tildelt av nokon annan er sjølvsagt normal, kvardagsleg åtferd og skal fungere. Reverterte til regelen frå 0.8.0: status-nedtrekket er redigerbart for tildelte oppgåver, alle andre felt (tittel/skildring/frist/tildelt) er låst, og rad-klikk opnar ikkje redigeringsmodalen for det tilfellet.
+- Kode: `intranet/module-tasks.js` reverta til før-0.9.0-versjonen (fjerna `openTaskReadOnlyModal()` og den tilhøyrande grenen i `bindList()`). Testar: `test-intranet.js` sine u7b–u7h-assertions (spesifikke for lesedetalj-modalen) fjerna att, u7 reverta til «ingen modal opnar seg». `test.js` uendra.
+- Server-side: ny `supabase/hotfix_tasks_status_editable_revert_2026-07-03.sql` reverterer `hotfix_tasks_readonly_for_assigned_2026-07-02.sql` — `tasks_assignee` er attende til `assigned_to = auth.uid() OR created_by = auth.uid()`, og `restrict_assignee_task_columns()` har att «tildelt av andre: berre status»-greina. Folda inn i `supabase/migration.sql`. **Ikkje køyrt mot produksjon enno** — ventar på brukargodkjenning.
+- Testar etter revert: `test.js` 427/1 (uendra), `test-intranet.js` 137/136/1 (ned frå 144/143/1 — dei 7 no-irrelevante read-only-modal-testane fjerna).
+
+### Oppdaga same dag: 2026-07-02-runda hadde ikkje faktisk nådd produksjon
+- Brukaren rapporterte at «dei fire endringane» ikkje synte seg ved testing. Undersøking synte at live-sida (`vibeverk.no`) framleis serverte fil-versjonar frå FØR heile 0.9.0-runda (`core.js?v=24` i staden for `v=25`, `module-tasks.js?v=6` i staden for den då gjeldande `v=7`, osv.) — stadfesta ved å hente `index.html`/`intranet/index.html` direkte og samanlikne `Last-Modified`-headeren (som var frå FØR den første av dei to relevante push-ane) mot det som faktisk står i `main` på GitHub. Dette er ikkje eit kodeproblem — koden på GitHub er korrekt — men eit GitHub Pages-publiseringsproblem som ikkje er rotårsaksdiagnostisert enno (ingen `gh`/API-tilgang frå dette miljøet). Sjå `docs/project/CURRENT_STATE.md` "Known limitations".
+- **Viktig**: dette betyr at 0.9.0-rettingane (Aktuelt-tooltip, CRM-tilgang for member, oppgåve-lesevisning, mal/snippet-sentralisering) enno ikkje var synlege for brukaren då tilbakemeldinga kom — det som blei observert som «status-endring funkar fint» var truleg den daverande LIVE (før-0.9.0) åtferda, ikkje eit avvik frå den nye (no reverterte) koden.
+
+---
+
 ## 0.9.0 — 2026-07-02
 
 Fire brukarpresiserte korreksjonar til rollemodell/CRM/tasks/e-post-flyten frå tidlegare same dag, implementert som éin samla runde ("avklarte krav — uten ny produktutredning"). Begge SQL-hotfixane er no køyrt mot produksjon og stadfesta via `pg_policies` (sjå eigne avsnitt nedanfor); endringane er committa (`77ce93f`) og pusha til `origin/main` etter uttrykkeleg brukargodkjenning ("kjør").

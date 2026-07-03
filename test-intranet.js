@@ -390,20 +390,9 @@ assert(ownEditModal.querySelector("#tm-title").value === "Member sin eigen oppg�
 assert(!!ownEditModal.querySelector("[data-readonly-assignee]"), "u6c: tildelt-feltet er read-only sjølv i eiga oppgåve (kan ikkje tildele andre)");
 ownEditModal.querySelector("#tm-cancel").dispatchEvent(new window.Event("click", { bubbles: true }));
 
-// Rad-klikk på oppgåve tildelt av nokon annan skal opne ein REIN LESEDETALJ —
-// presisert av brukar 2026-07-02 ("Member skal ikke kunne endre noe, inkludert
-// status"), ei innstramming frå den tidlegare "status-only"-regelen same dag.
+// Rad-klikk på oppgåve tildelt av nokon annan skal IKKJE opne redigeringsmodal
 assignedTaskRow2.dispatchEvent(new window.Event("click", { bubbles: true }));
-const readOnlyModal = doc.getElementById("task-modal-bd");
-assert(!!readOnlyModal, "u7: klikk på oppgåve tildelt av nokon annan opnar lesedetaljen for member");
-assert(readOnlyModal.textContent.includes("Tildelt member av admin"), "u7b: lesedetaljen viser rett tittel");
-assert(!readOnlyModal.querySelector("#tm-title"), "u7c: lesedetaljen har IKKJE tittel-inputfeltet frå redigeringsmodalen");
-assert(!readOnlyModal.querySelector("#tm-status"), "u7d: lesedetaljen har IKKJE status-nedtrekket frå redigeringsmodalen (kan ikkje endre status)");
-assert(!readOnlyModal.querySelector("#tm-save"), "u7e: lesedetaljen har ingen lagre-knapp");
-assert(!readOnlyModal.querySelector("[data-task-status-select]"), "u7f: lesedetaljen har ikkje noko redigerbart status-nedtrekk i det heile");
-assert(!!readOnlyModal.querySelector("#tmr-back"), "u7g: lesedetaljen har ein tilbake-knapp");
-readOnlyModal.querySelector("#tmr-back").dispatchEvent(new window.Event("click", { bubbles: true }));
-assert(!doc.getElementById("task-modal-bd"), "u7h: tilbake-knappen lukkar lesedetaljen");
+assert(!doc.getElementById("task-modal-bd"), "u7: klikk på oppgåve tildelt av nokon annan opnar ikkje redigeringsmodal for member");
 
 // «Ny oppgave»-knappen skal opne opprett-modalen og lagre ei sjølvvalt/utildelt oppgåve
 doc.querySelector("#tasks-new-btn").dispatchEvent(new window.Event("click", { bubbles: true }));

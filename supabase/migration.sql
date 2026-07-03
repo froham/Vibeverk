@@ -401,25 +401,18 @@ CREATE TRIGGER trg_prevent_self_role_escalation
 DROP POLICY IF EXISTS notes_own         ON notes;
 CREATE POLICY notes_own         ON notes  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
--- tasks: alle les, editor+ skriv fritt, member kan berre oppdatere/opprette
--- SINE EIGNE oppretta oppgåver (kolonneavgrensing i triggeren under).
--- Presisert av brukar 2026-07-02 (to rundar): (1) member skal kunne opprette
--- til seg sjølv, (2) member skal kunne REDIGERE (ikkje berre status på) eigne
--- oppretta oppgåver fullt ut, MEN ei oppgåve TILDELT av nokon annan er rein
--- lesevisning — ikkje eingong status kan endrast der. Tidlegare versjon av
--- denne policyen (køyrd 2026-07-01/02) tillet tildelt-brukar å endre status;
--- det er no fjerna att.
+-- tasks: alle les, editor+ skriv, tildelt/opprettar kan oppdatere eiga oppgåve
+-- (avgrensa av restrict_assignee_task_columns()-triggeren under)
 DROP POLICY IF EXISTS tasks_read        ON tasks;
 DROP POLICY IF EXISTS tasks_admin       ON tasks;
 DROP POLICY IF EXISTS tasks_assignee    ON tasks;
 CREATE POLICY tasks_read        ON tasks  FOR SELECT TO authenticated USING (true);
 CREATE POLICY tasks_admin       ON tasks  FOR ALL    TO authenticated USING (can_edit_content()) WITH CHECK (can_edit_content());
--- Berre OPPRETTAR (ikkje lenger "eller tildelt") kan oppdatere raden for
--- ikkje-admin/editor — ei oppgåve tildelt av nokon annan skal ikkje kunne
--- oppdaterast i det heile av member, ikkje eingong status.
+-- Både tildelt OG opprettar kan oppdatere raden (kolonneavgrensing skjer i
+-- triggeren under, ikkje her — RLS kan berre avgrense radar, ikkje kolonnar).
 CREATE POLICY tasks_assignee    ON tasks  FOR UPDATE TO authenticated
-  USING      (created_by = auth.uid())
-  WITH CHECK (created_by = auth.uid());
+  USING      (assigned_to = auth.uid() OR created_by = auth.uid())
+  WITH CHECK (assigned_to = auth.uid() OR created_by = auth.uid());
 
 -- Member kan opprette oppgåver til seg sjølv (sjølvvalt/utildelt), men ikkje
 -- tildele til andre — tasks_admin (over) er einaste veg til å opprette ei
@@ -430,13 +423,12 @@ CREATE POLICY tasks_self_create ON tasks FOR INSERT TO authenticated
   WITH CHECK (created_by = auth.uid() AND (assigned_to = auth.uid() OR assigned_to IS NULL));
 
 -- Kolonneavgrensing for ikkje-admin/editor (RLS over er rad-nivå og kan ikkje
--- åleine avgrense kolonnar). Sidan tasks_assignee sin USING no krev
--- created_by = auth.uid(), når denne triggeren berre eigne oppretta oppgåver
--- for ikkje-admin/editor — "tildelt av nokon annan, status-only"-grenen frå
--- 2026-07-01-fiksen er fjerna att (uråkbar no, og ikkje lenger ønska åtferd).
--- Attverande regel: ingen ikkje-admin/editor kan nokon gong tildele oppgåva
--- til NOKON ANNAN enn seg sjølv, uavhengig av at dei elles har frie hender på
--- si eiga oppgåve.
+-- åleine avgrense kolonnar). Presisert 2026-07-02 etter brukartilbakemelding:
+-- - Eiga OPPRETTA oppgåve (OLD.created_by = seg sjølv): fri redigering av
+--   tittel/beskriving/frist/status — men ALDRI tildeling til NOKON ANNAN enn
+--   seg sjølv (blokkert nedanfor, uavhengig av opphav).
+-- - Oppgåve TILDELT av nokon annan (OLD.created_by ≠ seg sjølv, assigned_to =
+--   seg sjølv): berre status kan endrast — uendra frå 2026-07-01-tryggleiksfiksen.
 CREATE OR REPLACE FUNCTION restrict_assignee_task_columns()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -444,12 +436,30 @@ BEGIN
     RETURN NEW; -- admin/editor: inga avgrensing
   END IF;
 
+  -- Ingen ikkje-admin/editor kan nokon gong tildele oppgåva til NOKON ANNAN
+  -- enn seg sjølv (eller nullstille tildelinga) — uavhengig av om dei sjølv
+  -- oppretta oppgåva.
   IF NEW.assigned_to IS DISTINCT FROM OLD.assigned_to
      AND NEW.assigned_to IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION 'Berre admin/editor kan tildele oppgåve til ein annan brukar';
   END IF;
 
-  RETURN NEW; -- tasks_assignee sin USING (created_by = auth.uid()) sikrar at berre eigne oppretta oppgåver når hit i det heile
+  -- Eiga oppretta oppgåve: fri redigering av dei andre felta.
+  IF OLD.created_by = auth.uid() THEN
+    RETURN NEW;
+  END IF;
+
+  -- Tildelt av nokon annan: berre status kan endrast.
+  IF OLD.assigned_to = auth.uid() THEN
+    IF NEW.title       IS DISTINCT FROM OLD.title
+       OR NEW.description IS DISTINCT FROM OLD.description
+       OR NEW.due_date    IS DISTINCT FROM OLD.due_date
+       OR NEW.created_by  IS DISTINCT FROM OLD.created_by THEN
+      RAISE EXCEPTION 'Tildelt brukar kan berre endre status';
+    END IF;
+  END IF;
+
+  RETURN NEW;
 END;
 $$;
 
