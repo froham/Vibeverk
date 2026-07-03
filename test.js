@@ -1320,6 +1320,35 @@ const __asyncTests = (async () => {
     fire(crmOpenBtn, "click");
     assert(!!doc.querySelector("[data-tl-section] .stat-badge"), "status-badge vises i kundens historikk");
     assert(!doc.querySelector("#crm-status"), "kundestatus-felt (ny/aktiv/avslutta) er fjernet fra CRM");
+
+    // --- Tidslinje: filtrering (gruppert kategori) + klikk-på-rad opnar handling ---
+    console.log("\n— CRM tidslinje: filtrering + klikk-på-rad —");
+    fire(doc.querySelector('[data-qa="crm-qa-phone"]'), "click");
+    fire(doc.querySelector("#dlg-ph-save"), "click");
+    assert(!!doc.querySelector('[data-tl-filters] [data-tl-filter="kontakt"]') && !!doc.querySelector('[data-tl-filters] [data-tl-filter="phone_note"]'),
+      "filterknappar for «Kontakt» og «Telefonnotat» vises når begge kategoriane finst");
+    var kontaktRowsBefore = [].slice.call(doc.querySelectorAll("[data-tl-item]")).filter(function (r) { return r.textContent.indexOf("Kontaktmelding") > -1; });
+    assert(kontaktRowsBefore.length === 1, "legacy Kontakt-oppføring vises i tidslinja før filtrering");
+    fire(doc.querySelector('[data-tl-filters] [data-tl-filter="kontakt"]'), "click");
+    assert(![].slice.call(doc.querySelectorAll("[data-tl-item]")).some(function (r) { return r.textContent.indexOf("Kontaktmelding") > -1; }),
+      "Kontakt-oppføringa er skjult når «Kontakt»-filteret er avhuka av");
+    assert([].slice.call(doc.querySelectorAll("[data-tl-item]")).some(function (r) { return r.textContent.indexOf("Telefonsamtale") > -1; }),
+      "Telefonnotat-oppføringa vises framleis (ikkje påverka av Kontakt-filteret)");
+    fire(doc.querySelector('[data-tl-filters] [data-tl-filter="kontakt"]'), "click");
+    assert([].slice.call(doc.querySelectorAll("[data-tl-item]")).some(function (r) { return r.textContent.indexOf("Kontaktmelding") > -1; }),
+      "Kontakt-oppføringa vises igjen når filteret er slått på att");
+
+    var kontaktRow = [].slice.call(doc.querySelectorAll("[data-tl-item]")).find(function (r) { return r.textContent.indexOf("Kontaktmelding") > -1; });
+    fire(kontaktRow, "click");
+    assert(!!doc.getElementById("reply-modal-root"), "klikk på sjølve rada for ei legacy Kontakt-oppføring opnar App.openReplyModal (gjenbruk, ikkje ny modal)");
+    var tlReplyModal = doc.getElementById("reply-modal-root");
+    if (tlReplyModal) tlReplyModal.remove();
+
+    var phoneRow = [].slice.call(doc.querySelectorAll("[data-tl-item]")).find(function (r) { return r.textContent.indexOf("Telefonsamtale") > -1; });
+    fire(phoneRow, "click");
+    var editDlg = doc.querySelector(".crm-dlg");
+    assert(!!editDlg && editDlg.textContent.indexOf("Rediger telefonsamtale") > -1, "klikk på sjølve rada for eit redigerbart telefonnotat opnar redigeringsdialogen (ikkje berre ein liten blyant-knapp)");
+    if (editDlg) editDlg.remove();
   }
 
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));

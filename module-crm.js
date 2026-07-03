@@ -305,6 +305,29 @@
     "default":      {icon:"point",          color:"#999",    label:"Hendelse"}
   };
 
+  // Filtreringskategoriar for tidslinja — e-post sendt/mottatt og gamle
+  // Kontakt-leads er ulike `type`-verdiar, men slås saman under éin
+  // "Kontakt"-filterknapp (brukarvalgt gruppering); Tilbud/Booking/dei fire
+  // redigerbare comm-typane/Chat har kvar sin eigen knapp.
+  var TL_CATEGORIES = [
+    { id: "kontakt",       label: "Kontakt",       types: ["contact", "email_sent", "email_received"] },
+    { id: "quote",         label: "Tilbud",        types: ["quote"] },
+    { id: "booking",       label: "Booking",       types: ["booking"] },
+    { id: "phone_note",    label: "Telefonnotat",  types: ["phone_note"] },
+    { id: "internal_note", label: "Internt notat", types: ["internal_note"] },
+    { id: "document",      label: "Dokument",      types: ["document"] },
+    { id: "task",          label: "Oppgave",       types: ["task"] },
+    { id: "chat",          label: "Chat",          types: ["chat"] }
+  ];
+  function tlCategoryId(item) {
+    var cat = TL_CATEGORIES.find(function (c) { return c.types.indexOf(item.type) > -1; });
+    return cat ? cat.id : "other";
+  }
+  // Aktive filterkategoriar per kunde-id — held seg gjennom refresh() (som
+  // køyrer heile renderCustomer() på nytt for kvar handling), sidan filteret
+  // elles ville nullstilt seg kvar gong ein redigerer/slettar noko.
+  var _tlFilter = {};
+
   /* =========================================================================
      HJELPARAR
      ====================================================================== */
@@ -470,6 +493,11 @@
   /* =========================================================================
      DIALOG (native <dialog>)
      ====================================================================== */
+  // dl.close() kastar i miljø utan reell <dialog>-støtte (t.d. jsdom sitt
+  // testoppsett) — openDialog() sin eigen lukk-knapp har alt try/catch rundt
+  // dette (sjå closeDl() under), men kvar dialog sin eigen Lagre/Avbryt-
+  // handsamar kalla dl.close() direkte, usikra. Delt hjelpar for alle.
+  function closeDialog(dl) { try { dl.close(); } catch (e) {} if (dl.parentNode) dl.remove(); }
   function openDialog(opts) {
     var dl = document.createElement("dialog");
     dl.className = "crm-dlg";
@@ -822,7 +850,7 @@
         '<p class="form__status" id="dlg-nc-status" style="margin:0;font-size:.85rem"></p>',
       footHtml: C.button({label:"Legg til",variant:"primary",attrs:'id="dlg-nc-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-nc-cancel"'}),
       onMount:function(dl){
-        dl.querySelector("#dlg-nc-cancel").addEventListener("click",function(){dl.close();dl.remove();});
+        dl.querySelector("#dlg-nc-cancel").addEventListener("click",function(){closeDialog(dl);});
         dl.querySelector("#dlg-nc-save").addEventListener("click",function(){
           var email=dl.querySelector("#dlg-nc-email").value.trim(), st=dl.querySelector("#dlg-nc-status");
           if (!email){st.textContent="E-post er påkrevd.";st.className="form__status is-err";return;}
@@ -832,7 +860,7 @@
           var bed=bedInput?findOrCreateBedrift(bedInput):(preBed||null);
           var nums=list.map(function(c){return c.customerNumber;}).filter(Boolean);
           createCustomer({email:email,altEmails:[],name:dl.querySelector("#dlg-nc-name").value.trim(),phone:dl.querySelector("#dlg-nc-phone").value.trim(),address:"",note:dl.querySelector("#dlg-nc-note").value.trim(),customerNumber:App.generateUniqueNumber(nums),bedriftId:bed?bed.id:null});
-          dl.close(); dl.remove(); renderAdmin(body);
+          closeDialog(dl); renderAdmin(body);
         });
       }
     });
@@ -848,12 +876,12 @@
         '<p class="form__status" id="dlg-nb-status" style="margin:0;font-size:.85rem"></p>',
       footHtml: C.button({label:"Opprett",variant:"primary",attrs:'id="dlg-nb-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-nb-cancel"'}),
       onMount:function(dl){
-        dl.querySelector("#dlg-nb-cancel").addEventListener("click",function(){dl.close();dl.remove();});
+        dl.querySelector("#dlg-nb-cancel").addEventListener("click",function(){closeDialog(dl);});
         dl.querySelector("#dlg-nb-save").addEventListener("click",function(){
           var name=dl.querySelector("#dlg-nb-name").value.trim(), st=dl.querySelector("#dlg-nb-status");
           if (!name){st.textContent="Navn er påkrevd.";st.className="form__status is-err";return;}
           findOrCreateBedrift(name,{orgNr:dl.querySelector("#dlg-nb-orgnr").value.trim(),phone:dl.querySelector("#dlg-nb-phone").value.trim(),website:dl.querySelector("#dlg-nb-website").value.trim(),invoiceEmail:dl.querySelector("#dlg-nb-invemail").value.trim()});
-          dl.close(); dl.remove(); renderAdmin(body);
+          closeDialog(dl); renderAdmin(body);
         });
       }
     });
@@ -918,7 +946,7 @@
         '</div>' +
         (tl.length===0
           ? '<p style="font-size:.85rem;color:var(--color-muted);text-align:center;padding:1.2rem 0;margin:0">Ingen aktivitet ennå.</p>'
-          : '<div data-tl-section>'+buildTimeline(tl,5)+'</div>') +
+          : '<div data-tl-wrap></div>') +
       '</div>' +
 
       '<div style="background:var(--color-surface,#fff);border:1px solid var(--color-border);border-radius:12px;padding:.85rem 1rem;margin-bottom:.7rem">' +
@@ -955,8 +983,8 @@
     qa("crm-qa-doc",  function(){openDocDialog(c,refresh);});
     qa("crm-qa-task", function(){openTaskDialog(c,refresh);});
     qa("crm-qa-chat", function(){openChatForCustomer(c);});
-    var tlSection=body.querySelector("[data-tl-section]");
-    if (tlSection) bindTimelineActions(tlSection,body,c,tl,refresh);
+    var tlWrap=body.querySelector("[data-tl-wrap]");
+    if (tlWrap) renderTlWrap(tlWrap,body,c,tl,refresh);
     body.querySelectorAll("[data-open-related]").forEach(function(el){el.addEventListener("click",function(){renderCustomer(body,el.getAttribute("data-open-related"),opts);});});
   }
 
@@ -986,14 +1014,9 @@
     scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(isWorkspaceMember())return;if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
     scope.querySelectorAll("[data-task-toggle]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();updateComm(btn.getAttribute("data-task-toggle"),{done:true});refresh();});});
     scope.querySelectorAll("[data-reply-email]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();var orig=getComms().find(function(x){return x.id===btn.getAttribute("data-reply-email");});openEmailDialog(c,refresh,orig);});});
-    scope.querySelectorAll("[data-edit-comm]").forEach(function(btn){btn.addEventListener("click",function(e){
-      e.stopPropagation();
-      var item=getComms().find(function(x){return x.id===btn.getAttribute("data-edit-comm");});
-      if (!item) return;
-      if      (item.type==="phone_note")    openPhoneDialog(c,refresh,item);
-      else if (item.type==="internal_note") openNoteDialog(c,refresh,item);
-      else if (item.type==="task")          openTaskDialog(c,refresh,item);
-      else if (item.type==="document")      openDocDialog(c,refresh,item);
+    scope.querySelectorAll("[data-tl-item]").forEach(function(row){row.addEventListener("click",function(){
+      var item=tl.find(function(x){return x.id===row.getAttribute("data-tl-item");});
+      if (item) openTlItem(item,c,refresh,body);
     });});
     var exp=scope.querySelector("[data-tl-expand]");
     if (exp) exp.addEventListener("click",function(){
@@ -1002,10 +1025,95 @@
     });
   }
 
+  // Klikk på sjølve tidslinje-rada (ikkje berre ein liten redigerings-knapp)
+  // opnar den relevante handlinga, uavhengig av om posten er redigerbar eller
+  // ikkje — gjenbruker eksisterande dialogar/navigasjon der dei finst, bygger
+  // ikkje nye visningsmodalar.
+  function openTlItem(item, c, refresh, body) {
+    if (item.source === "comm") {
+      if      (item.type==="phone_note")    return openPhoneDialog(c,refresh,item);
+      else if (item.type==="internal_note") return openNoteDialog(c,refresh,item);
+      else if (item.type==="task")          return openTaskDialog(c,refresh,item);
+      else if (item.type==="document")      return openDocDialog(c,refresh,item);
+      else if (item.type==="email_sent"||item.type==="email_received") return openEmailDialog(c,refresh,item);
+      return;
+    }
+    if (item.source === "legacy") {
+      if (item.type === "booking") {
+        if (document.getElementById("intranet") && window.Intranet) window.Intranet.navigate("booking");
+        else { var tab=document.querySelector("[data-tab='mod-booking']"); if (tab) tab.click(); }
+        return;
+      }
+      var lead = App.getLeads ? App.getLeads().find(function (l) { return l.id===item.id; }) : null;
+      if (!lead || !App.openReplyModal) return;
+      var isQ = item.type === "quote";
+      App.setLeadStatus(item.id, "løst");
+      var dato = lead.time ? new Date(lead.time).toLocaleString("nb-NO",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+      App.openReplyModal({
+        name: lead.name, email: lead.email,
+        subject: (isQ?"Re: Tilbudsforespørsel – ":"Re: Henvendelse fra ")+(lead.name||""),
+        templateKey: isQ?"tilbud":"kontakt", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+        templateOptions: App.buildTemplateOptions([{ key: isQ?"tilbud":"kontakt", label: isQ?"Standardmal for tilbud":"Standardmal for kontakt", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
+        signatureOptions: App.buildSignatureOptions(),
+        vars: { navn: lead.name||"", epost: lead.email||"", dato: dato, melding: lead.message||"", referanse: lead.referenceNumber||"" },
+        previewHtml: '<div class="admin-lead-msg">'+esc(lead.message||"").replace(/\n/g,"<br>")+'</div>',
+        chatId: (lead.source==="chat"&&lead.chatId) ? lead.chatId : null
+      });
+      refresh();
+      return;
+    }
+    if (item.source === "chat") {
+      var CAdmin = window.VwChatAdmin;
+      if (CAdmin && CAdmin.openConv) CAdmin.openConv(item.chatId);
+      if (document.getElementById("intranet") && window.Intranet) window.Intranet.navigate("chat");
+      else { var tab2=document.querySelector("[data-tab='chat-admin']"); if (tab2) tab2.click(); }
+      return;
+    }
+  }
+
+  function tlFilterBar(activeCats, presentCats) {
+    if (presentCats.length < 2) return "";
+    return '<div data-tl-filters style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.7rem">' +
+      presentCats.map(function (cat) {
+        var active = activeCats.indexOf(cat.id) > -1;
+        return '<button type="button" data-tl-filter="'+cat.id+'" style="padding:.22rem .62rem;border-radius:999px;font:inherit;font-size:.72rem;font-weight:600;cursor:pointer;border:1.5px solid '+(active?"var(--color-primary,#2980B9)":"var(--color-border,#d1d5db)")+';background:'+(active?"var(--color-primary,#2980B9)":"transparent")+';color:'+(active?"#fff":"var(--color-muted)")+'">'+esc(cat.label)+' ('+cat.count+')</button>';
+      }).join("") +
+    '</div>';
+  }
+
+  // Renderer filterknappar + sjølve tidslinja saman, og kan kallast på nytt
+  // åleine (ved filterklikk) utan å måtte re-rendre heile kundekortet — held
+  // difor filterstoda i _tlFilter i staden for ein lokal closure-variabel som
+  // ville vorte nullstilt kvar gong refresh() køyrer renderCustomer() på nytt.
+  function renderTlWrap(wrap, body, c, tl, refresh) {
+    var presentCats = TL_CATEGORIES.map(function (cat) {
+      var count = tl.filter(function (it) { return cat.types.indexOf(it.type) > -1; }).length;
+      return { id: cat.id, label: cat.label, count: count };
+    }).filter(function (cat) { return cat.count > 0; });
+    var allIds = presentCats.map(function (cat) { return cat.id; });
+    var activeCats = _tlFilter[c.id] || allIds;
+    var filteredTl = tl.filter(function (it) { return activeCats.indexOf(tlCategoryId(it)) > -1; });
+    wrap.innerHTML = tlFilterBar(activeCats, presentCats) +
+      '<div data-tl-section>' +
+        (filteredTl.length
+          ? buildTimeline(filteredTl, TL_COLLAPSED_LIMIT)
+          : '<p style="font-size:.85rem;color:var(--color-muted);text-align:center;padding:1rem 0;margin:0">Ingen hendelser i valgt filter.</p>') +
+      '</div>';
+    wrap.querySelectorAll("[data-tl-filter]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var catId = btn.getAttribute("data-tl-filter");
+        var cur = _tlFilter[c.id] || allIds;
+        _tlFilter[c.id] = cur.indexOf(catId) > -1 ? cur.filter(function (x) { return x !== catId; }) : cur.concat([catId]);
+        renderTlWrap(wrap, body, c, tl, refresh);
+      });
+    });
+    var tlSection = wrap.querySelector("[data-tl-section]");
+    if (tlSection) bindTimelineActions(tlSection, body, c, filteredTl, refresh);
+  }
+
   function tlItem(item, threads) {
     var conf=TL_CONF[item.type]||TL_CONF["default"], time=formatAgo(item.created), isComm=item.source==="comm";
     var isEmail=item.type==="email_sent"||item.type==="email_received";
-    var isEditable=isComm&&(item.type==="phone_note"||item.type==="internal_note"||item.type==="task"||item.type==="document");
     var threadCount=(isEmail&&item.threadId&&threads)?threads[item.threadId]||0:0;
     var bodyText="";
     if      (item.type==="phone_note")  bodyText=[item.duration?"Varighet: "+item.duration:"",item.note].filter(Boolean).join(" · ");
@@ -1020,7 +1128,7 @@
     if (item.type==="task"&&item.done) tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#27AE60 12%,transparent);color:#27AE60">Ferdig ✓</span>';
     if (threadCount>1) tagBadge+=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#2980B9 12%,transparent);color:#2980B9">'+threadCount+' i tråd</span>';
     if (item.source==="legacy"&&item.status) tagBadge+=' <span class="stat-badge stat-badge--'+esc(item.status)+'">'+({"ny":"Ny","lest":"Lest","løst":"Løst"}[item.status]||esc(item.status))+'</span>';
-    return '<div style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb)">' +
+    return '<div data-tl-item="'+esc(item.id)+'" style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb);cursor:pointer">' +
       '<div style="flex-shrink:0;margin-top:.1rem"><div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,'+conf.color+' 13%,white);border:1.5px solid color-mix(in srgb,'+conf.color+' 28%,transparent)"><i class="ti ti-'+conf.icon+'" style="font-size:.78rem;color:'+conf.color+'"></i></div></div>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem">' +
@@ -1028,7 +1136,6 @@
           '<div style="display:flex;align-items:center;gap:.25rem;flex-shrink:0">' +
             (item.type==="task"&&!item.done&&isComm?'<button data-task-toggle="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Fullfør</button>':'') +
             (isEmail&&isComm?'<button data-reply-email="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Svar</button>':'') +
-            (isEditable?'<button data-edit-comm="'+esc(item.id)+'" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;opacity:.6;font-size:.85rem" title="Rediger"><i class="ti ti-pencil"></i></button>':'') +
             (isComm&&!isWorkspaceMember()?'<button data-del-comm="'+esc(item.id)+'" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;opacity:.4;font-size:.85rem" title="Fjern"><i class="ti ti-x"></i></button>':'') +
             '<span style="font-size:.7rem;color:var(--color-muted);white-space:nowrap">'+esc(time)+'</span>' +
           '</div>' +
@@ -1145,7 +1252,7 @@
         '<div id="crms-content"></div>',
       footHtml: C.button({label:"Lukk",variant:"ghost",attrs:'id="crms-close"'}),
       onMount: function(dl) {
-        dl.querySelector("#crms-close").addEventListener("click",function(){dl.close();dl.remove();});
+        dl.querySelector("#crms-close").addEventListener("click",function(){closeDialog(dl);});
         function activate(id) {
           dl.querySelectorAll("[data-crms-tab]").forEach(function(b){
             var on=b.getAttribute("data-crms-tab")===id;
@@ -1333,13 +1440,13 @@
       footHtml: C.button({label:"Lagre",variant:"primary",attrs:'id="dlg-ph-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-ph-cancel"'}),
       onMount:function(dl){
         bindRt(dl);
-        dl.querySelector("#dlg-ph-cancel").addEventListener("click",function(){dl.close();dl.remove();});
+        dl.querySelector("#dlg-ph-cancel").addEventListener("click",function(){closeDialog(dl);});
         dl.querySelector("#dlg-ph-save").addEventListener("click",function(){
           var contact=dl.querySelector("#dlg-ph-contact").value.trim();
           var nh=readRt(dl,"dlg-ph-note"), fh=readRt(dl,"dlg-ph-followup");
           var patch={title:"Telefonsamtale"+(contact?" med "+contact:""),callDate:dl.querySelector("#dlg-ph-date").value,callTime:dl.querySelector("#dlg-ph-time").value,duration:dl.querySelector("#dlg-ph-dur").value.trim(),contact:contact,note:plainRt(nh),noteHtml:nh,followup:plainRt(fh),followupHtml:fh};
           if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"phone_note"}, patch));
-          dl.close(); dl.remove(); refresh();
+          closeDialog(dl); refresh();
         });
       }
     });
@@ -1359,13 +1466,13 @@
       onMount:function(dl){
         bindRt(dl); var selTag=existing?(existing.tag||"normal"):"normal";
         dl.querySelectorAll("[data-note-tag]").forEach(function(btn){btn.addEventListener("click",function(){selTag=btn.getAttribute("data-note-tag");var tc=TAGS.find(function(t){return t.id===selTag;})||{};var col=tc.color||"var(--color-primary)";dl.querySelectorAll("[data-note-tag]").forEach(function(b){var a=b===btn;b.style.borderColor=a?col:"var(--color-border,#d1d5db)";b.style.background=a?col:"transparent";b.style.color=a?"#fff":"var(--color-text)";});});});
-        dl.querySelector("#dlg-nt-cancel").addEventListener("click",function(){dl.close();dl.remove();});
+        dl.querySelector("#dlg-nt-cancel").addEventListener("click",function(){closeDialog(dl);});
         dl.querySelector("#dlg-nt-save").addEventListener("click",function(){
           var html=readRt(dl,"dlg-nt-text"), text=plainRt(html);
           if (!text) return;
           var patch={title:text.slice(0,70)+(text.length>70?"…":""),text:text,html:html,tag:selTag};
           if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"internal_note"}, patch));
-          dl.close(); dl.remove(); refresh();
+          closeDialog(dl); refresh();
         });
       }
     });
@@ -1377,7 +1484,7 @@
   function attachmentChip(att) {
     if (!att) return "";
     var kb = att.size ? Math.round(att.size/1024) + " KB" : "";
-    return '<a href="'+esc(att.ref)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-text);text-decoration:none"><i class="ti ti-paperclip" style="color:var(--color-primary,#2980B9)"></i> '+esc(att.name)+(kb?' <span style="color:var(--color-muted)">('+kb+')</span>':'')+'</a>';
+    return '<a href="'+esc(att.ref)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-text);text-decoration:none"><i class="ti ti-paperclip" style="color:var(--color-primary,#2980B9)"></i> '+esc(att.name)+(kb?' <span style="color:var(--color-muted)">('+kb+')</span>':'')+'</a>';
   }
 
   function openDocDialog(c, refresh, existing) {
@@ -1410,13 +1517,13 @@
             else statusEl.textContent="Kunne ikke laste opp filen. Prøv en mindre fil.";
           });
         });
-        dl.querySelector("#dlg-dc-cancel").addEventListener("click",function(){dl.close();dl.remove();});
+        dl.querySelector("#dlg-dc-cancel").addEventListener("click",function(){closeDialog(dl);});
         dl.querySelector("#dlg-dc-save").addEventListener("click",function(){
           var name=dl.querySelector("#dlg-dc-name").value.trim(); if(!name){dl.querySelector("#dlg-dc-name").focus();return;}
           var nh=readRt(dl,"dlg-dc-note");
           var patch={title:name,docType:dl.querySelector("#dlg-dc-type").value,note:plainRt(nh),noteHtml:nh,attachment:attachment};
           if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"document"}, patch));
-          dl.close(); dl.remove(); refresh();
+          closeDialog(dl); refresh();
         });
       }
     });
@@ -1435,13 +1542,13 @@
       footHtml: C.button({label:"Lagre",variant:"primary",attrs:'id="dlg-tk-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-tk-cancel"'}),
       onMount:function(dl){
         bindRt(dl);
-        dl.querySelector("#dlg-tk-cancel").addEventListener("click",function(){dl.close();dl.remove();});
+        dl.querySelector("#dlg-tk-cancel").addEventListener("click",function(){closeDialog(dl);});
         dl.querySelector("#dlg-tk-save").addEventListener("click",function(){
           var title=dl.querySelector("#dlg-tk-title").value.trim(); if(!title){dl.querySelector("#dlg-tk-title").focus();return;}
           var nh=readRt(dl,"dlg-tk-note");
           var patch={title:title,dueDate:dl.querySelector("#dlg-tk-due").value,note:plainRt(nh),noteHtml:nh};
           if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"task",done:false}, patch));
-          dl.close(); dl.remove(); refresh();
+          closeDialog(dl); refresh();
         });
       }
     });

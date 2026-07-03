@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.14.0 — 2026-07-03
+
+### CRM: filtrering på tidslinja + klikk-på-rad opnar relevant handling (uavhengig av type)
+- To brukarønske same dag som 0.13.0: (1) filtrering av tidslinja på kategori, og (2) i staden for berre ein liten blyant-knapp for redigerbare postar, skal klikk på **sjølve tidslinje-rada** opne den relevante handlinga — for ALLE typar, ikkje berre dei redigerbare.
+- **Filtrering**: nye toggle-filterknappar (same mønster som `data-stat-chip` elles i appen) over tidslinja, éin per kategori som faktisk finst hos kunden. Grupperer dei 10 rå `type`-verdiane til 8 kategoriar etter eksplisitt brukarval: e-post sendt/mottatt OG gamle Kontakt-leads vert vist under éin «Kontakt»-knapp (Tilbud/Booking/Telefonnotat/Internt notat/Dokument/Oppgave/Chat har kvar sin eigen). Filterstoda held seg i ein ny `_tlFilter`-variabel nøkla på kunde-id (ikkje ein closure-variabel i `renderCustomer()`, som ville nullstilt seg kvar gong `refresh()` køyrer heile funksjonen på nytt etter ei redigering).
+- **Klikk-på-rad**: den vesle blyant-("Rediger")-knappen frå 0.13.0 er fjerna — heile tidslinje-rada er no klikkbar, gjenbrukar eksisterande dialogar/navigasjon der dei finst (ingen nye visningsmodalar bygd):
+  - Telefonnotat/Internt notat/Oppgåve/Dokument → opnar redigeringsdialogen (same som blyanten gjorde)
+  - E-post sendt/mottatt → opnar den eksisterande svar-komponisten (same som «Svar»-knappen)
+  - Gamle Kontakt/Tilbud-leads → gjenbruker `App.openReplyModal()` (same modal som hovud-admin-fanene for Kontakt/Tilbud brukar), førehandsutfylt for den leaden
+  - Gamle bookingar → naviger til Booking-fana (ingen eksisterande per-rad-modal å gjenbruke der)
+  - Chat → gjenbruker `openChatForCustomer()` sin navigasjonslogikk, men peikar på den spesifikke tidlegare samtalen (`chatId`) i staden for å finne-eller-opprette ei ny
+- **Ekte bug funne og retta undervegs, ikkje ein regresjon frå i dag**: `dl.close()` vart kalla direkte (usikra) i alle fire redigeringsdialogane sine Lagre/Avbryt-knappar, i staden for å gå via det trygge try/catch-mønsteret `openDialog()` sin eigen lukk-knapp alt brukar. I ekte nettlesarar kastar aldri `<dialog>.close()`, så dette har aldri vore ein synleg produksjonsfeil — men det gjorde det umogleg å skrive ein jsdom-test som klikkar Lagre på nokon av dei fire dialogane (jsdom manglar reell `<dialog>`-støtte). Ny delt `closeDialog(dl)`-hjelpar, brukt konsekvent på alle 12 stadene i fila som før kalla `dl.close()` direkte.
+- Testar: 7 nye i `test.js` (filterknappar vises berre når ≥2 kategoriar finst, filtrering skjuler/viser rette radene, klikk på ei legacy Kontakt-rad opnar `App.openReplyModal`, klikk på ei redigerbar telefonnotat-rad opnar redigeringsdialogen). 472 → 479 OK (framleis 1 kjend feil). `test-intranet.js` uendra (149/148/1).
+- Ingen SQL-endring. Cache-bust: module-crm.js 15→16, console-core.js 30→31. `VIBEVERK_VERSION` 0.13.0 → 0.14.0.
+
 ## 0.13.0 — 2026-07-03
 
 ### CRM: tidslinjehendingar kan no opnast/redigerast att, pluss ekte filopplasting for dokument
