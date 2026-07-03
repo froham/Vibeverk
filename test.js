@@ -802,6 +802,7 @@ const __asyncTests = (async () => {
   var leads = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]");
   assert(leads.length === leadsBefore + 1 && leads[0].email === "kari@test.no", "tilbudsforespørsel lagret som lead");
   assert(/Tilbudsforesp/.test(leads[0].message) && /terrasse/.test(leads[0].message), "lead inneholder jobbeskrivelse");
+  assert(leads[0].kind === "tilbud", "tilbudsforespørsel får eksplisitt kind:'tilbud' (ikke bare tekst-sniffing)");
 
   // Steg 3: «Send ny forespørsel» nullstiller og viser steg 1 igjen
   fire(doc.querySelector("[data-qt-restart]"), "click");
@@ -1155,6 +1156,36 @@ const __asyncTests = (async () => {
       "dbCommToJs() flatar ut `data` jsonb-felta til vanlege topp-nivå-felt att (round-trip frå jsCommToDb)");
   })();
 
+  // --- leads: feltmapping Supabase<->JS + isTilbud()-klassifisering ---
+  // Same grunngjeving som CRM-testen over: _sb vert fanga éin gong ved
+  // modul-oppstart i core.js (kunne ikkje vore verifisert live i eit
+  // testløp), så desse testane verifiserer felt-mappinga og
+  // klassifiseringslogikken, ikkje det faktiske nettverkskallet.
+  console.log("\n— leads: feltmapping Supabase<->JS + isTilbud() —");
+  (function () {
+    var T = window.App._test;
+    assert(!!T && !!T.dbLeadToJs && !!T.jsLeadToDb, "App._test eksponerer leads-feltmapping for testing");
+
+    var dbLead = { id: "lead-1", kind: "tilbud", name: "Kari", email: "kari@test.no", message: "Tilbudsforespørsel\n\nJobbeskrivelse\nHage", status: "ny", reference_number: "123456", source: null, chat_id: null, created_at: "2026-07-03T09:00:00.000Z" };
+    var jsLead = T.dbLeadToJs(dbLead);
+    assert(jsLead.kind === "tilbud" && jsLead.referenceNumber === "123456" && jsLead.chatId === null && jsLead.time === "2026-07-03T09:00:00.000Z",
+      "dbLeadToJs() mappar snake_case til camelCase korrekt (kind/reference_number/chat_id/created_at)");
+    var backToDb = T.jsLeadToDb(jsLead);
+    assert(backToDb.kind === "tilbud" && backToDb.reference_number === "123456" && backToDb.chat_id === null,
+      "jsLeadToDb() mappar camelCase attende til snake_case korrekt (round-trip)");
+
+    // isTilbud(): kind-feltet er kjelda når det finst, uavhengig av meldingsteksten.
+    assert(window.App.isTilbud({ kind: "tilbud", message: "Ei vanleg melding utan Tilbudsforesp-prefiks" }) === true,
+      "isTilbud() stolar på kind:'tilbud' sjølv om meldinga ikkje startar med Tilbudsforesp");
+    assert(window.App.isTilbud({ kind: "kontakt", message: "Tilbudsforespørsel\n\nJobbeskrivelse" }) === false,
+      "isTilbud() stolar på kind:'kontakt' sjølv om meldinga FEILAKTIG liknar ein tilbudsforespørsel (kind vinn alltid)");
+    // Fallback til tekst-sniffing for eldre data utan kind sett (før migrering).
+    assert(window.App.isTilbud({ message: "Tilbudsforespørsel\n\nJobbeskrivelse: hage" }) === true,
+      "isTilbud() fell tilbake til tekst-sniffing når kind manglar (eldre, ikkje-migrert data)");
+    assert(window.App.isTilbud({ message: "Ei vanleg kontakthenvending" }) === false,
+      "isTilbud() sitt tekst-sniffing-fallback gjev false for vanlege kontaktmeldingar");
+  })();
+
   // --- Status-system (Ny/Lest/Løst) ---
   console.log("\n— Status-system (Ny/Lest/Løst) —");
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
@@ -1168,6 +1199,7 @@ const __asyncTests = (async () => {
   var statusLeads = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]");
   var newLead = statusLeads.find(function (l) { return l.email === "status@test.no"; });
   assert(newLead && newLead.status === "ny", "ny lead får status ny");
+  assert(newLead && newLead.kind === "kontakt", "vanlig kontaktskjema-lead får kind:'kontakt' (default)");
 
   // Admin: badge og chips vises i Kontakt-fanen
   window.App.openAdmin();

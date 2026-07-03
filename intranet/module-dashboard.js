@@ -55,12 +55,8 @@
     var leads    = App.getLeads ? App.getLeads() : [];
     var bookings = App.store.get("booking-bookings", []) || [];
 
-    var contact = leads.filter(function (l) {
-      return (!l.message || l.message.indexOf("Tilbudsforesp") !== 0);
-    });
-    var quote = leads.filter(function (l) {
-      return l.message && l.message.indexOf("Tilbudsforesp") === 0;
-    });
+    var contact = leads.filter(function (l) { return !App.isTilbud(l); });
+    var quote = leads.filter(App.isTilbud);
 
     function count(arr, status) {
       return arr.filter(function (x) { return (x.status || "ny") === status; }).length;

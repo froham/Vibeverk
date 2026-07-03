@@ -195,6 +195,26 @@ CREATE TABLE IF NOT EXISTS crm_comms (
   created_at  timestamptz  NOT NULL DEFAULT now()
 );
 
+-- Kontakt-leads OG tilbudsforespørslar (same tabell — Tilbud brukar App.addLead()
+-- same som Kontakt, skilt ved eit ekte `kind`-felt). Flytta ut av store 2026-07-03,
+-- del to av CRITICAL-funnet om ubetinga anon-SELECT (sjå crm_customers over for
+-- del éin). `kind` erstattar den tidlegare skjøre tekst-sniffinga
+-- (message.indexOf("Tilbudsforesp")===0) som skilte Tilbud frå Kontakt — sjå
+-- isTilbud()-hjelparen i core.js, som fell tilbake til sniffing for eldre data
+-- utan kind sett. `id` er `text`, same grunngjeving som crm_customers osv.
+CREATE TABLE IF NOT EXISTS leads (
+  id                text         PRIMARY KEY,
+  kind              text         NOT NULL DEFAULT 'kontakt' CHECK (kind IN ('kontakt', 'tilbud')),
+  name              text                  DEFAULT '',
+  email             text                  DEFAULT '',
+  message           text,
+  status            text         NOT NULL DEFAULT 'ny' CHECK (status IN ('ny', 'lest', 'løst')),
+  reference_number  text,
+  source            text,
+  chat_id           text,
+  created_at        timestamptz  NOT NULL DEFAULT now()
+);
+
 -- Chat-samtalar (anon-besøkande skriv, admin les/svarar)
 CREATE TABLE IF NOT EXISTS chat_conversations (
   id              text         PRIMARY KEY,
@@ -367,6 +387,7 @@ ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_bedrifter     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_customers     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_comms         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leads             ENABLE ROW LEVEL SECURITY;
 
 -- store: anon kan lese (offentleg innhald), innlogga brukarar kan skrive.
 -- Nøkkelen 'superconfig' (feature-flagg, tema, personverntekst, admin-passord-
@@ -471,6 +492,23 @@ CREATE POLICY crm_comms_select ON crm_comms FOR SELECT TO authenticated USING (t
 CREATE POLICY crm_comms_insert ON crm_comms FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY crm_comms_update ON crm_comms FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY crm_comms_delete ON crm_comms FOR DELETE TO authenticated USING (can_edit_content());
+
+-- leads (Kontakt+Tilbud): same tilgangsregel som crm_customers/crm_bedrifter/
+-- crm_comms over — ingen anon-tilgang i det heile, admin/editor full tilgang,
+-- member SELECT+INSERT+UPDATE (ikkje DELETE) — presisert av brukar 2026-07-03
+-- (utvida member-tilgang til å gjelde her òg, ikkje berre CRM). Anon-innsending
+-- (kontaktskjema/tilbudsskjema for ikkje-innlogga besøkande) er ikkje del av
+-- denne runda — det er eit separat, alt-dokumentert ope funn
+-- (`docs/project/CURRENT_STATE.md` "Still open" — anonyme innsendingar når
+-- aldri Supabase i dag, berre localStorage).
+DROP POLICY IF EXISTS leads_select ON leads;
+DROP POLICY IF EXISTS leads_insert ON leads;
+DROP POLICY IF EXISTS leads_update ON leads;
+DROP POLICY IF EXISTS leads_delete ON leads;
+CREATE POLICY leads_select ON leads FOR SELECT TO authenticated USING (true);
+CREATE POLICY leads_insert ON leads FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY leads_update ON leads FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY leads_delete ON leads FOR DELETE TO authenticated USING (can_edit_content());
 
 -- Slår saman fleire kundar til éin, med brukarvald primærkunde (module-crm.js
 -- sin doMerge()-dialog let brukaren velje kven som skal overleve — ikkje ei

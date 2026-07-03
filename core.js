@@ -82,6 +82,10 @@ window.App = (function () {
           var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
           sessionStorage.setItem(NS + ":admin", role);
         });
+        // Lastar leads-cachen proaktivt så snart me veit brukaren er innlogga
+        // (dekker både fersk innlogging og ein alt-innlogga sesjon ved
+        // sidelasting) — same grunngjeving som loadCrmData() i module-crm.js.
+        loadLeads(function () {});
       } else if (event === "SIGNED_OUT") {
         sessionStorage.removeItem(NS + ":admin");
       }
@@ -348,8 +352,54 @@ window.App = (function () {
   }
   function saveContent() { Store.set("content", content); }
 
-  // Leads (innsendte kontaktskjema)
-  function getLeads() { return Store.get("leads", []) || []; }
+  // Leads (innsendte kontaktskjema + tilbudsforespurnadar). Flytta ut av
+  // store 2026-07-03 (del to av CRITICAL-funnet om ubetinga anon-SELECT, sjå
+  // crm_customers). Synkron lokal cache (_leads, fylt av loadLeads()) BERRE
+  // brukt når Supabase er konfigurert og brukaren er innlogga — elles les
+  // getLeads()/addLead()/updateLead()/deleteLead() alltid FERSKT direkte frå
+  // Store (localStorage), akkurat som før 2026-07-03. Dette er naudsynt (ikkje
+  // berre ei stilval): utan det ville ein kode-stad som skriv direkte til
+  // Store.set("leads", …) — t.d. testoppsett, eller framtidig kode — usynleg
+  // forbi den lokale cachen, sidan cachen då aldri veit om endringa. Caching
+  // gjev berre meining for å unngå gjentekne nettverkskall til Supabase; når
+  // Supabase ikkje er i bruk er eit Store.get()-kall uansett like billig som
+  // å lese ein cache. Skriving til Supabase krev innlogga sesjon (_isAuthed)
+  // — akkurat som _flushSync() alt krev for store — sidan anonyme besøkande
+  // sine innsendingar framleis berre hamnar i localStorage (kjend, separat
+  // ope funn, sjå docs/project/CURRENT_STATE.md "Still open").
+  var _leads = [];
+
+  function dbLeadToJs(row) {
+    return { id: row.id, kind: row.kind || "kontakt", name: row.name || "", email: row.email || "",
+      message: row.message || "", time: row.created_at, status: row.status || "ny",
+      referenceNumber: row.reference_number, source: row.source, chatId: row.chat_id };
+  }
+  function jsLeadToDb(l) {
+    return { kind: l.kind || "kontakt", name: l.name || "", email: l.email || "", message: l.message || "",
+      status: l.status || "ny", reference_number: l.referenceNumber || null, source: l.source || null, chat_id: l.chatId || null };
+  }
+
+  function loadLeads(cb) {
+    if (!_sb || !_isAuthed) { cb && cb(); return; } // getLeads() les ferskt uansett i dette tilfellet
+    _sb.from("leads").select("*").order("created_at", { ascending: false }).then(function (r) {
+      _leads = (r.data || []).map(dbLeadToJs);
+      cb && cb();
+    });
+  }
+
+  function getLeads() {
+    if (!_sb || !_isAuthed) return Store.get("leads", []) || [];
+    return _leads;
+  }
+
+  // Skil Tilbud-førespurnadar frå vanlege Kontakt-leads. Det ekte `kind`-
+  // feltet (lagt til 2026-07-03) er kjelda når det finst; fell tilbake til
+  // den gamle tekst-sniffinga på meldinga for eldre data som endå ikkje har
+  // fått kind sett (før migrering, eller cacha lokalt frå før).
+  function isTilbud(lead) {
+    if (lead && lead.kind) return lead.kind === "tilbud";
+    return !!(lead && lead.message && lead.message.indexOf("Tilbudsforesp") === 0);
+  }
 
   // crm-customers/crm-bedrifter flytta ut av store til eigne tabellar
   // (crm_customers/crm_bedrifter) 2026-07-03 — module-crm.js si lokale cache
@@ -365,28 +415,53 @@ window.App = (function () {
   function crmBedrifter() {
     return (window.CrmAdmin && window.CrmAdmin.getBedrifter) ? window.CrmAdmin.getBedrifter() : (Store.get("crm-bedrifter", []) || []);
   }
-  function saveLeads(list) { Store.set("leads", list); }
-  // Lagre en innsendt henvendelse (brukes av kontaktskjemaet og av moduler).
+  // Lagre en innsendt henvendelse (brukes av kontaktskjemaet og av moduler,
+  // t.d. module-quote.js for Tilbud med kind:"tilbud" eksplisitt sett).
+  // Synkron retur + fire-and-forget Supabase-skriving i bakgrunnen — same
+  // filosofi som App.store.set() og module-crm.js sine createX()-funksjonar.
   function addLead(lead) {
     lead = lead || {};
-    const leads = getLeads();
-    const refNums = leads.map(function (l) { return l.referenceNumber; }).filter(Boolean);
-    leads.unshift({
+    const existing = getLeads();
+    const refNums = existing.map(function (l) { return l.referenceNumber; }).filter(Boolean);
+    const newLead = {
       id: "lead-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+      kind: lead.kind || "kontakt",
       name: lead.name || "", email: lead.email || "", message: lead.message || "",
       time: new Date().toISOString(),
       status: "ny",   // ny → lest → løst
       referenceNumber: generateUniqueNumber(refNums),
       source: lead.source || null,
       chatId: lead.chatId || null
-    });
-    saveLeads(leads);
+    };
+    if (!_sb || !_isAuthed) {
+      existing.unshift(newLead);
+      Store.set("leads", existing);
+      return newLead;
+    }
+    _leads.unshift(newLead);
+    _sb.from("leads").insert(Object.assign(jsLeadToDb(newLead), { id: newLead.id, created_at: newLead.time })).then(function () {});
+    return newLead;
   }
 
   function updateLead(id, changes) {
-    const leads = getLeads();
-    const lead = leads.find(function (l) { return l.id === id; });
-    if (lead) { Object.assign(lead, changes); saveLeads(leads); }
+    if (!_sb || !_isAuthed) {
+      const leads = getLeads();
+      const lead = leads.find(function (l) { return l.id === id; });
+      if (lead) { Object.assign(lead, changes); Store.set("leads", leads); }
+      return;
+    }
+    const lead = _leads.find(function (l) { return l.id === id; });
+    if (lead) Object.assign(lead, changes);
+    _sb.from("leads").update(jsLeadToDb(lead || changes)).eq("id", id).then(function () {});
+  }
+
+  function deleteLead(id) {
+    if (!_sb || !_isAuthed) {
+      Store.set("leads", getLeads().filter(function (l) { return l.id !== id; }));
+      return;
+    }
+    _leads = _leads.filter(function (l) { return l.id !== id; });
+    _sb.from("leads").delete().eq("id", id).then(function () {});
   }
 
   /* ===========================================================================
@@ -972,12 +1047,12 @@ window.App = (function () {
     // New contact submissions
     const leads = getLeads();
     const newContacts = leads.filter(function (l) {
-      return !(l.message && l.message.indexOf("Tilbudsforesp") === 0) && (l.status || "ny") === "ny";
+      return !isTilbud(l) && (l.status || "ny") === "ny";
     }).length;
     setTabBadge(root, "leads", newContacts);
     // New quotes
     const newQuotes = leads.filter(function (l) {
-      return (l.message && l.message.indexOf("Tilbudsforesp") === 0) && (l.status || "ny") === "ny";
+      return isTilbud(l) && (l.status || "ny") === "ny";
     }).length;
     setTabBadge(root, "quotes", newQuotes);
   }
@@ -2080,8 +2155,8 @@ window.App = (function () {
     // Vis kun tal for moduler kunden faktisk har — basismalen skal aldri vise tomme/feil kort.
     function hasModule(id) { return modules.some(function (m) { return m.id === id; }); }
 
-    const leads    = getLeads().filter(function (l) { return !l.message || l.message.indexOf("Tilbudsforesp") !== 0; });
-    const quotes   = getLeads().filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
+    const leads    = getLeads().filter(function (l) { return !isTilbud(l); });
+    const quotes   = getLeads().filter(isTilbud);
     const bookings = Store.get("booking-bookings", []) || [];
 
     const monthCards = [statCard("Kontaktskjema", countByMonth(leads, thisM), countByMonth(leads, prevM))];
@@ -2206,18 +2281,16 @@ window.App = (function () {
   }
 
   function setLeadStatus(id, status) {
-    const leads = getLeads();
-    const lead = leads.find(function (l) { return l.id === id; });
-    if (lead) { lead.status = status; saveLeads(leads); }
+    updateLead(id, { status: status });
   }
   function deleteByEmail(email) {
     email = (email || "").trim().toLowerCase();
     if (!email) return 0;
     let count = 0;
     // Leads og tilbod
-    const before = getLeads().length;
-    saveLeads(getLeads().filter(function (l) { return (l.email || "").toLowerCase() !== email; }));
-    count += before - getLeads().length;
+    const matchingLeads = getLeads().filter(function (l) { return (l.email || "").toLowerCase() === email; });
+    matchingLeads.forEach(function (l) { deleteLead(l.id); });
+    count += matchingLeads.length;
     // Bookingar (via App.store — same namespace)
     const bk = Store.get("booking-bookings", []) || [];
     const bkAfter = bk.filter(function (b) { return (b.email || "").toLowerCase() !== email; });
@@ -2245,7 +2318,7 @@ window.App = (function () {
 
   function adminLeads(body) {
     const allLeads = getLeads().filter(function (l) {
-      return !l.message || l.message.indexOf("Tilbudsforesp") !== 0;
+      return !isTilbud(l);
     });
     const active = getActiveStatuses("kontakt");
     const leads = allLeads.filter(function (l) { return active.indexOf(l.status || "ny") > -1; });
@@ -2371,7 +2444,7 @@ window.App = (function () {
     body.querySelectorAll("[data-del-lead]").forEach(function (b) {
       b.addEventListener("click", function () {
         const id = b.getAttribute("data-del-lead");
-        saveLeads(getLeads().filter(function (l) { return l.id !== id; }));
+        deleteLead(id);
         adminLeads(body);
       });
     });
@@ -2463,8 +2536,8 @@ window.App = (function () {
 
   function adminBackup(body) {
     function hasModule(id) { return modules.some(function (m) { return m.id === id; }); }
-    const leads     = getLeads().filter(function (l) { return !l.message || l.message.indexOf("Tilbudsforesp") !== 0; });
-    const quotes    = getLeads().filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
+    const leads     = getLeads().filter(function (l) { return !isTilbud(l); });
+    const quotes    = getLeads().filter(isTilbud);
     const bookings  = Store.get("booking-bookings",  []) || [];
     const customers = crmCustomers();
     const refs      = Store.get("ref-items",         []) || [];
@@ -2544,12 +2617,12 @@ window.App = (function () {
             })
           );
         } else if (type === "quotes-json") {
-          const data = getLeads().filter(function(l){return l.message&&l.message.indexOf("Tilbudsforesp")===0;});
+          const data = getLeads().filter(isTilbud);
           downloadBlob("tilbud-" + stamp + ".json", JSON.stringify(data, null, 2), "application/json");
         } else if (type === "bookings-json") {
           downloadBlob("bookinger-" + stamp + ".json", JSON.stringify(Store.get("booking-bookings",[]), null, 2), "application/json");
         } else if (type === "leads-json") {
-          const data = getLeads().filter(function(l){return !l.message||l.message.indexOf("Tilbudsforesp")!==0;});
+          const data = getLeads().filter(function(l){return !isTilbud(l);});
           downloadBlob("henvendelser-" + stamp + ".json", JSON.stringify(data, null, 2), "application/json");
         } else if (type === "chat-json") {
           const chatConvs = Store.get("chat:convs", []) || [];
@@ -2611,8 +2684,8 @@ window.App = (function () {
         <h4 class="an-heading">Last ned sikkerhetskopi</h4>
         <p class="prose prose--muted" style="margin:0 0 .5rem">Laster ned alt innhold på denne siden som én fil. Ta sikkerhetskopi jevnlig og alltid før store endringer.</p>
         <ul class="backup-summary" style="margin-bottom:1rem">
-          <li><span>Kontakthenvendelser</span><strong>${leads.filter(function(l){return !l.message||l.message.indexOf("Tilbudsforesp")!==0;}).length}</strong></li>
-          <li><span>Tilbud</span><strong>${leads.filter(function(l){return l.message&&l.message.indexOf("Tilbudsforesp")===0;}).length}</strong></li>
+          <li><span>Kontakthenvendelser</span><strong>${leads.filter(function(l){return !isTilbud(l);}).length}</strong></li>
+          <li><span>Tilbud</span><strong>${leads.filter(isTilbud).length}</strong></li>
           <li><span>Bookinger</span><strong>${bookings.length}</strong></li>
           <li><span>Kunder</span><strong>${customers.length}</strong></li>
           ${window.VwChat ? `<li><span>Chat-samtaler</span><strong>${custConvs.length}</strong></li>` : ""}
@@ -3597,6 +3670,8 @@ window.App = (function () {
     getLeads: getLeads,
     addLead: addLead,                  // lagre en henvendelse (lead)
     updateLead: updateLead,            // oppdater felt på eksisterande lead
+    isTilbud: isTilbud,                 // skil Tilbud frå Kontakt via kind (fell tilbake til tekst-sniffing for eldre data)
+    _test: { dbLeadToJs: dbLeadToJs, jsLeadToDb: jsLeadToDb }, // eksponerer reine JS<->DB-feltmappingsfunksjonar for testing, sjå test.js "leads: feltmapping Supabase<->JS"
     openAdmin: openAdmin,
     setTabBadge: function (tabId, count) { setTabBadge(document.getElementById("admin-root"), tabId, count); },
     prefillContact: prefillContact,

@@ -342,7 +342,7 @@
      ====================================================================== */
   function parseQuoteForBedrift(lead) {
     var msg = lead.message||"";
-    if (!msg || msg.indexOf("Tilbudsforesp") !== 0) return null;
+    if (!msg || !(App.isTilbud ? App.isTilbud(lead) : msg.indexOf("Tilbudsforesp") === 0)) return null;
     var m, orgName = (m=msg.match(/^Bedrift:\s*(.+)$/m)) ? m[1].trim() : null;
     if (!orgName) return null;
     return {
@@ -389,7 +389,7 @@
     var es = emails.map(function (e) { return (e||"").toLowerCase(); }), items = [];
     (App.getLeads ? App.getLeads() : []).forEach(function (l) {
       if (es.indexOf((l.email||"").toLowerCase())===-1) return;
-      var isQ = l.message&&l.message.indexOf("Tilbudsforesp")===0;
+      var isQ = App.isTilbud ? App.isTilbud(l) : (l.message&&l.message.indexOf("Tilbudsforesp")===0);
       items.push({ id:l.id, type:isQ?"quote":"contact", source:"legacy",
         created:new Date(l.time||0).toISOString(),
         title:(isQ?"Tilbudsforespørsel":"Kontaktmelding")+(l.name?" fra "+l.name:""),

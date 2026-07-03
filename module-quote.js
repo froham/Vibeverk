@@ -311,7 +311,7 @@
         if (st.invoiceEmail) lines.push("Faktura e-post: " + st.invoiceEmail);
       }
 
-      App.addLead({ name: name, email: st.email, message: lines.join("\n") });
+      App.addLead({ name: name, email: st.email, message: lines.join("\n"), kind: "tilbud" });
       renderStep3(inner);
     });
   }
@@ -346,7 +346,7 @@
   function renderAdminInfo(body) {
     // intraLink fjerna — bruk «Åpne i arbeidsområde» i admin-menyen under Kontakt
     var allLeads = App.getLeads ? App.getLeads() : [];
-    var allQuotes = allLeads.filter(function (l) { return l.message && l.message.indexOf("Tilbudsforesp") === 0; });
+    var allQuotes = allLeads.filter(App.isTilbud);
     var active = App.getActiveStatuses("tilbud");
     var quotes = allQuotes.filter(function (l) { return active.indexOf(l.status || "ny") > -1; });
     var counts = { ny: 0, lest: 0, løst: 0 };

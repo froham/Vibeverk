@@ -265,10 +265,10 @@ window.Intranet = (function () {
   function countNewHenvendelser() {
     var leads = App.getLeads ? App.getLeads() : [];
     var contactNew = leads.filter(function (l) {
-      return (!l.message || l.message.indexOf("Tilbudsforesp") !== 0) && (l.status || "ny") === "ny";
+      return !App.isTilbud(l) && (l.status || "ny") === "ny";
     }).length;
     var quoteNew = leads.filter(function (l) {
-      return l.message && l.message.indexOf("Tilbudsforesp") === 0 && (l.status || "ny") === "ny";
+      return App.isTilbud(l) && (l.status || "ny") === "ny";
     }).length;
     var bookingNew = (App.store.get("booking-bookings", []) || []).filter(function (b) {
       return (b.status || "ny") === "ny";

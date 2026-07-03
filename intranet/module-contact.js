@@ -28,9 +28,7 @@
      ====================================================================== */
   function getContacts() {
     var leads = App.getLeads ? App.getLeads() : [];
-    return leads.filter(function (l) {
-      return !l.message || l.message.indexOf("Tilbudsforesp") !== 0;
-    });
+    return leads.filter(function (l) { return !App.isTilbud(l); });
   }
 
   function setStatus(id, status) {

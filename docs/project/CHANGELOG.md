@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.11.0 — 2026-07-03
+
+### Leads (Kontakt+Tilbud) flytta ut av `store` — del to av CRITICAL-funnet
+- Andre steg av flyttinga (sjå 0.10.0 for CRM): `leads`-nøkkelen i `store` (Kontakt-henvendingar OG Tilbud-førespurnadar) flytta til ein ekte `leads`-tabell, med RLS som gir **ingen anon-tilgang i det heile**. Member fekk same tilgang som til CRM (SELECT+INSERT+UPDATE, ikkje DELETE) — brukarval frå planleggingsrunda i 0.10.0, no gjennomført her óg.
+- **Ny oppdaging under kartlegginga (ikkje tidlegare dokumentert)**: Tilbud og Kontakt vart ALDRI skilde av eit eige felt — begge brukte `App.addLead()` og vart lagra i same liste, skilt berre ved at meldingsteksten byrja med «Tilbudsforespørsel» (tekst-sniffing, ikkje ein ekte kolonne). Denne sniffinga fanst dupliserte 15+ stader på tvers av `core.js`, `module-quote.js`, `module-crm.js`, `intranet/intranet-core.js`, `intranet/module-dashboard.js`, `intranet/module-contact.js` og `intranet/module-quote.js`. Lagt til eit ekte `kind`-felt (`'kontakt'`/`'tilbud'`) på den nye tabellen, og éin delt hjelpar `App.isTilbud(lead)` (stolar på `kind` når det finst, fell tilbake til tekst-sniffing for eldre/ikkje-migrert data) — erstattar all den spreidde sniffing-logikken.
+- `core.js` sitt leads-datalag omskrive med same async-cache-mønster som CRM (`_leads`, `loadLeads()`), MEN med ei viktig justering funne undervegs: I MOTSETNAD til CRM (der modulen sjølv eig all skriving), kan `leads`-nøkkelen bli skriven direkte via `App.store.set("leads", …)` frå andre kodestader (t.d. testoppsett) — ein rein cache-alltid-tilnærming ville då gjort `getLeads()` blind for slike endringar. `getLeads()`/`addLead()`/`updateLead()`/`deleteLead()` les difor alltid FERSKT direkte frå `Store` når Supabase ikkje er konfigurert eller brukaren ikkje er innlogga (akkurat som før 2026-07-03), og brukar berre den asynkrone cachen når Supabase-skriving faktisk er aktiv. **Fanga av eigne testar før commit**: den første versjonen brukte cache ubetinga, og braut ein Workspace Kontakt-test som seier `App.store.set("leads", […])` direkte.
+- RLS for anon-INSERT (kontaktskjema/tilbudsskjema for ikkje-innlogga besøkande) er **ikkje** del av denne runda — det er eit separat, alt-dokumentert ope funn (anonyme innsendingar når i dag aldri Supabase, berre localStorage, sjå `docs/project/CURRENT_STATE.md` "Still open").
+- Ny produksjons-datamigrering `supabase/hotfix_leads_data_migration_2026-07-03.sql` — set `kind` for eksisterande data basert på den gamle tekst-sniffinga (nye leads etter migreringa får `kind` sett eksplisitt av klienten). Idempotent, slettar ikkje gamle `store`-rader.
+- Testar: 9 nye i `test.js` (feltmapping `dbLeadToJs`/`jsLeadToDb`, `isTilbud()`-klassifisering inkl. at `kind` alltid vinn over tekst-sniffing når det finst, og at både Kontakt- og Tilbud-innsending faktisk set rett `kind` gjennom heile den ekte innsendingsflyten, ikkje berre i isolerte mappingtestar). `test.js`: 457 → 466 OK (framleis 1 kjend feil). `test-intranet.js` uendra (149/148/1) etter at cache-alltid-regresjonen vart fanga og retta.
+- **Ikkje del av denne runda**: `booking-bookings` er framleis i `store` — same CRITICAL-funn gjeld framleis for denne eine attverande nøkkelen. Ingen SQL er køyrt mot produksjon enno for nokon del av denne runda.
+
 ## 0.10.0 — 2026-07-03
 
 ### CRM-data (kundar/bedrifter/kommunikasjon) flytta ut av `store` — retta CRITICAL-funnet om ubetinga anon-lesetilgang
