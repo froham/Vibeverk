@@ -986,6 +986,15 @@
     scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(isWorkspaceMember())return;if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
     scope.querySelectorAll("[data-task-toggle]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();updateComm(btn.getAttribute("data-task-toggle"),{done:true});refresh();});});
     scope.querySelectorAll("[data-reply-email]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();var orig=getComms().find(function(x){return x.id===btn.getAttribute("data-reply-email");});openEmailDialog(c,refresh,orig);});});
+    scope.querySelectorAll("[data-edit-comm]").forEach(function(btn){btn.addEventListener("click",function(e){
+      e.stopPropagation();
+      var item=getComms().find(function(x){return x.id===btn.getAttribute("data-edit-comm");});
+      if (!item) return;
+      if      (item.type==="phone_note")    openPhoneDialog(c,refresh,item);
+      else if (item.type==="internal_note") openNoteDialog(c,refresh,item);
+      else if (item.type==="task")          openTaskDialog(c,refresh,item);
+      else if (item.type==="document")      openDocDialog(c,refresh,item);
+    });});
     var exp=scope.querySelector("[data-tl-expand]");
     if (exp) exp.addEventListener("click",function(){
       scope.innerHTML=buildTimeline(tl);
@@ -996,6 +1005,7 @@
   function tlItem(item, threads) {
     var conf=TL_CONF[item.type]||TL_CONF["default"], time=formatAgo(item.created), isComm=item.source==="comm";
     var isEmail=item.type==="email_sent"||item.type==="email_received";
+    var isEditable=isComm&&(item.type==="phone_note"||item.type==="internal_note"||item.type==="task"||item.type==="document");
     var threadCount=(isEmail&&item.threadId&&threads)?threads[item.threadId]||0:0;
     var bodyText="";
     if      (item.type==="phone_note")  bodyText=[item.duration?"Varighet: "+item.duration:"",item.note].filter(Boolean).join(" · ");
@@ -1018,11 +1028,13 @@
           '<div style="display:flex;align-items:center;gap:.25rem;flex-shrink:0">' +
             (item.type==="task"&&!item.done&&isComm?'<button data-task-toggle="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Fullfør</button>':'') +
             (isEmail&&isComm?'<button data-reply-email="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Svar</button>':'') +
+            (isEditable?'<button data-edit-comm="'+esc(item.id)+'" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;opacity:.6;font-size:.85rem" title="Rediger"><i class="ti ti-pencil"></i></button>':'') +
             (isComm&&!isWorkspaceMember()?'<button data-del-comm="'+esc(item.id)+'" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;opacity:.4;font-size:.85rem" title="Fjern"><i class="ti ti-x"></i></button>':'') +
             '<span style="font-size:.7rem;color:var(--color-muted);white-space:nowrap">'+esc(time)+'</span>' +
           '</div>' +
         '</div>' +
         (bodyText||bodyHtml?'<div style="font-size:.78rem;color:var(--color-muted);margin-top:.18rem;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">'+(bodyHtml||esc(bodyText))+'</div>':"") +
+        (item.type==="document"&&item.attachment?'<div style="margin-top:.35rem">'+attachmentChip(item.attachment)+'</div>':"") +
         '<span style="display:inline-block;margin-top:.25rem;font-size:.67rem;font-weight:600;padding:.08rem .38rem;border-radius:999px;background:var(--color-alt,#f3f4f6);color:var(--color-muted)">'+esc(conf.label)+'</span>' +
       '</div></div>';
   }
@@ -1311,13 +1323,13 @@
   /* =========================================================================
      TELEFON-DIALOG
      ====================================================================== */
-  function openPhoneDialog(c, refresh) {
+  function openPhoneDialog(c, refresh, existing) {
     openDialog({
-      title:"Registrer telefonsamtale",
+      title:existing?"Rediger telefonsamtale":"Registrer telefonsamtale",
       bodyHtml:
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem">'+dlgField("dlg-ph-date","Dato","date",todayISO(),"")+dlgField("dlg-ph-time","Klokkeslett","time",nowTime(),"")+dlgField("dlg-ph-dur","Varighet","text","","10 min")+'</div>' +
-        dlgField("dlg-ph-contact","Kontaktperson","text",c.name||"",c.email||"")+
-        rtField("dlg-ph-note","Notat","")+rtField("dlg-ph-followup","Oppfølging",""),
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem">'+dlgField("dlg-ph-date","Dato","date",existing?existing.callDate:todayISO(),"")+dlgField("dlg-ph-time","Klokkeslett","time",existing?existing.callTime:nowTime(),"")+dlgField("dlg-ph-dur","Varighet","text",existing?existing.duration:"","10 min")+'</div>' +
+        dlgField("dlg-ph-contact","Kontaktperson","text",existing?existing.contact:(c.name||""),c.email||"")+
+        rtField("dlg-ph-note","Notat",existing?existing.noteHtml:"")+rtField("dlg-ph-followup","Oppfølging",existing?existing.followupHtml:""),
       footHtml: C.button({label:"Lagre",variant:"primary",attrs:'id="dlg-ph-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-ph-cancel"'}),
       onMount:function(dl){
         bindRt(dl);
@@ -1325,7 +1337,8 @@
         dl.querySelector("#dlg-ph-save").addEventListener("click",function(){
           var contact=dl.querySelector("#dlg-ph-contact").value.trim();
           var nh=readRt(dl,"dlg-ph-note"), fh=readRt(dl,"dlg-ph-followup");
-          addComm({customerId:c.id,type:"phone_note",title:"Telefonsamtale"+(contact?" med "+contact:""),callDate:dl.querySelector("#dlg-ph-date").value,callTime:dl.querySelector("#dlg-ph-time").value,duration:dl.querySelector("#dlg-ph-dur").value.trim(),contact:contact,note:plainRt(nh),noteHtml:nh,followup:plainRt(fh),followupHtml:fh});
+          var patch={title:"Telefonsamtale"+(contact?" med "+contact:""),callDate:dl.querySelector("#dlg-ph-date").value,callTime:dl.querySelector("#dlg-ph-time").value,duration:dl.querySelector("#dlg-ph-dur").value.trim(),contact:contact,note:plainRt(nh),noteHtml:nh,followup:plainRt(fh),followupHtml:fh};
+          if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"phone_note"}, patch));
           dl.close(); dl.remove(); refresh();
         });
       }
@@ -1335,22 +1348,23 @@
   /* =========================================================================
      NOTAT-DIALOG
      ====================================================================== */
-  function openNoteDialog(c, refresh) {
+  function openNoteDialog(c, refresh, existing) {
     var TAGS=[{id:"normal",label:"Normal",color:"var(--color-primary,#2980B9)"},{id:"important",label:"Viktig",color:"#2980B9"},{id:"followup",label:"Oppfølging",color:"#E8833A"}];
     openDialog({
-      title:"Internt notat",
+      title:existing?"Rediger internt notat":"Internt notat",
       bodyHtml:
-        rtField("dlg-nt-text","Notat","") +
-        '<div style="display:grid;gap:.25rem"><label style="font-size:.85rem;font-weight:600">Type</label><div style="display:flex;gap:.35rem">'+TAGS.map(function(t){var a=t.id==="normal";return'<button type="button" data-note-tag="'+t.id+'" style="padding:.3rem .7rem;border-radius:999px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;border:1.5px solid '+(a?t.color:"var(--color-border,#d1d5db)")+';background:'+(a?t.color:"transparent")+';color:'+(a?"#fff":"var(--color-text)")+'">'+esc(t.label)+'</button>';}).join("")+'</div></div>',
+        rtField("dlg-nt-text","Notat",existing?existing.html:"") +
+        '<div style="display:grid;gap:.25rem"><label style="font-size:.85rem;font-weight:600">Type</label><div style="display:flex;gap:.35rem">'+TAGS.map(function(t){var a=t.id===(existing?existing.tag||"normal":"normal");return'<button type="button" data-note-tag="'+t.id+'" style="padding:.3rem .7rem;border-radius:999px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;border:1.5px solid '+(a?t.color:"var(--color-border,#d1d5db)")+';background:'+(a?t.color:"transparent")+';color:'+(a?"#fff":"var(--color-text)")+'">'+esc(t.label)+'</button>';}).join("")+'</div></div>',
       footHtml: C.button({label:"Lagre",variant:"primary",attrs:'id="dlg-nt-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-nt-cancel"'}),
       onMount:function(dl){
-        bindRt(dl); var selTag="normal";
+        bindRt(dl); var selTag=existing?(existing.tag||"normal"):"normal";
         dl.querySelectorAll("[data-note-tag]").forEach(function(btn){btn.addEventListener("click",function(){selTag=btn.getAttribute("data-note-tag");var tc=TAGS.find(function(t){return t.id===selTag;})||{};var col=tc.color||"var(--color-primary)";dl.querySelectorAll("[data-note-tag]").forEach(function(b){var a=b===btn;b.style.borderColor=a?col:"var(--color-border,#d1d5db)";b.style.background=a?col:"transparent";b.style.color=a?"#fff":"var(--color-text)";});});});
         dl.querySelector("#dlg-nt-cancel").addEventListener("click",function(){dl.close();dl.remove();});
         dl.querySelector("#dlg-nt-save").addEventListener("click",function(){
           var html=readRt(dl,"dlg-nt-text"), text=plainRt(html);
           if (!text) return;
-          addComm({customerId:c.id,type:"internal_note",title:text.slice(0,70)+(text.length>70?"…":""),text:text,html:html,tag:selTag});
+          var patch={title:text.slice(0,70)+(text.length>70?"…":""),text:text,html:html,tag:selTag};
+          if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"internal_note"}, patch));
           dl.close(); dl.remove(); refresh();
         });
       }
@@ -1360,22 +1374,48 @@
   /* =========================================================================
      DOKUMENT-DIALOG
      ====================================================================== */
-  function openDocDialog(c, refresh) {
+  function attachmentChip(att) {
+    if (!att) return "";
+    var kb = att.size ? Math.round(att.size/1024) + " KB" : "";
+    return '<a href="'+esc(att.ref)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-text);text-decoration:none"><i class="ti ti-paperclip" style="color:var(--color-primary,#2980B9)"></i> '+esc(att.name)+(kb?' <span style="color:var(--color-muted)">('+kb+')</span>':'')+'</a>';
+  }
+
+  function openDocDialog(c, refresh, existing) {
+    var attachment = existing ? (existing.attachment || null) : null;
     openDialog({
-      title:"Legg til dokument",
+      title:existing?"Rediger dokument":"Legg til dokument",
       bodyHtml:
-        dlgField("dlg-dc-name","Navn *","text","","f.eks. Kontrakt 2025")+
-        dlgSelect("dlg-dc-type","Type",["Kontrakt","Tilbud","Ordrebekreftelse","Tegning","PDF","Bilde","Annet"],"Kontrakt")+
-        rtField("dlg-dc-note","Notat","")+
-        '<p style="font-size:.75rem;color:var(--color-muted);margin:0"><i class="ti ti-info-circle"></i> Filopplasting kjem i neste versjon.</p>',
+        dlgField("dlg-dc-name","Navn *","text",existing?existing.title:"","f.eks. Kontrakt 2025")+
+        dlgSelect("dlg-dc-type","Type",["Kontrakt","Tilbud","Ordrebekreftelse","Tegning","PDF","Bilde","Annet"],existing?existing.docType:"Kontrakt")+
+        rtField("dlg-dc-note","Notat",existing?existing.noteHtml:"")+
+        '<div style="display:grid;gap:.35rem">' +
+          '<label style="font-size:.85rem;font-weight:600">Vedlegg</label>' +
+          '<div data-dc-att-current>'+(attachment?attachmentChip(attachment):'<p style="font-size:.78rem;color:var(--color-muted);margin:0">Ingen fil lastet opp.</p>')+'</div>' +
+          '<input type="file" id="dlg-dc-file" style="font-size:.82rem">' +
+          '<p data-dc-file-status style="font-size:.75rem;color:var(--color-muted);margin:0"></p>' +
+        '</div>',
       footHtml: C.button({label:"Lagre",variant:"primary",attrs:'id="dlg-dc-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-dc-cancel"'}),
       onMount:function(dl){
         bindRt(dl);
+        var statusEl=dl.querySelector("[data-dc-file-status]"), currentEl=dl.querySelector("[data-dc-att-current]");
+        dl.querySelector("#dlg-dc-file").addEventListener("change",function(e){
+          var file=e.target.files[0]; if (!file) return;
+          statusEl.textContent="Laster opp «"+file.name+"»…";
+          App.media.putFile(file).then(function(att){
+            attachment=att;
+            statusEl.textContent="";
+            currentEl.innerHTML=attachmentChip(attachment);
+          }).catch(function(err){
+            if (err && err.message==="size") statusEl.textContent="Filen er for stor (maks "+App.media.MAX_FILE_MB+" MB).";
+            else statusEl.textContent="Kunne ikke laste opp filen. Prøv en mindre fil.";
+          });
+        });
         dl.querySelector("#dlg-dc-cancel").addEventListener("click",function(){dl.close();dl.remove();});
         dl.querySelector("#dlg-dc-save").addEventListener("click",function(){
           var name=dl.querySelector("#dlg-dc-name").value.trim(); if(!name){dl.querySelector("#dlg-dc-name").focus();return;}
           var nh=readRt(dl,"dlg-dc-note");
-          addComm({customerId:c.id,type:"document",title:name,docType:dl.querySelector("#dlg-dc-type").value,note:plainRt(nh),noteHtml:nh});
+          var patch={title:name,docType:dl.querySelector("#dlg-dc-type").value,note:plainRt(nh),noteHtml:nh,attachment:attachment};
+          if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"document"}, patch));
           dl.close(); dl.remove(); refresh();
         });
       }
@@ -1385,13 +1425,13 @@
   /* =========================================================================
      OPPGAVE-DIALOG
      ====================================================================== */
-  function openTaskDialog(c, refresh) {
+  function openTaskDialog(c, refresh, existing) {
     openDialog({
-      title:"Ny oppgave for "+(c.name||c.email),
+      title:existing?"Rediger oppgave":"Ny oppgave for "+(c.name||c.email),
       bodyHtml:
-        dlgField("dlg-tk-title","Oppgave *","text","","f.eks. Ring kunden fredag")+
-        dlgField("dlg-tk-due","Frist","date","","")+
-        rtField("dlg-tk-note","Notat",""),
+        dlgField("dlg-tk-title","Oppgave *","text",existing?existing.title:"","f.eks. Ring kunden fredag")+
+        dlgField("dlg-tk-due","Frist","date",existing?existing.dueDate:"","")+
+        rtField("dlg-tk-note","Notat",existing?existing.noteHtml:""),
       footHtml: C.button({label:"Lagre",variant:"primary",attrs:'id="dlg-tk-save"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-tk-cancel"'}),
       onMount:function(dl){
         bindRt(dl);
@@ -1399,7 +1439,8 @@
         dl.querySelector("#dlg-tk-save").addEventListener("click",function(){
           var title=dl.querySelector("#dlg-tk-title").value.trim(); if(!title){dl.querySelector("#dlg-tk-title").focus();return;}
           var nh=readRt(dl,"dlg-tk-note");
-          addComm({customerId:c.id,type:"task",title:title,dueDate:dl.querySelector("#dlg-tk-due").value,note:plainRt(nh),noteHtml:nh,done:false});
+          var patch={title:title,dueDate:dl.querySelector("#dlg-tk-due").value,note:plainRt(nh),noteHtml:nh};
+          if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"task",done:false}, patch));
           dl.close(); dl.remove(); refresh();
         });
       }

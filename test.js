@@ -1154,6 +1154,18 @@ const __asyncTests = (async () => {
     assert(phoneNoteJs.customerId === "cust-1" && phoneNoteJs.created === "2026-07-03T10:00:00.000Z", "dbCommToJs() mappar customer_id/created_at til camelCase");
     assert(phoneNoteJs.callDate === "2026-07-03" && phoneNoteJs.contact === "Ada" && phoneNoteJs.noteHtml === "<p>Ringte om tilbud</p>",
       "dbCommToJs() flatar ut `data` jsonb-felta til vanlege topp-nivå-felt att (round-trip frå jsCommToDb)");
+
+    // document: attachment-feltet (lagt til 2026-07-03, filopplasting via App.media.putFile())
+    // skal handsamast generisk same veg som callDate/subject osv. — ikkje som ei ekte kolonne.
+    var docItem = { id: "cm-3", customerId: "cust-1", type: "document", title: "Kontrakt 2025", created: "2026-07-03T12:00:00.000Z",
+      docType: "Kontrakt", note: "", noteHtml: "", attachment: { name: "kontrakt.pdf", ref: "https://example.test/kontrakt.pdf", type: "application/pdf", size: 20480 } };
+    var docDb = T.jsCommToDb(docItem);
+    assert(docDb.data.docType === "Kontrakt" && docDb.data.attachment && docDb.data.attachment.name === "kontrakt.pdf" && docDb.data.attachment.ref === "https://example.test/kontrakt.pdf",
+      "jsCommToDb() legg document sitt attachment-felt (name/ref/type/size) i `data` jsonb, same generiske veg som andre type-spesifikke felt");
+    var docRow = { id: "cm-3", customer_id: "cust-1", type: "document", title: "Kontrakt 2025", created_at: "2026-07-03T12:00:00.000Z", data: docDb.data };
+    var docJs = T.dbCommToJs(docRow);
+    assert(docJs.attachment && docJs.attachment.name === "kontrakt.pdf" && docJs.attachment.size === 20480,
+      "dbCommToJs() flatar ut attachment-objektet att uendra (round-trip frå jsCommToDb)");
   })();
 
   // --- leads: feltmapping Supabase<->JS + isTilbud()-klassifisering ---

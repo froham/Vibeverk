@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.13.0 — 2026-07-03
+
+### CRM: tidslinjehendingar kan no opnast/redigerast att, pluss ekte filopplasting for dokument
+- Ønske frå brukaren same sluttest-runde: telefonnotat (Ring), interne notat, oppgåver og dokument på ein kunde sin tidslinje kunne berre opprettast — aldri opnast/redigerast att. Løyst med eit nytt blyant-("Rediger")-ikon i `tlItem()` som dispatchar til dei alt eksisterande `openPhoneDialog()`/`openNoteDialog()`/`openTaskDialog()`/`openDocDialog()`, no alle med ein valfri `existing`-parameter — når han er sett, førehandsutfyller dialogen og kallar `updateComm(existing.id, patch)` i staden for `addComm()` ved lagring.
+- Dokument-dialogen fekk i tillegg ekte filopplasting, som erstattar placeholderen «Filopplasting kjem i neste versjon» — brukar den alt eksisterande `App.media.putFile()` (same Supabase Storage-/base64-lokal-fallback-veg som mediebank-modulen), og lagrar resultatet (`{name, ref, type, size}`) som eit `attachment`-felt. Ingen skjemaendring naudsynt — hamnar i `crm_comms.data` jsonb via den alt eksisterande polymorfe comm-mappinga (same mønster som `callDate`/`subject`/osv.). Ny `attachmentChip()`-hjelpar viser den vedlagde fila som ei lenke (med storleik) både i dialogen og i sjølve tidslinje-oppføringa.
+- Testar: 2 nye feltmappings-testar i `test.js` for `attachment`-feltet sin round-trip gjennom `jsCommToDb`/`dbCommToJs` (470 → 472 OK, framleis 1 kjend feil). `test-intranet.js` uendra (149/148/1).
+- Ingen SQL-endring. Cache-bust: module-crm.js 14→15, console-core.js 29→30. `VIBEVERK_VERSION` 0.12.2 → 0.13.0.
+
 ## 0.12.2 — 2026-07-03
 
 ### Fann via sluttest: member fekk sjå slett-knappar på Web-admin (ikkje berre Workspace), pluss to ubeslekta UI-feil i CRM
