@@ -110,6 +110,7 @@
           { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
           { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
         ]),
+        signatureOptions: App.buildSignatureOptions(),
         vars: { navn: lead.name || "", epost: lead.email || "", dato: lead.date || "", klokkeslett: lead.time || "", ressurs: asset ? asset.name : "", referanse: lead.referenceNumber || "" },
         onSent: function (info) {
           if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -132,6 +133,7 @@
           { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
           { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
         ]),
+        signatureOptions: App.buildSignatureOptions(),
         vars: { navn: lead.name || "", epost: lead.email || "", dato: lead.date || "", klokkeslett: lead.time || "", ressurs: asset ? asset.name : "", referanse: lead.referenceNumber || "" },
         onSent: function (info) {
           if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -300,6 +302,7 @@
               { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
               { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
             ]),
+            signatureOptions: App.buildSignatureOptions(),
             vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", klokkeslett: bk.time || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" },
             onSent: function (info) {
               if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -332,6 +335,7 @@
               { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
               { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
             ]),
+            signatureOptions: App.buildSignatureOptions(),
             vars: { navn: bk.name || "", epost: bk.email || "", dato: bk.date || "", klokkeslett: bk.time || "", ressurs: asset ? asset.name : "", referanse: bk.referenceNumber || "" },
             onSent: function (info) {
               if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {

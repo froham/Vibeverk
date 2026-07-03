@@ -451,7 +451,9 @@ nav("#/notes"); nav("#/dashboard");
   var origExecCommand = doc.execCommand;
   App.supabase = {};
   App.store.set("crm-settings", Object.assign({}, App.store.get("crm-settings", {}), {
-    snippets: [{ id: "sn1", shortcode: "hils", title: "Helsing", body: "Med vennlig hilsen" }]
+    snippets: [{ id: "sn1", shortcode: "hils", title: "Helsing", body: "Med vennlig hilsen" }],
+    signatureCompany: "<p>Bedrift AS</p>",
+    signaturePersonal: "<p>Ola Nordmann</p>"
   }));
 
   // Kontakt
@@ -464,6 +466,7 @@ nav("#/notes"); nav("#/dashboard");
   assert(!!cModal, "x2: Kontakt (Workspace): rik svar-editor åpnes");
   assert(!!cModal.querySelector("#reply-tpl-pick"), "x3: Kontakt (Workspace): malvelger vises (samme stil som CRM)");
   assert(!!cModal.querySelector("#reply-snippet-btn"), "x4: Kontakt (Workspace): #-snippet-knapp vises i verktøylinja");
+  assert(!!cModal.querySelector("#reply-sig-company") && !!cModal.querySelector("#reply-sig-personal"), "x4b: Kontakt (Workspace): begge signaturknappane vises (delt med CRM)");
   cModal.remove();
 
   // Booking
@@ -479,6 +482,7 @@ nav("#/notes"); nav("#/dashboard");
   assert(!!bTplPick, "x7: Booking (Workspace): malvelger vises");
   assert(bTplPick.querySelectorAll("option").length >= 3, "x8: Booking (Workspace): malvelger har både avbookings- og svarmal (kontekstspesifikke malar i same stil)");
   assert(!!bModal.querySelector("#reply-snippet-btn"), "x9: Booking (Workspace): #-snippet-knapp vises");
+  assert(!!bModal.querySelector("#reply-sig-company") && !!bModal.querySelector("#reply-sig-personal"), "x9b: Booking (Workspace): begge signaturknappane vises");
   bModal.remove();
 
   // Tilbud
@@ -492,6 +496,7 @@ nav("#/notes"); nav("#/dashboard");
   assert(!!qModal.querySelector("#reply-tpl-pick"), "x12: Tilbud (Workspace): malvelger vises");
   var qSnipBtn = qModal.querySelector("#reply-snippet-btn");
   assert(!!qSnipBtn, "x13: Tilbud (Workspace): #-snippet-knapp vises");
+  assert(!!qModal.querySelector("#reply-sig-company") && !!qModal.querySelector("#reply-sig-personal"), "x13b: Tilbud (Workspace): begge signaturknappane vises");
 
   // #-snippet-lista deler datakjelde med CRM (crm-settings.snippets) — ingen
   // duplikat datamodell. Test klikk-innsetting via den delte bindReplySnippets()-

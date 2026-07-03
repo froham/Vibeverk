@@ -227,7 +227,17 @@ window.App = (function () {
     // én KI-avhuking) regnes som creditType "ai".
     norm: function (v) {
       if (!v) return { src: "", pos: "50% 50%", caption: "", creditType: "", alt: "" };
-      if (typeof v === "string") return { src: v, pos: "50% 50%", caption: "", creditType: "", alt: "" };
+      // Vaktar mot dobbelt-serialisert data: viss ein streng ser ut som eit
+      // JSON-objekt (feilaktig lagra som tekst ein stad), tolk han som eit
+      // objekt i staden for å bruke heile JSON-teksten som bilde-URL (som
+      // elles ville prøvd å hente t.d. "{"src":"","pos":"50% 50%",...}" som
+      // ein faktisk <img src>, og feila med 400 for alle roller/brukarar).
+      if (typeof v === "string") {
+        if (v.charAt(0) === "{") {
+          try { return this.norm(JSON.parse(v)); } catch (e) { /* ikkje gyldig JSON — behandle som vanleg URL under */ }
+        }
+        return { src: v, pos: "50% 50%", caption: "", creditType: "", alt: "" };
+      }
       const creditType = v.creditType || (v.caption ? "ai" : "");
       return { src: v.src || "", pos: v.pos || "50% 50%", caption: v.caption || "", creditType: creditType, alt: v.alt || "" };
     },
@@ -2313,6 +2323,7 @@ window.App = (function () {
             subject: "Re: Henvendelse fra " + (lead.name || ""),
             templateKey: "kontakt", defaultTemplate: DEFAULT_REPLY_TEMPLATE,
             templateOptions: buildTemplateOptions([{ key: "kontakt", label: "Standardmal for kontakt", defaultTemplate: DEFAULT_REPLY_TEMPLATE }]),
+            signatureOptions: buildSignatureOptions(),
             vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDateTime(lead.time), melding: cleanMessageText(lead.message), referanse: lead.referenceNumber || "" },
             previewHtml: messageToHtml(lead.message),
             chatId: (lead.source === "chat" && lead.chatId) ? lead.chatId : null
@@ -2774,6 +2785,14 @@ window.App = (function () {
       return { id: "ctx-" + e.key, name: e.label, subject: "", body: body ? C.esc(body).replace(/\n/g, "<br>") : "" };
     });
     return ctxOpts.concat(getSharedCrmSettings().templates || []);
+  }
+
+  // Same delte signaturar (Kunder → CRM-innstillingar → Signaturer) som
+  // «Sett inn»-knappane i openReplyModal() sin opts.signatureOptions — no
+  // tilgjengeleg for alle e-postdialogar, ikkje berre CRM.
+  function buildSignatureOptions() {
+    const s = getSharedCrmSettings();
+    return { company: s.signatureCompany || "", personal: s.signaturePersonal || "" };
   }
 
   function buildMailtoUrl(email, subject, body) {
@@ -3550,6 +3569,7 @@ window.App = (function () {
     bindEmailTemplateCard: bindEmailTemplateCard,
     DEFAULT_REPLY_TEMPLATE: DEFAULT_REPLY_TEMPLATE,
     buildTemplateOptions: buildTemplateOptions,   // kombinerer kontekstmalar + CRM-malar for openReplyModal sin malvelgar
+    buildSignatureOptions: buildSignatureOptions, // delte signaturar (Kunder → CRM-innstillingar) for openReplyModal sine «Sett inn»-knappar
     computeDefaultPrivacyText: computeDefaultPrivacyText,
     applySuperConfig: applySuperConfig,
     reloadConfig: function () { applySuperConfig(); applyTheme(); render(); },

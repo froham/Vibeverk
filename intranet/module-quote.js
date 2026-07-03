@@ -106,6 +106,7 @@
         templateKey: "tilbud",
         defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
         templateOptions: App.buildTemplateOptions([{ key: "tilbud", label: "Standardmal for tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
+        signatureOptions: App.buildSignatureOptions(),
         vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDate(lead.time), melding: lead.message || "", referanse: lead.referenceNumber || "" },
         onSent: function (info) {
           if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
@@ -217,6 +218,7 @@
             templateKey: "tilbud",
             defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
             templateOptions: App.buildTemplateOptions([{ key: "tilbud", label: "Standardmal for tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
+            signatureOptions: App.buildSignatureOptions(),
             vars: { navn: quote.name || "", epost: quote.email || "", dato: formatDate(quote.time), melding: quote.message || "", referanse: quote.referenceNumber || "" },
             onSent: function (info) {
               if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {

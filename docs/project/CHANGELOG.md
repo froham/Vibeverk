@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.9.2 — 2026-07-03
+
+### Fiksa: korrupt bildedata kunne feile med 400 for ALLE roller på Aktuelt
+- Brukaren rapporterte at Workspace ikkje let seg opne som member, med ein konsollfeil om ein 400-respons på ein URL som var den JSON-serialiserte teksten til eit tomt bilde-objekt (`{"src":"","pos":"50% 50%","caption":"","creditType":"","alt":""}`), relativt til `intranet/`.
+- Rotårsak: `annCard()` i `intranet/module-announcements.js` viser bilete for Aktuelt-saker til **alle roller** (ikkje admin/editor-gata — berre «Ny sak»-knappen og slett-knappen er det), via `App.media.resolveImage(a.image)` → `Media.norm(a.image)` i `core.js`. `norm()` sin fallback for strengverdiar antok at ein kvar streng var ein ferdig biletURL. Éi Aktuelt-sak sitt `image`-felt var (truleg frå ein tidlegare dobbel-serialiseringsfeil) lagra som ein STRENG som ER JSON-teksten sjølv, ikkje eit objekt — `norm()` sette derfor heile JSON-teksten som `img.src`, og `<img src="...">` prøvde å hente ein ugyldig relativ URL, som feila med 400 for kven som helst (admin/editor/member) som opna sida med denne saka synleg.
+- Fiksa i `Media.norm()` (`core.js`): ein streng som startar med `{` blir no forsøkt tolka som JSON og re-normalisert som objekt før han elles ville blitt behandla som ein rå URL. Fell trygt tilbake til rå streng-handsaming viss teksten ikkje er gyldig JSON. Vanlege URL-strengar (som aldri startar med `{`) er heilt uendra.
+- Nye testar i `test.js` («Media.norm(): dobbelt-serialisert bildedata», 4 assertions) dekker: tom korrupt JSON-streng → tomt objekt, korrupt JSON-streng med faktiske feltverdiar → korrekt uthenta objekt, vanleg URL-streng → uendra åtferd, ugyldig `{`-prefiksa tekst → trygg fallback til rå streng. `test.js`: 431 → 435 OK (framleis 1 kjend feil).
+- **Ikkje adressert i denne runda**: kva for éi Aktuelt-sak i produksjonsdatabasen som faktisk har det korrupte `image`-feltet, og korleis det oppstod, er ikkje identifisert eller retta ved kjelda — denne fiksen gjer visninga trygg uansett kva som ligg lagra, men den underliggande datarada er framleis korrupt inntil nokon finn og rettar/nullstiller ho direkte i `store`-tabellen.
+
+### Signaturknappar i alle e-postdialogar (fullfører 0.9.0-sentraliseringa)
+- Brukaren presiserte at «Sett inn bedriftssignatur»/«Sett inn personlig signatur» (alt tilgjengeleg i CRM sin svar-editor) også skal finnast i Kontakt/Booking/Tilbud sine svar-editorar, i både Web og Workspace — same mønster som mal-/snippet-sentraliseringa i 0.9.0.
+- Ny delt hjelpar `App.buildSignatureOptions()` i `core.js` les `crm-settings.signatureCompany`/`signaturePersonal` (same lagringsnøkkel/datakjelde som CRM sin signatur-editor, ingen duplikat). Kalla frå alle 11 gjenverande `openReplyModal()`-kallstader: Kontakt (`core.js`, `intranet/module-contact.js`), Booking avbook+svar (`module-booking.js` ×2, `intranet/module-booking.js` ×4), Tilbud (`module-quote.js`, `intranet/module-quote.js` ×2).
+- `openReplyModal()` sjølv treng ingen endring — `opts.signatureOptions`-støtta fanst alt frå CRM-implementasjonen, berre dei andre kallstadene mangla å sende ho med.
+- Nye testar: `test.js` («Malar + #-snippets for Kontakt/Booking/Tilbud»-blokka utvida med 4 signaturknapp-assertions) og `test-intranet.js` (x4b/x9b/x13b, 3 nye assertions). `test.js`: 427 → 431 OK (før 0.9.2-biletfiksen over), `test-intranet.js`: 137 → 140 (139 OK, framleis 1 kjend feil).
+
+---
+
 ## 0.9.1 — 2026-07-03
 
 ### Tasks tildelt av admin til member — reverterte gårsdagens "heilt read-only"-innstramming

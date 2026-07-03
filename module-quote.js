@@ -421,6 +421,7 @@
             subject: "Re: Tilbudsforespørsel – " + (lead.name || ""),
             templateKey: "tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
             templateOptions: App.buildTemplateOptions([{ key: "tilbud", label: "Standardmal for tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
+            signatureOptions: App.buildSignatureOptions(),
             vars: { navn: lead.name || "", epost: lead.email || "", dato: dato, melding: lead.message || "", referanse: lead.referenceNumber || "" },
             previewHtml: '<div class="admin-lead-msg">' + esc(lead.message || "").replace(/\n/g, "<br>") + '</div>'
           });

@@ -783,6 +783,7 @@
             { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
             { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
           ]),
+          signatureOptions: App.buildSignatureOptions(),
           vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
         });
         renderBookingArea(root);
@@ -804,6 +805,7 @@
             { key: "booking-avbook", label: "Avbookingsmal", defaultTemplate: DEFAULT_AVBOOK_TEMPLATE },
             { key: "booking-svar", label: "Svarmal", defaultTemplate: DEFAULT_SVAR_TEMPLATE }
           ]),
+          signatureOptions: App.buildSignatureOptions(),
           vars: { navn: bk.name || "", epost: bk.email || "", ressurs: a ? a.name : "", dato: C.formatDate(bk.date), klokkeslett: bk.time, referanse: bk.referenceNumber || "" }
         });
         renderBookingArea(root);

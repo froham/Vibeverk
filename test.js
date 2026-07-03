@@ -1667,9 +1667,11 @@ const __asyncTests = (async () => {
     window.SITE_CONFIG.features.crm = true;
     window.SITE_CONFIG.features.crmFull = true;
 
-    // 1) Kontakt/Booking/Tilbud (ingen templateOptions/signatureOptions) — uendra
+    // 1) Modalens basisoppførsel når templateOptions/signatureOptions ikke er gitt
+    // i det heile (uavhengig av at Kontakt/Booking/Tilbud sine faktiske kallstader
+    // no gir begge deler — sjå "Malar + #-snippets for Kontakt/Booking/Tilbud" under).
     window.App.openReplyModal({ name: "Ola", email: "ola@test.no", subject: "Vanlig svar", templateKey: "kontakt", defaultTemplate: "" });
-    assert(!doc.getElementById("reply-tpl-pick"), "ingen malvelger når templateOptions ikke er gitt (Kontakt/Booking/Tilbud uendra)");
+    assert(!doc.getElementById("reply-tpl-pick"), "ingen malvelger når templateOptions ikke er gitt");
     assert(!doc.getElementById("reply-sig-company") && !doc.getElementById("reply-sig-personal"), "ingen signaturknapper når signatureOptions ikke er gitt");
     doc.getElementById("reply-modal-root").remove();
 
@@ -1725,7 +1727,9 @@ const __asyncTests = (async () => {
       snippets: [
         { id: "sn1", shortcode: "hils", title: "Helsing", body: "Med vennlig hilsen, {navn}" },
         { id: "sn2", shortcode: "frist", title: "Frist", body: "Svarfrist er {dato}." }
-      ]
+      ],
+      signatureCompany: "<p>Bedrift AS</p>",
+      signaturePersonal: "<p>Kari Nordmann</p>"
     }));
 
     // Kontakt
@@ -1740,6 +1744,8 @@ const __asyncTests = (async () => {
     assert(!!kTplPick, "Kontakt: malvelger vises i den rike editoren (samme stil som CRM)");
     assert(kTplPick.querySelectorAll("option").length >= 2, "Kontakt: malvelger har minst tom-valg + kontaktmalen");
     assert(!!kModal.querySelector("#reply-snippet-btn"), "Kontakt: #-snippet-knapp vises i verktøylinja");
+    assert(!!kModal.querySelector("#reply-sig-company"), "Kontakt: «Sett inn bedriftssignatur»-knapp vises (delt med CRM)");
+    assert(!!kModal.querySelector("#reply-sig-personal"), "Kontakt: «Sett inn personlig signatur»-knapp vises (delt med CRM)");
     kModal.remove();
 
     // Booking — avbook og svar skal begge tilby BÅDE avbookings- og svarmalen
@@ -1757,6 +1763,7 @@ const __asyncTests = (async () => {
     assert(!!bTplPick, "Booking: malvelger vises");
     assert(bTplPick.querySelectorAll("option").length >= 3, "Booking: malvelger har både avbookings- og svarmal (kontekstspesifikke malar i same stil), ikke bare den som trigget dialogen");
     assert(!!bModal.querySelector("#reply-snippet-btn"), "Booking: #-snippet-knapp vises");
+    assert(!!bModal.querySelector("#reply-sig-company") && !!bModal.querySelector("#reply-sig-personal"), "Booking: begge signaturknappane vises");
     bModal.remove();
 
     // Tilbud
@@ -1772,6 +1779,7 @@ const __asyncTests = (async () => {
     assert(tTplPick.querySelectorAll("option").length >= 2, "Tilbud: malvelger har minst tom-valg + tilbudsmalen");
     var tSnipBtn = tModal.querySelector("#reply-snippet-btn");
     assert(!!tSnipBtn, "Tilbud: #-snippet-knapp vises");
+    assert(!!tModal.querySelector("#reply-sig-company") && !!tModal.querySelector("#reply-sig-personal"), "Tilbud: begge signaturknappane vises");
 
     // #-snippet-lista deler datakjelde med CRM (crm-settings.snippets) — ingen
     // duplikat datamodell. Test klikk-innsetting + tastaturnavigasjon.
@@ -1797,6 +1805,28 @@ const __asyncTests = (async () => {
     doc.execCommand = origExecCommand;
     tModal.remove();
     window.App.supabase = origSupabase;
+  })();
+
+  // --- Media.norm(): vaktar mot dobbelt-serialisert bildedata ---
+  // Fant i produksjon: ei Aktuelt-sak sitt bildefelt var lagra som ein STRENG
+  // som ER JSON-teksten til eit tomt bilde-objekt (truleg gamal dobbel-
+  // serialisering). annCard() i intranet/module-announcements.js viser bilde
+  // til ALLE roller (ikkje admin-gata), så norm()-fallbacken (streng → antatt
+  // rå URL) satte heile JSON-teksten som <img src>, som feila med 400 for
+  // kven som helst som opna Aktuelt/Dashboard. norm() må derfor prøve å tolke
+  // ein streng som ser ut som JSON før han antar han er ein rå URL.
+  console.log("\n— Media.norm(): dobbelt-serialisert bildedata —");
+  (function () {
+    var corrupted = '{"src":"","pos":"50% 50%","caption":"","creditType":"","alt":""}';
+    var normed = window.App.media.norm(corrupted);
+    assert(normed.src === "", "Media.norm() tolkar ein JSON-tekst-streng som objekt i staden for rå URL (tom src)");
+    var corruptedWithSrc = '{"src":"https://example.no/bilde.jpg","pos":"30% 40%","caption":"Test","creditType":"copyright","alt":"Alt"}';
+    var normed2 = window.App.media.norm(corruptedWithSrc);
+    assert(normed2.src === "https://example.no/bilde.jpg" && normed2.pos === "30% 40%" && normed2.creditType === "copyright", "Media.norm() hentar ut faktiske feltverdiar frå dobbelt-serialisert JSON-streng");
+    var normalUrl = window.App.media.norm("https://example.no/vanlig-url.jpg");
+    assert(normalUrl.src === "https://example.no/vanlig-url.jpg", "Media.norm() handsamar framleis ein vanleg URL-streng som før (ikkje JSON, uendra åtferd)");
+    var notJson = window.App.media.norm("{ikkje-gyldig-json");
+    assert(notJson.src === "{ikkje-gyldig-json", "Media.norm() fell trygt tilbake til rå streng viss teksten startar med { men ikkje er gyldig JSON");
   })();
 
   // --- Variabelhjelp: Kontakt/Booking-e-postmaler viser kun faktisk støttede variabler ---

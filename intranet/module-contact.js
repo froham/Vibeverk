@@ -146,6 +146,7 @@
       templateKey:     "kontakt",
       defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
       templateOptions: App.buildTemplateOptions([{ key: "kontakt", label: "Standardmal for kontakt", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
+      signatureOptions: App.buildSignatureOptions(),
       vars: {
         navn:      lead.name  || "",
         epost:     lead.email || "",
