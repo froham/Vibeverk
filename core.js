@@ -2362,7 +2362,7 @@ window.App = (function () {
             <div style="display:flex;gap:.4rem;flex-wrap:wrap">
               ${C.button({ label: "Svar i e-post", icon: "mail-forward", variant: "primary", attrs: 'data-reply-lead="' + C.esc(l.id) + '"' })}
               ${chatBtn}
-              ${C.button({ label: "Slett", variant: "ghost", attrs: 'data-del-lead="' + C.esc(l.id) + '"' })}
+              ${getAuthRole() === "member" ? "" : C.button({ label: "Slett", variant: "ghost", attrs: 'data-del-lead="' + C.esc(l.id) + '"' })}
             </div>
             <select class="stat-select" data-status-select="${C.esc(l.id)}">
               ${STATUS_ORDER.map(function (s) { return `<option value="${s}" ${s===st?"selected":""}>${STATUS_LABELS[s]}</option>`; }).join("")}
@@ -2450,6 +2450,7 @@ window.App = (function () {
     });
     body.querySelectorAll("[data-del-lead]").forEach(function (b) {
       b.addEventListener("click", function () {
+        if (getAuthRole() === "member") return;
         const id = b.getAttribute("data-del-lead");
         deleteLead(id);
         adminLeads(body);
@@ -3682,6 +3683,11 @@ window.App = (function () {
     _test: { dbLeadToJs: dbLeadToJs, jsLeadToDb: jsLeadToDb }, // eksponerer reine JS<->DB-feltmappingsfunksjonar for testing, sjå test.js "leads: feltmapping Supabase<->JS"
     openAdmin: openAdmin,
     setTabBadge: function (tabId, count) { setTabBadge(document.getElementById("admin-root"), tabId, count); },
+    // Faktisk innlogga rolle (admin/editor/member) — same kjelde på Web-admin OG
+    // Workspace, sidan begge autentiserer mot same Supabase Auth-brukar når
+    // Supabase er konfigurert (Web-admin sitt "delte passord" er berre eit
+    // fallback for ukonfigurerte/test-miljø, sjå renderAdminLogin()).
+    getAuthRole: getAuthRole,
     prefillContact: prefillContact,
     openReplyModal: openReplyModal,
     // E-postmaler (delt mellom Kontakt/Tilbud/Booking)

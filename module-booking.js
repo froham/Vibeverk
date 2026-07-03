@@ -798,7 +798,7 @@
             '<div style="display:flex;gap:.4rem">' +
               (hasEmail ? C.button({ label:"Avbook", icon:"calendar-x", variant:"ghost", attrs:'data-bk-avbook="' + esc(b.id) + '"' }) : '') +
               (hasEmail ? C.button({ label:"Svar",   icon:"mail",       variant:"ghost", attrs:'data-bk-svar="' + esc(b.id) + '"' }) : '') +
-              C.button({ label:"Slett", variant:"ghost", attrs:'data-booking-del="'+esc(b.id)+'"' }) +
+              (App.getAuthRole && App.getAuthRole() === "member" ? '' : C.button({ label:"Slett", variant:"ghost", attrs:'data-booking-del="'+esc(b.id)+'"' })) +
             '</div>' +
             '<select class="stat-select" data-bk-status="' + esc(b.id) + '">' +
               App.STATUS_ORDER.map(function (s) { return '<option value="' + s + '" ' + (s===st?"selected":"") + '>' + App.STATUS_LABELS[s] + '</option>'; }).join("") +
@@ -929,6 +929,7 @@
     });
     area.querySelectorAll("[data-booking-del]").forEach(function (b) {
       b.addEventListener("click", function () {
+        if (App.getAuthRole && App.getAuthRole() === "member") return;
         deleteBooking(b.getAttribute("data-booking-del"));
         renderAdmin(root);
       });

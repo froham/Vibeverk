@@ -39,11 +39,27 @@
   var _pendingCrmOpen = null; // sett frå chat-modul via window.CrmAdmin
 
   // Member har full CRM-tilgang (opprette/redigere kundar, bedrifter, malar,
-  // snippets, signaturar) — det EINASTE unntaket er CSV-eksport av heile
-  // kundelista. I Web-admin finst ikkje "member"-omgrepet (éin delt passord),
-  // så denne returnerer alltid false der. Returnerer true berre i Workspace
-  // for rolla "member".
+  // snippets, signaturar) — unntaka er CSV-eksport av heile kundelista og
+  // sletting av kundar/bedrifter/kommunikasjon (server-sida krev
+  // can_edit_content(), sjå crm_customers_delete/crm_bedrifter_delete/
+  // crm_comms_delete i migration.sql).
+  //
+  // VIKTIG (retta 2026-07-03, funne via live sluttest): Web-admin autentiserer
+  // OGSÅ mot ekte Supabase Auth (same users.role-oppslag som Workspace) i
+  // alle konfigurerte kundeinstallasjonar — det "delte admin-passordet" er
+  // berre ein fallback for lokalt/test-miljø utan Supabase (sjå
+  // renderAdminLogin() i core.js). Den forrige versjonen av denne
+  // funksjonen sjekka BERRE window.Intranet (som ikkje finst på Web-admin-
+  // sida i det heile), og trudde difor feilaktig at Web-admin aldri kunne
+  // ha ein innlogga "member" — som gjorde at CSV-eksport og slett-knappar
+  // synte for member også på Web-admin, sjølv om server-sida (RLS) korrekt
+  // avviste dei faktiske skrive-/slettekalla. App.getAuthRole() les rolla
+  // frå sessionStorage, som er sett likt på begge flatene.
   function isWorkspaceMember() {
+    if (window.App && typeof window.App.getAuthRole === "function") {
+      var role = window.App.getAuthRole();
+      if (role) return role === "member";
+    }
     return !!(window.Intranet && window.Intranet.getContext && window.Intranet.getContext().role === "member");
   }
 
@@ -586,7 +602,7 @@
       '<div style="display:flex;gap:.3rem;flex-shrink:0" onclick="event.stopPropagation()">' +
         '<button type="button" class="crm-merge-check" data-merge-id="'+esc(c.id)+'" style="padding:.25rem .55rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:6px;background:transparent;font:inherit;font-size:.72rem;font-weight:600;color:var(--color-muted);cursor:pointer">Merk</button>' +
         C.button({label:"Åpne",variant:"ghost",attrs:'data-crm-open="'+esc(c.id)+'" style="font-size:.78rem"'}) +
-        C.button({label:"Slett",variant:"ghost",attrs:'data-crm-del="'+esc(c.id)+'" style="font-size:.78rem;border-color:#c0392b;color:#c0392b"'}) +
+        (isWorkspaceMember()?'':C.button({label:"Slett",variant:"ghost",attrs:'data-crm-del="'+esc(c.id)+'" style="font-size:.78rem;border-color:#c0392b;color:#c0392b"'})) +
       '</div>' +
     '</li>';
   }
@@ -612,6 +628,7 @@
     container.querySelectorAll("[data-crm-del]").forEach(function(btn){
       btn.addEventListener("click",function(e){
         e.stopPropagation();
+        if (isWorkspaceMember()) return;
         var id=btn.getAttribute("data-crm-del"), c=getCustomers().find(function(x){return x.id===id;});
         if (!c||!confirm("Slett ALL data for "+c.email+"?")) return;
         deleteAllForEmail(customerEmails(c)); deleteCustomer(id);
@@ -655,11 +672,13 @@
     if (s) s.addEventListener("input",function(){
       var q=s.value.toLowerCase();
       container.querySelectorAll("[data-bed-open]").forEach(function(li){
+        if (!li.matches("li")) return;
         var b=getBedrifter().find(function(x){return x.id===li.getAttribute("data-bed-open");}); if(!b) return;
         li.style.display=(!q||[b.name,b.orgNr,b.note].join(" ").toLowerCase().indexOf(q)>-1)?"":"none";
       });
     });
     container.querySelectorAll("[data-bed-open]").forEach(function(el){
+      if (!el.matches("li,button[data-bed-open]")) return;
       el.addEventListener("click",function(e){
         if (e.target.closest("[data-bed-del]")) return;
         renderBedrift(body, el.getAttribute("data-bed-open"));
@@ -668,6 +687,7 @@
     container.querySelectorAll("[data-bed-del]").forEach(function(btn){
       btn.addEventListener("click",function(e){
         e.stopPropagation();
+        if (isWorkspaceMember()) return;
         var id=btn.getAttribute("data-bed-del"), b=getBedrifter().find(function(x){return x.id===id;});
         if (!b||!confirm("Slett bedriften «"+b.name+"»? Kontakter blir ikke slettet, bare frakoblet.")) return;
         getCustomers().filter(function(c){return c.bedriftId===id;}).forEach(function(c){updateCustomer(c.id,{bedriftId:null});});
@@ -688,8 +708,8 @@
         '<div style="font-size:.78rem;color:var(--color-muted)">'+contacts.length+' kontakt'+(contacts.length!==1?"ar":"")+(b.website?" · "+esc(b.website):"")+(b.phone?" · "+esc(b.phone):"")+'</div>' +
       '</div>' +
       '<div onclick="event.stopPropagation()" style="display:flex;gap:.3rem;flex-shrink:0">' +
-        C.button({label:"Åpne",variant:"ghost",attrs:'style="font-size:.78rem"'}) +
-        C.button({label:"Slett",variant:"ghost",attrs:'data-bed-del="'+esc(b.id)+'" style="font-size:.78rem;border-color:#c0392b;color:#c0392b"'}) +
+        C.button({label:"Åpne",variant:"ghost",attrs:'data-bed-open="'+esc(b.id)+'" style="font-size:.78rem"'}) +
+        (isWorkspaceMember()?'':C.button({label:"Slett",variant:"ghost",attrs:'data-bed-del="'+esc(b.id)+'" style="font-size:.78rem;border-color:#c0392b;color:#c0392b"'})) +
       '</div>' +
     '</li>';
   }
@@ -878,7 +898,7 @@
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem">'+dlgField("ce-name","Navn","text",c.name||"","")+dlgField("ce-email","E-post","email",c.email||"","")+'</div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem">'+dlgField("ce-bedrift","Bedrift","text",bed?bed.name:"","Bedrift AS")+dlgField("ce-phone","Telefon","tel",c.phone||"","")+'</div>' +
           dlgField("ce-address","Adresse","text",c.address||"","")+dlgField("ce-note","Merknad","textarea",c.note||"","") +
-          '<div style="display:flex;gap:.4rem;align-items:center">'+C.button({label:"Lagre",variant:"primary",type:"submit",attrs:'style="font-size:.82rem"'})+C.button({label:"Slett kontakt",variant:"ghost",attrs:'data-crm-del-cust style="font-size:.82rem;border-color:#c0392b;color:#c0392b;margin-left:auto"'})+'<span data-ce-status class="form__status" style="font-size:.82rem"></span></div>' +
+          '<div style="display:flex;gap:.4rem;align-items:center">'+C.button({label:"Lagre",variant:"primary",type:"submit",attrs:'style="font-size:.82rem"'})+(isWorkspaceMember()?'':C.button({label:"Slett kontakt",variant:"ghost",attrs:'data-crm-del-cust style="font-size:.82rem;border-color:#c0392b;color:#c0392b;margin-left:auto"'}))+'<span data-ce-status class="form__status" style="font-size:.82rem"></span></div>' +
         '</form>' +
       '</details>' +
 
@@ -923,6 +943,7 @@
     });
     var delBtn=body.querySelector("[data-crm-del-cust]");
     if (delBtn) delBtn.addEventListener("click",function(){
+      if (isWorkspaceMember()) return;
       if (!confirm("Slett ALL data for "+c.email+"?")) return;
       deleteAllForEmail(customerEmails(c)); deleteCustomer(id);
       if (opts.fromBedrift) renderBedrift(body,opts.fromBedrift); else renderAdmin(body);
@@ -962,7 +983,7 @@
   }
 
   function bindTimelineActions(scope, body, c, tl, refresh) {
-    scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
+    scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(isWorkspaceMember())return;if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
     scope.querySelectorAll("[data-task-toggle]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();updateComm(btn.getAttribute("data-task-toggle"),{done:true});refresh();});});
     scope.querySelectorAll("[data-reply-email]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();var orig=getComms().find(function(x){return x.id===btn.getAttribute("data-reply-email");});openEmailDialog(c,refresh,orig);});});
     var exp=scope.querySelector("[data-tl-expand]");
@@ -997,7 +1018,7 @@
           '<div style="display:flex;align-items:center;gap:.25rem;flex-shrink:0">' +
             (item.type==="task"&&!item.done&&isComm?'<button data-task-toggle="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Fullfør</button>':'') +
             (isEmail&&isComm?'<button data-reply-email="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Svar</button>':'') +
-            (isComm?'<button data-del-comm="'+esc(item.id)+'" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;opacity:.4;font-size:.85rem" title="Fjern"><i class="ti ti-x"></i></button>':'') +
+            (isComm&&!isWorkspaceMember()?'<button data-del-comm="'+esc(item.id)+'" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;opacity:.4;font-size:.85rem" title="Fjern"><i class="ti ti-x"></i></button>':'') +
             '<span style="font-size:.7rem;color:var(--color-muted);white-space:nowrap">'+esc(time)+'</span>' +
           '</div>' +
         '</div>' +

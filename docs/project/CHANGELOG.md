@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.12.2 — 2026-07-03
+
+### Fann via sluttest: member fekk sjå slett-knappar på Web-admin (ikkje berre Workspace), pluss to ubeslekta UI-feil i CRM
+- **Rotårsak**: `isWorkspaceMember()` i `module-crm.js` sjekka BERRE `window.Intranet.getContext().role` — som ikkje finst i det heile på Web-admin-sida. Funksjonen sin eigen kommentar hevda «Web-admin har ikkje member-omgrepet (eitt delt passord)», men det stemmer ikkje i denne (eller nokon reell) konfigurert kundeinstallasjon: `renderAdminLogin()` i `core.js` autentiserer OGSÅ Web-admin mot ekte Supabase Auth (`_sb.auth.signInWithPassword` + oppslag i `users.role`) når Supabase er konfigurert — det delte passordet er berre eit fallback for lokalt/test-miljø. Funnet via brukaren sin manuelle sluttest: ein `member`-brukar kunne laste ned CSV-eksporten (skal vere admin/editor-only) og klikke Slett på kundar/bookingar/leads via Web-admin, ikkje berre Workspace.
+- **Retta**: `getAuthRole()` (les rolla frå sessionStorage, alt brukt internt i `core.js`) er no eksponert som `App.getAuthRole`. `isWorkspaceMember()` brukar han no som primærkjelde (fungerer likt på begge flater), med det gamle `window.Intranet`-sjekket som reserve.
+- **Utvida sletting-vern**: slett-knappar for leads (`core.js`), bookingar (`module-booking.js` rot) og CRM-kundar/bedrifter/kommunikasjonshendingar (`module-crm.js`) er no SKJULT for member, ikkje berre RLS-blokkert server-side — brukaren peika på nøyaktig dette biletet: «KAN slette, men når man oppdaterer, så detter de tilbake igjen. Bedre om selve slett-knappen er skjult.» (den optimistiske lokale sletting-UI-en gjorde det såg ut som det virka, heilt til ein refresh henta ferskt frå Supabase og viste at RLS korrekt hadde avvist den ekte DELETE-en).
+- **To ubeslekta UI-feil funne og retta same runde**:
+  - "Åpne"-knappen på ei bedrift i CRM (`bedriftRow()` i `module-crm.js`) mangla heilt `data-bed-open`-attributtet og fekk difor aldri ein klikk-handsamar — pluss at den innhaldande `<div onclick="event.stopPropagation()">` stoppa klikket frå i det heile å nå raden sin eigen handsamar. Berre eit klikk på sjølve rada/kortet opna bedrifta. Retta ved å leggje til attributtet (same mønster som kunde-rada sin «Åpne»-knapp, som alt hadde det rette mønsteret) og utvide klikk-handsamar-filteret til å matche både `li` og `button[data-bed-open]`.
+  - Merka som IKKJE retta enno (pre-eksisterande, uavhengig av dagens migrering): telefonnotat/interne notat lagt til på ein kundes tidslinje kan ikkje opnast/redigerast att etter at dei er oppretta (berre slettast, eller — for oppgåve-typen — merkast ferdig). Flagga til brukaren for eit separat avgjerd om dette skal byggjast no eller seinare.
+- Testar: `test.js` 470/1 og `test-intranet.js` 149/148/1 uendra (desse er UI-role-/knappe-synlegheitsendringar som automatiserte testar ikkje dekker, sjå den kjende avgrensinga om manglande Supabase-nettverkstest-dekning).
+- Ingen SQL-endring denne runda. Cache-bust: core.js 31→32, module-crm.js 13→14, module-booking.js(rot) 9→10, console-core.js 28→29. `VIBEVERK_VERSION` 0.12.1 → 0.12.2.
+
 ## 0.12.1 — 2026-07-03
 
 ### KRITISK produksjonsfeil retta: `authenticated` mangla GRANT på leads/bookings/CRM-tabellane
