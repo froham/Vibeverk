@@ -3005,12 +3005,20 @@ window.App = (function () {
           // allereie inneheld kundens melding), legg ho til nedanfor malteksten
           // i staden for å la mal-byttet stille fjerne henne. Presisert av
           // brukar 2026-07-03 — sjå CHANGELOG.
+          // Same avsendar-blokk-format som DEFAULT_REPLY_TEMPLATE sin hale
+          // (─── / Fra: {navn} <{epost}> / Mottatt: {dato} / ─── / {melding}),
+          // slik at ALLE malar viser innsendinga likt — ikkje ei eiga,
+          // annleis-formatert linje berre for denne fallback-casen. Presisert
+          // av brukar 2026-07-03 etter at fyrste forsøket ikkje matcha stilen
+          // på dei andre malane.
           var meldingVar = vars.melding;
           if (meldingVar && filledBody.indexOf(meldingVar) === -1) {
-            filledBody += (filledBody ? "<br><br>" : "") +
-              "─────────────────────────────────────<br>" +
-              "Opprinnelig melding fra " + C.esc(vars.navn || "kunden") + ":<br>" +
-              C.esc(meldingVar).replace(/\n/g, "<br>");
+            var quoteBlockText = "─────────────────────────────────────\n" +
+              "Fra: " + (vars.navn || "") + " <" + (vars.epost || "") + ">\n" +
+              "Mottatt: " + (vars.dato || "") + "\n" +
+              "─────────────────────────────────────\n\n" +
+              meldingVar;
+            filledBody += (filledBody ? "<br><br>" : "") + C.esc(quoteBlockText).replace(/\n/g, "<br>");
           }
           editorEl.innerHTML = C.sanitizeRichHtml(filledBody);
         }

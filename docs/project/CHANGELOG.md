@@ -30,11 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
-## 0.9.4 — 2026-07-03
+## 0.9.5 — 2026-07-03
+
+### Mal-bytte-fiksen frå 0.9.4 — retta til å matche standardmalen sitt format
+- Brukaren presiserte at 0.9.4-fiksen sin eigen «Opprinnelig melding fra {navn}: …»-formattering ikkje såg fint ut, og at ALLE malar skal vise innsendinga med SAME format som `DEFAULT_REPLY_TEMPLATE` sin eksisterande avsendar-blokk (`─── / Fra: {navn} <{epost}> / Mottatt: {dato} / ───`), ikkje ei eiga, annleis linje. Brukaren presiserte vidare at dei faktisk innsendte felta varierer per skjema (Kontakt vs. Tilbud, med/utan valfrie felt som telefon/adresse) og må vere fullstendig med, uansett kva som faktisk vart sendt inn.
+- `core.js`: mal-bytte-fallbacken bygger no nøyaktig same avsendar-blokk-format som standardmalen (same strek-linjer, same «Fra:»/«Mottatt:»-oppsett), med kundens fullstendige, allereie-formaterte melding (`vars.melding` — som for Tilbud alt inneheld «Jobbeskrivelse»/«Kontaktopplysninger»-strukturen med kun dei faktisk utfylte felta, jf. `module-quote.js`) sett inn uendra under.
+- Nye testar i `test.js`: Kontakt-testen frå 0.9.4 utvida til å sjekke «Fra:»/«Mottatt:»-formatet. Ny test for Tilbud: byter til den delte CRM-malen utan `{melding}`, stadfestar at «Jobbeskrivelse», den faktiske jobbeskrivinga kunden skreiv, «Kontaktopplysninger» og kundens namn alle er med — ikkje berre ei generisk melding. `test.js`: 438 → 446 OK (framleis 1 kjend feil). `test-intranet.js` uendra (149/148/1).
+
+## 0.9.4 — 2026-07-03 (sjå 0.9.5 — formatet vart korrigert dagen etter/same dag)
 
 ### Mal-bytte i svar-editoren fjerna kundens opphavlege melding — retta
 - Brukaren rapporterte: å velje ein ny e-postmal i svar-editoren fjerna kundens innkomande melding frå det som faktisk skulle sendast. Rotårsak: `DEFAULT_REPLY_TEMPLATE` (og dei andre kontekst-standardmalane) inkluderer kundens melding via `{melding}`-plassholdaren, men mal-byttet i `openReplyModal()` (`core.js`) bytte ut heile redigeringsfeltet sitt innhald med den nyvalde malen sin tekst — viss DENNE malen ikkje sjølv inneheldt `{melding}` (t.d. ein kortare, sjølvskriven CRM-mal), forsvann kundens melding heilt frå e-posten.
-- Løysing (etter brukarval mellom tre alternativ — «alltid behald automatisk» vart valt): mal-byttet sjekkar no om den ferdig-fylte malteksten allereie inneheld kundens melding-tekst; viss ikkje, vert ho lagt til automatisk nedanfor malteksten («Opprinnelig melding fra {navn}: …»). Ingen ny knapp/innstilling — gjeld alle e-postdialogar som går via `openReplyModal()` (Kontakt/Booking/Tilbud/Kunder), sidan fiksen sit i den delte funksjonen, ikkje i kvar enkelt kallstad.
+- Løysing (etter brukarval mellom tre alternativ — «alltid behald automatisk» vart valt): mal-byttet sjekkar no om den ferdig-fylte malteksten allereie inneheld kundens melding-tekst; viss ikkje, vert ho lagt til automatisk nedanfor malteksten. **Formatet på denne tilleggsteksten vart korrigert i 0.9.5 over** — fyrste forsøket brukte ei eiga «Opprinnelig melding fra {navn}:»-linje som ikkje matcha stilen på dei andre malane. Ingen ny knapp/innstilling — gjeld alle e-postdialogar som går via `openReplyModal()` (Kontakt/Booking/Tilbud/Kunder), sidan fiksen sit i den delte funksjonen, ikkje i kvar enkelt kallstad.
 - Ny test i `test.js`: legg til ein delt CRM-mal utan `{melding}` i teststubben, vel han frå malvelgaren for Kontakt, stadfestar at både malteksten OG kundens opphavlege melding er med i resultatet. `test.js`: 435 → 438 OK (framleis 1 kjend feil). `test-intranet.js` uendra (149/148/1) — fiksen sit i delt kode allereie dekt av eksisterande kallstad-testar.
 
 ## 0.9.3 — 2026-07-03

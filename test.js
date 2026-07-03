@@ -1761,6 +1761,8 @@ const __asyncTests = (async () => {
     var kEditorBody = kModal.querySelector("#reply-direct-body").innerHTML;
     assert(kEditorBody.indexOf("Test av status") > -1, "Kontakt: kundens opphavlege melding vert behalde automatisk sjølv når malen ikkje sjølv refererer {melding}");
     assert(kEditorBody.indexOf("Vi tar kontakt snart") > -1, "Kontakt: sjølve malteksten er også med, ikkje berre meldinga");
+    assert(kEditorBody.indexOf("Fra: Status Test") > -1, "Kontakt: den lagt-til blokka nyttar same «Fra:»-format som standardmalen");
+    assert(kEditorBody.indexOf("Mottatt:") > -1, "Kontakt: den lagt-til blokka har «Mottatt:»-linje, same format som standardmalen");
     kModal.remove();
 
     // Booking — avbook og svar skal begge tilby BÅDE avbookings- og svarmalen
@@ -1795,6 +1797,22 @@ const __asyncTests = (async () => {
     var tSnipBtn = tModal.querySelector("#reply-snippet-btn");
     assert(!!tSnipBtn, "Tilbud: #-snippet-knapp vises");
     assert(!!tModal.querySelector("#reply-sig-company") && !!tModal.querySelector("#reply-sig-personal"), "Tilbud: begge signaturknappane vises");
+
+    // Same mal-bytte-fiks som over, men for eit Tilbud-innsending med strukturerte
+    // felt (Jobbeskrivelse + Kontaktopplysninger, jf. module-quote.js sitt
+    // meldingsformat) — stadfestar at heile det faktisk innsendte innhaldet
+    // (som varierer per skjema/tilbud) vert behalde, ikkje berre ei generisk melding.
+    var tNoQuoteIdx = null;
+    tTplPick.querySelectorAll("option").forEach(function (o) { if (o.textContent === "Kort svar utan sitat") tNoQuoteIdx = o.value; });
+    assert(tNoQuoteIdx !== null, "Tilbud: finn den delte CRM-malen utan {melding} i lista");
+    tTplPick.value = tNoQuoteIdx;
+    tTplPick.dispatchEvent(new window.Event("change", { bubbles: true }));
+    var tEditorBody = tModal.querySelector("#reply-direct-body").innerHTML;
+    assert(tEditorBody.indexOf("Jobbeskrivelse") > -1, "Tilbud: «Jobbeskrivelse»-overskrifta frå den faktiske innsendinga er med");
+    assert(tEditorBody.indexOf("Trenger hjelp med bygg av terrasse") > -1, "Tilbud: den faktiske jobbeskrivinga kunden skreiv er med");
+    assert(tEditorBody.indexOf("Kontaktopplysninger") > -1, "Tilbud: «Kontaktopplysninger»-overskrifta er med");
+    assert(tEditorBody.indexOf("Kari Nordmann") > -1, "Tilbud: kundens namn frå kontaktopplysningane er med");
+    assert(tEditorBody.indexOf("Vi tar kontakt snart") > -1, "Tilbud: sjølve malteksten er også med");
 
     // #-snippet-lista deler datakjelde med CRM (crm-settings.snippets) — ingen
     // duplikat datamodell. Test klikk-innsetting + tastaturnavigasjon.
