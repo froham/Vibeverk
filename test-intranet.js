@@ -390,9 +390,26 @@ assert(ownEditModal.querySelector("#tm-title").value === "Member sin eigen oppg�
 assert(!!ownEditModal.querySelector("[data-readonly-assignee]"), "u6c: tildelt-feltet er read-only sjølv i eiga oppgåve (kan ikkje tildele andre)");
 ownEditModal.querySelector("#tm-cancel").dispatchEvent(new window.Event("click", { bubbles: true }));
 
-// Rad-klikk på oppgåve tildelt av nokon annan skal IKKJE opne redigeringsmodal
+// Rad-klikk på oppgåve tildelt av nokon annan skal opne modalen, men berre
+// med skildring + status redigerbart — tittel og tildelt er låst (presisert
+// av brukar 2026-07-03, etter at 0.9.1-runda over uventa fjerna heile
+// opne-moglegheita, ikkje berre redigering av tittel/frist).
 assignedTaskRow2.dispatchEvent(new window.Event("click", { bubbles: true }));
-assert(!doc.getElementById("task-modal-bd"), "u7: klikk på oppgåve tildelt av nokon annan opnar ikkje redigeringsmodal for member");
+const assignedModal = doc.getElementById("task-modal-bd");
+assert(!!assignedModal, "u7: klikk på oppgåve tildelt av nokon annan opnar modalen for member");
+assert(assignedModal.querySelector("#tm-title").disabled, "u7b: tittel-feltet er disabled i modalen for tildelt oppgåve");
+assert(assignedModal.querySelector("#tm-title").value === "Tildelt member av admin", "u7c: tittel-feltet viser framleis rett verdi, berre disabled");
+assert(!assignedModal.querySelector("#tm-body").disabled, "u7d: skildring-feltet ER redigerbart");
+assert(!assignedModal.querySelector("#tm-status").disabled, "u7e: status-nedtrekket ER redigerbart inni modalen");
+assert(!!assignedModal.querySelector("[data-readonly-assignee]"), "u7f: tildelt-feltet er read-only (uendra sperre)");
+assert(!assignedModal.querySelector("#tm-delete"), "u7g: ingen slett-knapp for oppgåve tildelt av nokon annan");
+assignedModal.querySelector("#tm-body").value = "Ny skildring frå member";
+assignedModal.querySelector("#tm-status").value = "in_progress";
+assignedModal.querySelector("#tm-save").dispatchEvent(new window.Event("click", { bubbles: true }));
+const tm2After = App.store.get("wsp-tasks", []).find(t => t.id === "tm2");
+assert(tm2After.title === "Tildelt member av admin", "u7h: tittelen er uendra etter lagring");
+assert(tm2After.description === "Ny skildring frå member", "u7i: skildringa vart lagra");
+assert(tm2After.status === "in_progress", "u7j: statusen vart lagra");
 
 // «Ny oppgave»-knappen skal opne opprett-modalen og lagre ei sjølvvalt/utildelt oppgåve
 doc.querySelector("#tasks-new-btn").dispatchEvent(new window.Event("click", { bubbles: true }));

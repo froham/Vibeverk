@@ -423,12 +423,13 @@ CREATE POLICY tasks_self_create ON tasks FOR INSERT TO authenticated
   WITH CHECK (created_by = auth.uid() AND (assigned_to = auth.uid() OR assigned_to IS NULL));
 
 -- Kolonneavgrensing for ikkje-admin/editor (RLS over er rad-nivå og kan ikkje
--- åleine avgrense kolonnar). Presisert 2026-07-02 etter brukartilbakemelding:
+-- åleine avgrense kolonnar). Presisert 2026-07-02/03 etter brukartilbakemelding:
 -- - Eiga OPPRETTA oppgåve (OLD.created_by = seg sjølv): fri redigering av
 --   tittel/beskriving/frist/status — men ALDRI tildeling til NOKON ANNAN enn
 --   seg sjølv (blokkert nedanfor, uavhengig av opphav).
 -- - Oppgåve TILDELT av nokon annan (OLD.created_by ≠ seg sjølv, assigned_to =
---   seg sjølv): berre status kan endrast — uendra frå 2026-07-01-tryggleiksfiksen.
+--   seg sjølv): skildring OG status kan endrast (utvida 2026-07-03 — var
+--   berre status før), tittel/frist/tildeling framleis låst.
 CREATE OR REPLACE FUNCTION restrict_assignee_task_columns()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -449,13 +450,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Tildelt av nokon annan: berre status kan endrast.
+  -- Tildelt av nokon annan: skildring og status kan endrast, resten er låst.
   IF OLD.assigned_to = auth.uid() THEN
     IF NEW.title       IS DISTINCT FROM OLD.title
-       OR NEW.description IS DISTINCT FROM OLD.description
        OR NEW.due_date    IS DISTINCT FROM OLD.due_date
        OR NEW.created_by  IS DISTINCT FROM OLD.created_by THEN
-      RAISE EXCEPTION 'Tildelt brukar kan berre endre status';
+      RAISE EXCEPTION 'Tildelt brukar kan berre endre skildring og status';
     END IF;
   END IF;
 

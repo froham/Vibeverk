@@ -324,8 +324,9 @@
 
     root.addEventListener("click", function (e) {
       // Rolle-/eigarskapssjekk skjer inne i openTaskModal() sjølv (éin kjelde
-      // til sanning) — han no-oper for member på oppgåver dei ikkje sjølv har
-      // oppretta, sjølv om rada ikkje har data-task-editable av ein eller anna grunn.
+      // til sanning) — han opnar for alle, men avgrensar sjølv kva felt som
+      // er redigerbare for member på oppgåver dei ikkje sjølv har oppretta
+      // (restrictedMember-grenen: berre skildring + status).
       var editBtn = e.target.closest("[data-task-edit]");
       if (editBtn) {
         var id = editBtn.getAttribute("data-task-edit");
@@ -361,14 +362,14 @@
     var task  = id ? _tasks.find(function (t) { return t.id === id; }) : null;
     var isNew = !task;
     // Member: kan opprette nye oppgåver til seg sjølv, OG redigere fullt ut
-    // (tittel/beskriving/frist/status) oppgåver DEI SJØLV HAR OPPRETTA — men
-    // ikkje opne full redigeringsflyt for ei oppgåve TILDELT dei av nokon annan
-    // (status på slike endrast framleis berre via rad-nedtrekket, jf. den
-    // eksisterande restrict_assignee_task_columns()-triggeren i migration.sql
-    // frå 2026-07-01-tryggleiksfiksen). Tildeling til ANDRE krev framleis admin
-    // (canAssignTasks()) — assigneeField under er read-only for alle andre,
-    // uansett om oppgåva er sjølv oppretta eller ikkje.
-    if (isMemberRole() && !isNew && !canEditTask(task, uid(), true)) return;
+    // (tittel/beskriving/status) oppgåver DEI SJØLV HAR OPPRETTA. For ei
+    // oppgåve TILDELT dei av nokon annan: modalen opnar (presisert av brukar
+    // 2026-07-03 — tidlegare batt ho ikkje opp i det heile), men berre
+    // skildring og status er redigerbart der — tittel er låst read-only, og
+    // tildelt-feltet er uansett alltid read-only for alle utan
+    // canAssignTasks(). restrict_assignee_task_columns()-triggeren i
+    // migration.sql handhevar det same server-side.
+    var restrictedMember = isMemberRole() && !isNew && !canEditTask(task, uid(), true);
 
     var existing = document.getElementById("task-modal-bd");
     if (existing) existing.remove();
@@ -407,15 +408,21 @@
         'style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-surface);color:var(--color-text);width:100%">';
     }
 
+    var titleField = restrictedMember
+      ? '<input id="tm-title" type="text" value="' + C.esc(task ? task.title : "") + '" disabled ' +
+        'style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-alt);color:var(--color-muted);width:100%">'
+      : '<input id="tm-title" type="text" value="' + C.esc(task ? task.title : "") + '" placeholder="Hva skal gjøres?" autocomplete="off">';
+
     modal.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border)">' +
         '<strong>' + (isNew ? "Ny oppgave" : "Rediger oppgave") + '</strong>' +
         '<button id="tm-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
       '</div>' +
       '<div style="padding:1.2rem;display:grid;gap:.9rem">' +
+        (restrictedMember ? '<p style="font-size:.78rem;color:var(--color-muted);margin:0"><i class="ti ti-lock"></i> Denne oppgaven er tildelt deg av noen andre — du kan endre beskrivelse og status, men ikke tittel eller tildeling.</p>' : '') +
         '<div class="i-field">' +
           '<label for="tm-title">Tittel *</label>' +
-          '<input id="tm-title" type="text" value="' + C.esc(task ? task.title : "") + '" placeholder="Hva skal gjøres?" autocomplete="off">' +
+          titleField +
         '</div>' +
         '<div class="i-field">' +
           '<label for="tm-body">Beskriving</label>' +
@@ -435,7 +442,7 @@
         '<div style="display:flex;gap:.5rem;padding-top:.2rem">' +
           '<button class="btn btn--primary btn--sm" id="tm-save">Lagre</button>' +
           '<button class="btn btn--ghost btn--sm" id="tm-cancel">Avbryt</button>' +
-          (!isNew ? '<button class="btn btn--ghost btn--sm" id="tm-delete" style="margin-left:auto;color:#c0392b;border-color:#c0392b">Slett</button>' : '') +
+          (!isNew && !restrictedMember ? '<button class="btn btn--ghost btn--sm" id="tm-delete" style="margin-left:auto;color:#c0392b;border-color:#c0392b">Slett</button>' : '') +
         '</div>' +
       '</div>';
 
@@ -452,7 +459,11 @@
     });
 
     modal.querySelector("#tm-save").addEventListener("click", function () {
-      var title       = modal.querySelector("#tm-title").value.trim();
+      // restrictedMember: tittel-feltet er disabled i DOM-et, men send likevel
+      // uttrykkeleg den opphavlege tittelen i staden for å stole på at eit
+      // disabled input sitt .value framleis er korrekt — held save-kallet
+      // trygt uavhengig av nettlesar-kvirker med disabled-felt.
+      var title       = restrictedMember ? (task ? task.title : "") : modal.querySelector("#tm-title").value.trim();
       var body        = modal.querySelector("#tm-body").value.trim();
       var status      = modal.querySelector("#tm-status").value;
       var assigneeEl  = modal.querySelector("#tm-assignee");
@@ -489,7 +500,7 @@
       });
     }
 
-    modal.querySelector("#tm-title").focus();
+    modal.querySelector(restrictedMember ? "#tm-body" : "#tm-title").focus();
   }
 
   window._tasksOpenModal = function (root) {

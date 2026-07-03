@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.9.3 — 2026-07-03
+
+### Tasks tildelt av admin til member — modalen opnar no att, med skildring + status redigerbart
+- Brukaren rapporterte at «member skal kunne opne tildelte oppgåver» framleis ikkje fungerte etter 0.9.1-reverteringa. Undersøking synte at reverteringa attende til 0.8.0-åtferda hadde ein utilsikta konsekvens: `openTaskModal()` sin tidlege `return` for member på oppgåver tildelt av nokon annan gjorde at klikk på rada ikkje synte NOKO som helst — ikkje eingong ei lesevisning. Status kunne framleis endrast via nedtrekket direkte på rada, men det var ingen måte å opne/sjå full skildring i ein modal.
+- Brukaren presiserte det endelege kravet: modalen SKAL opne for slike oppgåver. Inni modalen er **skildring og status redigerbart**, **tittel og tildelt er låst** (disabled inputfelt, ikkje skjult).
+- `intranet/module-tasks.js`: fjerna den tidlege `return`-en i `openTaskModal()`, erstatta med ein `restrictedMember`-flagg som styrer kva felt som er redigerbare. Tittelfeltet vert rendra som eit disabled inputfelt (same visuelle stil som det eksisterande read-only tildelt-feltet) i staden for eit vanleg tekstfelt. Slett-knappen er skjult for denne saka (ingen eksisterande RLS-policy gjev member DELETE-rett på tasks i det heile, heller ikkje på eigne oppretta oppgåver — usett her, utanfor denne rundas scope). Lagre-handsamaren sender uttrykkeleg den opphavlege tittelen (ikkje verdien lest frå det disabled feltet) for å ikkje stole på nettlesar-åtferd for disabled inputs.
+- Server-side: `restrict_assignee_task_columns()`-triggeren i `supabase/migration.sql` utvida til å tillate `description`-endringar i tillegg til `status` for «tildelt av nokon annan»-tilfellet (var berre status før). Ny `supabase/hotfix_tasks_description_editable_2026-07-03.sql` — **ikkje køyrt mot produksjon enno**, ventar på brukargodkjenning. Ingen RLS-policy-endring naudsynt (`tasks_assignee` sin `USING`/`WITH CHECK` er uendra).
+- Testar: `u7`-blokka i `test-intranet.js` skriven om frå «ingen modal opnar seg» til å dekke heile det nye forløpet — modal opnar, tittel disabled men syner rett verdi, skildring og status redigerbart, tildelt-feltet framleis read-only, ingen slett-knapp, og eit fullt lagre-forløp som stadfestar tittel er uendra medan skildring og status faktisk vart lagra. `test-intranet.js`: 140 → 149 tester (148 OK, framleis berre den kjende `o3`-feilen). `test.js` uendra (435/1).
+
 ## 0.9.2 — 2026-07-03
 
 ### Fiksa: korrupt bildedata kunne feile med 400 for ALLE roller på Aktuelt
