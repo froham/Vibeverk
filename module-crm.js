@@ -340,6 +340,9 @@
   /* =========================================================================
      AUTO-IMPORT (kundar + bedrifter frå leads og bookingar)
      ====================================================================== */
+  function bookingBookings() {
+    return (window.BookingAdmin && window.BookingAdmin.getBookings) ? window.BookingAdmin.getBookings() : (App.store.get("booking-bookings",[]) || []);
+  }
   function parseQuoteForBedrift(lead) {
     var msg = lead.message||"";
     if (!msg || !(App.isTilbud ? App.isTilbud(lead) : msg.indexOf("Tilbudsforesp") === 0)) return null;
@@ -355,7 +358,7 @@
 
   function autoImport() {
     var leads    = App.getLeads ? App.getLeads() : [];
-    var bookings = App.store.get("booking-bookings",[]) || [];
+    var bookings = bookingBookings();
     function upsert(email, name, bedInfo) {
       if (!email) return;
       var e   = email.toLowerCase();
@@ -395,7 +398,7 @@
         title:(isQ?"Tilbudsforespørsel":"Kontaktmelding")+(l.name?" fra "+l.name:""),
         body:(l.message||"").replace(/<[^>]+>/g,"").slice(0,120), status:l.status||"ny" });
     });
-    (App.store.get("booking-bookings",[])||[]).forEach(function (b) {
+    bookingBookings().forEach(function (b) {
       if (es.indexOf((b.email||"").toLowerCase())===-1) return;
       var aa = App.store.get("booking-assets",[])||[];
       var a  = aa.find(function (x) { return x.id===b.assetId; });
@@ -430,9 +433,16 @@
      ====================================================================== */
   function deleteAllForEmail(emails) {
     var es = emails.map(function (e) { return (e||"").toLowerCase(); });
-    if (App.getLeads) App.store.set("leads",(App.getLeads()||[]).filter(function(l){return es.indexOf((l.email||"").toLowerCase())===-1;}));
-    var bk = App.store.get("booking-bookings",[])||[];
-    App.store.set("booking-bookings",bk.filter(function(b){return es.indexOf((b.email||"").toLowerCase())===-1;}));
+    if (App.getLeads && App.deleteLead) {
+      (App.getLeads()||[]).filter(function(l){return es.indexOf((l.email||"").toLowerCase())>-1;})
+        .forEach(function(l){ App.deleteLead(l.id); });
+    }
+    if (window.BookingAdmin && window.BookingAdmin.deleteBookingsByEmail) {
+      es.forEach(function (e) { window.BookingAdmin.deleteBookingsByEmail(e); });
+    } else {
+      var bk = App.store.get("booking-bookings",[])||[];
+      App.store.set("booking-bookings",bk.filter(function(b){return es.indexOf((b.email||"").toLowerCase())===-1;}));
+    }
     _comms.filter(function(c){
       var cu=_customers.find(function(x){return x.id===c.customerId;}); if(!cu) return false;
       return customerEmails(cu).some(function(e){return es.indexOf(e.toLowerCase())>-1;});

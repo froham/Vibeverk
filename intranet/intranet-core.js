@@ -270,7 +270,7 @@ window.Intranet = (function () {
     var quoteNew = leads.filter(function (l) {
       return App.isTilbud(l) && (l.status || "ny") === "ny";
     }).length;
-    var bookingNew = (App.store.get("booking-bookings", []) || []).filter(function (b) {
+    var bookingNew = ((window.BookingAdmin && window.BookingAdmin.getBookings) ? window.BookingAdmin.getBookings() : (App.store.get("booking-bookings", []) || [])).filter(function (b) {
       return (b.status || "ny") === "ny";
     }).length;
     var chatNew = window.VwChat ? window.VwChat.totalUnread() : 0;

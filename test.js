@@ -1186,6 +1186,30 @@ const __asyncTests = (async () => {
       "isTilbud() sitt tekst-sniffing-fallback gjev false for vanlege kontaktmeldingar");
   })();
 
+  // --- bookings: feltmapping Supabase<->JS ---
+  // Same grunngjeving som CRM/leads-testane over: _sb vert fanga éin gong
+  // ved modul-oppstart i module-booking.js, så desse testane verifiserer
+  // felt-mappinga, ikkje det faktiske nettverkskallet.
+  console.log("\n— bookings: feltmapping Supabase<->JS —");
+  (function () {
+    var T = window.BookingAdmin && window.BookingAdmin._test;
+    assert(!!T && !!T.dbBookingToJs && !!T.jsBookingToDb, "BookingAdmin._test eksponerer bookings-feltmapping for testing");
+
+    var dbBk = { id: "bk-1", asset_id: "as-1", date: "2026-08-01", time: "10:00", name: "Kari", email: "kari@test.no", phone: "12345678", message: "Ein kommentar", instant: true, status: "ny", reference_number: "482913", created_at: "2026-07-03T09:00:00.000Z" };
+    var jsBk = T.dbBookingToJs(dbBk);
+    assert(jsBk.assetId === "as-1" && jsBk.referenceNumber === "482913" && jsBk.instant === true && jsBk.createdAt === dbBk.created_at,
+      "dbBookingToJs() mappar snake_case til camelCase korrekt (asset_id/reference_number/instant/created_at)");
+    var backToDb = T.jsBookingToDb(jsBk);
+    assert(backToDb.asset_id === "as-1" && backToDb.reference_number === "482913" && backToDb.instant === true,
+      "jsBookingToDb() mappar camelCase attende til snake_case korrekt (round-trip)");
+
+    // instant/status/phone/message manglar ofte for admin-oppretta bookingar — sjekk defaults.
+    var dbMinimal = { id: "bk-2", asset_id: "as-2", date: "2026-08-02", time: "11:00" };
+    var jsMinimal = T.dbBookingToJs(dbMinimal);
+    assert(jsMinimal.name === "" && jsMinimal.email === "" && jsMinimal.phone === "" && jsMinimal.instant === false && jsMinimal.status === "ny",
+      "dbBookingToJs() gjev fornuftige standardverdiar når valfrie felt manglar");
+  })();
+
   // --- Status-system (Ny/Lest/Løst) ---
   console.log("\n— Status-system (Ny/Lest/Løst) —");
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));

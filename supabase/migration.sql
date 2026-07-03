@@ -215,6 +215,27 @@ CREATE TABLE IF NOT EXISTS leads (
   created_at        timestamptz  NOT NULL DEFAULT now()
 );
 
+-- Bookingar. Flytta ut av store 2026-07-03, siste av dei tre private
+-- datasetta (CRM, leads, no bookingar) — fullfører fiksen for CRITICAL-
+-- funnet om ubetinga anon-SELECT på heile store-tabellen. `booking-assets`
+-- (ressursane sjølve — bil/møterom/opningstider) er IKKJE del av denne
+-- flyttinga, vert verande i store (låg sensitivitet, admin-definert config,
+-- ikkje kundedata). `id` er text, same grunngjeving som leads/CRM.
+CREATE TABLE IF NOT EXISTS bookings (
+  id                text         PRIMARY KEY,
+  asset_id          text         NOT NULL,
+  date              date         NOT NULL,
+  time              text         NOT NULL,
+  name              text                  DEFAULT '',
+  email             text                  DEFAULT '',
+  phone             text                  DEFAULT '',
+  message           text,
+  instant           boolean      NOT NULL DEFAULT false,
+  status            text         NOT NULL DEFAULT 'ny' CHECK (status IN ('ny', 'lest', 'løst')),
+  reference_number  text,
+  created_at        timestamptz  NOT NULL DEFAULT now()
+);
+
 -- Chat-samtalar (anon-besøkande skriv, admin les/svarar)
 CREATE TABLE IF NOT EXISTS chat_conversations (
   id              text         PRIMARY KEY,
@@ -388,6 +409,7 @@ ALTER TABLE crm_bedrifter     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_customers     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_comms         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leads             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bookings          ENABLE ROW LEVEL SECURITY;
 
 -- store: anon kan lese (offentleg innhald), innlogga brukarar kan skrive.
 -- Nøkkelen 'superconfig' (feature-flagg, tema, personverntekst, admin-passord-
@@ -509,6 +531,19 @@ CREATE POLICY leads_select ON leads FOR SELECT TO authenticated USING (true);
 CREATE POLICY leads_insert ON leads FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY leads_update ON leads FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY leads_delete ON leads FOR DELETE TO authenticated USING (can_edit_content());
+
+-- bookings: same tilgangsregel som leads/CRM over — ingen anon-tilgang i det
+-- heile, admin/editor full tilgang, member SELECT+INSERT+UPDATE (ikkje
+-- DELETE). Fullfører CRITICAL-funnet: alle tre private datasetta (CRM,
+-- leads, bookingar) er no ute av store med denne runda.
+DROP POLICY IF EXISTS bookings_select ON bookings;
+DROP POLICY IF EXISTS bookings_insert ON bookings;
+DROP POLICY IF EXISTS bookings_update ON bookings;
+DROP POLICY IF EXISTS bookings_delete ON bookings;
+CREATE POLICY bookings_select ON bookings FOR SELECT TO authenticated USING (true);
+CREATE POLICY bookings_insert ON bookings FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY bookings_update ON bookings FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY bookings_delete ON bookings FOR DELETE TO authenticated USING (can_edit_content());
 
 -- Slår saman fleire kundar til éin, med brukarvald primærkunde (module-crm.js
 -- sin doMerge()-dialog let brukaren velje kven som skal overleve — ikkje ei

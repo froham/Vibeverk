@@ -415,6 +415,9 @@ window.App = (function () {
   function crmBedrifter() {
     return (window.CrmAdmin && window.CrmAdmin.getBedrifter) ? window.CrmAdmin.getBedrifter() : (Store.get("crm-bedrifter", []) || []);
   }
+  function bookingBookings() {
+    return (window.BookingAdmin && window.BookingAdmin.getBookings) ? window.BookingAdmin.getBookings() : (Store.get("booking-bookings", []) || []);
+  }
   // Lagre en innsendt henvendelse (brukes av kontaktskjemaet og av moduler,
   // t.d. module-quote.js for Tilbud med kind:"tilbud" eksplisitt sett).
   // Synkron retur + fire-and-forget Supabase-skriving i bakgrunnen — same
@@ -2157,7 +2160,7 @@ window.App = (function () {
 
     const leads    = getLeads().filter(function (l) { return !isTilbud(l); });
     const quotes   = getLeads().filter(isTilbud);
-    const bookings = Store.get("booking-bookings", []) || [];
+    const bookings = bookingBookings();
 
     const monthCards = [statCard("Kontaktskjema", countByMonth(leads, thisM), countByMonth(leads, prevM))];
     if (hasModule("tilbud"))  monthCards.push(statCard("Tilbud", countByMonth(quotes, thisM), countByMonth(quotes, prevM)));
@@ -2291,11 +2294,15 @@ window.App = (function () {
     const matchingLeads = getLeads().filter(function (l) { return (l.email || "").toLowerCase() === email; });
     matchingLeads.forEach(function (l) { deleteLead(l.id); });
     count += matchingLeads.length;
-    // Bookingar (via App.store — same namespace)
-    const bk = Store.get("booking-bookings", []) || [];
-    const bkAfter = bk.filter(function (b) { return (b.email || "").toLowerCase() !== email; });
-    Store.set("booking-bookings", bkAfter);
-    count += bk.length - bkAfter.length;
+    // Bookingar (via window.BookingAdmin når modulen er lasta, elles direkte Store)
+    if (window.BookingAdmin && window.BookingAdmin.deleteBookingsByEmail) {
+      count += window.BookingAdmin.deleteBookingsByEmail(email);
+    } else {
+      const bk = Store.get("booking-bookings", []) || [];
+      const bkAfter = bk.filter(function (b) { return (b.email || "").toLowerCase() !== email; });
+      Store.set("booking-bookings", bkAfter);
+      count += bk.length - bkAfter.length;
+    }
     // CRM-kundar (om modulen er aktiv) — via window.CrmAdmin, sidan crm-customers
     // ikkje lenger er ein store-blob (flytta til crm_customers-tabellen 2026-07-03).
     if (window.CrmAdmin && window.CrmAdmin.deleteCustomersByEmail) {
@@ -2538,7 +2545,7 @@ window.App = (function () {
     function hasModule(id) { return modules.some(function (m) { return m.id === id; }); }
     const leads     = getLeads().filter(function (l) { return !isTilbud(l); });
     const quotes    = getLeads().filter(isTilbud);
-    const bookings  = Store.get("booking-bookings",  []) || [];
+    const bookings  = bookingBookings();
     const customers = crmCustomers();
     const refs      = Store.get("ref-items",         []) || [];
     const faqs      = Store.get("faq-items",         []) || [];
@@ -2620,7 +2627,7 @@ window.App = (function () {
           const data = getLeads().filter(isTilbud);
           downloadBlob("tilbud-" + stamp + ".json", JSON.stringify(data, null, 2), "application/json");
         } else if (type === "bookings-json") {
-          downloadBlob("bookinger-" + stamp + ".json", JSON.stringify(Store.get("booking-bookings",[]), null, 2), "application/json");
+          downloadBlob("bookinger-" + stamp + ".json", JSON.stringify(bookingBookings(), null, 2), "application/json");
         } else if (type === "leads-json") {
           const data = getLeads().filter(function(l){return !isTilbud(l);});
           downloadBlob("henvendelser-" + stamp + ".json", JSON.stringify(data, null, 2), "application/json");
@@ -2668,7 +2675,7 @@ window.App = (function () {
       : "God plass igjen.";
 
     const leads    = getLeads ? getLeads() : [];
-    const bookings = Store.get("booking-bookings", []) || [];
+    const bookings = bookingBookings();
     const customers= crmCustomers();
     const custConvs= Store.get("chat:convs",       []) || [];
 
@@ -3670,6 +3677,7 @@ window.App = (function () {
     getLeads: getLeads,
     addLead: addLead,                  // lagre en henvendelse (lead)
     updateLead: updateLead,            // oppdater felt på eksisterande lead
+    deleteLead: deleteLead,            // slett ein lead (t.d. GDPR-sletting)
     isTilbud: isTilbud,                 // skil Tilbud frå Kontakt via kind (fell tilbake til tekst-sniffing for eldre data)
     _test: { dbLeadToJs: dbLeadToJs, jsLeadToDb: jsLeadToDb }, // eksponerer reine JS<->DB-feltmappingsfunksjonar for testing, sjå test.js "leads: feltmapping Supabase<->JS"
     openAdmin: openAdmin,

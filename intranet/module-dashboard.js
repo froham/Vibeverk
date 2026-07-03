@@ -53,7 +53,7 @@
      ====================================================================== */
   function getHenvendelser() {
     var leads    = App.getLeads ? App.getLeads() : [];
-    var bookings = App.store.get("booking-bookings", []) || [];
+    var bookings = (window.BookingAdmin && window.BookingAdmin.getBookings) ? window.BookingAdmin.getBookings() : (App.store.get("booking-bookings", []) || []);
 
     var contact = leads.filter(function (l) { return !App.isTilbud(l); });
     var quote = leads.filter(App.isTilbud);

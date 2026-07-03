@@ -18,12 +18,55 @@
   if (CFG.intranettFeatures && CFG.intranettFeatures.booking === false) return;
 
   /* =========================================================================
-     DATA
+     DATA — bookingar flytta ut av store til ein eigen bookings-tabell
+     2026-07-03 (siste av dei tre private datasetta, sjå crm_customers/leads
+     — fullfører CRITICAL-funnet). Denne fila er HEILT UAVHENGIG av rot-fila
+     sin module-booking.js (to separate filer som begge las/skreiv same
+     store-nøkkel før — no same tabell, kvar med sin eigen lokale cache, sidan
+     Web-admin og Workspace aldri er lasta samstundes i same fane). Same
+     _sb-berre-sjekk (ikkje auth-sjekk) som module-crm.js/root-fila, sidan
+     modulen her uansett berre er nåbar for innlogga Workspace-brukarar.
      ====================================================================== */
-  function getBookings() { return App.store.get("booking-bookings", []) || []; }
-  function getAssets()   { return App.store.get("booking-assets",   []) || []; }
+  var _sb = App.supabase;
+  var _bookings = [];
 
-  function setBookings(v) { App.store.set("booking-bookings", v); }
+  function dbBookingToJs(row) {
+    return { id: row.id, assetId: row.asset_id, date: row.date, time: row.time,
+      name: row.name || "", email: row.email || "", phone: row.phone || "", message: row.message || "",
+      instant: !!row.instant, status: row.status || "ny", referenceNumber: row.reference_number,
+      createdAt: row.created_at };
+  }
+  function jsBookingToDb(b) {
+    return { asset_id: b.assetId, date: b.date, time: b.time, name: b.name || "", email: b.email || "",
+      phone: b.phone || "", message: b.message || "", instant: !!b.instant, status: b.status || "ny",
+      reference_number: b.referenceNumber || null };
+  }
+
+  function loadBookings(cb) {
+    if (!_sb) { _bookings = App.store.get("booking-bookings", []) || []; cb && cb(); return; }
+    _sb.from("bookings").select("*").order("created_at", { ascending: false }).then(function (r) {
+      _bookings = (r.data || []).map(dbBookingToJs);
+      cb && cb();
+    });
+  }
+
+  function getBookings() {
+    if (!_sb) return App.store.get("booking-bookings", []) || [];
+    return _bookings;
+  }
+  function getAssets() { return App.store.get("booking-assets", []) || []; }
+
+  function updateBooking(id, patch) {
+    if (!_sb) {
+      var list = App.store.get("booking-bookings", []) || [];
+      var bk = list.find(function (x) { return x.id === id; });
+      if (bk) { Object.assign(bk, patch); App.store.set("booking-bookings", list); }
+      return;
+    }
+    var cached = _bookings.find(function (x) { return x.id === id; });
+    if (cached) Object.assign(cached, patch);
+    _sb.from("bookings").update(jsBookingToDb(cached || patch)).eq("id", id).then(function () {});
+  }
 
   function formatDate(ts) {
     if (!ts) return "";
@@ -43,11 +86,8 @@
   }
 
   function updateStatus(id, newStatus) {
-    var list = getBookings();
-    var idx  = list.findIndex(function (b) { return b.id === id; });
-    if (idx < 0) return;
-    list[idx].status = newStatus;
-    setBookings(list);
+    if (!getBookings().some(function (b) { return b.id === id; })) return;
+    updateBooking(id, { status: newStatus });
     Intranet.logActivity({ type: "booking_status", label: "Booking → " + (STATUS_LABELS[newStatus] || newStatus) });
   }
 
@@ -371,5 +411,10 @@
     render:   render,
     mount:    mount
   });
+
+  // Lastar bookingar-cachen proaktivt ved modul-oppstart — same grunngjeving
+  // som module-crm.js (treng vere klar før andre Workspace-modular, t.d.
+  // dashboard/intranet-core.js sine tab-badges, som les via denne).
+  loadBookings(function () {});
 
 })();

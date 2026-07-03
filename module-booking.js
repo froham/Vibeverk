@@ -39,8 +39,100 @@
   /* --- Lagring (namespacet via App.store) ---------------------------------- */
   function getAssets()   { return App.store.get("booking-assets", []) || []; }
   function setAssets(v)  { App.store.set("booking-assets", v); }
-  function getBookings() { return App.store.get("booking-bookings", []) || []; }
-  function setBookings(v){ App.store.set("booking-bookings", v); }
+
+  // Bookingar flytta ut av store 2026-07-03 (siste av dei tre private
+  // datasetta, sjå crm_customers/leads for dei to første — fullfører
+  // CRITICAL-funnet om ubetinga anon-SELECT på heile store-tabellen).
+  // booking-assets (ressursane sjølve) er IKKJE del av flyttinga, vert
+  // verande i store. _sb her sjekkar berre om Supabase er KONFIGURERT
+  // (same mønster som module-crm.js) — RLS avviser stille eit anonymt
+  // besøkande-forsøk på å skrive (booking-skjemaet er offentleg, ikkje
+  // innlogga), same kjende, alt-dokumenterte avgrensing som leads/CRM har
+  // (anonyme innsendingar når i dag ikkje Supabase, berre localStorage).
+  var _sb = App.supabase;
+  var _bookings = [];
+
+  function dbBookingToJs(row) {
+    return { id: row.id, assetId: row.asset_id, date: row.date, time: row.time,
+      name: row.name || "", email: row.email || "", phone: row.phone || "", message: row.message || "",
+      instant: !!row.instant, status: row.status || "ny", referenceNumber: row.reference_number,
+      createdAt: row.created_at };
+  }
+  function jsBookingToDb(b) {
+    return { asset_id: b.assetId, date: b.date, time: b.time, name: b.name || "", email: b.email || "",
+      phone: b.phone || "", message: b.message || "", instant: !!b.instant, status: b.status || "ny",
+      reference_number: b.referenceNumber || null };
+  }
+
+  function loadBookings(cb) {
+    if (!_sb) { _bookings = App.store.get("booking-bookings", []) || []; cb && cb(); return; }
+    _sb.from("bookings").select("*").order("created_at", { ascending: false }).then(function (r) {
+      _bookings = (r.data || []).map(dbBookingToJs);
+      cb && cb();
+    });
+  }
+
+  function getBookings() {
+    if (!_sb) return App.store.get("booking-bookings", []) || [];
+    return _bookings;
+  }
+
+  function createBooking(data) {
+    var b = Object.assign({ id: "bk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+      createdAt: new Date().toISOString() }, data);
+    if (!_sb) {
+      var list = App.store.get("booking-bookings", []) || [];
+      list.push(b);
+      App.store.set("booking-bookings", list);
+      return b;
+    }
+    _bookings.push(b);
+    _sb.from("bookings").insert(Object.assign(jsBookingToDb(b), { id: b.id, created_at: b.createdAt })).then(function () {});
+    return b;
+  }
+
+  function updateBooking(id, patch) {
+    if (!_sb) {
+      var list = App.store.get("booking-bookings", []) || [];
+      var bk = list.find(function (x) { return x.id === id; });
+      if (bk) { Object.assign(bk, patch); App.store.set("booking-bookings", list); }
+      return;
+    }
+    var cached = _bookings.find(function (x) { return x.id === id; });
+    if (cached) Object.assign(cached, patch);
+    _sb.from("bookings").update(jsBookingToDb(cached || patch)).eq("id", id).then(function () {});
+  }
+
+  function deleteBooking(id) {
+    if (!_sb) {
+      App.store.set("booking-bookings", (App.store.get("booking-bookings", []) || []).filter(function (x) { return x.id !== id; }));
+      return;
+    }
+    _bookings = _bookings.filter(function (x) { return x.id !== id; });
+    _sb.from("bookings").delete().eq("id", id).then(function () {});
+  }
+
+  function deleteBookingsByAssetId(assetId) {
+    if (!_sb) {
+      App.store.set("booking-bookings", (App.store.get("booking-bookings", []) || []).filter(function (x) { return x.assetId !== assetId; }));
+      return;
+    }
+    var toDelete = _bookings.filter(function (x) { return x.assetId === assetId; });
+    _bookings = _bookings.filter(function (x) { return x.assetId !== assetId; });
+    if (toDelete.length) _sb.from("bookings").delete().in("id", toDelete.map(function (x) { return x.id; })).then(function () {});
+  }
+
+  window.BookingAdmin = {
+    getBookings: getBookings,
+    deleteBookingsByEmail: function (email) {
+      var e = (email || "").toLowerCase();
+      var matches = getBookings().filter(function (b) { return (b.email || "").toLowerCase() === e; });
+      matches.forEach(function (b) { deleteBooking(b.id); });
+      return matches.length;
+    },
+    _test: { dbBookingToJs: dbBookingToJs, jsBookingToDb: jsBookingToDb }
+  };
+
   // Sekssifret referansenummer kunden kan vise til ved telefon/e-post, f.eks. «#482913».
   function nextBookingRef() {
     var nums = getBookings().map(function (b) { return b.referenceNumber; }).filter(Boolean);
@@ -379,14 +471,12 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Sjekk e-postadressen."; st.className = "form__status is-error"; return; }
       if (!App.ui.termsAccepted(form, termsId)) { st.textContent = "Du må godta personvernerklæringen for å reservere."; st.className = "form__status is-error"; return; }
       if (isBooked(a.id, date, time) || isBlocked(a, date, time)) { st.textContent = "Beklager, tiden er ikke tilgjengelig."; st.className = "form__status is-error"; return; }
-      var list = getBookings();
-      list.push({ id: "bk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), assetId: a.id, date: date, time: time,
+      var newBk = createBooking({ assetId: a.id, date: date, time: time,
                   name: name, email: email, phone: phone, message: msg, instant: true, status: "ny", referenceNumber: nextBookingRef() });
-      setBookings(list);
       var picker = assetEl.querySelector(".bk-picker");
       var active = picker && picker.querySelector(".bk-datepill.is-active");
       if (picker && active) picker.querySelector("[data-times]").innerHTML = renderTimes(a, active.getAttribute("data-date"));
-      box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + time + '. Din referanse: #' + list[list.length - 1].referenceNumber + '</p>';
+      box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + time + '. Din referanse: #' + newBk.referenceNumber + '</p>';
     });
   }
 
@@ -454,7 +544,7 @@
         var a = getAssets().find(function (x) { return x.id === id; });
         if (a && a.image) App.media.free(a.image);
         setAssets(getAssets().filter(function (x) { return x.id !== id; }));
-        setBookings(getBookings().filter(function (x) { return x.assetId !== id; }));
+        deleteBookingsByAssetId(id);
         renderAdmin(root);
       });
     });
@@ -761,7 +851,7 @@
         var id = det.getAttribute("data-bk-details");
         var bk = getBookings().find(function (x) { return x.id === id; });
         if (bk && (bk.status || "ny") === "ny") {
-          bk.status = "lest"; setBookings(getBookings().map(function (x) { return x.id === id ? bk : x; }));
+          updateBooking(id, { status: "lest" });
           renderBookingArea(root);
         }
       });
@@ -774,7 +864,7 @@
         var bk = list.find(function (x) { return x.id === id; });
         if (!bk) return;
         var a = assets.find(function (z) { return z.id === bk.assetId; });
-        bk.status = "løst"; setBookings(list);
+        updateBooking(id, { status: "løst" });
         App.openReplyModal({
           name: bk.name, email: bk.email,
           subject: "Avbooking – " + (a ? a.name : "") + " " + C.formatDate(bk.date) + " kl. " + bk.time + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
@@ -796,7 +886,7 @@
         var bk = list.find(function (x) { return x.id === id; });
         if (!bk) return;
         var a = assets.find(function (z) { return z.id === bk.assetId; });
-        bk.status = "løst"; setBookings(list);
+        updateBooking(id, { status: "løst" });
         App.openReplyModal({
           name: bk.name, email: bk.email,
           subject: "Angående din reservasjon – " + (a ? a.name : "") + (bk.referenceNumber ? " (#" + bk.referenceNumber + ")" : ""),
@@ -814,9 +904,8 @@
     area.querySelectorAll("[data-bk-status]").forEach(function (sel) {
       sel.addEventListener("change", function () {
         var id = sel.getAttribute("data-bk-status");
-        var list = getBookings();
-        var bk = list.find(function (x) { return x.id === id; });
-        if (bk) { bk.status = sel.value; setBookings(list); renderBookingArea(root); }
+        var bk = getBookings().find(function (x) { return x.id === id; });
+        if (bk) { updateBooking(id, { status: sel.value }); renderBookingArea(root); }
       });
     });
 
@@ -835,14 +924,12 @@
       var name = area.querySelector("#bk-bname").value.trim();
       if (!assetId || !date || !time) return;
       if (isBooked(assetId, date, time)) { alert("Denne tiden er allerede booket."); return; }
-      var list = getBookings();
-      list.push({ id:"bk-"+Date.now()+"-"+Math.random().toString(36).slice(2,6), assetId:assetId, date:date, time:time, name:name, status:"ny", referenceNumber: nextBookingRef() });
-      setBookings(list);
+      createBooking({ assetId:assetId, date:date, time:time, name:name, status:"ny", referenceNumber: nextBookingRef() });
       renderAdmin(root);
     });
     area.querySelectorAll("[data-booking-del]").forEach(function (b) {
       b.addEventListener("click", function () {
-        setBookings(getBookings().filter(function (x) { return x.id !== b.getAttribute("data-booking-del"); }));
+        deleteBooking(b.getAttribute("data-booking-del"));
         renderAdmin(root);
       });
     });
@@ -956,4 +1043,9 @@
       mount: function (body) { renderAdmin(body.querySelector("[data-bk-root]")); }
     }
   });
+
+  // Lastar bookingar-cachen proaktivt ved modul-oppstart (same grunngjeving
+  // som module-crm.js) — treng vere klar før både #booking-sida og admin-
+  // fana kan vise korrekte data.
+  loadBookings(function () {});
 })();

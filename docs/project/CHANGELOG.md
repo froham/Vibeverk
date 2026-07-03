@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.12.0 — 2026-07-03
+
+### Bookingar flytta ut av `store` — tredje og siste steg, CRITICAL-funnet no FULLT LØYST
+- Siste steg av flyttinga (sjå 0.10.0 for CRM, 0.11.0 for leads): `booking-bookings`-nøkkelen i `store` flytta til ein ekte `bookings`-tabell, med same RLS-mønster (ingen anon-tilgang, admin/editor full tilgang, member SELECT+INSERT+UPDATE ikkje DELETE). `booking-assets` (ressursane sjølve — bilar/møterom/timar) er **ikkje** del av flyttinga, vert verande i `store` (lav sensitivitet, admin-config, ikkje kundedata). Med dette er alle tre private datasetta identifisert i Fase 1-auditen (2026-07-01) ute av `store` — det opphavlege CRITICAL-funnet om ubetinga anon-SELECT på heile `store`-tabellen er no fullt løyst for kundedata.
+- `module-booking.js` og `intranet/module-booking.js` sitt datalag omskrive med same async-cache-mønster som CRM/leads (`_bookings`, `loadBookings()`, `getBookings()`). Arkitektonisk forskjell frå CRM handtert eksplisitt: bookingar vert lesne/skrivne frå TO uavhengige filer (rot-fila for offentleg Web-admin, `intranet/`-fila for Workspace) som aldri lastar samstundes — kvar fil har difor sin eigen uavhengige cache, ikkje ein delt koordineringslag (same vurdering som i arkitekt-planen frå 0.10.0).
+- Nytt `window.BookingAdmin` (`getBookings()`/`deleteBookingsByEmail()`), same tilgjengeleggjeringsmønster som `window.CrmAdmin`. Alle attverande direkte `Store.get("booking-bookings")`-lesingar utanfor `module-booking.js` sjølv (5 stader i `core.js`: dashboard-kort, GDPR-sletting, søk/analyse-aggregator, CSV/JSON-eksport; 3 stader i `module-crm.js`: `autoImport()`, `getLegacyHistory()`, `deleteAllForEmail()`; 1 stad i `intranet/intranet-core.js` sine faneskilt-tal; 1 stad i `intranet/module-dashboard.js`) omdirigert via `window.BookingAdmin`/ein ny `bookingBookings()`-hjelpar i kvar fil.
+- **Ny regresjon oppdaga og retta undervegs (fanst ikkje i 0.11.0-sveipet)**: `module-crm.js` sin `deleteAllForEmail()` (kalla ved GDPR-sletting av ein CRM-kunde) skreiv leads-slettinga direkte via `App.store.set("leads", …)`, som omgjekk heile den nye Supabase-medvitne `getLeads()`/`deleteLead()`-API-en frå 0.11.0 — sidan `deleteLead` heller ikkje var eksponert på `App`-objektet i det heile. Konsekvens: når Supabase er aktiv, ville denne GDPR-slettinga stille ha late leads-rader stå att i den nye `leads`-tabellen i produksjon (localStorage-skrivinga påverkar ikkje Supabase, og cachen i `core.js` vart heller ikkje oppdatert). Retta: `deleteLead` no eksponert på `App`, og `deleteAllForEmail()` kallar `App.deleteLead(id)` per treff (same rettingsmønster brukt for bookingar i same funksjon).
+- Ny produksjons-datamigrering `supabase/hotfix_bookings_data_migration_2026-07-03.sql` — idempotent, slettar ikkje gamle `store`-rader.
+- Testar: 4 nye feltmappings-testar i `test.js` (`dbBookingToJs`/`jsBookingToDb`, inkl. standardverdiar når valfrie felt manglar). `test.js`: 466 → 470 OK (framleis 1 kjend feil). `test-intranet.js` uendra (149/148/1).
+- **Ingen SQL er køyrt mot produksjon enno for denne runda** — `migration.sql` (bookings-tabell/RLS) og `hotfix_bookings_data_migration_2026-07-03.sql` ventar på eksplisitt brukargodkjenning, same mønster som 0.10.0/0.11.0.
+
 ## 0.11.0 — 2026-07-03
 
 ### Leads (Kontakt+Tilbud) flytta ut av `store` — del to av CRITICAL-funnet
