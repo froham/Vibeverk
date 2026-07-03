@@ -30,6 +30,13 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.9.4 — 2026-07-03
+
+### Mal-bytte i svar-editoren fjerna kundens opphavlege melding — retta
+- Brukaren rapporterte: å velje ein ny e-postmal i svar-editoren fjerna kundens innkomande melding frå det som faktisk skulle sendast. Rotårsak: `DEFAULT_REPLY_TEMPLATE` (og dei andre kontekst-standardmalane) inkluderer kundens melding via `{melding}`-plassholdaren, men mal-byttet i `openReplyModal()` (`core.js`) bytte ut heile redigeringsfeltet sitt innhald med den nyvalde malen sin tekst — viss DENNE malen ikkje sjølv inneheldt `{melding}` (t.d. ein kortare, sjølvskriven CRM-mal), forsvann kundens melding heilt frå e-posten.
+- Løysing (etter brukarval mellom tre alternativ — «alltid behald automatisk» vart valt): mal-byttet sjekkar no om den ferdig-fylte malteksten allereie inneheld kundens melding-tekst; viss ikkje, vert ho lagt til automatisk nedanfor malteksten («Opprinnelig melding fra {navn}: …»). Ingen ny knapp/innstilling — gjeld alle e-postdialogar som går via `openReplyModal()` (Kontakt/Booking/Tilbud/Kunder), sidan fiksen sit i den delte funksjonen, ikkje i kvar enkelt kallstad.
+- Ny test i `test.js`: legg til ein delt CRM-mal utan `{melding}` i teststubben, vel han frå malvelgaren for Kontakt, stadfestar at både malteksten OG kundens opphavlege melding er med i resultatet. `test.js`: 435 → 438 OK (framleis 1 kjend feil). `test-intranet.js` uendra (149/148/1) — fiksen sit i delt kode allereie dekt av eksisterande kallstad-testar.
+
 ## 0.9.3 — 2026-07-03
 
 ### Tasks tildelt av admin til member — modalen opnar no att, med skildring + status redigerbart

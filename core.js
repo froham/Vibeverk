@@ -2989,9 +2989,7 @@ window.App = (function () {
       });
     });
 
-    // Malvelger (valgfritt — kun når opts.templateOptions er gitt, f.eks. CRM).
-    // Kontakt/Booking/Tilbud sender aldri templateOptions, så denne blokken
-    // er alltid fraværende der og påvirker ikke deres oppførsel.
+    // Malvelger (valgfritt — kun når opts.templateOptions er gitt).
     var tplPick = root.querySelector("#reply-tpl-pick");
     if (tplPick && opts.templateOptions) {
       tplPick.addEventListener("change", function () {
@@ -3000,7 +2998,22 @@ window.App = (function () {
         if (!tpl) return;
         var vars = opts.vars || {};
         var editorEl = root.querySelector("#reply-direct-body");
-        if (editorEl) editorEl.innerHTML = C.sanitizeRichHtml(fillTemplate(tpl.body || "", vars));
+        if (editorEl) {
+          var filledBody = fillTemplate(tpl.body || "", vars);
+          // Behald automatisk kundens opphavlege melding: viss den valde malen
+          // ikkje sjølv refererer {melding} (dvs. den ferdig-fylte teksten ikkje
+          // allereie inneheld kundens melding), legg ho til nedanfor malteksten
+          // i staden for å la mal-byttet stille fjerne henne. Presisert av
+          // brukar 2026-07-03 — sjå CHANGELOG.
+          var meldingVar = vars.melding;
+          if (meldingVar && filledBody.indexOf(meldingVar) === -1) {
+            filledBody += (filledBody ? "<br><br>" : "") +
+              "─────────────────────────────────────<br>" +
+              "Opprinnelig melding fra " + C.esc(vars.navn || "kunden") + ":<br>" +
+              C.esc(meldingVar).replace(/\n/g, "<br>");
+          }
+          editorEl.innerHTML = C.sanitizeRichHtml(filledBody);
+        }
         var subjEl = root.querySelector("#reply-subject");
         if (subjEl && tpl.subject) subjEl.value = fillTemplate(tpl.subject, vars);
       });

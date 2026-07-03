@@ -1728,6 +1728,9 @@ const __asyncTests = (async () => {
         { id: "sn1", shortcode: "hils", title: "Helsing", body: "Med vennlig hilsen, {navn}" },
         { id: "sn2", shortcode: "frist", title: "Frist", body: "Svarfrist er {dato}." }
       ],
+      templates: [
+        { id: "t1", name: "Kort svar utan sitat", subject: "Re: {navn}", body: "Hei {navn}, takk for henvendelsen. Vi tar kontakt snart." }
+      ],
       signatureCompany: "<p>Bedrift AS</p>",
       signaturePersonal: "<p>Kari Nordmann</p>"
     }));
@@ -1746,6 +1749,18 @@ const __asyncTests = (async () => {
     assert(!!kModal.querySelector("#reply-snippet-btn"), "Kontakt: #-snippet-knapp vises i verktøylinja");
     assert(!!kModal.querySelector("#reply-sig-company"), "Kontakt: «Sett inn bedriftssignatur»-knapp vises (delt med CRM)");
     assert(!!kModal.querySelector("#reply-sig-personal"), "Kontakt: «Sett inn personlig signatur»-knapp vises (delt med CRM)");
+
+    // Bytte til ein delt CRM-mal UTAN {melding} skal ikkje fjerne kundens
+    // opphavlege melding frå det som faktisk vert sendt — ho vert lagt til
+    // automatisk nedanfor malteksten (presisert av brukar 2026-07-03).
+    var noQuoteIdx = null;
+    kTplPick.querySelectorAll("option").forEach(function (o) { if (o.textContent === "Kort svar utan sitat") noQuoteIdx = o.value; });
+    assert(noQuoteIdx !== null, "Kontakt: finn den delte CRM-malen utan {melding} i lista");
+    kTplPick.value = noQuoteIdx;
+    kTplPick.dispatchEvent(new window.Event("change", { bubbles: true }));
+    var kEditorBody = kModal.querySelector("#reply-direct-body").innerHTML;
+    assert(kEditorBody.indexOf("Test av status") > -1, "Kontakt: kundens opphavlege melding vert behalde automatisk sjølv når malen ikkje sjølv refererer {melding}");
+    assert(kEditorBody.indexOf("Vi tar kontakt snart") > -1, "Kontakt: sjølve malteksten er også med, ikkje berre meldinga");
     kModal.remove();
 
     // Booking — avbook og svar skal begge tilby BÅDE avbookings- og svarmalen
