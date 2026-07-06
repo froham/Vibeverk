@@ -212,8 +212,14 @@ CREATE TABLE IF NOT EXISTS leads (
   reference_number  text,
   source            text,
   chat_id           text,
-  created_at        timestamptz  NOT NULL DEFAULT now()
+  created_at        timestamptz  NOT NULL DEFAULT now(),
+  attachments       jsonb        NOT NULL DEFAULT '[]'::jsonb
 );
+
+-- Oppgrader eksisterande installasjonar (attachments-kolonne lagt til 2026-07-06,
+-- sjå hotfix_tilbud_attachments_2026-07-06.sql — Tilbud-vedlegg vart tidlegare
+-- berre nemnt som filnamn+storleik i meldingsteksten, filbytes vart aldri lasta opp)
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS attachments jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 -- Bookingar. Flytta ut av store 2026-07-03, siste av dei tre private
 -- datasetta (CRM, leads, no bookingar) — fullfører fiksen for CRITICAL-
@@ -233,8 +239,21 @@ CREATE TABLE IF NOT EXISTS bookings (
   instant           boolean      NOT NULL DEFAULT false,
   status            text         NOT NULL DEFAULT 'ny' CHECK (status IN ('ny', 'lest', 'løst')),
   reference_number  text,
-  created_at        timestamptz  NOT NULL DEFAULT now()
+  created_at        timestamptz  NOT NULL DEFAULT now(),
+  -- Hindrar dobbeltbooking under samtidige anon-innsendingar (sjå
+  -- insert_anon_booking() lenger nede) — isBooked()/isBlocked() (klient)
+  -- filtrerer ikkje på status, så éin rad for (asset_id,date,time) tel som
+  -- "oppteke" til admin slettar han.
+  CONSTRAINT bookings_asset_date_time_key UNIQUE (asset_id, date, time)
 );
+
+-- Oppgrader eksisterande installasjonar (constraint lagt til 2026-07-06,
+-- sjå hotfix_anon_leads_bookings_rpc_2026-07-06.sql)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_asset_date_time_key') THEN
+    ALTER TABLE bookings ADD CONSTRAINT bookings_asset_date_time_key UNIQUE (asset_id, date, time);
+  END IF;
+END $$;
 
 -- Chat-samtalar (anon-besøkande skriv, admin les/svarar)
 CREATE TABLE IF NOT EXISTS chat_conversations (
@@ -313,14 +332,24 @@ CREATE TRIGGER chat_msg_update_conv
 
 -- ── 4. AUTO-OPPRETT BRUKAR VED SIGNUP ────────────────────────────────────────
 
+-- Stolar berre på klient-/invitasjons-levert rolle når kontoen faktisk vart
+-- oppretta via den ekte admin-invitasjonsflyten (manage-user Edge Function sin
+-- inviteUserByEmail()) -- auth.users.invited_at er BERRE sett av Supabase Auth
+-- for denne operasjonen, aldri for eit vanleg signup, og kan ikkje setjast av
+-- klienten sjølv. Elles alltid 'member', uansett kva raw_user_meta_data seier
+-- -- hindrar sjølvregistrering-til-admin via manipulert signup-metadata, sjå
+-- hotfix_signup_role_hardening_2026-07-06.sql for full grunngjeving.
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   INSERT INTO public.users (id, display_name, role, email)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'member'),
+    CASE
+      WHEN NEW.invited_at IS NOT NULL THEN COALESCE(NEW.raw_user_meta_data->>'role', 'member')
+      ELSE 'member'
+    END,
     NEW.email
   )
   ON CONFLICT (id) DO NOTHING;
@@ -354,6 +383,20 @@ RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS
   SELECT EXISTS (
     SELECT 1 FROM public.users
     WHERE id = auth.uid() AND role IN ('admin', 'editor')
+  );
+$$;
+
+-- Vibeverk-operatør (Console), IKKJE ein tenant-rolle — spegel av
+-- SUPERADMIN_EMAILS i console-core.js. Sjekkar den faktiske innlogga JWT-en
+-- sin e-post, ikkje ei rad i denne kunden sin users-tabell (medvite, sjå
+-- ADR-0004 og hotfix_console_operator_rls_2026-07-06.sql — å krevje ei
+-- tenant-rolle-rad her ville reintrodusert nøyaktig skaleringsproblemet
+-- ADR-0004 alt løyste éin gong). Held IKKJE synkronisert automatisk med
+-- SUPERADMIN_EMAILS — oppdater begge stadene ved behov.
+CREATE OR REPLACE FUNCTION is_platform_operator()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT COALESCE(auth.jwt()->>'email', '') IN (
+    'frode@hammerseth.com'
   );
 $$;
 
@@ -449,22 +492,37 @@ DROP POLICY IF EXISTS store_read_authenticated ON store;
 DROP POLICY IF EXISTS store_insert_auth        ON store;
 DROP POLICY IF EXISTS store_update_auth        ON store;
 DROP POLICY IF EXISTS store_delete_auth        ON store;
-CREATE POLICY store_anon_read       ON store  FOR SELECT TO anon          USING (true);
+-- Fem nøklar er eksplisitt utelatne: dei var private kundedata migrert til
+-- eigne tabellar (crm_customers/crm_bedrifter/crm_comms/leads/bookings, sjå
+-- lenger nede) med anon-avvisande RLS — gamle store-rader for desse nøklane
+-- skal aldri vere anon-lesbare, sjølv om dei framleis finst att ikkje-sletta
+-- i eit oppgradert prosjekt. Sjå hotfix_store_anon_tighten_2026-07-06.sql.
+CREATE POLICY store_anon_read       ON store  FOR SELECT TO anon
+  USING (key NOT IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'leads', 'booking-bookings'));
 CREATE POLICY store_read_authenticated ON store FOR SELECT TO authenticated USING (true);
+-- 'superconfig' krev is_platform_operator() (Vibeverk-operatør), IKKJE
+-- is_admin_or_owner() (tenant-rolle) — sjå notatet ved is_platform_operator()
+-- sin definisjon lenger oppe. 'wsp-orgdrift' er ein heilt annan, ikkje-
+-- relatert nøkkel (Workspace sin eigen "org drift"-funksjon, skriven av
+-- KUNDENS EIGNE admin/editor, aldri av Console) — held is_admin_or_owner()
+-- uendra.
 CREATE POLICY store_insert_auth     ON store  FOR INSERT TO authenticated
   WITH CHECK (CASE
-    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
     ELSE can_edit_content()
   END);
 CREATE POLICY store_update_auth     ON store  FOR UPDATE TO authenticated
   USING      (CASE
-    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
     ELSE can_edit_content()
   END)
   WITH CHECK (CASE
-    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
     ELSE can_edit_content()
   END);
@@ -472,7 +530,8 @@ CREATE POLICY store_update_auth     ON store  FOR UPDATE TO authenticated
 -- superconfig/wsp-orgdrift-avgrensing som før, elles can_edit_content().
 CREATE POLICY store_delete_auth     ON store  FOR DELETE TO authenticated
   USING (CASE
-    WHEN key IN ('superconfig', 'wsp-orgdrift') THEN is_admin_or_owner()
+    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     ELSE can_edit_content()
   END);
 -- MERK: 'crm-customers'/'crm-bedrifter'/'crm-comms'-greinene i CASE-ane over
@@ -544,6 +603,58 @@ CREATE POLICY bookings_select ON bookings FOR SELECT TO authenticated USING (tru
 CREATE POLICY bookings_insert ON bookings FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY bookings_update ON bookings FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY bookings_delete ON bookings FOR DELETE TO authenticated USING (can_edit_content());
+
+-- Anon-innsending av Kontakt/Tilbud-leads og sanntidsbooking — RLS over gjev
+-- ingen anon-tilgang i det heile (og kan ikkje, sidan anon ikkje har nokon
+-- verifiserbar identitet RLS kan sjekke mot), så desse to SECURITY DEFINER-
+-- funksjonane er den einaste vegen inn for uinnlogga besøkande. Same mønster
+-- som get_visitor_conv()/get_visitor_msgs() (chat) — men ingen eigarskaps-
+-- token er naudsynt her, sidan dette er reine one-shot-innsettingar utan
+-- seinare anon-lesing/oppdatering. Sjå hotfix_anon_leads_bookings_rpc_2026-07-06.sql
+-- for full grunngjeving og den nødvendige klientkode-endringa.
+CREATE OR REPLACE FUNCTION insert_anon_lead(
+  p_id text, p_kind text, p_name text, p_email text, p_message text,
+  p_reference_number text, p_source text DEFAULT NULL, p_chat_id text DEFAULT NULL,
+  p_attachments jsonb DEFAULT '[]'::jsonb
+)
+RETURNS void
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF p_kind NOT IN ('kontakt', 'tilbud') THEN
+    RAISE EXCEPTION 'Ugyldig kind';
+  END IF;
+  INSERT INTO leads (id, kind, name, email, message, reference_number, source, chat_id, attachments)
+  VALUES (p_id, p_kind, COALESCE(p_name, ''), COALESCE(p_email, ''), p_message, p_reference_number, p_source, p_chat_id, COALESCE(p_attachments, '[]'::jsonb));
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION insert_anon_lead(text, text, text, text, text, text, text, text, jsonb) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION insert_anon_lead(text, text, text, text, text, text, text, text, jsonb) TO anon;
+
+-- Bookingar treng i tillegg ein atomisk konfliktsjekk (bookings_asset_date_time_key
+-- over) — isBooked()/isBlocked() (klient) er alt "blind" for anon sidan anon
+-- ikkje har SELECT-tilgang på bookings i det heile, så "sjekk så skriv" i
+-- klientkode kan aldri vere trygt under samtidige innsendingar.
+CREATE OR REPLACE FUNCTION insert_anon_booking(
+  p_id text, p_asset_id text, p_date date, p_time text,
+  p_name text, p_email text, p_phone text, p_message text, p_reference_number text
+)
+RETURNS void
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO bookings (id, asset_id, date, time, name, email, phone, message, instant, reference_number)
+  VALUES (p_id, p_asset_id, p_date, p_time, COALESCE(p_name, ''), COALESCE(p_email, ''), COALESCE(p_phone, ''), p_message, true, p_reference_number);
+EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'Beklager, denne tiden er ikke lenger ledig.';
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION insert_anon_booking(text, text, date, text, text, text, text, text, text) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION insert_anon_booking(text, text, date, text, text, text, text, text, text) TO anon;
 
 -- Slår saman fleire kundar til éin, med brukarvald primærkunde (module-crm.js
 -- sin doMerge()-dialog let brukaren velje kven som skal overleve — ikkje ei
@@ -690,8 +801,14 @@ BEGIN
     RAISE EXCEPTION 'Berre admin/editor kan tildele oppgåve til ein annan brukar';
   END IF;
 
-  -- Eiga oppretta oppgåve: fri redigering av dei andre felta.
+  -- Eiga oppretta oppgåve: fri redigering av dei andre felta — MEN created_by
+  -- sjølv skal aldri kunne endrast av nokon som ikkje er admin/editor, elles
+  -- kan ein member forfalske kven som oppretta oppgåva (2026-07-06-funn, sjå
+  -- hotfix_task_created_by_lock_2026-07-06.sql).
   IF OLD.created_by = auth.uid() THEN
+    IF NEW.created_by IS DISTINCT FROM OLD.created_by THEN
+      RAISE EXCEPTION 'Berre admin/editor kan endre kven som oppretta oppgåva';
+    END IF;
     RETURN NEW;
   END IF;
 
@@ -829,3 +946,21 @@ CREATE POLICY "media_insert" ON storage.objects
 CREATE POLICY "media_delete" ON storage.objects
   FOR DELETE TO authenticated
   USING (bucket_id = 'media' AND (owner = auth.uid() OR can_edit_content()));
+
+-- Anon-vedleggsopplasting (Tilbud, sjå hotfix_tilbud_attachment_storage_2026-07-06.sql)
+-- — berre "files/"-prefikset som App.media.putFile() sjølv brukar for generiske
+-- vedlegg. Biletopplasting (Media.put(), rot-nivå-sti, mediebank/Aktuelt) er
+-- IKKJE dekt av denne policyen og krev framleis admin/editor som før.
+DROP POLICY IF EXISTS "media_insert_anon_attachments" ON storage.objects;
+CREATE POLICY "media_insert_anon_attachments" ON storage.objects
+  FOR INSERT TO anon
+  WITH CHECK (bucket_id = 'media' AND name LIKE 'files/%');
+
+
+-- ── 10. SCHEMA CACHE RELOAD ──────────────────────────────────────────────────
+-- PostgREST cachar skjemaet sitt (funksjonssignaturar, tabellar, RLS) og
+-- oppdagar ikkje alltid CREATE OR REPLACE FUNCTION-endringar automatisk.
+-- CLAUDE.md sin eigen regel: "After adding or replacing any function:
+-- NOTIFY pgrst, 'reload schema';" — denne fila hadde ingen, sjølv om han har
+-- fleire CREATE OR REPLACE FUNCTION-setningar (2026-07-06-funn).
+NOTIFY pgrst, 'reload schema';

@@ -98,7 +98,8 @@
     _test: {
       dbCustomerToJs: dbCustomerToJs, jsCustomerToDb: jsCustomerToDb,
       dbBedriftToJs:  dbBedriftToJs,  jsBedriftToDb:  jsBedriftToDb,
-      dbCommToJs:     dbCommToJs,     jsCommToDb:     jsCommToDb
+      dbCommToJs:     dbCommToJs,     jsCommToDb:     jsCommToDb,
+      isSafeAttachmentUrl: isSafeAttachmentUrl
     }
   };
 
@@ -174,6 +175,13 @@
     return { customer_id: data.customerId, type: data.type, title: data.title || null, data: extra };
   }
 
+  // Skriving er write-through/fire-and-forget (sjå kommentar ved createCustomer
+  // under) — .catch() her endrar ikkje den åtferda, det gjer berre at ein
+  // mislykka skriving synest i konsollen i staden for å forsvinne heilt stille
+  // (tidlegare symptom: optimistisk lokal endring ser ut til å fungere, men
+  // forsvinn att ved neste refresh, jf. produksjonsbuggen 3e841e1).
+  function logWriteError(action, err) { console.error("[CRM] " + action + " feilet:", err); }
+
   function loadCrmData(cb) {
     if (!_sb) {
       _bedrifter = App.store.get(BEDRIFT_KEY, []) || [];
@@ -204,19 +212,19 @@
   function createCustomer(data) {
     var c = Object.assign({ id: "cust-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), created: new Date().toISOString() }, data);
     _customers.unshift(c);
-    if (_sb) _sb.from("crm_customers").insert(Object.assign(jsCustomerToDb(c), { id: c.id, created_at: c.created })).then(function () {});
+    if (_sb) _sb.from("crm_customers").insert(Object.assign(jsCustomerToDb(c), { id: c.id, created_at: c.created })).then(function () {}).catch(function (err) { logWriteError("opprette kunde", err); });
     else App.store.set(CUST_KEY, _customers);
     return c;
   }
   function updateCustomer(id, patch) {
     var idx = _customers.findIndex(function (c) { return c.id === id; });
     if (idx >= 0) Object.assign(_customers[idx], patch);
-    if (_sb) _sb.from("crm_customers").update(jsCustomerToDb(idx >= 0 ? _customers[idx] : patch)).eq("id", id).then(function () {});
+    if (_sb) _sb.from("crm_customers").update(jsCustomerToDb(idx >= 0 ? _customers[idx] : patch)).eq("id", id).then(function () {}).catch(function (err) { logWriteError("oppdatere kunde", err); });
     else App.store.set(CUST_KEY, _customers);
   }
   function deleteCustomer(id) {
     _customers = _customers.filter(function (c) { return c.id !== id; });
-    if (_sb) _sb.from("crm_customers").delete().eq("id", id).then(function () {});
+    if (_sb) _sb.from("crm_customers").delete().eq("id", id).then(function () {}).catch(function (err) { logWriteError("slette kunde", err); });
     else App.store.set(CUST_KEY, _customers);
   }
   function customerEmails(c) { return [c.email].concat(c.altEmails || []).filter(Boolean); }
@@ -235,19 +243,19 @@
   function createBedrift(data) {
     var b = Object.assign({ id: "bed-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), created: new Date().toISOString() }, data);
     _bedrifter.push(b);
-    if (_sb) _sb.from("crm_bedrifter").insert(Object.assign(jsBedriftToDb(b), { id: b.id, created_at: b.created })).then(function () {});
+    if (_sb) _sb.from("crm_bedrifter").insert(Object.assign(jsBedriftToDb(b), { id: b.id, created_at: b.created })).then(function () {}).catch(function (err) { logWriteError("opprette bedrift", err); });
     else App.store.set(BEDRIFT_KEY, _bedrifter);
     return b;
   }
   function updateBedrift(id, patch) {
     var idx = _bedrifter.findIndex(function (b) { return b.id === id; });
     if (idx >= 0) Object.assign(_bedrifter[idx], patch);
-    if (_sb) _sb.from("crm_bedrifter").update(jsBedriftToDb(idx >= 0 ? _bedrifter[idx] : patch)).eq("id", id).then(function () {});
+    if (_sb) _sb.from("crm_bedrifter").update(jsBedriftToDb(idx >= 0 ? _bedrifter[idx] : patch)).eq("id", id).then(function () {}).catch(function (err) { logWriteError("oppdatere bedrift", err); });
     else App.store.set(BEDRIFT_KEY, _bedrifter);
   }
   function deleteBedrift(id) {
     _bedrifter = _bedrifter.filter(function (b) { return b.id !== id; });
-    if (_sb) _sb.from("crm_bedrifter").delete().eq("id", id).then(function () {});
+    if (_sb) _sb.from("crm_bedrifter").delete().eq("id", id).then(function () {}).catch(function (err) { logWriteError("slette bedrift", err); });
     else App.store.set(BEDRIFT_KEY, _bedrifter);
   }
   function findOrCreateBedrift(name, extra) {
@@ -271,19 +279,27 @@
     var item = Object.assign({ id:"cm-"+Date.now()+"-"+Math.random().toString(36).slice(2,5),
       created: new Date().toISOString() }, data);
     _comms.unshift(item);
-    if (_sb) _sb.from("crm_comms").insert(Object.assign(jsCommToDb(item), { id: item.id, created_at: item.created })).then(function () {});
+    if (_sb) _sb.from("crm_comms").insert(Object.assign(jsCommToDb(item), { id: item.id, created_at: item.created })).then(function () {}).catch(function (err) { logWriteError("legge til hendelse", err); });
     else App.store.set(COMMS_KEY, _comms);
     return item;
   }
   function deleteComm(id) {
+    // Frigjer eit ev. dokumentvedlegg FØR raden fjernast frå _comms, elles
+    // finn me ikkje att attachment-referansen — ingen andre comms kan i dag
+    // dele same opplasta fil (kvart putFile()-kall får ein fersk, unik sti),
+    // så ubetinga frigjering her er trygt (2026-07-06-funn: dette mangla heilt).
+    var toDelete = _comms.find(function (c) { return c.id === id; });
+    if (toDelete && toDelete.type === "document" && toDelete.attachment && toDelete.attachment.ref) {
+      App.media.freeFile(toDelete.attachment.ref);
+    }
     _comms = _comms.filter(function (c) { return c.id !== id; });
-    if (_sb) _sb.from("crm_comms").delete().eq("id", id).then(function () {});
+    if (_sb) _sb.from("crm_comms").delete().eq("id", id).then(function () {}).catch(function (err) { logWriteError("slette hendelse", err); });
     else App.store.set(COMMS_KEY, _comms);
   }
   function updateComm(id, patch) {
     var idx = _comms.findIndex(function (c) { return c.id === id; });
     if (idx >= 0) _comms[idx] = Object.assign({}, _comms[idx], patch);
-    if (_sb) _sb.from("crm_comms").update(jsCommToDb(idx >= 0 ? _comms[idx] : patch)).eq("id", id).then(function () {});
+    if (_sb) _sb.from("crm_comms").update(jsCommToDb(idx >= 0 ? _comms[idx] : patch)).eq("id", id).then(function () {}).catch(function (err) { logWriteError("oppdatere hendelse", err); });
     else App.store.set(COMMS_KEY, _comms);
   }
   function newThreadId() { return "th-"+Date.now()+"-"+Math.random().toString(36).slice(2,5); }
@@ -505,7 +521,7 @@
     dl.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.2rem .8rem;border-bottom:1px solid var(--color-border,#e5e7eb)">' +
         '<strong style="font-size:1rem">'+esc(opts.title||"")+'</strong>' +
-        '<button class="crm-dlg-close" style="background:none;border:0;cursor:pointer;font-size:1.3rem;color:var(--color-muted,#6b7280);padding:.2rem;line-height:1">&times;</button>' +
+        '<button class="crm-dlg-close" aria-label="Lukk" style="background:none;border:0;cursor:pointer;font-size:1.3rem;color:var(--color-muted,#6b7280);padding:.2rem;line-height:1">&times;</button>' +
       '</div>' +
       '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;max-height:75vh;overflow-y:auto">'+(opts.bodyHtml||"")+'</div>' +
       (opts.footHtml?'<div style="padding:.8rem 1.2rem 1rem;display:flex;gap:.5rem;border-top:1px solid var(--color-border,#e5e7eb)">'+opts.footHtml+'</div>':"");
@@ -628,7 +644,7 @@
         '<div style="font-size:.78rem;color:var(--color-muted)">'+esc(c.email||"")+(c.phone?" · "+esc(c.phone):"")+(total?" · "+total+" aktivitet":"")+'</div>' +
       '</div>' +
       '<div style="display:flex;gap:.3rem;flex-shrink:0" onclick="event.stopPropagation()">' +
-        '<button type="button" class="crm-merge-check" data-merge-id="'+esc(c.id)+'" style="padding:.25rem .55rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:6px;background:transparent;font:inherit;font-size:.72rem;font-weight:600;color:var(--color-muted);cursor:pointer">Merk</button>' +
+        '<button type="button" class="crm-merge-check" data-merge-id="'+esc(c.id)+'" style="padding:.55rem .7rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:6px;background:transparent;font:inherit;font-size:.72rem;font-weight:600;color:var(--color-muted);cursor:pointer">Merk</button>' +
         C.button({label:"Åpne",variant:"ghost",attrs:'data-crm-open="'+esc(c.id)+'" style="font-size:.78rem"'}) +
         (isWorkspaceMember()?'':C.button({label:"Slett",variant:"ghost",attrs:'data-crm-del="'+esc(c.id)+'" style="font-size:.78rem;border-color:#c0392b;color:#c0392b"'})) +
       '</div>' +
@@ -1014,10 +1030,20 @@
     scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(isWorkspaceMember())return;if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
     scope.querySelectorAll("[data-task-toggle]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();updateComm(btn.getAttribute("data-task-toggle"),{done:true});refresh();});});
     scope.querySelectorAll("[data-reply-email]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();var orig=getComms().find(function(x){return x.id===btn.getAttribute("data-reply-email");});openEmailDialog(c,refresh,orig);});});
-    scope.querySelectorAll("[data-tl-item]").forEach(function(row){row.addEventListener("click",function(){
-      var item=tl.find(function(x){return x.id===row.getAttribute("data-tl-item");});
-      if (item) openTlItem(item,c,refresh,body);
-    });});
+    scope.querySelectorAll("[data-tl-item]").forEach(function(row){
+      function openRow(){
+        var item=tl.find(function(x){return x.id===row.getAttribute("data-tl-item");});
+        if (item) openTlItem(item,c,refresh,body);
+      }
+      row.addEventListener("click",openRow);
+      // Rada er tabindex="0" role="button" (klikkbar heile tidslinje-posten),
+      // treng difor eit tastatur-ekvivalent — Enter/mellomrom, same konvensjon
+      // som ekte <button>-element (2026-07-06, UX-gjennomgang).
+      row.addEventListener("keydown",function(e){
+        if (e.target !== row) return; // ikkje trigge når fokus er på ein knapp INNI rada
+        if (e.key==="Enter"||e.key===" "||e.key==="Spacebar"){ e.preventDefault(); openRow(); }
+      });
+    });
     var exp=scope.querySelector("[data-tl-expand]");
     if (exp) exp.addEventListener("click",function(){
       scope.innerHTML=buildTimeline(tl);
@@ -1122,28 +1148,34 @@
     else if (item.type==="document")    bodyText=item.docType||"";
     else if (item.type==="task")        bodyText=item.dueDate?"Frist: "+item.dueDate:item.note||"";
     else                                bodyText=item.body||"";
-    var bodyHtml=item.html||item.noteHtml||"";
+    // Re-sanitize at display time, not just at save — a member could otherwise
+    // write crm_comms.data.html directly via REST (RLS allows it) and skip
+    // client-side sanitization entirely; this is the "extra safety at display"
+    // backstop C.sanitizeRichHtml's own design comment describes.
+    var bodyHtml=C.sanitizeRichHtml(item.html||item.noteHtml||"");
     var tagBadge="";
-    if (item.type==="internal_note"&&item.tag&&item.tag!=="normal"){var tc={important:"#2980B9",followup:"#E8833A"},tl2={important:"Viktig",followup:"Oppfølging"};tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,'+(tc[item.tag]||"#999")+' 13%,transparent);color:'+(tc[item.tag]||"#999")+'">'+esc(tl2[item.tag]||item.tag)+'</span>';}
+    if (item.type==="internal_note"&&item.tag&&item.tag!=="normal"){var tc={important:"var(--color-primary,#2980B9)",followup:"#E8833A"},tl2={important:"Viktig",followup:"Oppfølging"};tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,'+(tc[item.tag]||"#999")+' 13%,transparent);color:'+(tc[item.tag]||"#999")+'">'+esc(tl2[item.tag]||item.tag)+'</span>';}
     if (item.type==="task"&&item.done) tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#27AE60 12%,transparent);color:#27AE60">Ferdig ✓</span>';
     if (threadCount>1) tagBadge+=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#2980B9 12%,transparent);color:#2980B9">'+threadCount+' i tråd</span>';
     if (item.source==="legacy"&&item.status) tagBadge+=' <span class="stat-badge stat-badge--'+esc(item.status)+'">'+({"ny":"Ny","lest":"Lest","løst":"Løst"}[item.status]||esc(item.status))+'</span>';
-    return '<div data-tl-item="'+esc(item.id)+'" style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb);cursor:pointer">' +
+    return '<div data-tl-item="'+esc(item.id)+'" class="crm-tl-row" tabindex="0" role="button" style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb);cursor:pointer">' +
       '<div style="flex-shrink:0;margin-top:.1rem"><div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,'+conf.color+' 13%,white);border:1.5px solid color-mix(in srgb,'+conf.color+' 28%,transparent)"><i class="ti ti-'+conf.icon+'" style="font-size:.78rem;color:'+conf.color+'"></i></div></div>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem">' +
           '<div style="min-width:0"><span style="font-size:.86rem;font-weight:600">'+esc(item.title||conf.label)+'</span>'+tagBadge+'</div>' +
-          '<div style="display:flex;align-items:center;gap:.25rem;flex-shrink:0">' +
-            (item.type==="task"&&!item.done&&isComm?'<button data-task-toggle="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Fullfør</button>':'') +
-            (isEmail&&isComm?'<button data-reply-email="'+esc(item.id)+'" style="font-size:.7rem;padding:.08rem .35rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Svar</button>':'') +
-            (isComm&&!isWorkspaceMember()?'<button data-del-comm="'+esc(item.id)+'" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;opacity:.4;font-size:.85rem" title="Fjern"><i class="ti ti-x"></i></button>':'') +
+          '<div style="display:flex;align-items:center;gap:.4rem;flex-shrink:0">' +
+            (item.type==="task"&&!item.done&&isComm?'<button data-task-toggle="'+esc(item.id)+'" class="crm-tl-btn" style="font-size:.72rem;padding:.32rem .6rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Fullfør</button>':'') +
+            (isEmail&&isComm?'<button data-reply-email="'+esc(item.id)+'" class="crm-tl-btn" style="font-size:.72rem;padding:.32rem .6rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Svar</button>':'') +
+            (isComm&&!isWorkspaceMember()?'<button data-del-comm="'+esc(item.id)+'" class="crm-tl-del" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;font-size:.85rem" title="Fjern"><i class="ti ti-x"></i></button>':'') +
             '<span style="font-size:.7rem;color:var(--color-muted);white-space:nowrap">'+esc(time)+'</span>' +
           '</div>' +
         '</div>' +
         (bodyText||bodyHtml?'<div style="font-size:.78rem;color:var(--color-muted);margin-top:.18rem;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">'+(bodyHtml||esc(bodyText))+'</div>':"") +
         (item.type==="document"&&item.attachment?'<div style="margin-top:.35rem">'+attachmentChip(item.attachment)+'</div>':"") +
         '<span style="display:inline-block;margin-top:.25rem;font-size:.67rem;font-weight:600;padding:.08rem .38rem;border-radius:999px;background:var(--color-alt,#f3f4f6);color:var(--color-muted)">'+esc(conf.label)+'</span>' +
-      '</div></div>';
+      '</div>' +
+      '<i class="ti ti-chevron-right" style="align-self:center;flex-shrink:0;color:var(--color-muted);opacity:.4;font-size:.85rem"></i>' +
+      '</div>';
   }
 
   /* =========================================================================
@@ -1456,7 +1488,7 @@
      NOTAT-DIALOG
      ====================================================================== */
   function openNoteDialog(c, refresh, existing) {
-    var TAGS=[{id:"normal",label:"Normal",color:"var(--color-primary,#2980B9)"},{id:"important",label:"Viktig",color:"#2980B9"},{id:"followup",label:"Oppfølging",color:"#E8833A"}];
+    var TAGS=[{id:"normal",label:"Normal",color:"var(--color-primary,#2980B9)"},{id:"important",label:"Viktig",color:"var(--color-primary,#2980B9)"},{id:"followup",label:"Oppfølging",color:"#E8833A"}];
     openDialog({
       title:existing?"Rediger internt notat":"Internt notat",
       bodyHtml:
@@ -1481,9 +1513,17 @@
   /* =========================================================================
      DOKUMENT-DIALOG
      ====================================================================== */
+  // crm_comms har ein laus UPDATE-policy (member kan skrive heile raden via
+  // REST) — att.ref er difor ikkje til å stole på som eit trygt URL-skjema
+  // utan å sjekke det sjølv, uansett kva App.media.putFile() normalt returnerer.
+  // Same sperre/regex som components.js sin sanitizeRichHtml() brukar for <a href>.
+  function isSafeAttachmentUrl(ref) { return !!ref && !/^\s*javascript:/i.test(ref); }
   function attachmentChip(att) {
     if (!att) return "";
     var kb = att.size ? Math.round(att.size/1024) + " KB" : "";
+    if (!isSafeAttachmentUrl(att.ref)) {
+      return '<span style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-muted)"><i class="ti ti-paperclip"></i> '+esc(att.name)+' (ugyldig lenke)</span>';
+    }
     return '<a href="'+esc(att.ref)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-text);text-decoration:none"><i class="ti ti-paperclip" style="color:var(--color-primary,#2980B9)"></i> '+esc(att.name)+(kb?' <span style="color:var(--color-muted)">('+kb+')</span>':'')+'</a>';
   }
 
@@ -1508,12 +1548,19 @@
         dl.querySelector("#dlg-dc-file").addEventListener("change",function(e){
           var file=e.target.files[0]; if (!file) return;
           statusEl.textContent="Laster opp «"+file.name+"»…";
+          var prevAttachment=attachment; // frigjer FØRST etter at det nye opplastet vellykka — sjå notat under
           App.media.putFile(file).then(function(att){
             attachment=att;
             statusEl.textContent="";
             currentEl.innerHTML=attachmentChip(attachment);
+            // Frigjer det GAMLE vedlegget berre no, etter at det nye faktisk er
+            // lasta opp — friar det FØR ville mista fila viss opplastinga hadde
+            // feila, og late brukaren utan noko å falle tilbake til (2026-07-06-funn).
+            if (prevAttachment && prevAttachment.ref && prevAttachment.ref !== attachment.ref) {
+              App.media.freeFile(prevAttachment.ref);
+            }
           }).catch(function(err){
-            if (err && err.message==="size") statusEl.textContent="Filen er for stor (maks "+App.media.MAX_FILE_MB+" MB).";
+            if (err && err.message==="size") statusEl.textContent="Filen er for stor (maks "+(App.supabase?App.media.MAX_FILE_MB_REMOTE:App.media.MAX_FILE_MB)+" MB).";
             else statusEl.textContent="Kunne ikke laste opp filen. Prøv en mindre fil.";
           });
         });

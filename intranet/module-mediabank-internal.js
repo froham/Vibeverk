@@ -242,7 +242,7 @@
           '<div>🏷️ Organiser filer med kategorier — t.d. <em>Logoer</em>, <em>Bilder</em>, <em>Maler</em>, <em>Kontrakter</em>.</div>' +
           '<div>📐 <strong>Grafisk profil:</strong> Last opp profilfiler under kategorien <em>Grafisk profil</em> — inkl. PowerPoint-maler, fonter, fargekoder og profilhåndbok.</div>' +
           '<div>🔗 Kopier lenke til en fil ved å klikke kopier-ikonet på filkortet.</div>' +
-          '<div>⚠️ Maks ' + (App.media.MAX_FILE_MB || 4) + ' MB per fil (lokal lagring). Større filer bør lagres eksternt og legges til som lenke.</div>' +
+          '<div>⚠️ Maks ' + (App.supabase ? (App.media.MAX_FILE_MB_REMOTE || 20) : (App.media.MAX_FILE_MB || 4)) + ' MB per fil' + (App.supabase ? '' : ' (lokal lagring)') + '. Større filer bør lagres eksternt og legges til som lenke.</div>' +
         '</div>' +
         '<button id="wsp-media-info-toggle" style="background:none;border:0;cursor:pointer;font-size:.78rem;color:var(--color-primary);padding:.4rem 0 0;font-family:inherit">Skjul info ▲</button>' +
       '</div>' +
@@ -273,7 +273,7 @@
         '<div class="wsp-dropzone" id="wsp-dropzone">' +
           '<div class="wsp-dropzone__icon"><i class="ti ti-cloud-upload"></i></div>' +
           '<div class="wsp-dropzone__text"><strong>Klikk for å velge</strong> eller dra filer hit</div>' +
-          '<div class="wsp-dropzone__text" style="margin-top:.2rem;font-size:.78rem">Bilete, PDF, Word, Excel og meir · Maks ' + (App.media.MAX_FILE_MB || 4) + ' MB per fil</div>' +
+          '<div class="wsp-dropzone__text" style="margin-top:.2rem;font-size:.78rem">Bilete, PDF, Word, Excel og meir · Maks ' + (App.supabase ? (App.media.MAX_FILE_MB_REMOTE || 20) : (App.media.MAX_FILE_MB || 4)) + ' MB per fil</div>' +
           '<input type="file" id="wsp-file-input" multiple style="display:none">' +
         '</div>' +
         '<div id="wsp-progress-wrap" style="display:none">' +
@@ -394,7 +394,7 @@
         },
         function onDone(errors) {
           progText.textContent = errors.length
-            ? (errors.length + " feil. Sjekk filstørrelse (maks " + (App.media.MAX_FILE_MB||4) + " MB).")
+            ? (errors.length + " feil. Sjekk filstørrelse (maks " + (App.supabase ? (App.media.MAX_FILE_MB_REMOTE||20) : (App.media.MAX_FILE_MB||4)) + " MB).")
             : "Ferdig!";
           setTimeout(function () {
             progWrap.style.display = "none";

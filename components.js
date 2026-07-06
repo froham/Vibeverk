@@ -166,38 +166,48 @@ window.Components = (function () {
     if (typeof document === "undefined") return "";
     const tmp = document.createElement("div");
     tmp.innerHTML = String(html || "");
-    (function walk(node) {
-      Array.prototype.slice.call(node.childNodes).forEach(function (child) {
-        if (child.nodeType === 1) {
-          const tag = child.tagName;
-          if (RICH_STRIP_ENTIRELY[tag]) {
-            node.removeChild(child);
-            return;
-          }
-          if (!RICH_ALLOWED_TAGS[tag]) {
-            while (child.firstChild) node.insertBefore(child.firstChild, child);
-            node.removeChild(child);
-            return;
-          }
-          Array.prototype.slice.call(child.attributes).forEach(function (attr) {
-            const name = attr.name.toLowerCase();
-            if (tag === "SPAN" && name === "style") {
-              const m = /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|[a-zA-Z]+)/.exec(attr.value);
-              if (m) child.setAttribute("style", "color:" + m[1]); else child.removeAttribute("style");
-            } else if (tag === "A" && name === "href") {
-              const href = attr.value.trim();
-              if (/^\s*javascript:/i.test(href)) child.removeAttribute("href");
-              else { child.setAttribute("target", "_blank"); child.setAttribute("rel", "noopener noreferrer"); }
-            } else if (!(tag === "A" && name === "target") && !(tag === "A" && name === "rel")) {
-              child.removeAttribute(attr.name);
-            }
-          });
-          walk(child);
-        } else if (child.nodeType !== 3) {
+    // processNode/walk are split so that children promoted out of an unwrapped
+    // disallowed tag (e.g. <x><img onerror=...></x>) get re-checked themselves
+    // instead of surviving unsanitized — walk()'s forEach snapshot is taken
+    // before the promotion, so it never re-visits newly promoted nodes itself.
+    function processNode(node, child) {
+      if (child.nodeType === 1) {
+        const tag = child.tagName;
+        if (RICH_STRIP_ENTIRELY[tag]) {
           node.removeChild(child);
+          return;
         }
+        if (!RICH_ALLOWED_TAGS[tag]) {
+          const promoted = Array.prototype.slice.call(child.childNodes);
+          while (child.firstChild) node.insertBefore(child.firstChild, child);
+          node.removeChild(child);
+          promoted.forEach(function (grandchild) { processNode(node, grandchild); });
+          return;
+        }
+        Array.prototype.slice.call(child.attributes).forEach(function (attr) {
+          const name = attr.name.toLowerCase();
+          if (tag === "SPAN" && name === "style") {
+            const m = /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|[a-zA-Z]+)/.exec(attr.value);
+            if (m) child.setAttribute("style", "color:" + m[1]); else child.removeAttribute("style");
+          } else if (tag === "A" && name === "href") {
+            const href = attr.value.trim();
+            if (/^\s*javascript:/i.test(href)) child.removeAttribute("href");
+            else { child.setAttribute("target", "_blank"); child.setAttribute("rel", "noopener noreferrer"); }
+          } else if (!(tag === "A" && name === "target") && !(tag === "A" && name === "rel")) {
+            child.removeAttribute(attr.name);
+          }
+        });
+        walk(child);
+      } else if (child.nodeType !== 3) {
+        node.removeChild(child);
+      }
+    }
+    function walk(node) {
+      Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+        processNode(node, child);
       });
-    })(tmp);
+    }
+    walk(tmp);
     return tmp.innerHTML;
   }
 

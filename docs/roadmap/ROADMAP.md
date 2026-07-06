@@ -18,7 +18,7 @@ Brukaren har uttalt eit konkret mål: kome dit at Vibeverk kan **deploye ein eks
 
 Sjå `docs/project/CURRENT_STATE.md` "Open security findings" for full detalj. **Desse bør rettast før Fase 2 (demo-kunde) startar**, sidan fleire av dei direkte påverkar kva ein fersk kundeinstans arvar.
 
-Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjenoppretta, `admin/index.html`-drift retta) og ei brukartesta oppfølgingsrunde same dag (chat-bug, oppgåve-tildeling-bug, Console-feltklarheit, intranett-login-bakveg lukka, owner-rolle-opprydding, CRM e-post-konsistens) vart fullført 2026-07-01, sjå `docs/project/CHANGELOG.md` 0.3.0/0.5.0/0.6.0 og ADR-0003 til ADR-0006. Éin uløyst funn frå denne runda: `intranet/module-crm.js` er oppdaga som daud kode testa av `test-intranet.js` men aldri lasta i produksjon — treng eiga avgjerd.
+Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjenoppretta, `admin/index.html`-drift retta) og ei brukartesta oppfølgingsrunde same dag (chat-bug, oppgåve-tildeling-bug, Console-feltklarheit, intranett-login-bakveg lukka, owner-rolle-opprydding, CRM e-post-konsistens) vart fullført 2026-07-01, sjå `docs/project/CHANGELOG.md` 0.3.0/0.5.0/0.6.0 og ADR-0003 til ADR-0006. Éin funn frå denne runda: `intranet/module-crm.js` vart oppdaga som daud kode — **sletta 2026-07-06**, sjå `docs/project/CURRENT_STATE.md` "Known limitations".
 
 ## Next
 

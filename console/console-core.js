@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.14.0";
+  var VIBEVERK_VERSION = "0.17.7";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -81,11 +81,37 @@ window.VwConsole = (function () {
   /* =========================================================================
      SUPERCONFIG I/O
      ====================================================================== */
-  function getSC()    { return App.store.get(SUPER_KEY, {}) || {}; }
-  function saveSC(sc) { App.store.set(SUPER_KEY, sc); }
-  function resetSC()  {
+  // Lesing: 'superconfig' er anon-lesbar (store_anon_read), så den vanlege
+  // localStorage-hydreringa frå core.js (som køyrer uavhengig av Console sin
+  // eigen OTP-sesjon) held cachen oppdatert — ingen endring naudsynt her.
+  function getSC() { return App.store.get(SUPER_KEY, {}) || {}; }
+
+  // Skriving derimot MÅ gå via Console sin EIGEN OTP-verifiserte klient
+  // (_sb over), ikkje App.store.set()/.remove() — desse køar berre skrivinga
+  // for core.js sin HEILT SEPARATE, sesjonspersisterande klient
+  // (App.store sin _flushSync() krev core.js sin eigen _isAuthed, ein annan
+  // identitet enn den som nettopp verifiserte OTP-koden her). RLS krev no
+  // is_platform_operator() for 'superconfig' (sjå migration.sql), som berre
+  // kan stadfestast via denne klienten sin faktiske innlogga JWT.
+  function saveSC(sc) {
+    App.store.set(SUPER_KEY, sc); // held lokal cache i sync med det same
+    if (!_sb) return; // ingen Supabase konfigurert — uendra åtferd (rein localStorage)
+    _sb.from("store").upsert(
+      { tenant_id: NS, key: SUPER_KEY, value: sc },
+      { onConflict: "tenant_id,key" }
+    ).then(function (r) {
+      if (r.error) console.error("[console] superconfig-skriving feila:", r.error);
+    });
+  }
+
+  function resetSC() {
     if (!confirm("Nullstill all superconfig og gå tilbake til config.js-verdiane?")) return;
     App.store.remove(SUPER_KEY);
+    if (_sb) {
+      _sb.from("store").delete().eq("tenant_id", NS).eq("key", SUPER_KEY).then(function (r) {
+        if (r.error) console.error("[console] superconfig-sletting feila:", r.error);
+      });
+    }
     location.reload();
   }
 

@@ -258,11 +258,12 @@ window.App = (function () {
        Kan ikke krympes som bilder, så vi setter en størrelsesgrense for demo.
        Byttes til Supabase Storage senere — kun putFile() endres.            */
     MAX_FILE_MB: 4,
+    MAX_FILE_MB_REMOTE: 20, // reell grense når Supabase Storage er konfigurert (sjå putFile under)
     putFile: function (file) {
       const self = this;
       return new Promise(function (resolve, reject) {
         if (_sb) {
-          if (file.size > 20 * 1024 * 1024) { reject(new Error("size")); return; }
+          if (file.size > self.MAX_FILE_MB_REMOTE * 1024 * 1024) { reject(new Error("size")); return; }
           const ext = (file.name.split(".").pop() || "bin").toLowerCase();
           const path = "files/" + Date.now() + "-" + Math.random().toString(36).slice(2, 7) + "." + ext;
           _sb.storage.from("media").upload(path, file, { contentType: file.type, upsert: false })
@@ -372,11 +373,13 @@ window.App = (function () {
   function dbLeadToJs(row) {
     return { id: row.id, kind: row.kind || "kontakt", name: row.name || "", email: row.email || "",
       message: row.message || "", time: row.created_at, status: row.status || "ny",
-      referenceNumber: row.reference_number, source: row.source, chatId: row.chat_id };
+      referenceNumber: row.reference_number, source: row.source, chatId: row.chat_id,
+      attachments: row.attachments || [] };
   }
   function jsLeadToDb(l) {
     return { kind: l.kind || "kontakt", name: l.name || "", email: l.email || "", message: l.message || "",
-      status: l.status || "ny", reference_number: l.referenceNumber || null, source: l.source || null, chat_id: l.chatId || null };
+      status: l.status || "ny", reference_number: l.referenceNumber || null, source: l.source || null, chat_id: l.chatId || null,
+      attachments: l.attachments || [] };
   }
 
   function loadLeads(cb) {
@@ -422,6 +425,11 @@ window.App = (function () {
   // t.d. module-quote.js for Tilbud med kind:"tilbud" eksplisitt sett).
   // Synkron retur + fire-and-forget Supabase-skriving i bakgrunnen — same
   // filosofi som App.store.set() og module-crm.js sine createX()-funksjonar.
+  // Sjå tilsvarande kommentar i module-crm.js sin logWriteError() — skrivinga
+  // sjølv er framleis fire-and-forget, .catch() her gjer berre at ein mislykka
+  // skriving synest i konsollen i staden for å forsvinne heilt stille.
+  function logWriteError(action, err) { console.error("[Leads] " + action + " feilet:", err); }
+
   function addLead(lead) {
     lead = lead || {};
     const existing = getLeads();
@@ -434,15 +442,30 @@ window.App = (function () {
       status: "ny",   // ny → lest → løst
       referenceNumber: generateUniqueNumber(refNums),
       source: lead.source || null,
-      chatId: lead.chatId || null
+      chatId: lead.chatId || null,
+      attachments: lead.attachments || []
     };
-    if (!_sb || !_isAuthed) {
+    if (!_sb) {
       existing.unshift(newLead);
       Store.set("leads", existing);
       return newLead;
     }
+    if (!_isAuthed) {
+      // Anonym besøkande: leads har ingen anon-GRANT i det heile (RLS kan
+      // ikkje verifisere ein anon-identitet), så insert_anon_lead() (SECURITY
+      // DEFINER-RPC) er den einaste vegen inn. Ingen lokal Store-skriving
+      // lenger (2026-07-06) — ei anonym innsending skal leve i Supabase, ikkje
+      // berre i den eine besøkande sin eigen nettlesar, som var det
+      // opphavlege "når aldri admin"-funnet.
+      _sb.rpc("insert_anon_lead", {
+        p_id: newLead.id, p_kind: newLead.kind, p_name: newLead.name, p_email: newLead.email,
+        p_message: newLead.message, p_reference_number: newLead.referenceNumber,
+        p_source: newLead.source, p_chat_id: newLead.chatId, p_attachments: newLead.attachments
+      }).then(function (r) { if (r.error) logWriteError("opprette anonym henvendelse", r.error); });
+      return newLead;
+    }
     _leads.unshift(newLead);
-    _sb.from("leads").insert(Object.assign(jsLeadToDb(newLead), { id: newLead.id, created_at: newLead.time })).then(function () {});
+    _sb.from("leads").insert(Object.assign(jsLeadToDb(newLead), { id: newLead.id, created_at: newLead.time })).then(function () {}).catch(function (err) { logWriteError("opprette henvendelse", err); });
     return newLead;
   }
 
@@ -455,7 +478,7 @@ window.App = (function () {
     }
     const lead = _leads.find(function (l) { return l.id === id; });
     if (lead) Object.assign(lead, changes);
-    _sb.from("leads").update(jsLeadToDb(lead || changes)).eq("id", id).then(function () {});
+    _sb.from("leads").update(jsLeadToDb(lead || changes)).eq("id", id).then(function () {}).catch(function (err) { logWriteError("oppdatere henvendelse", err); });
   }
 
   function deleteLead(id) {
@@ -464,7 +487,7 @@ window.App = (function () {
       return;
     }
     _leads = _leads.filter(function (l) { return l.id !== id; });
-    _sb.from("leads").delete().eq("id", id).then(function () {});
+    _sb.from("leads").delete().eq("id", id).then(function () {}).catch(function (err) { logWriteError("slette henvendelse", err); });
   }
 
   /* ===========================================================================
@@ -931,8 +954,12 @@ window.App = (function () {
   function getAuthRole() {
     const v = sessionStorage.getItem(NS + ":admin");
     // Supabase-roller: admin | editor | member
-    // Eldre fallback-rolle: employee (= member)
-    if (v === "admin" || v === "editor" || v === "member" || v === "employee") return v;
+    // Eldre fallback-rolleverdi "employee" normaliserast her til "member" (éin
+    // stad) — alle kallstadar (App.getAuthRole()) samanliknar mot "member"
+    // direkte, så normalisering ved kjelda held dei konsekvente utan at kvar
+    // enkelt guard treng eit eige "|| role === 'employee'"-unntak.
+    if (v === "employee") return "member";
+    if (v === "admin" || v === "editor" || v === "member") return v;
     return null;
   }
   function isAuthed() { return !!getAuthRole(); }
@@ -957,10 +984,10 @@ window.App = (function () {
   // Kva faner kvar rolle ser i web-adminen:
   //   admin       → alt (innhold + henvendelser + innstillinger)
   //   editor      → innhald og henvendelser (ikkje innstillinger)
-  //   member/employee → berre henvendelser
+  //   member → berre henvendelser (getAuthRole() normaliserer eldre "employee" til "member")
   function allowedCategoriesForRole(role) {
     var cats;
-    if (role === "member" || role === "employee") cats = ["henvendelser"];
+    if (role === "member") cats = ["henvendelser"];
     else if (role === "editor") cats = ["innhold", "henvendelser"];
     else cats = ["innhold", "henvendelser", "innstillinger"];
     if (_sb) cats = cats.concat(["konto"]);
@@ -1535,7 +1562,7 @@ window.App = (function () {
           state.push(att); sync(); render(); next(idx + 1);
         }).catch(function (err) {
           if (err && err.message === "size") {
-            alert('"' + files[idx].name + '" er for stor for demo-lagringen (maks ' + Media.MAX_FILE_MB + ' MB per fil).');
+            alert('"' + files[idx].name + '" er for stor (maks ' + (_sb ? Media.MAX_FILE_MB_REMOTE : Media.MAX_FILE_MB) + ' MB per fil' + (_sb ? '' : ' for demo-lagringen') + ').');
           } else if (err && err.message === "quota") {
             alert("Lagringen er full og kan ikke ta flere filer. Se Sikkerhetskopi-fanen i admin for å sjekke hvor mye plass som er brukt, og rydd opp for å frigjøre plass.");
           } else {
@@ -1730,7 +1757,7 @@ window.App = (function () {
             ${C.icon("upload")} Last opp vedlegg
             <input type="file" multiple hidden data-attach-file>
           </label>
-          <p class="imgfield__hint">Maks ${Media.MAX_FILE_MB} MB per fil i demo (lagres lokalt).</p>
+          <p class="imgfield__hint">Maks ${_sb ? Media.MAX_FILE_MB_REMOTE : Media.MAX_FILE_MB} MB per fil${_sb ? "" : " i demo (lagres lokalt)"}.</p>
           <input type="hidden" id="p-attachments" value="${C.esc(JSON.stringify(editing ? (editing.attachments || []) : []))}">
         </div>` : ""}
         <div class="admin-row__actions">
@@ -2374,7 +2401,7 @@ window.App = (function () {
     body.innerHTML =
       `${emailTemplateCard("kontakt", "E-postmal for svar", DEFAULT_REPLY_TEMPLATE,
         "Brukes av «Svar»-knappen på en henvendelse. Plassholdere fylles inn automatisk når e-posten åpnes: {navn}, {epost}, {dato}, {melding}, {referanse}")}
-       <div style="margin-bottom:1rem">${C.button({ label: "Eksporter henvendelser (CSV)", icon: "table-export", variant: "ghost", attrs: 'data-export-leads' })}</div>
+       ${getAuthRole() === "member" ? "" : '<div style="margin-bottom:1rem">' + C.button({ label: "Eksporter henvendelser (CSV)", icon: "table-export", variant: "ghost", attrs: 'data-export-leads' }) + '</div>'}
        ${statusFilterBar("kontakt", counts)}
        <ul class="admin-list">${rows}</ul>
        <div class="crm-gdpr-box">
@@ -2405,6 +2432,7 @@ window.App = (function () {
 
     const exportLeadsBtn = body.querySelector("[data-export-leads]");
     if (exportLeadsBtn) exportLeadsBtn.addEventListener("click", function () {
+      if (getAuthRole() === "member") return;
       downloadCsv(
         "kontakthenvendelser.csv",
         ["Referanse", "Navn", "E-post", "Melding", "Tidspunkt", "Status"],
@@ -2914,7 +2942,12 @@ window.App = (function () {
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
   function toCsvValue(v) {
-    const s = String(v == null ? "" : v).replace(/"/g, '""');
+    let s = String(v == null ? "" : v);
+    // Formel-injeksjon: eit felt som startar med =, +, - eller @ blir tolka som
+    // ein formel av Excel/Sheets når CSV-en opnast — prefiks med ' (apostrof)
+    // for å tvinge cella til tekst, slik Excel/Sheets sjølv brukar for å unngå dette.
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
     return /[",\n\r]/.test(s) ? '"' + s + '"' : s;
   }
   function downloadCsv(filename, headers, rows) {
@@ -3734,7 +3767,7 @@ window.App = (function () {
             C.icon("upload") + ' Last opp vedlegg' +
             '<input type="file" multiple hidden data-attach-file>' +
           '</label>' +
-          '<p class="imgfield__hint">Maks ' + Media.MAX_FILE_MB + ' MB per fil i demo (lagres lokalt).</p>' +
+          '<p class="imgfield__hint">Maks ' + (_sb ? Media.MAX_FILE_MB_REMOTE : Media.MAX_FILE_MB) + ' MB per fil' + (_sb ? "" : " i demo (lagres lokalt)") + '.</p>' +
           '<input type="hidden" id="' + C.esc(id) + '" value="' + C.esc(JSON.stringify(existing || [])) + '">' +
         '</div>';
       },

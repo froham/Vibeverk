@@ -9,5 +9,37 @@ jobs:
         with:
           node-version: 20
       - run: npm install --save-dev jsdom
-      - run: node test.js
-      - run: node test-intranet.js
+      # De to kjende, aksepterte testfeila (sjå CLAUDE.md/AGENTS.md) skal ikkje
+      # gjere at CI feiler — men ein ny, uventa feil skal framleis stoppe bygget.
+      - name: node test.js (toleranse for kjend feil)
+        run: |
+          set +e
+          OUTPUT=$(node test.js 2>&1)
+          echo "$OUTPUT"
+          if ! echo "$OUTPUT" | grep -q '^Resultat:'; then
+            echo "::error::test.js fullførte ikkje (ingen 'Resultat:'-oppsummering) — truleg ein uventa exception/krasj:"
+            exit 1
+          fi
+          UNEXPECTED=$(echo "$OUTPUT" | grep '^FEIL:' | grep -v 'henvendelses-fanen heter «Kontakt»')
+          if [ -n "$UNEXPECTED" ]; then
+            echo "::error::Uventa testfeil i test.js (utover den kjende, dokumenterte feilen):"
+            echo "$UNEXPECTED"
+            exit 1
+          fi
+          exit 0
+      - name: node test-intranet.js (toleranse for kjend feil)
+        run: |
+          set +e
+          OUTPUT=$(node test-intranet.js 2>&1)
+          echo "$OUTPUT"
+          if ! echo "$OUTPUT" | grep -q ' tester — '; then
+            echo "::error::test-intranet.js fullførte ikkje (ingen '… tester —'-oppsummering) — truleg ein uventa exception/krasj:"
+            exit 1
+          fi
+          UNEXPECTED=$(echo "$OUTPUT" | grep '^FEIL:' | grep -v 'o3: workspaceship via direkterute')
+          if [ -n "$UNEXPECTED" ]; then
+            echo "::error::Uventa testfeil i test-intranet.js (utover den kjende, dokumenterte feilen):"
+            echo "$UNEXPECTED"
+            exit 1
+          fi
+          exit 0

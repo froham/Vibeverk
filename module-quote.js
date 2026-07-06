@@ -287,6 +287,7 @@
       saveFields();
       var err = inner.querySelector("[data-qt-err2]");
       var terms = inner.querySelector("[data-qt-terms]");
+      var submitBtn = inner.querySelector('[data-qt-form2] button[type="submit"]');
 
       // Validering
       var name = st.type === "privat" ? st.name : (st.ordererName || st.orgName);
@@ -295,24 +296,41 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(st.email)) { err.textContent = "Sjekk e-postadressen."; err.style.display = ""; return; }
       if (!terms.checked) { err.textContent = "Du må akseptere vilkårene for å sende inn."; err.style.display = ""; return; }
 
-      // Bygg meldings-sammendrag
-      var lines = ["Tilbudsforespørsel", ""];
-      lines.push("Jobbeskrivelse");
-      lines.push(st.desc);
-      if (st.files.length) lines.push("\nVedlegg: " + st.files.map(function (f) { return f.name + " (" + formatBytes(f.size) + ")"; }).join(", "));
-      lines.push("\nKontaktopplysninger");
-      lines.push("Type: " + (st.type === "privat" ? "Privat" : "Bedrift"));
-      if (st.type === "bedrift" && st.orgName) lines.push("Bedrift: " + st.orgName);
-      lines.push("Navn: " + name);
-      if (st.phone)   lines.push("Tlf: " + st.phone);
-      if (st.address) lines.push("Adresse: " + st.address + (st.zip ? ", " + st.zip : ""));
-      if (st.type === "bedrift") {
-        if (st.orgNr)        lines.push("Org.nr: " + st.orgNr);
-        if (st.invoiceEmail) lines.push("Faktura e-post: " + st.invoiceEmail);
-      }
+      err.style.display = "none";
+      if (submitBtn) { submitBtn.disabled = true; }
+      if (st.files.length) err.textContent = ""; // ryddar evt. gamal feilmelding før ny opplasting
 
-      App.addLead({ name: name, email: st.email, message: lines.join("\n"), kind: "tilbud" });
-      renderStep3(inner);
+      // Faktiske filbytes må lastast opp FØR henvendelsen opprettast — tidlegare
+      // vart berre filnamn+storleik nemnt i meldingsteksten, sjølve filene nådde
+      // aldri lenger enn til nettlesaren (2026-07-06-funn). Promise.all() feiler
+      // heilt (ingen henvendelse opprettast) viss EITT vedlegg ikkje kan lastast
+      // opp, i staden for å stille droppe det — brukaren får ein sjanse til å
+      // prøve på nytt med færre/mindre filer.
+      Promise.all(st.files.map(function (f) { return App.media.putFile(f); })).then(function (attachments) {
+        // Bygg meldings-sammendrag
+        var lines = ["Tilbudsforespørsel", ""];
+        lines.push("Jobbeskrivelse");
+        lines.push(st.desc);
+        if (attachments.length) lines.push("\nVedlegg: " + attachments.map(function (a) { return a.name + " (" + formatBytes(a.size) + ")"; }).join(", "));
+        lines.push("\nKontaktopplysninger");
+        lines.push("Type: " + (st.type === "privat" ? "Privat" : "Bedrift"));
+        if (st.type === "bedrift" && st.orgName) lines.push("Bedrift: " + st.orgName);
+        lines.push("Navn: " + name);
+        if (st.phone)   lines.push("Tlf: " + st.phone);
+        if (st.address) lines.push("Adresse: " + st.address + (st.zip ? ", " + st.zip : ""));
+        if (st.type === "bedrift") {
+          if (st.orgNr)        lines.push("Org.nr: " + st.orgNr);
+          if (st.invoiceEmail) lines.push("Faktura e-post: " + st.invoiceEmail);
+        }
+
+        App.addLead({ name: name, email: st.email, message: lines.join("\n"), kind: "tilbud", attachments: attachments });
+        renderStep3(inner);
+      }).catch(function (uploadErr) {
+        if (submitBtn) { submitBtn.disabled = false; }
+        err.textContent = "Kunne ikke laste opp ett eller flere vedlegg. Prøv igjen, eventuelt med færre/mindre filer.";
+        err.style.display = "";
+        console.error("[tilbud] vedleggsopplasting feila:", uploadErr);
+      });
     });
   }
 
@@ -338,6 +356,26 @@
     if (!inner) return;
     _state = freshState();
     renderStep1(inner);
+  }
+
+  // Enkel vedleggsliste for admin-visninga — same {name,ref,type,size}-form
+  // som App.media.putFile() returnerer og CRM sin attachmentChip() bruker,
+  // men uten avhengigheit til module-crm.js (eiga, lettvekts gjengiving her).
+  function attachmentLinks(attachments) {
+    if (!attachments || !attachments.length) return "";
+    return '<div style="margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem">' +
+      attachments.map(function (a) {
+        var href = App.media.resolveFile ? App.media.resolveFile(a.ref) : (a.ref || "");
+        // leads har authenticated INSERT/UPDATE (member kan i praksis PATCHe
+        // attachments-feltet via REST) — same fareklasse som CRM sin
+        // attachmentChip(), difor same skjema-sperre her (same regex som
+        // components.js sin sanitizeRichHtml() brukar for <a href>).
+        var safe = href && !/^\s*javascript:/i.test(href);
+        if (!safe) return esc(a.name) + ' <span style="color:var(--color-muted)">(' + formatBytes(a.size) + ', ugyldig lenke)</span>';
+        return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" style="font-size:.82rem">' +
+          C.icon("paperclip") + ' ' + esc(a.name) + ' <span style="color:var(--color-muted)">(' + formatBytes(a.size) + ')</span></a>';
+      }).join("") +
+      '</div>';
   }
 
   /* =========================================================================
@@ -379,6 +417,7 @@
         '<details class="lead-details" data-qt-details="' + esc(l.id) + '">' +
           '<summary>' + esc(preview) + (preview.length >= 120 ? "…" : "") + '</summary>' +
           '<div class="admin-lead-msg">' + esc(l.message).replace(/\n/g, "<br>") + '</div>' +
+          attachmentLinks(l.attachments) +
         '</details>' +
       '</li>';
     }).join("") : '<li class="prose prose--muted">Ingen tilbudsforespørsler med valgt status.</li>';

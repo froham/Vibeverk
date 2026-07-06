@@ -75,6 +75,18 @@
     .btn--ghost     { background: transparent; color: var(--color-text); border-color: var(--color-border); }
     .btn--ghost:hover { background: var(--color-tint); }
 
+    /* --- CRM-tidslinje: touch-mål og klikk-affordance (2026-07-06, UX-gjennomgang) ---
+       Usynleg utvida trykkflate via ::before i staden for å blåse opp den synlege
+       knappen sjølv, som ville øydelagt tettleiken i ei tett tidslinje-liste. */
+    .crm-tl-btn { position: relative; }
+    .crm-tl-btn::before { content: ""; position: absolute; inset: -10px 0; }
+    .crm-tl-del { position: relative; opacity: .4; transition: opacity .15s; }
+    .crm-tl-del::before { content: ""; position: absolute; inset: -13px; }
+    .crm-tl-del:hover, .crm-tl-del:focus-visible { opacity: .8; }
+    .crm-tl-row { position: relative; }
+    .crm-tl-row:hover { background: var(--color-tint); }
+    .crm-tl-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+
     .stat-badge { display: inline-flex; align-items: center; font-size: .72rem; font-weight: 700; padding: .15rem .55rem; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
     .stat-badge--ny   { background: #fde8d7; color: #b5651d; }
     .stat-badge--lest { background: var(--color-tint); color: var(--color-primary); }
@@ -301,18 +313,18 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="../config.js?v=8"></script>
-  <script src="../components.js?v=6"></script>
-  <script src="../core.js?v=32"></script>
+  <script src="../components.js?v=7"></script>
+  <script src="../core.js?v=35"></script>
 
   <!-- Same modular som index.html — slik at alle admin-faner er tilgjengelege -->
-  <script src="../module-booking.js?v=10"></script>
-  <script src="../module-quote.js?v=9"></script>
+  <script src="../module-booking.js?v=12"></script>
+  <script src="../module-quote.js?v=10"></script>
   <script src="../module-references.js?v=5"></script>
   <script src="../module-faq.js?v=5"></script>
   <script src="../module-scrollbanner.js?v=5"></script>
-  <script src="../module-crm.js?v=16"></script>
+  <script src="../module-crm.js?v=19"></script>
   <script src="../module-mediabank.js?v=5"></script>
-  <script src="../module-chat.js?v=13"></script>
+  <script src="../module-chat.js?v=15"></script>
   <script src="../module-users.js?v=11"></script>
 
   <script>

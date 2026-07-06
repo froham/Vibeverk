@@ -147,7 +147,14 @@
       });
     },
 
-    updateConv: function (id, changes) {
+    // vid (visitor id): pass Chat.getVid() from anon-visitor-widget call sites
+    // ONLY — routes the write through update_visitor_presence() (SECURITY
+    // DEFINER RPC, validates vid against the row server-side) instead of a
+    // direct table UPDATE, closing the chat_conv_anon_update IDOR (that
+    // policy was USING(true) WITH CHECK(true), no ownership check at all).
+    // Admin call sites must NOT pass vid — they keep using the direct table
+    // path, which is correctly scoped to admin via chat_conv_auth already.
+    updateConv: function (id, changes, vid) {
       var convs = Chat.getConvs();
       var idx = convs.findIndex(function(c){return c.id===id;});
       if (idx > -1) { Object.assign(convs[idx], changes); Chat.setConvs(convs); }
@@ -169,6 +176,24 @@
       if (changes.lastSeenAt !== undefined)    sb.last_seen_at    = changes.lastSeenAt;
       if (changes.visitorReadAt !== undefined) sb.visitor_read_at = changes.visitorReadAt;
       if (!Object.keys(sb).length) return Promise.resolve();
+      if (vid) {
+        // RPC-en dekker berre dei anon-skrivbare felta (status/unread er
+        // aldri anon-skrivbare uansett, sjå kolonne-GRANT-en i migration.sql
+        // — dei vart heller aldri sendt av ei ekte visitor-rad, uendra åtferd).
+        return _sb.rpc("update_visitor_presence", {
+          p_visitor_id: vid, p_conv_id: id,
+          p_visitor_name: sb.visitor_name, p_visitor_email: sb.visitor_email,
+          p_page_url: sb.page_url, p_referrer: sb.referrer, p_language: sb.language,
+          p_browser: sb.browser, p_os: sb.os, p_screen: sb.screen,
+          p_visitor_active: sb.visitor_active, p_last_seen_at: sb.last_seen_at,
+          p_visitor_read_at: sb.visitor_read_at
+        }).then(function(r) {
+          if (r && r.error) {
+            console.error("[chat] visitor presence update failed:", r.error.message);
+            return Promise.reject(r.error);
+          }
+        });
+      }
       // postgrest-js er lazy — .then() må kallast for at requesten faktisk vert sendt
       return _sb.from("chat_conversations").update(sb).eq("id", id).then(function(r) {
         if (r && r.error) {
@@ -181,15 +206,32 @@
     getMsgs:  function (id)    { return Chat.store.get("chat:msgs:"+id,[]); },
     setMsgs:  function (id, v) { Chat.store.set("chat:msgs:"+id,v); },
 
-    addMsg: function (convId, text, sender) {
+    // vid: same convention as updateConv() above — pass Chat.getVid() from
+    // anon-visitor call sites only, routes through insert_visitor_message()
+    // (closes chat_msg_anon_insert's missing conversation-ownership check).
+    addMsg: function (convId, text, sender, vid) {
       var msg = {id:Chat.newId(),convId:convId,text:text,sender:sender,at:Date.now()};
       var msgs = Chat.getMsgs(convId); msgs.push(msg); Chat.setMsgs(convId,msgs);
       var conv = Chat.getConv(convId);
       Chat.updateConv(convId, {
         lastMsg: text.slice(0,60), lastAt: msg.at,
         unread: sender==="visitor" ? ((conv?conv.unread:0)+1) : (conv?conv.unread:0)
-      });
+      }, vid);
       if (!_sb) return Promise.resolve(msg);
+      if (vid) {
+        return _sb.rpc("insert_visitor_message", {
+          p_visitor_id: vid, p_conv_id: convId, p_msg_id: msg.id, p_text: msg.text,
+          p_sender: msg.sender, p_at: msg.at
+        }).then(function(r) {
+          if (r && r.error) {
+            var cur = Chat.getMsgs(convId).filter(function(m){return m.id!==msg.id;});
+            Chat.setMsgs(convId, cur);
+            console.error("[chat] visitor msg insert failed:", r.error.message);
+            return Promise.reject(new Error(r.error.message));
+          }
+          return msg;
+        });
+      }
       var _row = { id: msg.id, conversation_id: convId, text: msg.text, sender: msg.sender, at: msg.at };
       return _sb.from("chat_messages").insert(_row).then(function(r) {
         if (r.error) {
@@ -641,7 +683,7 @@
             screen:        screen.width + "×" + screen.height,
             visitorActive: true,
             lastSeenAt:    Date.now()
-          });
+          }, Chat.getVid());
           render();
         }, function(err) {
           console.error("[chat] createConv failed:", err.message);
@@ -773,17 +815,21 @@
         if (!txt || !convId) return;
         sendBtn.disabled = true;
         inp.value = ""; inp.style.height = "auto";
-        Chat.addMsg(convId, txt, "visitor").then(function() {
+        Chat.addMsg(convId, txt, "visitor", Chat.getVid()).then(function() {
           render();
         }, function(err) {
           console.warn("[chat] visitor send failed:", err.message);
+          // "vw-reply" var ikkje eit ekte element nokon stad i markup-en —
+          // errEl vart bygd men aldri sett inn i DOM-et, så feilen synte seg
+          // ALDRI for besøkande (2026-07-06-funn: "ingen feilmelding, meldinga
+          // berre forsvann"). "bottom" er den faktiske meldingsboksen sin
+          // container og finst alltid her.
           var errEl = document.getElementById("vw-send-err");
           if (!errEl) {
             errEl = document.createElement("div");
             errEl.id = "vw-send-err";
             errEl.style.cssText = "color:#ef4444;font-size:.75rem;text-align:center;padding:.2rem 0";
-            var replyEl = document.getElementById("vw-reply");
-            if (replyEl) replyEl.insertBefore(errEl, replyEl.firstChild);
+            bottom.insertBefore(errEl, bottom.firstChild);
           }
           errEl.textContent = "Sending mislyktes. Prøv igjen.";
           inp.value = txt; // restore for retry
@@ -907,13 +953,13 @@
     /* ── PRESENCE TRACKING ── */
     document.addEventListener("visibilitychange", function () {
       if (!convId) return;
-      Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: !document.hidden });
+      Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: !document.hidden }, Chat.getVid());
     });
     window.addEventListener("pagehide", function () {
-      if (convId) Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: false });
+      if (convId) Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: false }, Chat.getVid());
     });
     setInterval(function () {
-      if (convId && !document.hidden) Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: true });
+      if (convId && !document.hidden) Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: true }, Chat.getVid());
     }, 30000);
 
     function vwBtnIcon() {
@@ -932,7 +978,7 @@
       badge.style.display = "none";
       btn.classList.remove("has-unread");
       stopTitleNotify();
-      if (convId) Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: true, visitorReadAt: lastReadAt });
+      if (convId) Chat.updateConv(convId, { lastSeenAt: Date.now(), visitorActive: true, visitorReadAt: lastReadAt }, Chat.getVid());
       render();
     }
     function closePanel() {
@@ -947,7 +993,7 @@
     panel.querySelector("#vw-end-btn").addEventListener("click", function () {
       if (!convId || !Chat.getConv(convId)) return;
       if (Chat.getMsgs(convId).length > 0) {
-        Chat.addMsg(convId, "Kunden lukket chatvinduet.", "system");
+        Chat.addMsg(convId, "Kunden lukket chatvinduet.", "system", Chat.getVid());
       }
       saveConvAsLead(convId);
       setLeadResolved(convId);

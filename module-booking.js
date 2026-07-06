@@ -77,6 +77,17 @@
     return _bookings;
   }
 
+  // Sjå tilsvarande kommentar i module-crm.js sin logWriteError() — skrivinga
+  // sjølv er framleis fire-and-forget, .catch() her gjer berre at ein mislykka
+  // skriving synest i konsollen i staden for å forsvinne heilt stille.
+  function logWriteError(action, err) { console.error("[Booking] " + action + " feilet:", err); }
+
+  // Brukast av det autentiserte admin-skjemaet (Workspace/Web-admin "legg til
+  // booking") — alltid innlogga når dette køyrer. Anonyme sanntidsbookingar
+  // (openConfirm() under) går via den eigne submitAnonBooking()-RPC-en i
+  // staden, sidan "bookings" ikkje har nokon anon-GRANT i det heile
+  // (2026-07-06: flytta ut hit frå ei tidlegare, no overflødig, lokal
+  // Store-fallback-gren som berre gjaldt anon-tilfellet).
   function createBooking(data) {
     var b = Object.assign({ id: "bk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
       createdAt: new Date().toISOString() }, data);
@@ -87,8 +98,33 @@
       return b;
     }
     _bookings.push(b);
-    _sb.from("bookings").insert(Object.assign(jsBookingToDb(b), { id: b.id, created_at: b.createdAt })).then(function () {});
+    _sb.from("bookings").insert(Object.assign(jsBookingToDb(b), { id: b.id, created_at: b.createdAt })).then(function () {}).catch(function (err) { logWriteError("opprette booking", err); });
     return b;
+  }
+
+  // Anonym sanntidsbooking (openConfirm() under) — "bookings" har ingen
+  // anon-GRANT (kun authenticated), så insert_anon_booking() (SECURITY
+  // DEFINER-RPC, sjekkar (asset_id,date,time)-unikheit atomisk) er den einaste
+  // vegen inn. Returnerer ein Promise (ulikt createBooking()) sidan kallaren
+  // faktisk må vente på eit ekte utfall — ein kollisjon skal visast som feil,
+  // ikkje som "Reservert!" (2026-07-06-funn, sjå CURRENT_STATE.md).
+  function submitAnonBooking(data) {
+    var b = Object.assign({ id: "bk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+      createdAt: new Date().toISOString() }, data);
+    if (!_sb) {
+      var list = App.store.get("booking-bookings", []) || [];
+      list.push(b);
+      App.store.set("booking-bookings", list);
+      return Promise.resolve(b);
+    }
+    return _sb.rpc("insert_anon_booking", {
+      p_id: b.id, p_asset_id: b.assetId, p_date: b.date, p_time: b.time,
+      p_name: b.name, p_email: b.email, p_phone: b.phone, p_message: b.message,
+      p_reference_number: b.referenceNumber
+    }).then(function (r) {
+      if (r.error) return Promise.reject(r.error);
+      return b;
+    });
   }
 
   function updateBooking(id, patch) {
@@ -100,7 +136,7 @@
     }
     var cached = _bookings.find(function (x) { return x.id === id; });
     if (cached) Object.assign(cached, patch);
-    _sb.from("bookings").update(jsBookingToDb(cached || patch)).eq("id", id).then(function () {});
+    _sb.from("bookings").update(jsBookingToDb(cached || patch)).eq("id", id).then(function () {}).catch(function (err) { logWriteError("oppdatere booking", err); });
   }
 
   function deleteBooking(id) {
@@ -109,7 +145,7 @@
       return;
     }
     _bookings = _bookings.filter(function (x) { return x.id !== id; });
-    _sb.from("bookings").delete().eq("id", id).then(function () {});
+    _sb.from("bookings").delete().eq("id", id).then(function () {}).catch(function (err) { logWriteError("slette booking", err); });
   }
 
   function deleteBookingsByAssetId(assetId) {
@@ -119,7 +155,7 @@
     }
     var toDelete = _bookings.filter(function (x) { return x.assetId === assetId; });
     _bookings = _bookings.filter(function (x) { return x.assetId !== assetId; });
-    if (toDelete.length) _sb.from("bookings").delete().in("id", toDelete.map(function (x) { return x.id; })).then(function () {});
+    if (toDelete.length) _sb.from("bookings").delete().in("id", toDelete.map(function (x) { return x.id; })).then(function () {}).catch(function (err) { logWriteError("slette bookingar for ressurs", err); });
   }
 
   window.BookingAdmin = {
@@ -471,12 +507,26 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Sjekk e-postadressen."; st.className = "form__status is-error"; return; }
       if (!App.ui.termsAccepted(form, termsId)) { st.textContent = "Du må godta personvernerklæringen for å reservere."; st.className = "form__status is-error"; return; }
       if (isBooked(a.id, date, time) || isBlocked(a, date, time)) { st.textContent = "Beklager, tiden er ikke tilgjengelig."; st.className = "form__status is-error"; return; }
-      var newBk = createBooking({ assetId: a.id, date: date, time: time,
-                  name: name, email: email, phone: phone, message: msg, instant: true, status: "ny", referenceNumber: nextBookingRef() });
-      var picker = assetEl.querySelector(".bk-picker");
-      var active = picker && picker.querySelector(".bk-datepill.is-active");
-      if (picker && active) picker.querySelector("[data-times]").innerHTML = renderTimes(a, active.getAttribute("data-date"));
-      box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + time + '. Din referanse: #' + newBk.referenceNumber + '</p>';
+      var submitBtn = form.querySelector('button[type="submit"]');
+      st.textContent = "Reserverer…"; st.className = "form__status";
+      if (submitBtn) submitBtn.disabled = true;
+      submitAnonBooking({ assetId: a.id, date: date, time: time,
+                  name: name, email: email, phone: phone, message: msg, instant: true, status: "ny", referenceNumber: nextBookingRef() })
+        .then(function (newBk) {
+          var picker = assetEl.querySelector(".bk-picker");
+          var active = picker && picker.querySelector(".bk-datepill.is-active");
+          if (picker && active) picker.querySelector("[data-times]").innerHTML = renderTimes(a, active.getAttribute("data-date"));
+          box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + time + '. Din referanse: #' + newBk.referenceNumber + '</p>';
+        })
+        .catch(function (err) {
+          if (submitBtn) submitBtn.disabled = false;
+          // "Beklager, denne tiden er ikke lenger ledig." kjem direkte frå
+          // insert_anon_booking() sin unique_violation-handtering — vis han
+          // rått, elles ei generisk feilmelding.
+          st.textContent = (err && err.message) || "Kunne ikke fullføre reservasjonen. Prøv igjen.";
+          st.className = "form__status is-error";
+          console.error("[booking] anonym reservasjon feila:", err);
+        });
     });
   }
 
@@ -827,10 +877,12 @@
         C.button({ label:"Legg til booking", type:"submit", variant:"primary" }) +
       '</form>' +
       App.statusFilterBar("booking", counts) +
-      '<div style="margin-bottom:.8rem">' + C.button({ label:"Eksporter bookinger (CSV)", icon:"table-export", variant:"ghost", attrs:'data-bk-export' }) + '</div>' +
+      (App.getAuthRole && App.getAuthRole() === "member" ? '' : '<div style="margin-bottom:.8rem">' + C.button({ label:"Eksporter bookinger (CSV)", icon:"table-export", variant:"ghost", attrs:'data-bk-export' }) + '</div>') +
       '<ul class="admin-list">' + (rows || '<li class="prose prose--muted">Ingen bookingar med valgt status.</li>') + '</ul>';
 
-    area.querySelector("[data-bk-export]").addEventListener("click", function () {
+    var bkExportBtn = area.querySelector("[data-bk-export]");
+    if (bkExportBtn) bkExportBtn.addEventListener("click", function () {
+      if (App.getAuthRole && App.getAuthRole() === "member") return;
       App.downloadCsv(
         "bookinger.csv",
         ["Referanse", "Ressurs", "Dato", "Tid", "Navn", "E-post", "Type", "Status"],

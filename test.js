@@ -556,6 +556,10 @@ const __asyncTests = (async () => {
   cform.querySelector('input[type="email"]').value = "kari@test.no";
   cform.querySelector('input[type="checkbox"]').checked = true;
   fire(cform, "submit");
+  // Anonym sanntidsbooking går no via ein Promise-returnerande RPC-kallar
+  // (submitAnonBooking(), 2026-07-06) — vent éin mikrotask-runde før DOM/
+  // localStorage-resultatet er der, same mønster som Tilbud-testen over.
+  await new Promise(r => setTimeout(r, 30));
   var bk = JSON.parse(window.localStorage.getItem("nordpunkt:booking-bookings"));
   var made = bk.find(function (b) { return b.date === iDate && b.time === iTime && b.email === "kari@test.no"; });
   assert(made && made.instant === true, "sanntidsbooking lagret med e-post");
@@ -767,6 +771,13 @@ const __asyncTests = (async () => {
   fire(doc.querySelector("[data-qt-next1]"), "click");
   assert(doc.querySelector("[data-qt-err1]").style.display !== "none", "steg 1 krever beskrivelse");
 
+  // Steg 1 → legg ved en fil (2026-07-06: skal faktisk lastes opp, ikke bare nevnes som tekst)
+  const qtFile = new window.File([new Uint8Array([1,2,3,4])], "tegning.pdf", { type: "application/pdf" });
+  const qtFileInput = doc.querySelector("[data-qt-files]");
+  Object.defineProperty(qtFileInput, "files", { value: [qtFile], configurable: true });
+  qtFileInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert(/tegning\.pdf/.test(doc.querySelector("[data-qt-filelist]").textContent), "valgt vedlegg vises i filelisten");
+
   // Steg 1 → fyller inn og går videre
   doc.querySelector("#qt-desc").value = "Trenger hjelp med bygg av terrasse, ca 20 kvm.";
   fire(doc.querySelector("[data-qt-next1]"), "click");
@@ -798,11 +809,18 @@ const __asyncTests = (async () => {
   doc.querySelector("#qt-terms").checked = true;
   var leadsBefore = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]").length;
   fire(doc.querySelector("[data-qt-form2]"), "submit");
+  // Innsending ventar no på Promise.all() over ev. vedleggsopplastingar (tomt
+  // her, men framleis ein mikrotask-runde) før addLead()/steg 3 køyrer.
+  await new Promise(r => setTimeout(r, 30));
   assert(!!doc.querySelector(".qt-receipt"), "steg 3 (kvittering) vises etter innsending");
   var leads = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]");
   assert(leads.length === leadsBefore + 1 && leads[0].email === "kari@test.no", "tilbudsforespørsel lagret som lead");
   assert(/Tilbudsforesp/.test(leads[0].message) && /terrasse/.test(leads[0].message), "lead inneholder jobbeskrivelse");
   assert(leads[0].kind === "tilbud", "tilbudsforespørsel får eksplisitt kind:'tilbud' (ikke bare tekst-sniffing)");
+  assert(Array.isArray(leads[0].attachments) && leads[0].attachments.length === 1 && leads[0].attachments[0].name === "tegning.pdf",
+    "vedlegget sine faktiske filbytes ble lastet opp og lagret på leaden (ikke bare filnavn i meldingsteksten)");
+  assert(leads[0].attachments[0].ref && leads[0].attachments[0].ref.indexOf("file:") === 0,
+    "vedlegget har en ekte media-referanse fra App.media.putFile()");
 
   // Steg 3: «Send ny forespørsel» nullstiller og viser steg 1 igjen
   fire(doc.querySelector("[data-qt-restart]"), "click");
@@ -1166,6 +1184,16 @@ const __asyncTests = (async () => {
     var docJs = T.dbCommToJs(docRow);
     assert(docJs.attachment && docJs.attachment.name === "kontrakt.pdf" && docJs.attachment.size === 20480,
       "dbCommToJs() flatar ut attachment-objektet att uendra (round-trip frå jsCommToDb)");
+
+    // isSafeAttachmentUrl() (2026-07-06): crm_comms har laus UPDATE-policy
+    // (member kan i praksis PATCHe att.ref via REST), så attachmentChip() må
+    // sjølv avvise farlege URL-skjema før han renderer ein <a href>.
+    assert(T.isSafeAttachmentUrl("https://eksempel.no/fil.pdf") === true, "isSafeAttachmentUrl() tillèt https:-lenker");
+    assert(T.isSafeAttachmentUrl("file:1234-abcde") === true, "isSafeAttachmentUrl() tillèt lokale file:-referansar (demo-lagring)");
+    assert(T.isSafeAttachmentUrl("javascript:alert(1)") === false, "isSafeAttachmentUrl() avviser javascript:-URI");
+    assert(T.isSafeAttachmentUrl("  javascript:alert(1)") === false, "isSafeAttachmentUrl() avviser javascript:-URI med leiande whitespace");
+    assert(T.isSafeAttachmentUrl("") === false, "isSafeAttachmentUrl() avviser tom streng");
+    assert(T.isSafeAttachmentUrl(null) === false, "isSafeAttachmentUrl() avviser null");
   })();
 
   // --- leads: feltmapping Supabase<->JS + isTilbud()-klassifisering ---
@@ -1185,6 +1213,18 @@ const __asyncTests = (async () => {
     var backToDb = T.jsLeadToDb(jsLead);
     assert(backToDb.kind === "tilbud" && backToDb.reference_number === "123456" && backToDb.chat_id === null,
       "jsLeadToDb() mappar camelCase attende til snake_case korrekt (round-trip)");
+
+    // attachments (2026-07-06): Tilbud-vedlegg sine faktiske filbytes lastast
+    // no opp via App.media.putFile() i staden for berre filnamn+storleik i
+    // meldingsteksten — verifiser feltmappinga for den nye kolonna.
+    var dbLeadWithAtt = Object.assign({}, dbLead, { attachments: [{ name: "tegning.pdf", ref: "https://x/y.pdf", type: "application/pdf", size: 20480 }] });
+    var jsLeadWithAtt = T.dbLeadToJs(dbLeadWithAtt);
+    assert(Array.isArray(jsLeadWithAtt.attachments) && jsLeadWithAtt.attachments.length === 1 && jsLeadWithAtt.attachments[0].name === "tegning.pdf",
+      "dbLeadToJs() mappar attachments-arrayet korrekt");
+    assert(Array.isArray(T.jsLeadToDb(jsLeadWithAtt).attachments) && T.jsLeadToDb(jsLeadWithAtt).attachments[0].size === 20480,
+      "jsLeadToDb() mappar attachments attende korrekt (round-trip)");
+    assert(Array.isArray(T.dbLeadToJs(dbLead).attachments) && T.dbLeadToJs(dbLead).attachments.length === 0,
+      "dbLeadToJs() fell tilbake til tomt array når attachments manglar (eldre/eksisterande leads)");
 
     // isTilbud(): kind-feltet er kjelda når det finst, uavhengig av meldingsteksten.
     assert(window.App.isTilbud({ kind: "tilbud", message: "Ei vanleg melding utan Tilbudsforesp-prefiks" }) === true,
@@ -1536,6 +1576,9 @@ const __asyncTests = (async () => {
   assert(safeLink.indexOf('href="https://eksempel.no"') > -1 && safeLink.indexOf('target="_blank"') > -1, "gyldig lenke beholdes med target/rel");
   assert(RT.sanitizeRichHtml('<span style="color:#ff0000;background:red">farge</span>') === '<span style="color:#ff0000">farge</span>', "kun color-egenskap beholdes i style");
   assert(RT.sanitizeRichHtml('<div>linje1</div><ul><li>punkt</li></ul>') === '<div>linje1</div><ul><li>punkt</li></ul>', "tillatte blokk-/liste-tagger beholdes uendret");
+  assert(RT.sanitizeRichHtml('<x><img src=x onerror=alert(1)></x>') === "", "barn flytta ut av ein ukjent wrapper-tag vert framleis saerte (nested-wrapper-bypass lukka)");
+  assert(RT.sanitizeRichHtml('<x><y><img src=x onerror=alert(1)>test</y></x>') === "test", "fleire nesta ukjente wrapper-taggar sanerer alle promoterte born, tekst overlever");
+  assert(RT.sanitizeRichHtml('<x><b>fet</b></x>') === "<b>fet</b>", "tillate taggar promotert ut av ein ukjent wrapper beheld seg sjølv");
   assert(RT.stripHtml('<b>Fet</b> og <i>kursiv</i> tekst') === "Fet og kursiv tekst", "stripHtml fjerner alle tagger");
 
   // Verktøylinje + synk (uten execCommand, som ikke finnes i jsdom)
@@ -1724,10 +1767,24 @@ const __asyncTests = (async () => {
   var leadsAfterRestoreBack = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]");
   assert(leadsAfterRestoreBack.length === leadsCountBefore, "full gjenoppretting tilbake til opprinnelig tilstand fungerer (snapshot/restore-syklus)");
 
+  // Eldre fallback-rolleverdi "employee" normaliserast til "member" i getAuthRole(),
+  // slik at CSV-eksport-/slett-knappar (som samanliknar mot "member" direkte)
+  // handsamar ei "employee"-rolle likt med "member" i staden for å vise dei att.
+  var _prevAdminAuth = window.sessionStorage.getItem("nordpunkt:admin");
+  window.sessionStorage.setItem("nordpunkt:admin", "employee");
+  assert(window.App.getAuthRole() === "member", "getAuthRole() normaliserer eldre 'employee'-rolle til 'member'");
+  if (_prevAdminAuth === null) window.sessionStorage.removeItem("nordpunkt:admin");
+  else window.sessionStorage.setItem("nordpunkt:admin", _prevAdminAuth);
+
   // CSV-eksport: BOM for Excel, og korrekt escaping av komma/anførselstegn/linjeskift
   var csvVal1 = window.App.toCsvValue('Navn med "sitat", komma');
   assert(csvVal1 === '"Navn med ""sitat"", komma"', "CSV-verdi med komma og anførselstegn escapes korrekt");
   assert(window.App.toCsvValue("Vanlig tekst") === "Vanlig tekst", "CSV-verdi uten spesialtegn forblir uendret");
+  assert(window.App.toCsvValue("=cmd|'/c calc'!A1") === "'=cmd|'/c calc'!A1", "CSV-formelinjeksjon (leiande =) nøytralisert med apostrof-prefiks");
+  assert(window.App.toCsvValue("+1234") === "'+1234", "CSV-formelinjeksjon (leiande +) nøytralisert");
+  assert(window.App.toCsvValue("-1234") === "'-1234", "CSV-formelinjeksjon (leiande -) nøytralisert");
+  assert(window.App.toCsvValue("@SUM(A1:A2)") === "'@SUM(A1:A2)", "CSV-formelinjeksjon (leiande @) nøytralisert");
+  assert(window.App.toCsvValue("Vanlig -tekst med bindestrek midt i") === "Vanlig -tekst med bindestrek midt i", "bindestrek midt i teksten (ikkje leiande) blir ikkje nøytralisert");
 
   // Eksport-knapper i Kontakt/CRM/Booking/Tilbud — alle bruker delt CSV-hjelper.
   // Kontakt kaller den interne downloadCsv() direkte (samme funksjon, men ikke
