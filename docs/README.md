@@ -2,6 +2,8 @@
 
 This is the central index for Vibeverk's documentation. It exists so any person, agent or subagent — in this session or a future one — can quickly answer: *what is verified current reality, what has been deliberately decided, what changed over time, what is only planned, and what is unknown?*
 
+**[`docs/STRATEGY.md`](STRATEGY.md)** is the one exception to "documentation describes, doesn't dictate": it states the business strategy and non-negotiable principles (one shared codebase across all four product offerings, changes deployed from one place, customer admin stays simple, operator access via Console always works, security has no accepted exceptions, everything stays scalable/copyable). Every other document — roadmap, ADRs, architecture — should be read as being in service of it, not the reverse.
+
 ## Source-of-truth order
 
 When documentation and something else disagree, resolve in this order:
@@ -25,6 +27,7 @@ When documentation and something else disagree, resolve in this order:
 
 | Folder | Purpose |
 |---|---|
+| [`STRATEGY.md`](STRATEGY.md) | Business strategy and non-negotiable principles — governs everything else below |
 | [`architecture/`](architecture/README.md) | How Vibeverk is actually built today (system overview, module conventions, storage/data flow, roles/tenancy) |
 | [`decisions/`](decisions/README.md) | ADRs — deliberate, long-lived decisions, with context and consequences |
 | [`project/`](project/CURRENT_STATE.md) | `CURRENT_STATE.md` (verified status) and `CHANGELOG.md` (dated log of meaningful changes) |

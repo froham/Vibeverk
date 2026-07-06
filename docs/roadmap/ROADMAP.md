@@ -22,6 +22,7 @@ Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjen
 
 ## Next
 
+- **Hosting-arkitektur (`docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md`):** Fase 2 (demo-kunde) bør skje på ny edge-hosting-arkitektur (kjøretids-oppløyst config per domene), ikkje som repo-fork — repo-fork-modellen løyser dataisolasjon, men bryt "éin push når alle kundar"-prinsippet i `docs/STRATEGY.md`. Fase 0 i ADR-en (Cloudflare Pages-prov for eksisterande kunde, null kodeendring) kan startast uavhengig av og parallelt med dei fire HIGH-tryggingsfunna under. Fase 1 (asynkron config-bootstrap i `core.js`) er eige, seinare, dedikert arbeid.
 - **Løys dei fire HIGH-tryggingsfunna over** (Supabase RLS-endringar) — føresetnad før Fase 2.
 - **Fase 2 — Sett opp demo-/eksempelkunde-instans.** Ny GitHub-repo + Pages-deploy + Supabase-prosjekt (stadfesta arkitektur, sjå `docs/archive/roadmap-2026-07-01.md` sitt vedlagde arkitektnotat-grunnlag). Opne avgjerder: domenenamn (subdomene vs. `github.io`), om `crmFull`/Resend skal demonstrerast, ny `hub/tenants.js`-oppføring.
 - **Fase 3 / Steg 7 — Kundedokumentasjon / Kontrakt / DPA.** Standardkontrakt, databehandlaravtale (DPA), personvernerklæring — fylt ut frå malane i `docs/compliance/` med stadfesta fakta, ikkje oppdikta. Gjeld både demo-instansen og framtidige ekte kundar.

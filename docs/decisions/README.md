@@ -47,3 +47,4 @@ Link to a prior or replacement ADR, if applicable. Omit if not relevant.
 | [ADR-0004](ADR-0004-console-access-decoupled-from-tenant-role.md) | Console access is governed solely by the superadmin email allowlist, not by tenant role | Accepted |
 | [ADR-0005](ADR-0005-extend-auth-fallback-fix-to-intranet-login.md) | Extend the closed admin-auth fallback (ADR-0003) to the intranet login | Accepted |
 | [ADR-0006](ADR-0006-remove-owner-role-references.md) | Remove lingering "owner" role references; admin/editor/member is the complete role model | Accepted |
+| [ADR-0007](ADR-0007-multi-tenant-hosting-architecture.md) | Multi-tenant hosting architecture — reject fork-and-sync, migrate to edge-resolved config in phases | Accepted |
