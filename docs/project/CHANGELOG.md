@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.18.0 — 2026-07-07
+
+### SQL workflow converted to real, deployable Supabase migrations (Phase 3 of the SaaS-scaling plan)
+- `supabase/migration.sql` (the single, hand-maintained, Dashboard-copy-paste schema file) and 23 `hotfix_*.sql` files were the only SQL workflow — CLAUDE.md explicitly forbade claiming `supabase db push` would deploy them, since they weren't timestamped files under `supabase/migrations/`. This blocked any future semi-automated customer onboarding (Phase 9 of the SaaS-scaling plan needs `supabase db push` to actually work against a fresh project).
+- `supabase/migrations/20260707000001_baseline_schema.sql` created as a byte-for-byte copy of `migration.sql` (verified via SHA-256 hash before adding any header), establishing it as migration #1 in a real, CLI-trackable history.
+- **Production (already has this schema) was baselined, not re-applied**: `npx supabase migration repair 20260707000001 --status applied --linked` marks the migration as already-in-effect in the remote history table, without re-running any of the 1070 lines of DDL against the live database. Verified via `supabase migration list --linked` (local and remote both show `20260707000001`) and `supabase db push --linked --dry-run` ("Remote database is up to date").
+- For a **new** customer project going forward, `supabase db push --linked` (after linking to that project) now genuinely deploys the full schema from scratch — the actual point of this conversion.
+- `supabase/migration.sql` marked superseded via a header comment (frozen snapshot as of this baseline, not updated further) rather than deleted — still useful for a quick manual Dashboard read, but no longer the place new changes go. `hotfix_*.sql` files kept as historical record (already folded into the baseline, valuable context, referenced throughout this changelog and `CURRENT_STATE.md`).
+- **Real tooling lesson, now written into `CLAUDE.md`**: multi-statement/multi-line SQL passed inline to `npx supabase db query` can silently skip statements or drop clauses with no error (hit twice this session, 0.17.9's write-policy rollout) — always use `--file` and verify the actual result afterward, never trust a clean exit code alone.
+- `CLAUDE.md`'s Supabase rules section rewritten to describe the new workflow (`supabase migration new <name>` for future changes, `supabase db push` for deployment, the `--file`-not-inline lesson).
+- No app code changed, no test-suite impact. This is Phase 3 of the SaaS-scaling faseplan — Phase 1 (security debt) and Phase 2 (hosting vendor evaluation/Vercel Phase 0) were completed earlier the same day.
+
 ## 0.17.11 — 2026-07-07
 
 ### Console session re-checked on navigation, not just at page load

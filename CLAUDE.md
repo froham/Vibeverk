@@ -14,8 +14,9 @@ module-*.js          Self-contained IIFEs: booking, chat, crm, faq, mediabank, q
 index.html           Script loading order + cache-bust versions (?v=N)
 intranet/            Separate intranet SPA — intranet-core.js + intranet/module-*.js
 supabase/
-  migration.sql      Full schema (idempotent) — run manually in Supabase Dashboard SQL Editor
-  hotfix_*.sql       Targeted fixes — also run manually
+  migrations/        Real numbered migrations (since 2026-07-07) — deployable via `supabase db push`
+  migration.sql      SUPERSEDED — frozen snapshot as of the 2026-07-07 baseline, not updated further
+  hotfix_*.sql       Historical targeted fixes, all folded into the baseline migration — new fixes go in migrations/
   chat-tests.js      Browser-based chat integration tests (run in console while admin is logged in)
 test.js              jsdom harness for public site
 test-intranet.js     jsdom harness for intranet
@@ -71,9 +72,10 @@ All other tests must remain green. Do not silently remove or skip failing tests.
 
 ## Supabase rules
 
-- SQL changes go to `supabase/migration.sql` (idempotent) and, if urgent, to a `hotfix_*.sql`
+- SQL changes go to a new timestamped file in `supabase/migrations/` (create with `npx supabase migration new <name>`) — this is a real, deployable migration history since 2026-07-07 (baseline: `20260707000001_baseline_schema.sql`). `supabase/migration.sql` is superseded — a frozen snapshot, no longer updated; don't add new changes there.
 - Supabase CLI is installed locally (`supabase` dev dependency); always invoke it as `npx supabase`. The local working copy is linked to project ref `clzczbyklgdtdhgjphup`
-- Existing `migration.sql`/`hotfix_*.sql` files are standalone Dashboard scripts, not timestamped files under `supabase/migrations/`; do not claim `supabase db push` will deploy them. Run them manually in Dashboard until a migration conversion is explicitly approved
+- **When passing multi-statement or multi-line SQL to `npx supabase db query`, always use `--file <path>` (write the SQL to a temp file first), never an inline string/heredoc argument.** Confirmed twice in practice (2026-07-07): inline multi-statement batches silently skip some statements, and inline multi-line single statements can silently drop clauses (e.g. `WITH CHECK`/`USING`) — both with no error surfaced. Always verify the actual result afterward (`pg_policy`, `pg_class.relacl`, a real `SELECT`) rather than trusting a clean exit code.
+- `npx supabase db push --linked` deploys pending migrations to the linked project (still requires explicit approval per the deployment safeguard below, same as any other remote Supabase action). For a **new** customer project, this is now the intended path to apply the full schema from scratch. For the **existing** production project (schema already matches the baseline), the baseline migration was marked applied via `npx supabase migration repair 20260707000001 --status applied --linked` rather than re-run — don't re-apply it.
 - Edge Functions may be deployed from `supabase/functions/` with `npx supabase functions deploy <name> --project-ref clzczbyklgdtdhgjphup`, but only after the explicit approval required below
 - After adding or replacing any function: `NOTIFY pgrst, 'reload schema';`
 - All anon-facing functions must be `SECURITY DEFINER STABLE SET search_path = public`
