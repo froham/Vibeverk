@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.17.11 — 2026-07-07
+
+### Console session re-checked on navigation, not just at page load
+- Last open MEDIUM item from the security reconciliation pass (see 0.17.8). `navigate()` (`console/console-core.js`) is called on every Console nav-item click but never checked `isAuthed()` — only the `DOMContentLoaded` handler did, once. A 48-hour session that expired while an operator had Console open in a background tab kept rendering sections normally after the expiry, contradicting the documented intent in `docs/architecture/roles-and-tenants.md`. RLS (`is_platform_operator()`, which checks the JWT's own expiry) still blocked actual writes, so this was a UI-consistency gap, not a data-access bypass.
+- Fixed: `navigate()` now checks `isAuthed()` first and calls the existing `logout()` (clears the session, signs out of Supabase Auth, reloads) if expired, bouncing back to the login screen instead of continuing to render.
+- No automated test coverage (Console has no test harness — confirmed neither `test.js` nor `test-intranet.js` reference `console-core.js`). Both suites re-run to confirm no regression (500/1, 148/149 — unchanged).
+- Cache-bust: `console-core.js` 46→47.
+
 ## 0.17.10 — 2026-07-07
 
 ### Hosting vendor evaluated for SaaS-scaling: Vercel, not Cloudflare (ADR-0007 addendum)

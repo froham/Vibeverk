@@ -16,12 +16,12 @@ Sist oppdatert: 2026-07-07.
 3. ~~`chat_conversations` anon UPDATE-IDOR~~ — **lukka og stadfesta i produksjon 2026-07-07** (live-testa via ny Playwright-flyt, gamle anon-rettar tilbaketrekt, sjå `docs/project/CHANGELOG.md` 0.17.8).
 4. ~~`migration.sql`-drift~~ — **lukka** for alle spot-sjekka hotfixar; chat-RPC-ane som mangla er no folda inn (same runde som punkt 3).
 
-**Nye funn (surfaced under 2026-07-07-reknskapen, ikkje del av den opphavlege lista):**
-- ~~`superconfig.adminPassword`~~ — **lukka og stadfesta i produksjon 2026-07-07** (`superconfig` delt i offentleg/privat nøkkel, verifisert både via `pg_policy` og eit ekte anon REST-kall, sjå `docs/project/CHANGELOG.md` 0.17.9). **Berre den faktiske Console-nettlesarflyten (last/lagre passordfeltet) står att å stadfeste manuelt** — ikkje gjort i denne økta sidan det krev OTP til operatøren sin eigen e-post.
-- Console sin 48-timars sesjon vert berre sjekka ved `DOMContentLoaded`, ikkje ved intern navigering (`console/console-core.js`) — framleis ope, MEDIUM.
-- Udokumentert til no oppdaga: chat-adminpanelet er admin-only (ikkje editor/member), no dokumentert i `docs/architecture/roles-and-tenants.md`.
+**Nye funn (surfaced under 2026-07-07-reknskapen, ikkje del av den opphavlege lista) — alle no lukka:**
+- ~~`superconfig.adminPassword`~~ — **lukka og stadfesta i produksjon 2026-07-07** (`superconfig` delt i offentleg/privat nøkkel, verifisert både via `pg_policy`, eit ekte anon REST-kall, og manuell stadfesting av den faktiske Console-nettlesarflyten, sjå `docs/project/CHANGELOG.md` 0.17.9).
+- ~~Console sin 48-timars sesjon vert berre sjekka ved `DOMContentLoaded`~~ — **lukka 2026-07-07**, `navigate()` sjekkar no `isAuthed()` på kvart navigeringsklikk, sjå `docs/project/CHANGELOG.md` 0.17.11.
+- Udokumentert til no oppdaga: chat-adminpanelet er admin-only (ikkje editor/member), no dokumentert i `docs/architecture/roles-and-tenants.md` (informasjonspunkt, ikkje ein feil).
 
-Sjå `docs/project/CURRENT_STATE.md` "Pending"/"Still open" for full detalj. **Console-sesjonssjekken bør rettast før SaaS-skaleringsarbeidet held fram til kontrollplan-steget**, sidan kontrollplanen vil forsterke Console sin tryggleiksrolle monaleg.
+**Tryggleiksgjeld-fasen (Fase 1 av SaaS-skaleringsplanen) er dermed fullført 2026-07-07.** Sjå `docs/project/CURRENT_STATE.md` "Pending"/"Still open" for gjenverande lågare-prioriterte funn (media-bucket-redesign, personvern-autotekst) som ikkje blokkerer vidare arbeid.
 
 Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjenoppretta, `admin/index.html`-drift retta) og ei brukartesta oppfølgingsrunde same dag (chat-bug, oppgåve-tildeling-bug, Console-feltklarheit, intranett-login-bakveg lukka, owner-rolle-opprydding, CRM e-post-konsistens) vart fullført 2026-07-01, sjå `docs/project/CHANGELOG.md` 0.3.0/0.5.0/0.6.0 og ADR-0003 til ADR-0006. Éin funn frå denne runda: `intranet/module-crm.js` vart oppdaga som daud kode — **sletta 2026-07-06**, sjå `docs/project/CURRENT_STATE.md` "Known limitations".
 

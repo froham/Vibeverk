@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.17.10";
+  var VIBEVERK_VERSION = "0.17.11";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -188,6 +188,14 @@ window.VwConsole = (function () {
   var activeSection = "produkt";
 
   function navigate(id) {
+    // Sesjonen vart tidlegare berre sjekka éin gong, ved DOMContentLoaded —
+    // ei 48-timars-økt som gjekk ut MEDAN operatøren hadde Console open i eit
+    // ope faneblad, heldt fram å fungere heilt til neste sideoppfriskning
+    // (motsa den dokumenterte oppførselen i roles-and-tenants.md). RLS stogga
+    // framleis faktiske skrivingar (is_platform_operator() sjekkar JWT-en
+    // sin faktiske utløpstid, ikkje denne localStorage-tidsstempelen), men
+    // UI-et såg ut til å framleis fungere normalt inntil ei skriving feila.
+    if (!isAuthed()) { logout(); return; }
     activeSection = id;
     document.querySelectorAll("[data-cs-nav]").forEach(function (el) {
       el.classList.toggle("is-active", el.getAttribute("data-cs-nav") === id);
