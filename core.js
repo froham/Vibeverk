@@ -1261,7 +1261,7 @@ window.App = (function () {
                   var active = t.id === activeTab ? "is-active" : "";
                   return '<button class="tab ' + active + '" role="tab" data-tab="' + C.esc(t.id) + '">' + C.esc(t.label) + '</button>';
                 }).join("") +
-                '<a href="../intranet/#/" target="_blank" class="btn btn--ghost btn--sm" style="margin-left:auto;font-size:.8rem;padding:.35rem .7rem;display:inline-flex;gap:.35rem;align-items:center;white-space:nowrap"><i class="ti ti-external-link"></i> Åpne i arbeidsområde</a>' +
+                '<a href="../workspace/#/" target="_blank" class="btn btn--ghost btn--sm" style="margin-left:auto;font-size:.8rem;padding:.35rem .7rem;display:inline-flex;gap:.35rem;align-items:center;white-space:nowrap"><i class="ti ti-external-link"></i> Åpne i arbeidsområde</a>' +
               '</div>';
             })() +
             `<div class="admin-tabbody" data-tabbody></div>
@@ -3487,7 +3487,7 @@ window.App = (function () {
           '<span class="ti ti-briefcase" style="font-size:3rem;color:var(--color-primary,#2563eb)"></span>' +
           '<h1 style="font-size:1.6rem;margin:.7rem 0 .5rem">Workspace</h1>' +
           '<p style="color:var(--color-muted,#64748b);margin:0 0 1.4rem">Denne løysinga har berre Workspace aktivert. Nettsida er ikkje tilgjengeleg.</p>' +
-          '<a href="intranet/" style="display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.6rem;' +
+          '<a href="workspace/" style="display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.6rem;' +
           'background:var(--color-primary,#2563eb);color:#fff;border-radius:999px;text-decoration:none;font-weight:600">' +
           'Gå til Workspace <span class="ti ti-arrow-right"></span></a>' +
           '</div></div>';
@@ -3834,7 +3834,7 @@ window.App = (function () {
       bindHelpIcons: bindHelpIcons,                   // C.helpIcon()-klikk-toggle — kall ÉIN gong per side (delegert på document), Web-admin gjer dette sjølv via init()
       hydrateFromSupabase: hydrateFromSupabase        // kall ved innlogging (6b) for cross-device sync
     },
-    supabase: _sb                                     // delt Supabase-klient (intranet brukar same instans)
+    supabase: _sb                                     // delt Supabase-klient (Workspace brukar same instans)
   };
 })();
 

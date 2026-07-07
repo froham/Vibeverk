@@ -53,10 +53,10 @@ async function flowHome(page) {
 // live GitHub Pages site. No writes, no form submissions.
 async function flowParity(page) {
   var pages = [
-    { name: "parity-home",     path: "/" },
-    { name: "parity-admin",    path: "/admin/" },
-    { name: "parity-intranet", path: "/intranet/" },
-    { name: "parity-console",  path: "/console/" }
+    { name: "parity-home",      path: "/" },
+    { name: "parity-admin",     path: "/admin/" },
+    { name: "parity-workspace", path: "/workspace/" },
+    { name: "parity-console",   path: "/console/" }
   ];
   for (var i = 0; i < pages.length; i++) {
     var p = pages[i];

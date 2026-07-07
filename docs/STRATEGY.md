@@ -11,7 +11,7 @@ Vibeverk sel tre parallelle forretningsbein. Alle tre er **konfigurasjonar av sa
 | Bein | Kva kunden får | Teknisk realisering i dag |
 |---|---|---|
 | **1. Webside med moduler** | Offentleg nettside + valfrie modular (booking, tilbod, CRM, chat, m.m.) | `productMode: "web"` — Workspace blokkert |
-| **2. Digital plattform (Web+WS eller kun WS) med moduler** | Anten alt i 1 pluss autentisert intranett/Workspace, eller berre det interne arbeidsområdet utan offentleg nettside | `productMode: "full"` (begge overflater) eller `productMode: "workspace"` (nettsida viser vidare til `/intranet/`) |
+| **2. Digital plattform (Web+WS eller kun WS) med moduler** | Anten alt i 1 pluss autentisert Workspace, eller berre det interne arbeidsområdet utan offentleg nettside | `productMode: "full"` (begge overflater) eller `productMode: "workspace"` (nettsida viser vidare til `/workspace/`, renamed 2026-07-07 frå `/intranet/`) |
 | **3. Skreddarsydde løysingar** | Modular bygd spesifikt for éin kunde sitt behov — KI-verktøy (t.d. eit AI-assistert analyseverktøy) er det mest sannsynlege og verdifulle dømet, men beinet dekker generell skreddarsying, ikkje berre KI | `productMode: "workspace"` (kan vere eit reint tomt WS-skal — alle `intranettFeatures` av, berre native Dashboard/Oppgåver/Innstillingar pluss det spesialsydde modulet) + kundespesifikke tilleggsmodular |
 
 Bein 3 krev alltid at kunden minst har WS-basisen (bein 2 sin `"workspace"`-modus) — det er aldri ein frittståande fjerde modus, berre eit tillegg oppå. Det kan seljast heilt åleine (kunden får eit tomt WS-skal berre for å hoste det spesialsydde verktøyet) eller kombinert med bein 1/2.

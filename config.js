@@ -133,7 +133,7 @@ window.SITE_CONFIG = {
 
   /* --- Admin (Vibeverk superadmin) ------------------------------------------ */
   // Passordet beskyttar nettside-adminen (#admin) — KUN for Vibeverk.
-  // Kunden har ikkje tilgang til dette panelet. Intranet-tilgang styrast av
+  // Kunden har ikkje tilgang til dette panelet. Workspace-tilgang styrast av
   // Supabase-brukarar og roller, ikkje av desse passorda.
   // MERK: Fila er offentleg på GitHub Pages — bruk eit sterkt, unikt passord per kunde.
   admin: {
@@ -168,10 +168,12 @@ window.SITE_CONFIG = {
     chat:          true   // ← Native chat-boble. Krever module-chat.js
   },
 
-  /* --- Intranett-funksjoner (skru av/på) ------------------------------------
-     Styrer hvilke gjenspeilde moduler som vises i intranettet.
-     Native intranett-moduler (Dashboard, Oppgaver, Innstillinger) er alltid på.
-     Settes via super-admin → Funksjoner → Intranett. */
+  /* --- Workspace-funksjoner (skru av/på) ------------------------------------
+     Styrer hvilke gjenspeilde moduler som vises i Workspace.
+     Native Workspace-moduler (Dashboard, Oppgaver, Innstillinger) er alltid på.
+     Settes via super-admin → Funksjoner → Workspace.
+     MERK: property-namnet "intranettFeatures" er med vilje ikkje omdøypt enno
+     (intern JS/persistert config-nøkkel, sjå CLAUDE.md). */
   intranettFeatures: {
     /* --- Låste (alltid på, ikkje i superadmin): dashboard, tasks, settings --- */
 
@@ -278,12 +280,12 @@ window.SITE_CONFIG = {
 
   /* --- Plattformmodus ------------------------------------------------------- */
   // Kva slags produkt denne installasjonen er. Brukast til routing og navigasjon.
-  // "web" = offentleg nettside (standard), "workspace" = berre intranett,
+  // "web" = offentleg nettside (standard), "workspace" = berre Workspace,
   // "custom_app" = fokusert enkeltapp
   productMode: "web",
 
   /* --- Workspace ------------------------------------------------------------ */
-  // Innstillingar spesifikke for Workspace (intranett), uavhengig av nettsida.
+  // Innstillingar spesifikke for Workspace, uavhengig av nettsida.
   // Kan overstyrast i Super-admin → Workspace-fana.
   workspace: {
     name:        "",   // Tomt = brukar company.name som arbeidsområdenamn

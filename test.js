@@ -1144,7 +1144,7 @@ const __asyncTests = (async () => {
 
   // --- CRM: feltmapping Supabase<->JS (crm_customers/crm_bedrifter/crm_comms) ---
   // module-crm.js sin _sb (Supabase-klient) vert fanga ÉIN gong ved modul-
-  // oppstart (same mønster som intranet/module-tasks.js), så å setje
+  // oppstart (same mønster som workspace/module-tasks.js), så å setje
   // window.App.supabase seinare i eit testløp treffer aldri det faktiske
   // nettverkskallet — App.supabase er uansett ikkje konfigurert i jsdom, og
   // INGEN modul i kodebasen (heller ikkje tasks) har nokon gong automatisert-
@@ -2089,7 +2089,7 @@ const __asyncTests = (async () => {
   // --- Media.norm(): vaktar mot dobbelt-serialisert bildedata ---
   // Fant i produksjon: ei Aktuelt-sak sitt bildefelt var lagra som ein STRENG
   // som ER JSON-teksten til eit tomt bilde-objekt (truleg gamal dobbel-
-  // serialisering). annCard() i intranet/module-announcements.js viser bilde
+  // serialisering). annCard() i workspace/module-announcements.js viser bilde
   // til ALLE roller (ikkje admin-gata), så norm()-fallbacken (streng → antatt
   // rå URL) satte heile JSON-teksten som <img src>, som feila med 400 for
   // kven som helst som opna Aktuelt/Dashboard. norm() må derfor prøve å tolke

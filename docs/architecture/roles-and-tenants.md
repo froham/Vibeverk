@@ -83,13 +83,13 @@ Private notes use a different check: `user_id = auth.uid()` — notes are visibl
 - **Scope:** All web admin module panels registered via `App.registerModule()`. Can manage content (booking slots, FAQ, references, quotes, mediabank), see chat admin, manage CRM, adjust site settings.
 - **Security note:** The password is in `config.js`, which is committed to git and served publicly. This is a known design constraint. The password is intended to be shared with the customer's staff rather than treated as a high-security secret.
 
-### 2. Workspace / Intranet (`/intranet/`)
+### 2. Workspace (`/workspace/`, renamed 2026-07-07 from `/intranet/` — see `docs/project/CHANGELOG.md`)
 
 - **Authentication:** Supabase Auth (email + password). Session persists across page loads via Supabase session storage.
-- **Access method:** Log in at `/intranet/` with a registered email and password.
+- **Access method:** Log in at `/workspace/` with a registered email and password.
 - **Authorization:** Role-based. Role is read from the `users` table after login. Owner and admin see the settings and user management modules. All roles see the workspace content.
 - **Session:** Managed by Supabase Auth. Calling `_sb.auth.signOut()` clears the session. Role is fetched from `users` table after successful auth state change.
-- **Boot guard:** `productMode: "web"` blocks intranet boot entirely.
+- **Boot guard:** `productMode: "web"` blocks Workspace boot entirely.
 
 ### 3. Vibeverk Operator Console (`/console/`)
 
@@ -101,7 +101,7 @@ Private notes use a different check: `user_id = auth.uid()` — notes are visibl
 
 ## productMode and surface access
 
-| productMode | Public site | Intranet |
+| productMode | Public site | Workspace |
 |---|---|---|
 | `"web"` | Enabled | Blocked at boot |
 | `"workspace"` | Blocked at boot | Enabled |

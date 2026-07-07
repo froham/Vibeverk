@@ -1,7 +1,9 @@
 /* =============================================================================
-   intranet-core.js  —  INTRANETT-MOTOR (window.Intranet)
+   workspace-core.js  —  WORKSPACE-MOTOR (window.Intranet)
    -----------------------------------------------------------------------------
-   Eget register, router og shell for intranettet. Gjenbruker primitivene
+   Renamed 2026-07-07 frå intranet-core.js — den interne JS-objektnamnet
+   window.Intranet er med vilje ikkje omdøypt enno, sjå CLAUDE.md.
+   Eget register, router og shell for Workspace. Gjenbruker primitivene
    App.store, App.media og window.Components fra core.js, men har sin EGNE
    modul-liste, routing og DOM-shell — slik at core.js forblir uendret.
 

@@ -2,15 +2,15 @@
 
 ## What it is
 
-Vibeverk is a single-tenant white-label website and intranet platform for Norwegian small businesses. A single codebase is deployed per customer. The only file that changes between customers is `config.js`. All other code is shared.
+Vibeverk is a single-tenant white-label website and Workspace platform for Norwegian small businesses. A single codebase is deployed per customer. The only file that changes between customers is `config.js`. All other code is shared.
 
 ## Three delivery surfaces
 
 ### 1. Public website (`/`)
 Customer-facing marketing and tools site. Served via GitHub Pages. Contains the customer's public content, booking form, FAQ, references, chat widget, and related modules. All visitors are unauthenticated (anon). The web admin panel (`/#admin`) overlays this surface.
 
-### 2. Workspace / Intranet (`/intranet/`)
-Authenticated employee workspace. A separate single-page application with its own bootstrap (`intranet-core.js`). Contains dashboard, tasks, notes, announcements, knowledge base, CRM, bookings, links, org drift, settings, and user management.
+### 2. Workspace (`/workspace/`, renamed 2026-07-07 from `/intranet/`)
+Authenticated employee workspace. A separate single-page application with its own bootstrap (`workspace-core.js`, renamed from `intranet-core.js`). Contains dashboard, tasks, notes, announcements, knowledge base, CRM, bookings, links, org drift, settings, and user management.
 
 ### 3. Vibeverk Operator Console (`/console/`)
 Internal superadmin surface for Vibeverk operators. Used to manage customer configurations, override feature flags, set productMode, and inspect deployments. Two-step OTP authentication (email → 8-digit code via Supabase).
@@ -55,15 +55,15 @@ One Supabase project per customer. Complete database-level isolation — each cu
 
 `"web"` / `"workspace"` / `"full"`. Determines which surfaces are enabled for a given deployment.
 
-- `"web"` — public website only; intranet boot is blocked
-- `"workspace"` — intranet only; public site boot is blocked
+- `"web"` — public website only; Workspace boot is blocked
+- `"workspace"` — Workspace only; public site boot is blocked
 - `"full"` — both surfaces active
 
 productMode is read exclusively from the `superconfig` key in the Supabase `store` table (written by the Vibeverk Console). It is never read from `config.js` defaults, to avoid blocking tests in environments without Supabase.
 
 ## CI
 
-GitHub Actions runs `node test.js` (jsdom harness for public site) and `node test-intranet.js` (jsdom harness for intranet) on every push to any branch. Both must pass before merge. Two tests are currently known-failing (pre-existing, unrelated to active development):
+GitHub Actions runs `node test.js` (jsdom harness for public site) and `node test-workspace.js` (jsdom harness for Workspace, renamed 2026-07-07 from `test-intranet.js`) on every push to any branch. Both must pass before merge. Two tests are currently known-failing (pre-existing, unrelated to active development):
 - `"henvendelses-fanen heter «Kontakt»"`
 - `"sammenslåings-avhukingsbokser finst på kunderadene"`
 

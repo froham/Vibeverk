@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Single-tenant white-label website + intranet. Vanilla JS, no bundler, no framework. Deployed via GitHub Pages (push to `main`). Supabase (PostgreSQL + PostgREST + Auth + Realtime) as backend.
+Single-tenant white-label website + Workspace (intern arbeidsflate). Vanilla JS, no bundler, no framework. Deployed via GitHub Pages (push to `main`). Supabase (PostgreSQL + PostgREST + Auth + Realtime) as backend.
 
 ## Repository layout
 
@@ -12,15 +12,15 @@ components.js        Pure functions returning HTML strings — no side effects, 
 core.js              App bootstrap, theme, section rendering, module registry (App.registerModule)
 module-*.js          Self-contained IIFEs: booking, chat, crm, faq, mediabank, quote, references
 index.html           Script loading order + cache-bust versions (?v=N)
-intranet/            Separate intranet SPA — intranet-core.js + intranet/module-*.js
+workspace/           Separate Workspace SPA — workspace-core.js + workspace/module-*.js (renamed 2026-07-07, see docs/project/CHANGELOG.md — internal window.Intranet JS object name and intranettFeatures config key are unchanged, Tier 2, deferred)
 supabase/
   migrations/        Real numbered migrations (since 2026-07-07) — deployable via `supabase db push`
   migration.sql      SUPERSEDED — frozen snapshot as of the 2026-07-07 baseline, not updated further
   hotfix_*.sql       Historical targeted fixes, all folded into the baseline migration — new fixes go in migrations/
   chat-tests.js      Browser-based chat integration tests (run in console while admin is logged in)
 test.js              jsdom harness for public site
-test-intranet.js     jsdom harness for intranet
-.github/workflows/   CI: node test.js + node test-intranet.js on every push
+test-workspace.js    jsdom harness for Workspace (renamed 2026-07-07 from test-intranet.js)
+.github/workflows/   CI: node test.js + node test-workspace.js on every push
 ```
 
 ## Module conventions
@@ -28,7 +28,7 @@ test-intranet.js     jsdom harness for intranet
 - All modules are IIFEs: `(function () { "use strict"; ... })();`
 - Read config via `window.SITE_CONFIG` and `window.SITE_CONFIG.features`
 - Expose admin UI via `window.VwChatAdmin`, `window.CrmAdmin`, etc., or via `App.registerModule()`
-- Intranet modules register via `window.Intranet.registerModule()`
+- Workspace modules register via `window.Intranet.registerModule()` — the internal JS object name is still `Intranet` (deliberately not renamed yet, see repository-layout note above), do not "fix" this to `Workspace` without a coordinated pass across all `workspace/module-*.js` files
 - Storage: `localStorage` namespaced with `storageKey` prefix (`nordpunkt:<key>`), Supabase as persistent store (write-through)
 - **`storageKey: "nordpunkt"` must never be changed** — existing Supabase rows and localStorage data are keyed to it; renaming requires a full atomic data migration
 
@@ -61,12 +61,12 @@ Bump `?v=N` on the script tag in `index.html` for every file you change. Only bu
 ```
 npm install        # installs jsdom (dev dep only)
 node test.js       # public site — must pass
-node test-intranet.js  # intranet — must pass
+node test-workspace.js  # Workspace — must pass
 ```
 
 CI runs both on every push. Known-failing tests (pre-existing, unrelated to current work):
 - `"henvendelses-fanen heter «Kontakt»"` (test.js — tab label mismatch)
-- `"o3: workspaceship via direkterute"` (test-intranet.js — workspace redirect test)
+- `"o3: workspaceship via direkterute"` (test-workspace.js — workspace redirect test)
 
 All other tests must remain green. Do not silently remove or skip failing tests.
 
@@ -101,4 +101,4 @@ All other tests must remain green. Do not silently remove or skip failing tests.
 
 - Production Supabase project: `clzczbyklgdtdhgjphup`
 - Admin access: triple-click footer or `#admin` in URL, password in `config.js → admin.password`
-- Intranet login: Supabase Auth (email + password); role (`admin`/`editor`/`member`) governs what's visible after login, not whether login succeeds. Admin/editor/member management UI requires role `admin`.
+- Workspace login: Supabase Auth (email + password); role (`admin`/`editor`/`member`) governs what's visible after login, not whether login succeeds. Admin/editor/member management UI requires role `admin`.

@@ -7,7 +7,7 @@ Use this checklist before pushing to `main` or applying a Supabase SQL change. A
 ## Auth and roles
 
 - [ ] No change to `storageKey: "nordpunkt"` or the `store` table `tenant_id` column
-- [ ] New intranet routes or module actions check `is_admin_or_owner()` or the appropriate role before performing privileged operations
+- [ ] New Workspace routes or module actions check `is_admin_or_owner()` or the appropriate role before performing privileged operations
 - [ ] Console access still requires OTP validation and `role = 'owner'` check — no bypass paths introduced
 - [ ] Web admin password not logged to console, not exposed in network requests, not added to any API call in new code
 
@@ -45,10 +45,10 @@ Use this checklist before pushing to `main` or applying a Supabase SQL change. A
 ## Cache and deployment
 
 - [ ] `?v=N` in `index.html` incremented for every changed module file
-- [ ] `?v=N` incremented in `intranet/index.html` for every changed intranet module file
+- [ ] `?v=N` incremented in `workspace/index.html` for every changed Workspace module file
 - [ ] Only the files that actually changed had their version numbers bumped — unchanged files were not touched
 - [ ] `node test.js` passes (acceptable pre-existing failures: "henvendelses-fanen heter «Kontakt»" and "sammenslåings-avhukingsbokser finst på kunderadene")
-- [ ] `node test-intranet.js` passes (acceptable pre-existing failure: "o3: workspaceship via direkterute")
+- [ ] `node test-workspace.js` passes (acceptable pre-existing failure: "o3: workspaceship via direkterute")
 - [ ] No new test failures introduced
 
 ---

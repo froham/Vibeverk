@@ -1,8 +1,11 @@
 /* =============================================================================
    module-crm.js  —  KUNDER / CRM  v4
    -----------------------------------------------------------------------------
-   Selvstendig IIFE. Fungerer fullt utan intranett.
-   Deler datalag med intranet/module-crm.js (same localStorage-nøklar):
+   Selvstendig IIFE. Fungerer fullt utan Workspace.
+   Dual-registrerer for både Web-admin (App.registerModule) og Workspace
+   (window.Intranet.registerModule) — den tidlegare intranet/module-crm.js
+   var ein separat, daud kopi, sletta 2026-07-06 (sjå docs/project/CURRENT_STATE.md).
+   Nøklane under er felles for begge overflatene via same tabellar:
      crm-customers · crm-bedrifter · crm-comms · crm-settings
 
    Nytt i v4:
@@ -132,7 +135,7 @@
      localStorage-fallback (CUST_KEY/BEDRIFT_KEY/COMMS_KEY) når Supabase ikkje
      er konfigurert. _customers/_bedrifter/_comms er synkrone lokale cache-
      array fylt éin gong av loadCrmData() ved oppstart — same mønster som
-     _tasks i intranet/module-tasks.js. getX()-funksjonane under les berre frå
+     _tasks i workspace/module-tasks.js. getX()-funksjonane under les berre frå
      cachen og gjer ALDRI eit nettverkskall sjølv, så all eksisterande
      rendering-kode som kallar getCustomers()/getBedrifter()/getComms()
      synkront held fram uendra. Flytta ut av store 2026-07-03 (retta CRITICAL-

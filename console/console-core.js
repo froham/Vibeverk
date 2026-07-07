@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.19.0";
+  var VIBEVERK_VERSION = "0.20.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -50,7 +50,7 @@ window.VwConsole = (function () {
      SUPABASE-KLIENT  — eigen klient utan persistert sesjon for Console
      -------------------------------------------------------------------------
      App.ready-gate (ADR-0007 Fase 1 / SaaS-skaleringsplanen Fase 4): denne
-     fila er, som intranet-core.js, EIN stor vedvarande IIFE der CFG vert
+     fila er, som workspace-core.js, EIN stor vedvarande IIFE der CFG vert
      fanga éin gong via closure og delt av mange funksjonar (renderSystem,
      applySuperConfig, m.fl.) — ikkje kvar sin eigen vesle IIFE som modulfilene.
      Difor: tilordne den same CFG-variabelen på nytt (i staden for å skygge
@@ -391,7 +391,7 @@ window.VwConsole = (function () {
     var mode = sc.productMode || CFG.productMode || "web";
     var opts = [
       { val: "web",       label: "Web",            desc: "Berre offentleg nettside — Workspace er blokkert" },
-      { val: "workspace", label: "Workspace",       desc: "Berre intranett — nettsida visar vidare til /intranet/" },
+      { val: "workspace", label: "Workspace",       desc: "Berre Workspace — nettsida visar vidare til /workspace/" },
       { val: "full",      label: "Web + Workspace", desc: "Begge er aktive (standard)" }
     ];
     wrap.innerHTML =

@@ -1,34 +1,35 @@
-/* test-intranet.js — jsdom-harness for intranettet. Kjør: node test-intranet.js */
+/* test-workspace.js — jsdom-harness for Workspace. Kjør: node test-workspace.js
+   Renamed 2026-07-07 frå test-intranet.js — sjå docs/project/CHANGELOG.md. */
 const { JSDOM } = require("jsdom");
 const fs = require("fs");
 
-const html = fs.readFileSync("intranet/index.html", "utf8")
+const html = fs.readFileSync("workspace/index.html", "utf8")
   .replace(/src="\.\.\/config\.js"/g,     'src="config.js"')
   .replace(/src="\.\.\/components\.js"/g, 'src="components.js"')
   .replace(/src="\.\.\/core\.js"/g,       'src="core.js"')
-  .replace(/src="intranet-core\.js"/g,    'src="intranet/intranet-core.js"')
-  .replace(/src="module-announcements\.js"/g, 'src="intranet/module-announcements.js"')
-  .replace(/src="module-settings\.js"/g,  'src="intranet/module-settings.js"')
-  .replace(/src="module-tasks\.js"/g,     'src="intranet/module-tasks.js"')
-  .replace(/src="module-notes\.js"/g,     'src="intranet/module-notes.js"')
-  .replace(/src="module-mediabank-internal\.js"/g, 'src="intranet/module-mediabank-internal.js"')
-  .replace(/src="module-kb\.js"/g,        'src="intranet/module-kb.js"')
-  .replace(/src="module-contact\.js"/g,   'src="intranet/module-contact.js"')
-  // module-crm.js: ingen sti-omskriving her — intranet/index.html peikar allereie
+  .replace(/src="workspace-core\.js"/g,    'src="workspace/workspace-core.js"')
+  .replace(/src="module-announcements\.js"/g, 'src="workspace/module-announcements.js"')
+  .replace(/src="module-settings\.js"/g,  'src="workspace/module-settings.js"')
+  .replace(/src="module-tasks\.js"/g,     'src="workspace/module-tasks.js"')
+  .replace(/src="module-notes\.js"/g,     'src="workspace/module-notes.js"')
+  .replace(/src="module-mediabank-internal\.js"/g, 'src="workspace/module-mediabank-internal.js"')
+  .replace(/src="module-kb\.js"/g,        'src="workspace/module-kb.js"')
+  .replace(/src="module-contact\.js"/g,   'src="workspace/module-contact.js"')
+  // module-crm.js: ingen sti-omskriving her — workspace/index.html peikar allereie
   // rett på rot-fila (../module-crm.js), som er den einaste som faktisk vert lasta
   // i produksjon (sjå docs/project/CURRENT_STATE.md "Known limitations").
-  // intranet/module-crm.js er daud kode og skal ikkje testast som om han var aktiv.
-  .replace(/src="module-booking\.js"/g,   'src="intranet/module-booking.js"')
-  .replace(/src="module-quote\.js"/g,     'src="intranet/module-quote.js"')
-  .replace(/src="module-dashboard\.js"/g, 'src="intranet/module-dashboard.js"')
-  .replace(/src="module-orgdrift\.js"/g,  'src="intranet/module-orgdrift.js"')
-  .replace(/src="module-links\.js"/g,     'src="intranet/module-links.js"')
-  .replace(/src="module-workspaceship\.js"/g, 'src="intranet/module-workspaceship.js"')
-  .replace(/src="module-users\.js[^"]*"/g,   'src="intranet/module-users.js"');
+  // Den tidlegare intranet/module-crm.js var daud kode, sletta 2026-07-06.
+  .replace(/src="module-booking\.js"/g,   'src="workspace/module-booking.js"')
+  .replace(/src="module-quote\.js"/g,     'src="workspace/module-quote.js"')
+  .replace(/src="module-dashboard\.js"/g, 'src="workspace/module-dashboard.js"')
+  .replace(/src="module-orgdrift\.js"/g,  'src="workspace/module-orgdrift.js"')
+  .replace(/src="module-links\.js"/g,     'src="workspace/module-links.js"')
+  .replace(/src="module-workspaceship\.js"/g, 'src="workspace/module-workspaceship.js"')
+  .replace(/src="module-users\.js[^"]*"/g,   'src="workspace/module-users.js"');
 
 const dom = new JSDOM(html, {
   runScripts: "outside-only", pretendToBeVisual: true,
-  url: "https://example.test/intranet/"
+  url: "https://example.test/workspace/"
 });
 const { window } = dom;
 window.IntersectionObserver = class {
@@ -45,22 +46,22 @@ window.confirm = () => true;
 
 [
   "config.js","components.js","core.js",
-  "intranet/intranet-core.js",
-  "intranet/module-announcements.js",
-  "intranet/module-settings.js",
-  "intranet/module-tasks.js",
-  "intranet/module-notes.js",
-  "intranet/module-mediabank-internal.js",
-  "intranet/module-kb.js",
-  "intranet/module-contact.js",
-  "module-crm.js", // aktiv fil (dual-registrerer for Web-admin OG Workspace) — ikkje intranet/module-crm.js (daud kode)
-  "intranet/module-booking.js",
-  "intranet/module-quote.js",
-  "intranet/module-dashboard.js",
-  "intranet/module-orgdrift.js",
-  "intranet/module-links.js",
-  "intranet/module-workspaceship.js",
-  "intranet/module-users.js"
+  "workspace/workspace-core.js",
+  "workspace/module-announcements.js",
+  "workspace/module-settings.js",
+  "workspace/module-tasks.js",
+  "workspace/module-notes.js",
+  "workspace/module-mediabank-internal.js",
+  "workspace/module-kb.js",
+  "workspace/module-contact.js",
+  "module-crm.js", // aktiv fil (dual-registrerer for Web-admin OG Workspace) — ikkje den tidlegare intranet/module-crm.js (daud kode, sletta 2026-07-06)
+  "workspace/module-booking.js",
+  "workspace/module-quote.js",
+  "workspace/module-dashboard.js",
+  "workspace/module-orgdrift.js",
+  "workspace/module-links.js",
+  "workspace/module-workspaceship.js",
+  "workspace/module-users.js"
 ].forEach(f => {
   let src = fs.readFileSync(f, "utf8");
   // For testmiljøet: skru på alle intranett-features
@@ -89,7 +90,7 @@ const assert = (cond, msg) => {
 };
 
 // App.ready — same gate as test.js, verified independently here since
-// test-intranet.js loads intranet-core.js + intranet/module-*.js, which use
+// test-workspace.js loads workspace-core.js + workspace/module-*.js, which use
 // the reassignment pattern (CFG = freshCFG) rather than the module-file
 // wrap pattern — see docs/project/CHANGELOG.md for the Fase 4 writeup.
 // Same synchronous-harness limitation as test.js: this locks in the
@@ -332,7 +333,7 @@ assert(!!bkMalBtn, "s2: «E-postmalar»-fane finst i Workspace-booking");
 bkMalBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
 const avbookTa = doc.querySelector('[data-email-tpl="booking-avbook"]');
 const svarTa   = doc.querySelector('[data-email-tpl="booking-svar"]');
-assert(!!avbookTa, "s3: avbookingsmal-kort rendrer med tekstfelt (ikkje uformatert/kollapset — CSS er no porta til intranet/index.html)");
+assert(!!avbookTa, "s3: avbookingsmal-kort rendrer med tekstfelt (ikkje uformatert/kollapset — CSS er no porta til workspace/index.html)");
 assert(!!svarTa,   "s4: svarmal-kort rendrer med tekstfelt");
 avbookTa.value = "Egendefinert avbookingstekst {navn}";
 doc.querySelector('[data-email-tpl-save="booking-avbook"]').dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -565,7 +566,7 @@ nav("#/notes"); nav("#/dashboard");
   helpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
   assert(helpBtn.classList.contains("is-open"), "y5: hjelpebobla opnar seg på nytt");
   doc.body.dispatchEvent(new window.Event("click", { bubbles: true }));
-  assert(!helpBtn.classList.contains("is-open"), "y6: klikk utanfor lukkar hjelpebobla (delegert bindHelpIcons()-handsamar, kalla éin gong i intranet-core.js sin init())");
+  assert(!helpBtn.classList.contains("is-open"), "y6: klikk utanfor lukkar hjelpebobla (delegert bindHelpIcons()-handsamar, kalla éin gong i workspace-core.js sin init())");
   nav("#/notes"); nav("#/dashboard");
 })();
 

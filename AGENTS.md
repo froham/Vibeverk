@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Single-tenant white-label website + intranet. Vanilla JS IIFEs, no bundler, no framework. GitHub Pages for hosting. Supabase (PostgreSQL + PostgREST + Auth + Realtime) as backend.
+Single-tenant white-label website + Workspace (intern arbeidsflate). Vanilla JS IIFEs, no bundler, no framework. GitHub Pages for hosting. Supabase (PostgreSQL + PostgREST + Auth + Realtime) as backend.
 
 ## Before proposing any change
 
@@ -16,10 +16,10 @@ components.js        Pure HTML-string helpers, no side effects
 core.js              Bootstrap, App.registerModule(), theme application
 module-*.js          IIFEs: booking, chat, crm, faq, mediabank, quote, references
 index.html           Script load order + cache-bust ?v=N on every changed file
-intranet/            Separate intranet SPA — intranet-core.js + intranet/module-*.js
-supabase/migration.sql   Full schema — idempotent, run in Supabase Dashboard SQL Editor
+workspace/           Separate Workspace SPA — workspace-core.js + workspace/module-*.js (renamed 2026-07-07 from intranet/ — internal window.Intranet JS object name and intranettFeatures config key unchanged, deferred)
+supabase/migrations/     Real numbered migrations (since 2026-07-07) — deployable via `supabase db push`; supabase/migration.sql is a superseded, frozen snapshot
 test.js              jsdom harness: node test.js
-test-intranet.js     jsdom harness: node test-intranet.js
+test-workspace.js    jsdom harness: node test-workspace.js (renamed 2026-07-07 from test-intranet.js)
 ```
 
 ## Coding conventions
@@ -65,12 +65,12 @@ Flag these explicitly before proposing any change that touches:
 ```
 npm install
 node test.js          # must pass (two known pre-existing failures are acceptable)
-node test-intranet.js # must pass
+node test-workspace.js # must pass
 ```
 
 Do not propose changes that cause new test failures. The two known-failing tests are:
 - `"henvendelses-fanen heter «Kontakt»"` (test.js)
-- `"o3: workspaceship via direkterute"` (test-intranet.js)
+- `"o3: workspaceship via direkterute"` (test-workspace.js)
 
 ## Documentation workflow
 

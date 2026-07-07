@@ -40,7 +40,7 @@ Complete only the rows for features that are enabled in this customer's deployme
 | Data collected | Visitor name, visitor email, visitor_id (random browser-generated string), chat messages, page URL at time of chat, referrer URL, browser name, OS, screen resolution, language |
 | Who collects it | Vibeverk platform, on behalf of the customer |
 | Where stored | Supabase (chat_conversations, chat_messages tables); visitor_id also in visitor's browser localStorage |
-| Accessible by | Customer owner/admin via intranet; Vibeverk operator via Console |
+| Accessible by | Customer owner/admin via Workspace; Vibeverk operator via Console |
 | Retention | [MUST BE CONFIRMED — no automatic deletion is currently implemented] |
 | Legal basis | [MUST BE CONFIRMED — likely legitimate interest or contract performance; confirm with legal] |
 | Notes | Data is collected without the visitor being logged in. visitor_id is not a verified identity. Includes browser metadata. |
@@ -67,7 +67,7 @@ Complete only the rows for features that are enabled in this customer's deployme
 | Retention | [MUST BE CONFIRMED — consider what happens when an employee leaves] |
 | Legal basis | [MUST BE CONFIRMED — likely contract performance (employment/service agreement)] |
 
-### Notes (intranet/module-notes.js)
+### Notes (workspace/module-notes.js)
 
 | Field | Detail |
 |---|---|
@@ -78,7 +78,7 @@ Complete only the rows for features that are enabled in this customer's deployme
 | Retention | [MUST BE CONFIRMED] |
 | Legal basis | [MUST BE CONFIRMED] |
 
-### Tasks (intranet/module-tasks.js)
+### Tasks (workspace/module-tasks.js)
 
 | Field | Detail |
 |---|---|
@@ -89,7 +89,7 @@ Complete only the rows for features that are enabled in this customer's deployme
 | Retention | [MUST BE CONFIRMED] |
 | Legal basis | [MUST BE CONFIRMED] |
 
-### Announcements (intranet/module-announcements.js)
+### Announcements (workspace/module-announcements.js)
 
 | Field | Detail |
 |---|---|
@@ -100,7 +100,7 @@ Complete only the rows for features that are enabled in this customer's deployme
 | Retention | [MUST BE CONFIRMED] |
 | Legal basis | [MUST BE CONFIRMED] |
 
-### Knowledge base (intranet/module-kb.js)
+### Knowledge base (workspace/module-kb.js)
 
 | Field | Detail |
 |---|---|

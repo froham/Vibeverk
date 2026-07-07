@@ -96,7 +96,7 @@ Migration for existing production data: `supabase/hotfix_crm_data_migration_2026
 
 `superconfig` is read early in the page lifecycle by `earlyApplySuperConfig()`, an IIFE in `core.js` that runs before `DOMContentLoaded`. This ensures that theme colors, fonts, and productMode are applied before any modules render.
 
-`superconfig` is readable by all authenticated workspace users (intranet members). It must not contain per-user secrets or sensitive customer data.
+`superconfig` is readable by all authenticated workspace users (Workspace members). It must not contain per-user secrets or sensitive customer data.
 
 ## Hydration
 
@@ -133,7 +133,7 @@ Anon role NEVER gets direct `SELECT` on `chat_messages` or `chat_conversations`.
 | `tasks` | Tasks with assignments | RLS: all authenticated read, admin write, assigned user can update status. Only admin can assign a task to another user. |
 | `announcements` | News/announcements with images and attachments | RLS: admin write, all authenticated read |
 | `kb_articles` | Knowledge base articles | RLS: admin write, all authenticated read; published articles visible to all |
-| `links` | Intranet quick links | RLS: admin write, all authenticated read |
+| `links` | Workspace quick links | RLS: admin write, all authenticated read |
 | `chat_conversations` | Chat sessions with visitor metadata | RLS: authenticated only; anon via SECURITY DEFINER RPC only |
 | `chat_messages` | Chat messages | RLS: authenticated only; anon via SECURITY DEFINER RPC only |
 
