@@ -15,7 +15,7 @@ window.HUB_CONFIG = {
       plan:             "full",          /* "web" | "workspace" | "full" */
       status:           "pilot",         /* "active" | "pilot" | "inactive" */
       webUrl:           "https://vibeverk.no",
-      workspaceUrl:     "https://vibeverk.no/intranet/",
+      workspaceUrl:     "https://vibeverk.no/workspace/",
       consoleUrl:       "https://vibeverk.no/console/",
       supabaseProject:  "clzczbyklgdtdhgjphup",
       contact: {
