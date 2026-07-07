@@ -34,6 +34,25 @@ An Architect-agent investigation (read-only, no code changed) found supporting e
 - Genuinely open and not decided by this ADR: exact config-storage shape once it moves beyond a flat file (KV vs. Supabase vs. something else), and Cloudflare Pages Functions pricing/limits at eventual scale. These are small, deferred decisions to make when Phase 1 actually starts, not now.
 - Tilbod-3 (bespoke module) customers are unaffected by this ADR's hosting question — they still require the customer to be on Workspace, and their `customModules` config mechanism (see `docs/STRATEGY.md`) works identically under either hosting model.
 
+## Addendum (2026-07-07): hosting vendor evaluated — Vercel, not Cloudflare
+
+This ADR's Decision section names "e.g. Cloudflare Pages/Workers" as an example, not a locked-in vendor choice. As part of restarting the SaaS-scaling effort (see the control-plane/data-plane ADR under preparation), the user explicitly required a real comparison — Cloudflare Pages/Workers, Vercel, and Netlify — before treating any vendor as decided, rather than accepting the ADR's original example by default.
+
+**Comparison criteria**: multi-tenant custom-domain support, apex-domain (`kunde.no`) support without requiring the customer to migrate nameservers/DNS provider, subdomain support, request-time hostname resolution (edge functions/middleware), zero-build static hosting of the current repo, GitHub integration/preview deploys, pricing at 10/50/100-customer scale, vendor lock-in, and how automatable domain onboarding is from Console/API.
+
+**Outcome: Vercel recommended over Cloudflare and Netlify.** The decisive factor is apex-domain handling:
+- **Cloudflare**: a customer's bare apex domain (not just a subdomain) only works without a nameserver migration via "Apex Proxying," which is an **Enterprise-only add-on** (real-world Cloudflare Enterprise contracts land in the $5K–15K/month range) — unaffordable at 10–100-SMB-customer scale. Without it, customers must either migrate nameservers to Cloudflare or settle for a subdomain-style vanity domain instead of their own apex.
+- **Netlify**: apex domains work technically (A/ALIAS/ANAME records), but Netlify's own documentation recommends *against* using an apex domain as the primary domain with an external DNS provider, for performance reasons — a shaky foundation for a core requirement.
+- **Vercel**: apex domains work via a plain A record with *any* external DNS provider, no nameserver migration required, and "Vercel for Platforms" is a purpose-built multi-tenant product with a REST API for exactly this "one platform, many customer domains" shape — a direct fit for the semi-automated onboarding step (see the SaaS-scaling faseplan).
+
+Edge-middleware maturity, GitHub integration/preview deploys, and pricing at this scale (all three land near $0–20/month for light SMB traffic) were judged roughly equivalent across all three and not decisive.
+
+**Phase 0 (this ADR's, re-run against Vercel instead of Cloudflare) completed 2026-07-07**: the current, unmodified repo was deployed to Vercel (Hobby plan, for this test only — commercial use requires Pro) as a second host. User visually confirmed all four entry points (`/`, `/admin/`, `/intranet/`, `/console/`) render identically to the live GitHub Pages site. `vibeverk.no` itself was not touched and remains on GitHub Pages. Vercel's own deployment-protection gate (Vercel Authentication on preview URLs) blocked automated verification; confirmed manually instead.
+
+**Not yet done, deliberately deferred rather than skipped**: an apex-domain-via-A-record test against a real (throwaway) domain — the user accepted Vercel's documented behavior as sufficient evidence for now rather than spending time on a live domain test at this stage — and a minimal edge-middleware Host-header echo test. Both should be picked up before Phase 1 (async config bootstrap) commits to Vercel-specific middleware syntax.
+
+Everywhere else in this ADR that says "Cloudflare Pages/Workers" or "Cloudflare Pages Functions" should now be read as "the evaluated edge-hosting vendor (Vercel)" — the original text is left as-is per this repo's convention of not silently rewriting accepted ADR text, but this addendum is the current source of truth on which vendor.
+
 ## Evidence
 
 Architect-agent investigation (read-only, 2026-07-06): commit churn across `core.js`/`module-*.js`/HTML entry points; `hub/tenants.js` (single tenant registered); `.github/workflows/` (only `test.yml`, no deploy/sync automation); `supabase/hotfix_*.sql` (23 files, 2026-07-01 to 2026-07-06). `docs/roadmap/ROADMAP.md` "Fase 2" (existing fork-per-customer plan this ADR supersedes as the target, not the immediate next step). `docs/architecture/roles-and-tenants.md` (one-Supabase-project-per-customer rationale, unchanged and reaffirmed as permanent by this ADR). CLAUDE.md's Supabase rules section (vestigial `tenant_id` column, confirming the original multi-tenant intent).

@@ -48,6 +48,27 @@ async function flowHome(page) {
   console.log("Title:", await page.title());
 }
 
+// parity — read-only check of all four entry points against an alternate
+// host (e.g. a Vercel/Cloudflare preview URL), for comparing against the
+// live GitHub Pages site. No writes, no form submissions.
+async function flowParity(page) {
+  var pages = [
+    { name: "parity-home",     path: "/" },
+    { name: "parity-admin",    path: "/admin/" },
+    { name: "parity-intranet", path: "/intranet/" },
+    { name: "parity-console",  path: "/console/" }
+  ];
+  for (var i = 0; i < pages.length; i++) {
+    var p = pages[i];
+    await page.goto(BASE_URL + p.path, { waitUntil: "networkidle" }).catch(function (e) {
+      console.log(p.name + ": goto FAILED —", e.message);
+    });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: shotPath(p.name) });
+    console.log(p.name + " — title:", await page.title().catch(function () { return "(none)"; }));
+  }
+}
+
 async function flowKontakt(page) {
   await page.goto(BASE_URL + "/", { waitUntil: "networkidle" });
   await page.locator("#kontakt").scrollIntoViewIfNeeded();
@@ -290,7 +311,7 @@ async function flowChatE2E() {
   }
 }
 
-const FLOWS = { home: flowHome, kontakt: flowKontakt, tilbud: flowTilbud, booking: flowBooking, chat: flowChat };
+const FLOWS = { home: flowHome, kontakt: flowKontakt, tilbud: flowTilbud, booking: flowBooking, chat: flowChat, parity: flowParity };
 
 (async () => {
   const which = process.argv[2] || "home";

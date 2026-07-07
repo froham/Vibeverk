@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.17.10 — 2026-07-07
+
+### Hosting vendor evaluated for SaaS-scaling: Vercel, not Cloudflare (ADR-0007 addendum)
+- `ADR-0007` named "Cloudflare Pages/Workers" only as an example, not a locked-in choice. User required a real comparison (Cloudflare Pages/Workers vs. Vercel vs. Netlify) before treating any vendor as decided. Compared on: multi-tenant custom domains, apex-domain (`kunde.no`) support without the customer migrating nameservers/DNS provider, request-time hostname resolution, zero-build static hosting, GitHub integration/previews, pricing at 10/50/100-customer scale, vendor lock-in, and domain-onboarding-from-API automatability.
+- **Vercel recommended.** Decisive factor: apex-domain handling. Cloudflare's apex-without-nameserver-migration path ("Apex Proxying") is Enterprise-only (real contracts $5K–15K/month) — unaffordable at our target scale. Netlify's own docs recommend against apex-as-primary with external DNS. Vercel supports apex via a plain A record with any external DNS provider, no nameserver migration, plus "Vercel for Platforms" — a purpose-built multi-tenant domain API. Edge-middleware maturity, GitHub integration and pricing at this scale were roughly equivalent across all three, not decisive.
+- **Phase 0 (ADR-0007's, re-run against Vercel) completed and verified**: current, unmodified repo deployed to Vercel (Hobby plan, this test only) as a second host. User visually confirmed all four entry points (`/`, `/admin/`, `/intranet/`, `/console/`) match the live GitHub Pages site exactly. `vibeverk.no` untouched, still on GitHub Pages. Vercel's own deployment-protection gate (Vercel Authentication) blocked automated Playwright verification — confirmed manually by the user instead.
+- New `parity` flow added to `.claude/skills/run-vibeverk/driver.js` — read-only check of all four entry points against an arbitrary `VIBEVERK_URL`, reusable for future host comparisons.
+- **Deliberately deferred, not skipped**: an apex-domain-via-A-record test against a real throwaway domain (the actual decisive claim, so far backed only by Vercel's documentation) and a minimal edge-middleware Host-header echo test. Both should happen before Phase 1 (async config bootstrap) commits to Vercel-specific middleware syntax.
+- `docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md` updated with a dated addendum (original Decision/Consequences text left unchanged, per this repo's ADR convention). `docs/roadmap/ROADMAP.md` "Next" updated to match.
+- No DNS, custom domain, or Supabase changes. No test-suite changes (this doesn't touch app code).
+
 ## 0.17.9 — 2026-07-07
 
 ### superconfig split — adminPassword no longer sits in plaintext in an anon-readable key
