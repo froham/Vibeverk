@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.17.8";
+  var VIBEVERK_VERSION = "0.17.9";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -111,8 +111,44 @@ window.VwConsole = (function () {
       _sb.from("store").delete().eq("tenant_id", NS).eq("key", SUPER_KEY).then(function (r) {
         if (r.error) console.error("[console] superconfig-sletting feila:", r.error);
       });
+      _sb.from("store").delete().eq("tenant_id", NS).eq("key", SUPER_PRIVATE_KEY).then(function (r) {
+        if (r.error) console.error("[console] superconfig-private-sletting feila:", r.error);
+      });
     }
     location.reload();
+  }
+
+  /* =========================================================================
+     SUPERCONFIG-PRIVATE I/O (2026-07-07)
+     -----------------------------------------------------------------------
+     Held hemmeleg per-kunde-config (i dag berre adminPassword-overstyringa)
+     ATSKILT frå 'superconfig' — den er framleis med vilje anon-lesbar (naudsynt
+     for at tema/feature-flagg skal fungere for ein ikkje-innlogga besøkande),
+     så eit passord kan ALDRI liggje der i klartekst. RLS krev
+     is_platform_operator() for BÅDE lesing og skriving av denne nøkkelen (sjå
+     migration.sql) — difor kan verken App.store sin vanlege anon/authenticated-
+     hydrering (feil identitet) eller ein enkel synkron getter brukast; må gå
+     via Console sin eigen OTP-verifiserte klient, alltid async.
+     ====================================================================== */
+  var SUPER_PRIVATE_KEY = "superconfig-private";
+
+  function getSCPrivate(cb) {
+    if (!_sb) { cb({}); return; }
+    _sb.from("store").select("value").eq("tenant_id", NS).eq("key", SUPER_PRIVATE_KEY).maybeSingle()
+      .then(function (r) {
+        if (r.error) { console.error("[console] superconfig-private-lesing feila:", r.error); cb({}); return; }
+        cb((r.data && r.data.value) || {});
+      });
+  }
+
+  function saveSCPrivate(priv) {
+    if (!_sb) return;
+    _sb.from("store").upsert(
+      { tenant_id: NS, key: SUPER_PRIVATE_KEY, value: priv },
+      { onConflict: "tenant_id,key" }
+    ).then(function (r) {
+      if (r.error) console.error("[console] superconfig-private-skriving feila:", r.error);
+    });
   }
 
   /* =========================================================================
@@ -700,8 +736,8 @@ window.VwConsole = (function () {
           '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Sesjon utløper: <strong>' + C.esc(expiryStr) + '</strong></p>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Nettside-admin (for kunden)</legend>' +
-          C.field({ id:"cs-apass", label:"Passord for #admin-inngang", value: (CFG.admin && CFG.admin.password) || "" }) +
-          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Verkar berre viss Supabase IKKJE er konfigurert for kunden (reint lokalt/test-miljø). For alle ekte, konfigurerte kundar krevst innlogging med e-post + passord via Supabase — dette feltet har då ingen effekt (sjå ADR-0003).</p>' +
+          C.field({ id:"cs-apass", label:"Passord for #admin-inngang", value:"", placeholder:"Laster…" }) +
+          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Verkar berre viss Supabase IKKJE er konfigurert for kunden (reint lokalt/test-miljø). For alle ekte, konfigurerte kundar krevst innlogging med e-post + passord via Supabase — dette feltet har då ingen effekt (sjå ADR-0003). Lagra åtskilt frå anna konfig og aldri anon-lesbart (sjå ADR-en for control-plane-splitten).</p>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Supabase-prosjekt</legend>' +
           '<div style="font-size:.87rem;color:var(--color-muted);display:grid;gap:.4rem">' +
@@ -719,11 +755,14 @@ window.VwConsole = (function () {
         '<p class="form__status" id="cs-status" style="margin-top:.6rem"></p>' +
       '</form>';
 
+    var apassInp = wrap.querySelector("#cs-apass");
+    getSCPrivate(function (priv) {
+      if (apassInp) { apassInp.value = priv.adminPassword || ""; apassInp.placeholder = ""; }
+    });
+
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var sc2 = getSC();
-      sc2.adminPassword = wrap.querySelector("#cs-apass").value;
-      saveSC(sc2);
+      saveSCPrivate({ adminPassword: apassInp.value });
       statusMsg(wrap.querySelector("#cs-status"), "✓ Passord lagra!", true);
     });
     wrap.querySelector("#cs-reset-btn").addEventListener("click", resetSC);

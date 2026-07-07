@@ -569,31 +569,49 @@ DROP POLICY IF EXISTS store_delete_auth        ON store;
 -- lenger nede) med anon-avvisande RLS — gamle store-rader for desse nøklane
 -- skal aldri vere anon-lesbare, sjølv om dei framleis finst att ikkje-sletta
 -- i eit oppgradert prosjekt. Sjå hotfix_store_anon_tighten_2026-07-06.sql.
+-- 'superconfig-private' (lagt til 2026-07-07, sjå hotfix_superconfig_split_
+-- 2026-07-07.sql): held hemmeleg per-kunde-config (i dag berre Console sitt
+-- "Nettside-admin (for kunden)"-passord-overstyringsfelt) SKILT frå den
+-- offentlege 'superconfig'-nøkkelen (tema/feature-flagg/personverntekst), som
+-- MÅ halde fram å vere anon-lesbar for at fyrste sideoppslag skal fungere for
+-- ein ikkje-innlogga besøkande. Funne 2026-07-07: adminPassword-verdien låg
+-- tidlegare i klartekst inni sjølve 'superconfig'-nøkkelen, lesbar av kven som
+-- helst med anon-nøkkelen via eit direkte REST-kall — sjølv om ADR-0003 alt
+-- hadde gjort verdien ubrukeleg for faktisk innlogging på ein Supabase-
+-- konfigurert kundeinstallasjon, song ho der framleis i klartekst.
 CREATE POLICY store_anon_read       ON store  FOR SELECT TO anon
-  USING (key NOT IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'leads', 'booking-bookings'));
-CREATE POLICY store_read_authenticated ON store FOR SELECT TO authenticated USING (true);
--- 'superconfig' krev is_platform_operator() (Vibeverk-operatør), IKKJE
--- is_admin_or_owner() (tenant-rolle) — sjå notatet ved is_platform_operator()
--- sin definisjon lenger oppe. 'wsp-orgdrift' er ein heilt annan, ikkje-
--- relatert nøkkel (Workspace sin eigen "org drift"-funksjon, skriven av
--- KUNDENS EIGNE admin/editor, aldri av Console) — held is_admin_or_owner()
--- uendra.
+  USING (key NOT IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'leads', 'booking-bookings', 'superconfig-private'));
+-- 'superconfig-private' er attpåtil ikkje ålment authenticated-lesbar —
+-- berre platform-operatøren (Console). Alle andre nøklar uendra: alle
+-- innlogga roller (inkl. member) kan lese dei, sjå notatet ved 2026-07-02-
+-- funnet lenger oppe.
+CREATE POLICY store_read_authenticated ON store FOR SELECT TO authenticated
+  USING (CASE
+    WHEN key = 'superconfig-private' THEN is_platform_operator()
+    ELSE true
+  END);
+-- 'superconfig'/'superconfig-private' krev is_platform_operator() (Vibeverk-
+-- operatør), IKKJE is_admin_or_owner() (tenant-rolle) — sjå notatet ved
+-- is_platform_operator() sin definisjon lenger oppe. 'wsp-orgdrift' er ein
+-- heilt annan, ikkje-relatert nøkkel (Workspace sin eigen "org drift"-
+-- funksjon, skriven av KUNDENS EIGNE admin/editor, aldri av Console) — held
+-- is_admin_or_owner() uendra.
 CREATE POLICY store_insert_auth     ON store  FOR INSERT TO authenticated
   WITH CHECK (CASE
-    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key IN ('superconfig', 'superconfig-private') THEN is_platform_operator()
     WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
     ELSE can_edit_content()
   END);
 CREATE POLICY store_update_auth     ON store  FOR UPDATE TO authenticated
   USING      (CASE
-    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key IN ('superconfig', 'superconfig-private') THEN is_platform_operator()
     WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
     ELSE can_edit_content()
   END)
   WITH CHECK (CASE
-    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key IN ('superconfig', 'superconfig-private') THEN is_platform_operator()
     WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     WHEN key IN ('crm-customers', 'crm-bedrifter', 'crm-comms', 'crm-settings') THEN true
     ELSE can_edit_content()
@@ -602,7 +620,7 @@ CREATE POLICY store_update_auth     ON store  FOR UPDATE TO authenticated
 -- superconfig/wsp-orgdrift-avgrensing som før, elles can_edit_content().
 CREATE POLICY store_delete_auth     ON store  FOR DELETE TO authenticated
   USING (CASE
-    WHEN key = 'superconfig'  THEN is_platform_operator()
+    WHEN key IN ('superconfig', 'superconfig-private') THEN is_platform_operator()
     WHEN key = 'wsp-orgdrift' THEN is_admin_or_owner()
     ELSE can_edit_content()
   END);

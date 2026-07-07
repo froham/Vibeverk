@@ -16,19 +16,19 @@ Sist oppdatert: 2026-07-07.
 3. ~~`chat_conversations` anon UPDATE-IDOR~~ — **lukka og stadfesta i produksjon 2026-07-07** (live-testa via ny Playwright-flyt, gamle anon-rettar tilbaketrekt, sjå `docs/project/CHANGELOG.md` 0.17.8).
 4. ~~`migration.sql`-drift~~ — **lukka** for alle spot-sjekka hotfixar; chat-RPC-ane som mangla er no folda inn (same runde som punkt 3).
 
-**Nye, framleis opne funn (surfaced under 2026-07-07-reknskapen, ikkje del av den opphavlege lista):**
-- **`superconfig.adminPassword`** ligg i klartekst i den anon-lesbare `superconfig`-nøkkelen i `store` — ein direkte anon REST-kall eksponerer han. Fiksdesign avtalt med brukar (del `superconfig` i offentleg/privat nøkkel), ikkje enno implementert.
-- Console sin 48-timars sesjon vert berre sjekka ved `DOMContentLoaded`, ikkje ved intern navigering (`console/console-core.js`).
+**Nye funn (surfaced under 2026-07-07-reknskapen, ikkje del av den opphavlege lista):**
+- ~~`superconfig.adminPassword`~~ — **lukka og stadfesta i produksjon 2026-07-07** (`superconfig` delt i offentleg/privat nøkkel, verifisert både via `pg_policy` og eit ekte anon REST-kall, sjå `docs/project/CHANGELOG.md` 0.17.9). **Berre den faktiske Console-nettlesarflyten (last/lagre passordfeltet) står att å stadfeste manuelt** — ikkje gjort i denne økta sidan det krev OTP til operatøren sin eigen e-post.
+- Console sin 48-timars sesjon vert berre sjekka ved `DOMContentLoaded`, ikkje ved intern navigering (`console/console-core.js`) — framleis ope, MEDIUM.
 - Udokumentert til no oppdaga: chat-adminpanelet er admin-only (ikkje editor/member), no dokumentert i `docs/architecture/roles-and-tenants.md`.
 
-Sjå `docs/project/CURRENT_STATE.md` "Pending"/"Still open" for full detalj. **Superconfig-funnet bør rettast før SaaS-skaleringsarbeidet held fram til kontrollplan-steget**, sidan kontrollplanen vil forsterke Console sin tryggleiksrolle monaleg.
+Sjå `docs/project/CURRENT_STATE.md` "Pending"/"Still open" for full detalj. **Console-sesjonssjekken bør rettast før SaaS-skaleringsarbeidet held fram til kontrollplan-steget**, sidan kontrollplanen vil forsterke Console sin tryggleiksrolle monaleg.
 
 Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjenoppretta, `admin/index.html`-drift retta) og ei brukartesta oppfølgingsrunde same dag (chat-bug, oppgåve-tildeling-bug, Console-feltklarheit, intranett-login-bakveg lukka, owner-rolle-opprydding, CRM e-post-konsistens) vart fullført 2026-07-01, sjå `docs/project/CHANGELOG.md` 0.3.0/0.5.0/0.6.0 og ADR-0003 til ADR-0006. Éin funn frå denne runda: `intranet/module-crm.js` vart oppdaga som daud kode — **sletta 2026-07-06**, sjå `docs/project/CURRENT_STATE.md` "Known limitations".
 
 ## Next
 
 - **Hosting-arkitektur (`docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md`):** Fase 2 (demo-kunde) bør skje på ny edge-hosting-arkitektur (kjøretids-oppløyst config per domene), ikkje som repo-fork — repo-fork-modellen løyser dataisolasjon, men bryt "éin push når alle kundar"-prinsippet i `docs/STRATEGY.md`. Fase 0 i ADR-en (Cloudflare Pages-prov for eksisterande kunde, null kodeendring) kan startast uavhengig av og parallelt med dei fire HIGH-tryggingsfunna under. Fase 1 (asynkron config-bootstrap i `core.js`) er eige, seinare, dedikert arbeid.
-- **Rett `superconfig.adminPassword`-eksponeringa over** (Supabase RLS/skjema-endring, fiksdesign avtalt) — bør skje før kontrollplan-Console-arbeidet i SaaS-skaleringsplanen.
+- **Rett Console sin sesjonssjekk-ved-navigering-svakheit over** (`console/console-core.js`) — bør skje før kontrollplan-Console-arbeidet i SaaS-skaleringsplanen, sidan kontrollplanen forsterkar Console si tryggleiksrolle monaleg.
 - **Fase 2 — Sett opp demo-/eksempelkunde-instans.** Ny GitHub-repo + Pages-deploy + Supabase-prosjekt (stadfesta arkitektur, sjå `docs/archive/roadmap-2026-07-01.md` sitt vedlagde arkitektnotat-grunnlag). Opne avgjerder: domenenamn (subdomene vs. `github.io`), om `crmFull`/Resend skal demonstrerast, ny `hub/tenants.js`-oppføring.
 - **Fase 3 / Steg 7 — Kundedokumentasjon / Kontrakt / DPA.** Standardkontrakt, databehandlaravtale (DPA), personvernerklæring — fylt ut frå malane i `docs/compliance/` med stadfesta fakta, ikkje oppdikta. Gjeld både demo-instansen og framtidige ekte kundar.
 - **Steg 6f — Motta e-post (inbound), viss/når det vert teke opp att.** Design er ferdig (Message-ID-tråding via Resend, automatisk ny Kontakt-lead + CRM-kunde ved manglande treff). Sett på vent av brukar 2026-07-01: *"Vi avventer litt, det blir veldig edgy-CRM-messig."* Éin uløyst byggbarheitsdetalj før koding: overgang frå blob-basert til normalisert lagring for inbound-skrivne rader. Må gjennom Security Auditor + Privacy Advisor før bygging.
