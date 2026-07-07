@@ -170,6 +170,126 @@ async function flowChat(page) {
   }
 }
 
+// chat-e2e — visitor sends a live-chat message, then a real authenticated
+// admin/editor account replies, marks read (via opening the conv) and
+// toggles closed/reopened. Exercises the full visitor RPC path
+// (update_visitor_presence/insert_visitor_message) plus the admin side, in
+// one process so both share the same TAG. Credentials via env vars only —
+// never written to a file: VW_ADMIN_EMAIL / VW_ADMIN_PASSWORD.
+async function flowChatE2E() {
+  const adminEmail = process.env.VW_ADMIN_EMAIL;
+  const adminPass = process.env.VW_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPass) {
+    console.error("Set VW_ADMIN_EMAIL and VW_ADMIN_PASSWORD env vars first.");
+    process.exit(1);
+  }
+  const browser = await chromium.launch();
+  const visitor = await (await browser.newContext()).newPage();
+  const admin = await (await browser.newContext()).newPage();
+  const errors = [];
+  [["visitor", visitor], ["admin", admin]].forEach(([label, p]) => {
+    p.on("console", (msg) => {
+      var t = msg.type();
+      if (t === "error" || t === "warning") errors.push("[" + label + "/" + t + "] " + msg.text());
+    });
+    p.on("pageerror", (err) => errors.push("[" + label + "] pageerror: " + err.message));
+  });
+  admin.on("response", (res) => {
+    if (res.url().indexOf("chat_conversations") !== -1) {
+      res.text().then((body) => {
+        console.log("[admin/net] chat_conversations", res.status(), body.slice(0, 500));
+      }).catch(() => {});
+    }
+  });
+
+  try {
+    // 1. Visitor opens widget and sends a message
+    await visitor.goto(BASE_URL + "/", { waitUntil: "networkidle" });
+    await visitor.waitForSelector("#vw-btn", { timeout: 10000 });
+    await visitor.click("#vw-btn");
+    await visitor.waitForTimeout(500);
+    const startBtn = visitor.locator("#vw-start-btn");
+    if (await startBtn.count()) {
+      await visitor.fill("#vw-name-inp", TAG);
+      await visitor.fill("#vw-email-inp", "pwtest+" + STAMP + "-chat@example.com");
+      const terms = visitor.locator("#vw-terms-cb");
+      if (await terms.count()) await terms.check();
+      await visitor.click("#vw-start-btn");
+      await visitor.waitForTimeout(1200);
+    }
+    const inp = visitor.locator("#vw-inp");
+    await inp.waitFor({ timeout: 8000 }).catch(() => {});
+    if (!(await inp.count())) {
+      console.log("FATAL: chat did not start for visitor (offline fallback? see SKILL.md) — aborting");
+      await visitor.screenshot({ path: shotPath("e2e-visitor-fail") });
+      return;
+    }
+    await inp.fill("E2E test message — " + TAG);
+    await visitor.click("#vw-send");
+    await visitor.waitForTimeout(1500);
+    await visitor.screenshot({ path: shotPath("e2e-visitor-sent") });
+    console.log("Visitor sent message, tag:", TAG);
+
+    // 2. Admin logs in
+    await admin.goto(BASE_URL + "/admin/", { waitUntil: "networkidle" });
+    await admin.waitForSelector("#admin-email", { timeout: 10000 });
+    await admin.fill("#admin-email", adminEmail);
+    await admin.fill("#admin-pass", adminPass);
+    await admin.click('[data-login] button[type="submit"]');
+    await Promise.race([
+      admin.waitForSelector(".admin-catbar, [data-tab]", { timeout: 15000 }),
+      admin.waitForSelector("[data-login-status].is-error", { timeout: 15000 })
+    ]).catch(() => {});
+    await admin.screenshot({ path: shotPath("e2e-admin-login") });
+    const loginErr = await admin.locator("[data-login-status]").textContent().catch(() => "");
+    console.log("Login status text:", loginErr);
+
+    // 3. Navigate to Chat tab (category "henvendelser")
+    const catBtn = admin.locator('[data-admin-cat="henvendelser"]');
+    if (await catBtn.count()) await catBtn.click();
+    await admin.waitForTimeout(300);
+    const chatTab = admin.locator('[data-tab="chat-admin"]');
+    await chatTab.waitFor({ timeout: 8000 });
+    await chatTab.click();
+    await admin.waitForTimeout(800);
+    await admin.screenshot({ path: shotPath("e2e-admin-chat-list") });
+
+    // 4. Find and open the test conversation
+    const convRow = admin.locator("[data-conv]", { hasText: TAG }).first();
+    await convRow.waitFor({ timeout: 8000 }).catch(() => {});
+    if (!(await convRow.count())) {
+      console.log("FATAL: could not find test conversation in admin panel — tag:", TAG);
+      await admin.screenshot({ path: shotPath("e2e-admin-no-conv") });
+      return;
+    }
+    await convRow.click();
+    await admin.waitForTimeout(600);
+    await admin.screenshot({ path: shotPath("e2e-admin-conv-open") });
+    console.log("Admin sees visitor message:", await admin.locator(".vwca-msg--vis").last().textContent().catch(() => null));
+
+    // 5. Reply
+    await admin.fill("#vwca-inp", "E2E admin reply — " + TAG);
+    await admin.click("#vwca-send");
+    await admin.waitForTimeout(1200);
+    await admin.screenshot({ path: shotPath("e2e-admin-replied") });
+    console.log("Admin reply landed:", await admin.locator(".vwca-msg--op").last().textContent().catch(() => null));
+    console.log("Send-error banner present:", (await admin.locator("#vwca-send-err").count()) > 0);
+
+    // 6. Close, then reopen (leave conversation in its original open state)
+    await admin.click("#vwca-toggle-status");
+    await admin.waitForTimeout(1000);
+    await admin.screenshot({ path: shotPath("e2e-admin-closed") });
+    console.log("Closed-notice present:", (await admin.locator(".vwca-closed-notice").count()) > 0);
+    const reopenBtn = admin.locator("#vwca-toggle-status");
+    if (await reopenBtn.count()) { await reopenBtn.click(); await admin.waitForTimeout(800); }
+    await admin.screenshot({ path: shotPath("e2e-admin-reopened") });
+  } finally {
+    console.log("Console errors captured:", errors.length);
+    errors.forEach((e) => console.log("  -", e));
+    await browser.close();
+  }
+}
+
 const FLOWS = { home: flowHome, kontakt: flowKontakt, tilbud: flowTilbud, booking: flowBooking, chat: flowChat };
 
 (async () => {
@@ -180,10 +300,12 @@ const FLOWS = { home: flowHome, kontakt: flowKontakt, tilbud: flowTilbud, bookin
       console.log("--- " + name + " ---");
       await withPage(FLOWS[name]);
     }
+  } else if (which === "chat-e2e") {
+    await flowChatE2E();
   } else if (FLOWS[which]) {
     await withPage(FLOWS[which]);
   } else {
-    console.error("Unknown flow:", which, "— use one of:", Object.keys(FLOWS).join(", "), "or 'all'");
+    console.error("Unknown flow:", which, "— use one of:", Object.keys(FLOWS).join(", "), "chat-e2e, or 'all'");
     process.exit(1);
   }
   console.log("=== DONE, tag:", TAG, "===");

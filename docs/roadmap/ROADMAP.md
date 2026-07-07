@@ -2,28 +2,33 @@
 
 Roadmap content is planning material. It is not proof of current functionality, architecture, security posture or customer commitments. For verified current state, see [`docs/project/CURRENT_STATE.md`](../project/CURRENT_STATE.md). For historical detail behind completed and paused work, see [`docs/archive/roadmap-2026-07-01.md`](../archive/roadmap-2026-07-01.md).
 
-Sist oppdatert: 2026-07-01.
+Sist oppdatert: 2026-07-07.
 
 ## Overordna mål
 
-Brukaren har uttalt eit konkret mål: kome dit at Vibeverk kan **deploye ein eksempel-/demokunde** — ein separat instans (eigen repo, eigen Pages-deploy, eige Supabase-prosjekt, jf. `hub/tenants.js`) brukt til å vise fram, teste og selje produktet, IKKJE den live vibeverk.no-instansen sjølv. Før det: ein full sikkerheitsaudit og personvern-gjennomgang.
+**Retning stadfesta 2026-07-07** (Arkitekt-godkjent, sjå ny control-plane/data-plane-ADR under utarbeiding): Vibeverk skal skalere frå éin kunde til 10-100 SMB-kundar via éin sentral Console (`console.vibeverk.no`, control plane) og eitt Supabase-prosjekt per kunde (data plane, uendra prinsipp) — IKKJE via repo-fork-per-kunde. Full faseplan (tryggleiksgjeld → hosting/edge → async config-bootstrap → hostname-tenant-oppløysing → sentral Console/tenant-register → semi-automatisert kundeoppretting) er avtalt med brukaren; sjå den nye ADR-en og `docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md` (Fase 0/1 av denne planen). Første steg (tryggleiksgjeld, under) er i gang. Dette supersederer den eldre "eksempel-/demokunde via eigen repo-fork"-planen (`hub/tenants.js`-basert) som eit mellombels stillas, ikkje målarkitekturen — sjå ADR-0007.
 
 ## Current focus
 
-**Fase 1 — Full sikkerheitsaudit og personvern-gjennomgang: gjennomført 2026-07-01, funn IKKJE alle retta enno.** Security Auditor og Privacy/Compliance Advisor køyrde full gjennomgang av heile kodebasen. To BLOCKER/regresjonar vart retta same dag (sjølv-eskalering-til-admin-hòl i `core.js`, broten Brukar-panel). **Fire HIGH-funn står att, krev Supabase RLS-endringar og eksplisitt brukargodkjenning før Fase 2 kan starte:**
-1. `store`-tabellen sin anon-SELECT-policy manglar nøkkel-avgrensing — CRM/leads/tilbod/booking er i praksis offentleg lesbart via REST-API
-2. `store`/`media` sine skrive-policyar tillet alle autentiserte (ikkje berre admin) å skrive/slette
-3. `chat_conversations` anon UPDATE manglar visitor-eigarskap-sjekk (IDOR) + svake chat/visitor-ID-ar
-4. `migration.sql` har drifta frå deployerte hotfixar — ein fersk kundeoppsett vil arve alt-fiksa feil
+**Tryggleiksgjeld før SaaS-skalering held fram — reell status reknska ut 2026-07-07** (den gamle "fire HIGH-funn"-lista under var uendra sidan 2026-07-01 og hadde vorte misvisande — tre av fire var alt lukka). Verifisert direkte mot `supabase/migration.sql`/`docs/project/CHANGELOG.md`/`docs/project/CURRENT_STATE.md`:
+1. ~~`store`-tabellen sin anon-SELECT-policy~~ — **lukka og stadfesta i produksjon** (CRM/leads/booking flytta til eigne tabellar med RLS, gamle blob-rader sletta 2026-07-06).
+2. ~~`store`/`media` sine skrive-policyar~~ — **lukka og stadfesta i produksjon** (rolle-avgrensa via `can_edit_content()`/`is_platform_operator()`).
+3. ~~`chat_conversations` anon UPDATE-IDOR~~ — **lukka og stadfesta i produksjon 2026-07-07** (live-testa via ny Playwright-flyt, gamle anon-rettar tilbaketrekt, sjå `docs/project/CHANGELOG.md` 0.17.8).
+4. ~~`migration.sql`-drift~~ — **lukka** for alle spot-sjekka hotfixar; chat-RPC-ane som mangla er no folda inn (same runde som punkt 3).
 
-Sjå `docs/project/CURRENT_STATE.md` "Open security findings" for full detalj. **Desse bør rettast før Fase 2 (demo-kunde) startar**, sidan fleire av dei direkte påverkar kva ein fersk kundeinstans arvar.
+**Nye, framleis opne funn (surfaced under 2026-07-07-reknskapen, ikkje del av den opphavlege lista):**
+- **`superconfig.adminPassword`** ligg i klartekst i den anon-lesbare `superconfig`-nøkkelen i `store` — ein direkte anon REST-kall eksponerer han. Fiksdesign avtalt med brukar (del `superconfig` i offentleg/privat nøkkel), ikkje enno implementert.
+- Console sin 48-timars sesjon vert berre sjekka ved `DOMContentLoaded`, ikkje ved intern navigering (`console/console-core.js`).
+- Udokumentert til no oppdaga: chat-adminpanelet er admin-only (ikkje editor/member), no dokumentert i `docs/architecture/roles-and-tenants.md`.
+
+Sjå `docs/project/CURRENT_STATE.md` "Pending"/"Still open" for full detalj. **Superconfig-funnet bør rettast før SaaS-skaleringsarbeidet held fram til kontrollplan-steget**, sidan kontrollplanen vil forsterke Console sin tryggleiksrolle monaleg.
 
 Fase 0 (kritiske fiksar — passord-bakveg lukka, korrupt `manage-user`-fil gjenoppretta, `admin/index.html`-drift retta) og ei brukartesta oppfølgingsrunde same dag (chat-bug, oppgåve-tildeling-bug, Console-feltklarheit, intranett-login-bakveg lukka, owner-rolle-opprydding, CRM e-post-konsistens) vart fullført 2026-07-01, sjå `docs/project/CHANGELOG.md` 0.3.0/0.5.0/0.6.0 og ADR-0003 til ADR-0006. Éin funn frå denne runda: `intranet/module-crm.js` vart oppdaga som daud kode — **sletta 2026-07-06**, sjå `docs/project/CURRENT_STATE.md` "Known limitations".
 
 ## Next
 
 - **Hosting-arkitektur (`docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md`):** Fase 2 (demo-kunde) bør skje på ny edge-hosting-arkitektur (kjøretids-oppløyst config per domene), ikkje som repo-fork — repo-fork-modellen løyser dataisolasjon, men bryt "éin push når alle kundar"-prinsippet i `docs/STRATEGY.md`. Fase 0 i ADR-en (Cloudflare Pages-prov for eksisterande kunde, null kodeendring) kan startast uavhengig av og parallelt med dei fire HIGH-tryggingsfunna under. Fase 1 (asynkron config-bootstrap i `core.js`) er eige, seinare, dedikert arbeid.
-- **Løys dei fire HIGH-tryggingsfunna over** (Supabase RLS-endringar) — føresetnad før Fase 2.
+- **Rett `superconfig.adminPassword`-eksponeringa over** (Supabase RLS/skjema-endring, fiksdesign avtalt) — bør skje før kontrollplan-Console-arbeidet i SaaS-skaleringsplanen.
 - **Fase 2 — Sett opp demo-/eksempelkunde-instans.** Ny GitHub-repo + Pages-deploy + Supabase-prosjekt (stadfesta arkitektur, sjå `docs/archive/roadmap-2026-07-01.md` sitt vedlagde arkitektnotat-grunnlag). Opne avgjerder: domenenamn (subdomene vs. `github.io`), om `crmFull`/Resend skal demonstrerast, ny `hub/tenants.js`-oppføring.
 - **Fase 3 / Steg 7 — Kundedokumentasjon / Kontrakt / DPA.** Standardkontrakt, databehandlaravtale (DPA), personvernerklæring — fylt ut frå malane i `docs/compliance/` med stadfesta fakta, ikkje oppdikta. Gjeld både demo-instansen og framtidige ekte kundar.
 - **Steg 6f — Motta e-post (inbound), viss/når det vert teke opp att.** Design er ferdig (Message-ID-tråding via Resend, automatisk ny Kontakt-lead + CRM-kunde ved manglande treff). Sett på vent av brukar 2026-07-01: *"Vi avventer litt, det blir veldig edgy-CRM-messig."* Éin uløyst byggbarheitsdetalj før koding: overgang frå blob-basert til normalisert lagring for inbound-skrivne rader. Må gjennom Security Auditor + Privacy Advisor før bygging.

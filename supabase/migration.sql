@@ -433,8 +433,80 @@ LANGUAGE sql AS $$
   ORDER BY COALESCE(m.at, 0), m.created_at;
 $$;
 
+-- Visitor-scoped WRITE RPCs (2026-07-06) — replace the old direct anon
+-- UPDATE/INSERT grants below, same visitor_id-as-capability-token pattern as
+-- the two READ RPCs above. See hotfix_chat_visitor_rpcs_2026-07-06.sql for
+-- the full rationale (RLS alone cannot validate anon ownership since anon
+-- carries no auth.uid() to compare visitor_id against).
+
+CREATE OR REPLACE FUNCTION update_visitor_presence(
+  p_visitor_id      text,
+  p_conv_id         text,
+  p_visitor_name    text    DEFAULT NULL,
+  p_visitor_email   text    DEFAULT NULL,
+  p_page_url        text    DEFAULT NULL,
+  p_referrer        text    DEFAULT NULL,
+  p_language        text    DEFAULT NULL,
+  p_browser         text    DEFAULT NULL,
+  p_os              text    DEFAULT NULL,
+  p_screen          text    DEFAULT NULL,
+  p_visitor_active  boolean DEFAULT NULL,
+  p_last_seen_at    bigint  DEFAULT NULL,
+  p_visitor_read_at bigint  DEFAULT NULL
+)
+RETURNS SETOF chat_conversations
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  UPDATE chat_conversations SET
+    visitor_name    = COALESCE(p_visitor_name,    visitor_name),
+    visitor_email   = COALESCE(p_visitor_email,   visitor_email),
+    page_url        = COALESCE(p_page_url,        page_url),
+    referrer        = COALESCE(p_referrer,        referrer),
+    language        = COALESCE(p_language,        language),
+    browser         = COALESCE(p_browser,         browser),
+    os              = COALESCE(p_os,              os),
+    screen          = COALESCE(p_screen,          screen),
+    visitor_active  = COALESCE(p_visitor_active,  visitor_active),
+    last_seen_at    = COALESCE(p_last_seen_at,    last_seen_at),
+    visitor_read_at = COALESCE(p_visitor_read_at, visitor_read_at)
+  WHERE id = p_conv_id AND visitor_id = p_visitor_id
+  RETURNING *;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION insert_visitor_message(
+  p_visitor_id text,
+  p_conv_id    text,
+  p_msg_id     text,
+  p_text       text,
+  p_sender     text,
+  p_at         bigint DEFAULT NULL
+)
+RETURNS SETOF chat_messages
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF p_sender NOT IN ('visitor', 'system') THEN
+    RAISE EXCEPTION 'Ugyldig avsendar for besøkande-melding';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM chat_conversations WHERE id = p_conv_id AND visitor_id = p_visitor_id) THEN
+    RAISE EXCEPTION 'Samtale finst ikkje eller høyrer ikkje til denne besøkande';
+  END IF;
+  RETURN QUERY
+  INSERT INTO chat_messages (id, conversation_id, text, sender, at)
+  VALUES (p_msg_id, p_conv_id, p_text, p_sender, p_at)
+  RETURNING *;
+END;
+$$;
+
 REVOKE EXECUTE ON FUNCTION get_visitor_conv(text, text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION get_visitor_msgs(text, text, bigint) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION update_visitor_presence(text,text,text,text,text,text,text,text,text,text,boolean,bigint,bigint) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION insert_visitor_message(text,text,text,text,text,bigint) FROM PUBLIC;
 
 
 -- ── 6. RLS ───────────────────────────────────────────────────────────────────
@@ -860,19 +932,23 @@ DROP POLICY IF EXISTS chat_msg_anon_insert  ON chat_messages;
 DROP POLICY IF EXISTS chat_msg_anon_select  ON chat_messages;
 DROP POLICY IF EXISTS chat_msg_auth         ON chat_messages;
 
--- Anon INSERT: visitor_id må vere sett (eigarskapstoken)
+-- Anon INSERT: visitor_id må vere sett (eigarskapstoken). Dette er den einaste
+-- anon-policyen som framleis eksisterer på desse to tabellane — presence-
+-- UPDATE og melding-INSERT gjekk tidlegare via chat_conv_anon_update/
+-- chat_msg_anon_insert (USING(true)/ingen eigarskapssjekk av rad — reell IDOR,
+-- funne 2026-07-04/06), no erstatta av update_visitor_presence()/
+-- insert_visitor_message() (sjå "5b. VISITOR-SCOPED RPCs" over), som
+-- validerer visitor_id INNI funksjonskroppen (SECURITY DEFINER). Dei to gamle
+-- policyane er difor med vilje IKKJE oppretta att her — DROP POLICY IF EXISTS
+-- over fjernar dei frå eksisterande installasjonar ved re-køyring.
 CREATE POLICY chat_conv_anon_insert ON chat_conversations FOR INSERT TO anon
     WITH CHECK (visitor_id IS NOT NULL AND char_length(visitor_id) > 4);
 
--- Anon UPDATE: berre presence-felt (kolonne-nivå GRANT under avgrensar ytterlegare)
-CREATE POLICY chat_conv_anon_update ON chat_conversations FOR UPDATE TO anon
-    USING (true) WITH CHECK (true);
-
--- Anon INSERT på meldingar: visitor-meldingar, samt 'system' (visitorwidgeten
--- postar sjølv ei systemmelding når vedkomande avsluttar EIGEN samtale — t.d.
--- "Kunden lukket chatvinduet"). Aldri 'operator'.
-CREATE POLICY chat_msg_anon_insert ON chat_messages FOR INSERT TO anon
-    WITH CHECK (sender IN ('visitor', 'system'));
+-- Meldings-INSERT for anon (visitor-meldingar, samt 'system' — visitorwidgeten
+-- postar sjølv ei systemmelding når vedkomande avsluttar EIGEN samtale, t.d.
+-- "Kunden lukket chatvinduet") går no UTELUKKANDE via insert_visitor_message()
+-- ovanfor — det finst med vilje ingen direkte anon-INSERT-policy på
+-- chat_messages lenger (chat_msg_anon_insert, DROP-a over, er ikkje oppretta att).
 
 -- Auth (chat-admin): berre admin — ikkje editor/member
 CREATE POLICY chat_conv_auth ON chat_conversations FOR ALL TO authenticated
@@ -891,13 +967,22 @@ TO authenticated;
 GRANT USAGE, SELECT ON SEQUENCE store_id_seq TO authenticated;
 
 GRANT SELECT ON store TO anon;
--- Anon INSERT + presence UPDATE (RPC-ar handterer SELECT; ingen direkte SELECT-grant til anon)
-GRANT INSERT ON chat_conversations, chat_messages TO anon;
-GRANT UPDATE (visitor_name, visitor_email, page_url, referrer, language, browser, os, screen,
-              last_seen_at, visitor_active, visitor_read_at) ON chat_conversations TO anon;
+-- Anon INSERT: berre konversasjon-oppretting (chat_conv_anon_insert over).
+-- Presence-UPDATE og meldings-INSERT for anon går UTELUKKANDE via dei to
+-- SECURITY DEFINER-RPC-ane under (RPC-ar handterer SELECT òg; ingen direkte
+-- SELECT-grant til anon nokon stad).
+GRANT INSERT ON chat_conversations TO anon;
+-- Fjernar dei gamle, brei direkte anon-tilgangane (IDOR, funne 2026-07-04/06 —
+-- USING(true)/ingen radeigarskapssjekk) frå eksisterande installasjonar ved
+-- re-køyring. No-op på ein fersk installasjon som aldri hadde dei.
+REVOKE UPDATE (visitor_name, visitor_email, page_url, referrer, language, browser, os, screen,
+               last_seen_at, visitor_active, visitor_read_at) ON chat_conversations FROM anon;
+REVOKE INSERT ON chat_messages FROM anon;
 -- Visitor-RPC-ar: SECURITY DEFINER, men må eksplisitt grantast
 GRANT EXECUTE ON FUNCTION get_visitor_conv(text, text)         TO anon;
 GRANT EXECUTE ON FUNCTION get_visitor_msgs(text, text, bigint) TO anon;
+GRANT EXECUTE ON FUNCTION update_visitor_presence(text,text,text,text,text,text,text,text,text,text,boolean,bigint,bigint) TO anon;
+GRANT EXECUTE ON FUNCTION insert_visitor_message(text,text,text,text,text,bigint) TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON chat_conversations, chat_messages TO authenticated;
 
 
