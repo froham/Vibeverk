@@ -16,8 +16,10 @@
 (function () {
   "use strict";
 
-  var App = window.App, C = window.Components, CFG = window.SITE_CONFIG || {};
+  var App = window.App, C = window.Components;
   if (!App || !C) return;
+
+  App.ready(function (CFG) {
   if (CFG.features && CFG.features.crm === false) return;
 
   var esc = C.esc;
@@ -1679,4 +1681,5 @@
   // opnar Kunder-fana i det heile.
   loadCrmData(function () {});
 
+  });
 })();

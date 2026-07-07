@@ -46,6 +46,36 @@ assert(doc.title.includes("Vibeverk"), "tittel fra config: " + doc.title);
 // 4) Tjenester: 4 kort
 assert(doc.querySelectorAll(".card").length === 4, "fire tjenestekort");
 
+// 4b) App.ready — config-tilgjengelegheit-gate (ADR-0007 Fase 1 / SaaS-
+// skaleringsplanen Fase 4). Denne testsuiten er heilt synkron (window.eval()
+// per fil, éin synkron DOMContentLoaded-dispatch, synkrone assertions rett
+// etter) — den låser difor kun fast at Fase 4 er ei rein, åtferdsnøytral
+// plumbing-endring (config.js er framleis ein synkron <script>-tag, App.ready
+// løyser med det same). Å teste ei EKTE utsett/asynkron oppløysing (kø-a,
+// løyst på eit seinare tick) krev at sjølve testhamsen sluttar å vere heilt
+// synkron (t.d. ein reell await Promise.resolve() etter dispatchEvent) —
+// det høyrer til den seinare fasen som faktisk byter config-kjelda til
+// fetch(), IKKJE denne. Ikkje anta at den asynkrone stien er dekt av desse
+// testane.
+assert(typeof window.App.ready === "function", "App.ready finst og er ein funksjon");
+
+var _readyProbeCalls = 0;
+var _readyProbeCfg = null;
+window.App.ready(function (cfg) { _readyProbeCalls++; _readyProbeCfg = cfg; });
+assert(_readyProbeCalls === 1, "App.ready(fn) kallar fn synkront nøyaktig éin gong når config alt er klar");
+assert(_readyProbeCfg === window.SITE_CONFIG, "App.ready(fn) sender window.SITE_CONFIG som argument til fn");
+
+// Prova at App.ready alltid les LEVANDE tilstand, ikkje eit stale snapshot
+// teke ved modul-parse-tidspunkt — avgjerande for at feature-flagg-sjekkane
+// i kvar modulfil (CFG.features.X) faktisk speglar noverande config, ikkje
+// berre den fyrste verdien nokon gong observert.
+var _origBookingFlag = window.SITE_CONFIG.features.booking;
+window.SITE_CONFIG.features.booking = false;
+var _readyProbeAfterMutation = null;
+window.App.ready(function (cfg) { _readyProbeAfterMutation = cfg.features.booking; });
+assert(_readyProbeAfterMutation === false, "App.ready(fn) les levande CFG-tilstand, ikkje eit stale snapshot");
+window.SITE_CONFIG.features.booking = _origBookingFlag; // rydd opp att før resten av testane køyrer
+
 // Personvernerklæring: modul-bevisst standardtekst ved første oppstart (ingen overstyring lagret enno)
 var initialPrivacyText = window.SITE_CONFIG.privacy.text;
 assert(!!initialPrivacyText, "personvern-standardtekst genereres automatisk ved oppstart (ikke tom)");

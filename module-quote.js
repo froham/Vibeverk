@@ -17,8 +17,10 @@
 (function () {
   "use strict";
 
-  var App = window.App, C = window.Components, CFG = window.SITE_CONFIG || {};
+  var App = window.App, C = window.Components;
   if (!App || !C) return;
+
+  App.ready(function (CFG) {
   if (CFG.features && CFG.features.quote === false) return;
 
   var esc = C.esc;
@@ -500,5 +502,6 @@
       render: function () { return '<div data-qt-adm></div>'; },
       mount:  function (body) { renderAdminInfo(body.querySelector("[data-qt-adm]") || body); }
     }
+  });
   });
 })();

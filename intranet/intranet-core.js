@@ -30,7 +30,16 @@ window.Intranet = (function () {
      2) CONTEXT (tenant/bruker — stubbet i local-fasen, riktig form for Supabase)
      ====================================================================== */
   var CFG = window.SITE_CONFIG || {};
-  var NS  = CFG.storageKey || "site";
+  var NS  = CFG.storageKey || "site";   // storageKey er statisk i config.js, trygt å lese før gaten under
+
+  // App.ready-gate (ADR-0007 Fase 1 / SaaS-skaleringsplanen Fase 4): CFG over
+  // vert fanga ÉIN gong via closure og delt av alle funksjonar i denne fila
+  // (applyWorkspaceTheme, renderLogin, boot, m.fl.) — ulikt modulfilene, som
+  // kvar har sin eigen vesle IIFE og kan skygge CFG som ein callback-parameter.
+  // Difor: TILORDNE den same CFG-variabelen på nytt når config er stadfesta
+  // klar, i staden for å skygge han lokalt — alle eksisterande referansar
+  // gjennom heile fila ser då den ferske verdien, uendra kode elles.
+  App.ready(function (freshCFG) { CFG = freshCFG; });
 
   // Henter sesjon-rolle fra samme nøkkel som core.js bruker.
   // Utvides til Supabase-sesjon uten endring her.
@@ -698,11 +707,14 @@ window.Intranet = (function () {
     }
   }
 
-  // Start når DOM er klar
+  // Start når DOM er klar OG config er stadfesta klar (App.ready — sjå notat
+  // ved CFG-tilordninga over; DOMContentLoaded once garanterer IKKJE at ei
+  // framtidig asynkron config-lasting alt er ferdig).
+  function startBoot() { App.ready(boot); }
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
+    document.addEventListener("DOMContentLoaded", startBoot);
   } else {
-    boot();
+    startBoot();
   }
 
   /* =========================================================================

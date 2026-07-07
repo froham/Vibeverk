@@ -10,6 +10,14 @@
   "use strict";
 
   var _sb = (window.App && window.App.supabase) || null;
+  // App.ready-gate (ADR-0007 Fase 1 / SaaS-skaleringsplanen Fase 4): _sb er
+  // fanga synkront ved parse-tidspunkt over — trygt i dag (config.js er
+  // synkron), men App.supabase kan i ein framtidig async-fase framleis vere
+  // null her viss core.js sin eigen klient ikkje er oppretta enno. Tilordne
+  // på nytt når config er stadfesta klar, same mønster som console-core.js.
+  if (window.App && window.App.ready) {
+    window.App.ready(function () { _sb = window.App.supabase || null; });
+  }
 
   /* ── HJELPEFUNKSJONAR ────────────────────────────────────────────────────── */
   function esc(s) {

@@ -88,6 +88,23 @@ const assert = (cond, msg) => {
   else        { globalThis.__ok  = (globalThis.__ok ||0)+1; console.log("OK:", msg); }
 };
 
+// App.ready — same gate as test.js, verified independently here since
+// test-intranet.js loads intranet-core.js + intranet/module-*.js, which use
+// the reassignment pattern (CFG = freshCFG) rather than the module-file
+// wrap pattern — see docs/project/CHANGELOG.md for the Fase 4 writeup.
+// Same synchronous-harness limitation as test.js: this locks in the
+// behavioral-no-op property, not a genuinely deferred/async resolution.
+assert(typeof App.ready === "function", "App.ready finst og er ein funksjon");
+var _readyProbeCalls2 = 0;
+App.ready(function (cfg) { _readyProbeCalls2++; });
+assert(_readyProbeCalls2 === 1, "App.ready(fn) kallar fn synkront nøyaktig éin gong når config alt er klar");
+var _origBookingFlag2 = window.SITE_CONFIG.intranettFeatures.booking;
+window.SITE_CONFIG.intranettFeatures.booking = false;
+var _readyProbeAfterMutation2 = null;
+App.ready(function (cfg) { _readyProbeAfterMutation2 = cfg.intranettFeatures.booking; });
+assert(_readyProbeAfterMutation2 === false, "App.ready(fn) les levande CFG-tilstand, ikkje eit stale snapshot");
+window.SITE_CONFIG.intranettFeatures.booking = _origBookingFlag2;
+
 function nav(hash) {
   window.location.hash = hash;
   window.dispatchEvent(new window.Event("hashchange"));

@@ -22,6 +22,16 @@
 (function () {
   "use strict";
 
+  // App.ready-gate (ADR-0007 Fase 1 / SaaS-skaleringsplanen Fase 4): denne
+  // fila støttar STANDALONE-bruk utan core.js/App i det heile (sjå fil-
+  // hovudet) — kan difor IKKJE ubetinga krevje App.ready slik dei andre
+  // modulfilene gjer. Heile den opphavlege fil-kroppen er difor pakka inn i
+  // initChatModule() under, kalla anten via App.ready (integrert Vibeverk-
+  // bruk, når tilgjengeleg) eller synkront med det same (standalone-bruk,
+  // uendra åtferd). Alle referansar til window.SITE_CONFIG/window.App inni
+  // funksjonen er urørte — dei les framleis live, akkurat som før.
+  function initChatModule() {
+
   var CFG_CHAT = (window.SITE_CONFIG && window.SITE_CONFIG.chat) || {};
   var CFG_FEAT = (window.SITE_CONFIG && window.SITE_CONFIG.features) || {};
   var _CHAT_NS = (window.SITE_CONFIG && window.SITE_CONFIG.storageKey) || "";
@@ -1884,4 +1894,11 @@
     document.addEventListener("DOMContentLoaded", boot);
   } else { boot(); }
 
+  } // slutt initChatModule()
+
+  if (window.App && typeof window.App.ready === "function") {
+    window.App.ready(initChatModule);
+  } else {
+    initChatModule();
+  }
 })();

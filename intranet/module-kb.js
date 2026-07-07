@@ -10,8 +10,9 @@
   var Intranet = window.Intranet;
   var App      = window.App;
   var C        = window.Components;
-  var CFG      = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
+
+  App.ready(function (CFG) {
   if (CFG.intranettFeatures && CFG.intranettFeatures.kb === false) return;
 
   var _sb       = App.supabase;
@@ -483,4 +484,5 @@
     mount:    mount
   });
 
+  });
 })();

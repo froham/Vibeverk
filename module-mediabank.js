@@ -18,8 +18,10 @@
 (function () {
   "use strict";
 
-  var App = window.App, C = window.Components, CFG = window.SITE_CONFIG || {};
+  var App = window.App, C = window.Components;
   if (!App || !C) return;
+
+  App.ready(function (CFG) {
   if (CFG.features && CFG.features.mediabank === false) return;
 
   var esc = C.esc;
@@ -411,5 +413,6 @@
       render: function () { return '<div data-mb-root></div>'; },
       mount:  function (body) { renderAdmin(body.querySelector("[data-mb-root]") || body); }
     }
+  });
   });
 })();

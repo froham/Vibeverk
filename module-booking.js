@@ -19,8 +19,10 @@
 (function () {
   "use strict";
 
-  var App = window.App, C = window.Components, CFG = window.SITE_CONFIG || {};
+  var App = window.App, C = window.Components;
   if (!App || !C) return;
+
+  App.ready(function (CFG) {
   // Global bryter: hopp ut hvis booking er avslått i config.
   if (CFG.features && CFG.features.booking === false) return;
 
@@ -1101,4 +1103,5 @@
   // som module-crm.js) — treng vere klar før både #booking-sida og admin-
   // fana kan vise korrekte data.
   loadBookings(function () {});
+  });
 })();

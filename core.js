@@ -35,6 +35,38 @@ window.App = (function () {
   })();
   // ──────────────────────────────────────────────────────────────────────────
 
+  // ─── APP.READY — config-tilgjengelegheit-gate (ADR-0007 Fase 1 / SaaS-
+  // skaleringsplanen sin Fase 4) ──────────────────────────────────────────────
+  // I DAG (denne fasen): config.js er framleis ein vanleg synkron <script>-tag,
+  // så markConfigReady() køyrer med det same og ready(fn) løyser synkront —
+  // rein oppførsel-nøytral plumbing, ingen faktisk asynkron lasting enno.
+  // SEINARE (når config-kjelda vert bytt til hostname-oppløyst fetch()): berre
+  // earlyApplySuperConfig()-kallet over og markConfigReady()-kallet under flyttar
+  // inn i fetch() sin .then(), opererande på det ferske CFG-objektet, rett før
+  // køen tømmast. Alt anna (modular, init()) held fram uendra sidan dei alt
+  // går via denne gaten. Sjå ADR-0007 og docs/roadmap/ROADMAP.md Fase 4-notatet.
+  var _configReady = false;
+  var _readyQueue = [];
+
+  function ready(fn) {
+    if (typeof fn !== "function") return;
+    if (_configReady) { fn(CFG); }
+    else { _readyQueue.push(fn); }
+  }
+
+  function markConfigReady() {
+    if (_configReady) return; // idempotent
+    _configReady = true;
+    var q = _readyQueue;
+    _readyQueue = [];
+    q.forEach(function (fn) {
+      try { fn(CFG); } catch (e) { console.error("[App.ready] callback feila:", e); }
+    });
+  }
+
+  markConfigReady();
+  // ──────────────────────────────────────────────────────────────────────────
+
   /* ===========================================================================
      1) LAGRINGSLAG
      ---------------------------------------------------------------------------
@@ -62,6 +94,19 @@ window.App = (function () {
      localStorage + batcha upsert til Supabase kvart 300 ms. Oppstart: hent
      alle nøklar for dette tenant-ID-et frå Supabase → skriv til localStorage
      → start appen. Ved offline / feil: fall tilbake til localStorage.         */
+  // KJENT OPE PUNKT for ein framtidig ekte async config-fase (ikkje bygd
+  // enno, sjå App.ready-notatet lenger oppe): _sb vert konstruert synkront
+  // her, FØR App.ready/markConfigReady vert kalla — trygt i dag sidan CFG.supabase
+  // alt er korrekt utfylt på dette tidspunktet (config.js er ein synkron
+  // <script>-tag). Men `supabase: _sb` i return-objektet nedanfor er ein
+  // VERDI-SNAPSHOT, ikkje ei live binding — om denne konstruksjonen nokon
+  // gong vert utsett til inni ein ready()-callback (t.d. når CFG.supabase
+  // fyrst er tilgjengeleg via ein framtidig fetch()), må returnert `App`-
+  // objekt sin `supabase`-eigenskap eksplisitt OPPDATERAST ETTERPÅ óg
+  // (App.supabase = _sb;), elles fryser han på null for alltid. Same
+  // gotcha vart funne og fiksa i module-users.js sin eigen `_sb`-snapshot
+  // denne runda — ikkje gjort her no, sidan det krev å omstrukturere heile
+  // det store return-objektet, utanfor denne fasen sitt "rein plumbing"-omfang.
   var _sb = null;
   (function () {
     var cfg = CFG.supabase;
@@ -3415,7 +3460,14 @@ window.App = (function () {
   /* ===========================================================================
      9) OPPSTART
      ======================================================================== */
-  function init() {
+  // Gatekjeper: init() sjølv les CFG (applyTheme, m.m.) og køyrer via
+  // DOMContentLoaded, som IKKJE garanterer å skje etter ei framtidig async
+  // config-lasting — difor må heile actualInit() gå via App.ready, ikkje
+  // berre modulfilene sine eigne feature-flagg-sjekkar. Sjå notatet ved
+  // App.ready sin definisjon lenger oppe.
+  function init() { ready(actualInit); }
+
+  function actualInit() {
     if (started) return;
     applyTheme();           // tidleg: set --color-primary før chat-bobla initialiserer seg
     registerBuiltinSections();
@@ -3702,6 +3754,7 @@ window.App = (function () {
   /* --- Offentlig API -------------------------------------------------------- */
   return {
     init: init,
+    ready: ready,                      // ← config-tilgjengelegheit-gate, sjå notatet ved definisjonen
     registerModule: registerModule,   // ← brukes av modulfiler
     // Praktiske kroker for moduler/integrasjoner:
     store: Store,                      // namespacet localStorage (get/set/remove)

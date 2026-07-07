@@ -19,8 +19,9 @@
 
   var App = window.App;
   var C   = window.Components;
-  var CFG = window.SITE_CONFIG || {};
   if (!App || !C) return;
+
+  App.ready(function (CFG) {
   if (CFG.features && CFG.features.scrollbanner === false) return;
 
   var esc       = C.esc;
@@ -366,4 +367,5 @@
     }
   });
 
+  });
 })();

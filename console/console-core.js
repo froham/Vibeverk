@@ -20,7 +20,7 @@ window.VwConsole = (function () {
   var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.18.0";
+  var VIBEVERK_VERSION = "0.19.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -48,13 +48,26 @@ window.VwConsole = (function () {
 
   /* =========================================================================
      SUPABASE-KLIENT  — eigen klient utan persistert sesjon for Console
+     -------------------------------------------------------------------------
+     App.ready-gate (ADR-0007 Fase 1 / SaaS-skaleringsplanen Fase 4): denne
+     fila er, som intranet-core.js, EIN stor vedvarande IIFE der CFG vert
+     fanga éin gong via closure og delt av mange funksjonar (renderSystem,
+     applySuperConfig, m.fl.) — ikkje kvar sin eigen vesle IIFE som modulfilene.
+     Difor: tilordne den same CFG-variabelen på nytt (i staden for å skygge
+     han lokalt) OG flytt _sb-klientoppretting inn i same gate, sidan _sb
+     tidlegare vart oppretta synkront basert på CFG.supabase ved IIFE-eval-
+     tidspunkt — trygt i denne fasen (config.js er framleis synkron), men
+     ville vore feil i ein framtidig async-fase utan denne gaten.
      ====================================================================== */
   var _sb = null;
-  if (window.supabase && CFG.supabase && CFG.supabase.url) {
-    _sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.anonKey, {
-      auth: { persistSession: false }
-    });
-  }
+  App.ready(function (freshCFG) {
+    CFG = freshCFG;
+    if (window.supabase && CFG.supabase && CFG.supabase.url) {
+      _sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.anonKey, {
+        auth: { persistSession: false }
+      });
+    }
+  });
 
   /* =========================================================================
      AUTH  — OTP via Supabase, sesjon i localStorage med 48h utløp
@@ -807,12 +820,14 @@ window.VwConsole = (function () {
      INIT
      ====================================================================== */
   document.addEventListener("DOMContentLoaded", function () {
-    applyConsoleTheme();
-    if (isAuthed()) {
-      buildShell();
-    } else {
-      buildLogin();
-    }
+    App.ready(function () {
+      applyConsoleTheme();
+      if (isAuthed()) {
+        buildShell();
+      } else {
+        buildLogin();
+      }
+    });
   });
 
   return { navigate: navigate };
