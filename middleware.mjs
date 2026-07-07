@@ -26,6 +26,13 @@ import { next } from "@vercel/functions";
 
 export default function middleware(request) {
   const host = request.headers.get("host") || "unknown";
+  // TEMPORARY diagnostic log — Phase 6 mechanism-proof debugging only,
+  // remove once the x-vibeverk-host-seen response header is confirmed
+  // reaching real HTTP responses. Vercel's Logs panel only shows console
+  // output, not invocation telemetry, so this is the only way to tell
+  // "middleware didn't run" apart from "middleware ran but its header
+  // got stripped downstream".
+  console.log(`[vibeverk-middleware] invoked, host=${host}`);
   return next({
     headers: {
       "x-vibeverk-host-seen": host
