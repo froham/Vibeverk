@@ -1,4 +1,5 @@
 {
   "installCommand": "npm ci",
-  "buildCommand": "echo 'vibeverk diagnostic build ran'"
+  "buildCommand": "echo 'vibeverk diagnostic build ran'",
+  "outputDirectory": "."
 }
