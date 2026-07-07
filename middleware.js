@@ -1,4 +1,4 @@
-// middleware.mjs — Vercel Routing Middleware (Phase 6 of the SaaS-scaling
+// middleware.js — Vercel Routing Middleware (Phase 6 of the SaaS-scaling
 // plan, mechanism-proof scope only — see docs/decisions/ADR-0007-multi-tenant-
 // hosting-architecture.md's 2026-07-08 addendum).
 //
@@ -13,11 +13,16 @@
 // the underlying Vercel Edge Middleware mechanism works at all for this
 // codebase, which had never been exercised before this file existed.
 //
-// .mjs extension (not .js) is deliberate: Vercel's non-framework convention
-// requires either "type": "module" in package.json or a .mjs extension for
-// middleware using ES module imports. Adding "type": "module" globally
-// would break test.js/test-workspace.js's CommonJS require("jsdom") calls —
-// .mjs avoids that entirely, no package.json "type" field needed.
+// MUST be named middleware.js, never middleware.mjs. Confirmed empirically
+// 2026-07-08 (isolated single-variable retest, same project/settings, only
+// the filename changed): Vercel's "Framework Preset: Other" build pipeline
+// silently fails to compile a root-level middleware.mjs into an actual
+// Routing Middleware function — no build error, no warning, it's just
+// treated as an inert static asset. middleware.js works immediately, with
+// no "type": "module" needed in package.json. This contradicts Vercel's
+// own docs, which present .mjs as a documented equivalent to
+// "type": "module" — that claim does not hold for this project shape.
+// Do not "fix" this back to .mjs because the docs say it should work.
 //
 // Deployed ONLY to the disposable Vercel test project from the Phase 0
 // parity test — never pointed at vibeverk.no's live GitHub Pages domain.
@@ -26,12 +31,6 @@ import { next } from "@vercel/functions";
 
 export default function middleware(request) {
   const host = request.headers.get("host") || "unknown";
-  // TEMPORARY diagnostic log — Phase 6 mechanism-proof debugging only,
-  // remove once the x-vibeverk-host-seen response header is confirmed
-  // reaching real HTTP responses. Vercel's Logs panel only shows console
-  // output, not invocation telemetry, so this is the only way to tell
-  // "middleware didn't run" apart from "middleware ran but its header
-  // got stripped downstream".
   console.log(`[vibeverk-middleware] invoked, host=${host}`);
   return next({
     headers: {

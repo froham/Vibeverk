@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.20.1 — 2026-07-08
+
+### Phase 6 mechanism-proof completed: Vercel Routing Middleware confirmed viable (`.js`, not `.mjs`)
+- `middleware.mjs` renamed to `middleware.js` (repo root, Vercel Routing Middleware, disposable test project only — never deployed to `vibeverk.no`). This was a real, confirmed bug: Vercel's `Framework Preset: Other` build pipeline silently fails to compile a root-level `middleware.mjs` into an actual middleware function (no build error, no warning, no dashboard indication) — contradicting Vercel's own docs, which present `.mjs` as a documented equivalent to `"type": "module"` in `package.json`. `middleware.js` (no `"type": "module"` needed) works immediately, verified via a real HTTP request returning the `x-vibeverk-host-seen` response header.
+- Found via an extensive elimination process (11 variables ruled out: code correctness, lockfile state, every dashboard build/install/output setting, a completely fresh Vercel project, Deployment Protection, Fluid Compute, GitHub-integration vs. CLI deploy, explicit `"framework": null`), then an initial Next.js-isolation test that appeared to confirm a "framework-less architecture" root cause — until an independent second review (Codex) correctly identified that test as confounding two variables at once (framework change AND filename change). A controlled single-variable retest confirmed the filename, not the framework, was the actual cause.
+- **No architectural change needed** — Vibeverk's no-framework, no-bundler convention stands, no hosting vendor reconsideration was warranted. Phase 6's real hostname→tenant→Supabase-project resolver proceeds as originally planned, built as Vercel Routing Middleware.
+- Also fixed along the way: `package-lock.json` regenerated (was stale, predated `@vercel/functions` being added to `package.json`, causing `npm ci` to fail on Vercel).
+- Guardrail added: `CLAUDE.md` "Known configuration" now states the `.js`-not-`.mjs` requirement explicitly, so a future session doesn't "fix" this back to `.mjs` per Vercel's own (misleading) docs. `middleware.js`'s header comment updated to match.
+- Documented as a new dated addendum to `docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md` (2026-07-08), not a rewrite of the existing accepted text.
+- Still open, unaffected by this fix: the actual tenant-registry shape, unknown-Host fallback behavior, and Security Auditor review — all deferred to when Phase 6's real resolver logic is designed.
+
 ## 0.20.0 — 2026-07-07
 
 ### intranet renamed to Workspace — Phase 5 of the SaaS-scaling plan
