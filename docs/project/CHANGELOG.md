@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.21.0 — 2026-07-08
+
+### Phase 8: Console now authenticates against the control plane; first real broker actions
+- Console's OTP login now goes against `vibeverk-control` instead of the customer's own Supabase project — the client-side `SUPERADMIN_EMAILS` pre-check (run before the code was even sent, an unauthenticated "does this email exist" oracle) is removed; the real access check (`operators.status = 'active'`) now happens after OTP verification. A tenant picker was added to the sidebar (only one tenant exists today, but built now to avoid a second rewrite at customer #2). A real, previously-documented bug is fixed in the same pass: the old 48h `localStorage` timestamp could say "authenticated" long after the underlying session had actually expired — `isAuthed()` now reflects a real, live Supabase session.
+- New `broker` Edge Function in `vibeverk-control`: `get_private_config`/`set_config`/`reset_config` (keeps Console's settings read/write working now that auth moved) and `get_tenant_status` (extends Phase 7's `broker-ping` mechanism-proof into something useful — reachability, user count). Every action writes to a new `broker_audit_log` table before returning (success or failure, never secret values) — readable by any active operator, writable only by the broker's own service-role connection.
+- Deliberately not built: inviting/removing a data-plane user via the broker — overlaps a still-undecided "support access" question that needs Privacy/Compliance input, not pre-empted here.
+- **Second real bug found via live testing (not just a clean deploy)**: production's `service_role` had never been granted `SELECT`/`INSERT`/`UPDATE`/`DELETE` on the `store` table (only `REFERENCES`/`TRIGGER`/`TRUNCATE`) — harmless until the broker's cross-project write became the first thing to ever need it. A related gap surfaced right after: an `UPSERT ON CONFLICT` needs sequence `USAGE` on `store_id_seq` even when the final action is an `UPDATE`. Both fixed via new **production** migrations (`20260708192115_grant_service_role_store_access.sql`, `20260708194415_grant_service_role_store_seq.sql`), verified directly via `information_schema.role_table_grants`.
+- `CLAUDE.md` updated with the general lesson: `service_role` bypasses RLS but is not a superuser — it still needs ordinary table/sequence grants checked explicitly for any new consumer, same class of gotcha as Phase 7's default-ACL discovery.
+- New `docs/decisions/ADR-0009-console-control-plane-auth-and-broker-actions.md` records the full design and both bugs.
+- Verified live end-to-end against production (not clean exit codes): real OTP login, `get_tenant_status` returning the real user count, a `get_private_config` → `set_config` → `get_private_config` round-trip proving the write path leaves values unchanged, and negative-path checks (missing auth → 401, unknown action → clean 400). `reset_config` was **not** tested live (it deletes real configuration) — verified by code inspection and shared code path only.
+- **Not yet done**: Security Auditor pass (required per ADR-0008/ADR-0009 before relying on this beyond the current single customer), and the `git push` of this work (local commit only, pending explicit approval).
+- No SQL changes to `vibeverk-control`'s schema beyond what Phase 7 already had except the new `broker_audit_log` table and `tenants.data_plane_storage_key` column (separate small migration, already applied). Public site and Workspace unaffected. Cache-bust: `console-core.js` 51 → 53.
+
 ## 0.20.2 — 2026-07-08
 
 ### Phase 7 mechanism-proof completed: control-plane/data-plane split, `vibeverk-control` Supabase project

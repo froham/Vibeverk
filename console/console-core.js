@@ -3,8 +3,11 @@
    -----------------------------------------------------------------------------
    Fullside admin-grensesnitt for Vibeverk-operatørar. Lastar etter core.js
    og overrider CSS-variablar til eit nøytralt konsolltema. Autentisering via
-   Supabase OTP (e-post → 8-sifra kode) med 48 timars sesjonslevetid i
-   localStorage. Skriv superconfig via App.store.
+   Supabase OTP (e-post → 8-sifra kode) mot control-plane-prosjektet
+   vibeverk-control (Fase 8, sjå docs/decisions/ADR-0008) — ikkje lenger mot
+   kunden sitt eige Supabase-prosjekt. Skriv superconfig via ein broker
+   Edge Function i vibeverk-control, som krysser inn i kundens eige prosjekt
+   med ein Vault-dekryptert service_role-nøkkel.
    ========================================================================== */
 
 window.VwConsole = (function () {
@@ -16,11 +19,16 @@ window.VwConsole = (function () {
   var NS  = CFG.storageKey || "site";
   var SUPER_KEY = "superconfig";
 
-  // Superadmin: hardkoda e-post for Vibeverk-operatør. Ikkje eit kundeVal.
-  var SUPERADMIN_EMAILS = ["frode@hammerseth.com"];
+  // Control-plane (vibeverk-control) — Fase 8. Faste verdiar, ikkje
+  // per-kunde-config: dette er Vibeverk sin eigen operatør-database, den
+  // same for alle kundar. Anon-nøkkelen er trygg å ha her, som alle
+  // Supabase anon-nøklar sendt til ein nettlesar (rate-avgrensa +
+  // RLS-verna, aldri service_role-nøkkelen).
+  var CONTROL_URL      = "https://jxoglthrnshabqmdmnui.supabase.co";
+  var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.20.2";
+  var VIBEVERK_VERSION = "0.21.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -47,48 +55,85 @@ window.VwConsole = (function () {
   }
 
   /* =========================================================================
-     SUPABASE-KLIENT  — eigen klient utan persistert sesjon for Console
+     CONTROL-PLANE-KLIENT  — Fase 8: eigen, sesjonspersisterande klient mot
+     vibeverk-control, brukt til OTP-innlogging og alle broker-kall.
      -------------------------------------------------------------------------
      App.ready-gate (ADR-0007 Fase 1 / SaaS-skaleringsplanen Fase 4): denne
      fila er, som workspace-core.js, EIN stor vedvarande IIFE der CFG vert
      fanga éin gong via closure og delt av mange funksjonar (renderSystem,
      applySuperConfig, m.fl.) — ikkje kvar sin eigen vesle IIFE som modulfilene.
      Difor: tilordne den same CFG-variabelen på nytt (i staden for å skygge
-     han lokalt) OG flytt _sb-klientoppretting inn i same gate, sidan _sb
-     tidlegare vart oppretta synkront basert på CFG.supabase ved IIFE-eval-
-     tidspunkt — trygt i denne fasen (config.js er framleis synkron), men
-     ville vore feil i ein framtidig async-fase utan denne gaten.
+     han lokalt) OG opprett _sbControl inne i same gate.
+
+     Ulikt den gamle _sb-klienten (som var mot KUNDENS eige prosjekt og ikkje
+     persisterte sesjonen): _sbControl er mot vibeverk-control og BRUKAR
+     persistSession/autoRefreshToken, sidan JWT-en no faktisk er sanninga om
+     kor lenge operatøren er innlogga (sjå isAuthed() under — fiksar ein reell,
+     tidlegare dokumentert bug der UI-et kunne sjå innlogga ut lenge etter at
+     den underliggande sesjonen faktisk hadde gått ut).
      ====================================================================== */
-  var _sb = null;
+  var _sbControl   = null;
+  var _session     = null;
+  var _tenants     = [];
+  var _activeTenant = null;
+
   App.ready(function (freshCFG) {
     CFG = freshCFG;
-    if (window.supabase && CFG.supabase && CFG.supabase.url) {
-      _sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.anonKey, {
-        auth: { persistSession: false }
+    if (window.supabase) {
+      _sbControl = window.supabase.createClient(CONTROL_URL, CONTROL_ANON_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true }
+      });
+      _sbControl.auth.onAuthStateChange(function (_event, session) {
+        _session = session;
       });
     }
   });
 
   /* =========================================================================
-     AUTH  — OTP via Supabase, sesjon i localStorage med 48h utløp
+     AUTH  — OTP mot vibeverk-control, ekte Supabase-sesjon (ikkje eit
+     handrulla localStorage-tidsstempel lenger)
      ====================================================================== */
-  var AUTH_KEY   = NS + ":console-auth";
-  var AUTH_HOURS = 48;
-  var _otpEmail  = "";
+  var _otpEmail = "";
 
-  function isAuthed() {
-    var expiry = parseInt(localStorage.getItem(AUTH_KEY) || "0", 10);
-    return Date.now() < expiry;
-  }
-
-  function setAuthed() {
-    localStorage.setItem(AUTH_KEY, (Date.now() + AUTH_HOURS * 3600000).toString());
-  }
+  function isAuthed() { return !!_session; }
 
   function logout() {
-    localStorage.removeItem(AUTH_KEY);
-    if (_sb) _sb.auth.signOut();
+    if (_sbControl) _sbControl.auth.signOut();
+    _session = null;
+    _activeTenant = null;
     location.reload();
+  }
+
+  // Kallar den nye broker Edge Function-en i vibeverk-control. Krev at
+  // operatøren er innlogga (Authorization-header vert sett automatisk av
+  // _sbControl frå gjeldande sesjon) og at ein aktiv tenant er vald.
+  function brokerCall(action, payload, cb) {
+    if (!_sbControl || !_activeTenant) { cb({ error: "Ikkje klar" }); return; }
+    var body = Object.assign({ action: action, tenant_id: _activeTenant.id }, payload || {});
+    _sbControl.functions.invoke("broker", { body: body }).then(function (r) {
+      if (r.error) { cb({ error: r.error.message || "Feil mot control-plane" }); return; }
+      cb(r.data || {});
+    });
+  }
+
+  // Stadfestar at den innlogga brukaren faktisk er ein aktiv operatør (RLS-
+  // policyen operators_self_read let ein brukar lese si eiga rad). Dette er
+  // NO den fulle tilgangssjekken — flytta til etter OTP-verifisering i staden
+  // for ei hardkoda e-postliste sjekka FØR koden vert sendt (den kunne i
+  // teorien bli brukt som eit "finst denne e-posten"-orakel).
+  function checkOperatorActive(cb) {
+    if (!_session) { cb(false); return; }
+    _sbControl.from("operators").select("status").eq("id", _session.user.id).single().then(function (r) {
+      cb(!r.error && r.data && r.data.status === "active");
+    });
+  }
+
+  function loadTenants(cb) {
+    _sbControl.from("tenants").select("id, slug, hostnames").order("slug").then(function (r) {
+      _tenants = r.data || [];
+      _activeTenant = _tenants[0] || null;
+      cb();
+    });
   }
 
   /* =========================================================================
@@ -99,20 +144,15 @@ window.VwConsole = (function () {
   // eigen OTP-sesjon) held cachen oppdatert — ingen endring naudsynt her.
   function getSC() { return App.store.get(SUPER_KEY, {}) || {}; }
 
-  // Skriving derimot MÅ gå via Console sin EIGEN OTP-verifiserte klient
-  // (_sb over), ikkje App.store.set()/.remove() — desse køar berre skrivinga
-  // for core.js sin HEILT SEPARATE, sesjonspersisterande klient
-  // (App.store sin _flushSync() krev core.js sin eigen _isAuthed, ein annan
-  // identitet enn den som nettopp verifiserte OTP-koden her). RLS krev no
-  // is_platform_operator() for 'superconfig' (sjå migration.sql), som berre
-  // kan stadfestast via denne klienten sin faktiske innlogga JWT.
+  // Skriving går no via broker Edge Function-en i vibeverk-control (Fase 8),
+  // ikkje lenger direkte mot kundens eige prosjekt — sjå brokerCall() over.
+  // App.store.set()/.remove() held berre den lokale cachen i sync (ufarleg
+  // biverknad: dei køar òg ei skriving for core.js sin HEILT SEPARATE,
+  // sesjonspersisterande klient, som normalt ikkje er innlogga som denne
+  // kundens admin frå Console og difor no-oppar via RLS — uendra frå før).
   function saveSC(sc) {
-    App.store.set(SUPER_KEY, sc); // held lokal cache i sync med det same
-    if (!_sb) return; // ingen Supabase konfigurert — uendra åtferd (rein localStorage)
-    _sb.from("store").upsert(
-      { tenant_id: NS, key: SUPER_KEY, value: sc },
-      { onConflict: "tenant_id,key" }
-    ).then(function (r) {
+    App.store.set(SUPER_KEY, sc);
+    brokerCall("set_config", { key: SUPER_KEY, value: sc }, function (r) {
       if (r.error) console.error("[console] superconfig-skriving feila:", r.error);
     });
   }
@@ -120,46 +160,34 @@ window.VwConsole = (function () {
   function resetSC() {
     if (!confirm("Nullstill all superconfig og gå tilbake til config.js-verdiane?")) return;
     App.store.remove(SUPER_KEY);
-    if (_sb) {
-      _sb.from("store").delete().eq("tenant_id", NS).eq("key", SUPER_KEY).then(function (r) {
-        if (r.error) console.error("[console] superconfig-sletting feila:", r.error);
-      });
-      _sb.from("store").delete().eq("tenant_id", NS).eq("key", SUPER_PRIVATE_KEY).then(function (r) {
-        if (r.error) console.error("[console] superconfig-private-sletting feila:", r.error);
-      });
-    }
-    location.reload();
+    brokerCall("reset_config", {}, function (r) {
+      if (r.error) console.error("[console] nullstilling feila:", r.error);
+      location.reload();
+    });
   }
 
   /* =========================================================================
-     SUPERCONFIG-PRIVATE I/O (2026-07-07)
+     SUPERCONFIG-PRIVATE I/O (2026-07-07, ruta om via broker i Fase 8)
      -----------------------------------------------------------------------
      Held hemmeleg per-kunde-config (i dag berre adminPassword-overstyringa)
      ATSKILT frå 'superconfig' — den er framleis med vilje anon-lesbar (naudsynt
      for at tema/feature-flagg skal fungere for ein ikkje-innlogga besøkande),
      så eit passord kan ALDRI liggje der i klartekst. RLS krev
-     is_platform_operator() for BÅDE lesing og skriving av denne nøkkelen (sjå
-     migration.sql) — difor kan verken App.store sin vanlege anon/authenticated-
-     hydrering (feil identitet) eller ein enkel synkron getter brukast; må gå
-     via Console sin eigen OTP-verifiserte klient, alltid async.
+     is_platform_operator() for BÅDE lesing og skriving av denne nøkkelen —
+     no berre nåbar via broker Edge Function-en (get_private_config/set_config),
+     aldri direkte frå klienten mot kundens eige prosjekt.
      ====================================================================== */
   var SUPER_PRIVATE_KEY = "superconfig-private";
 
   function getSCPrivate(cb) {
-    if (!_sb) { cb({}); return; }
-    _sb.from("store").select("value").eq("tenant_id", NS).eq("key", SUPER_PRIVATE_KEY).maybeSingle()
-      .then(function (r) {
-        if (r.error) { console.error("[console] superconfig-private-lesing feila:", r.error); cb({}); return; }
-        cb((r.data && r.data.value) || {});
-      });
+    brokerCall("get_private_config", {}, function (r) {
+      if (r.error) { console.error("[console] superconfig-private-lesing feila:", r.error); cb({}); return; }
+      cb(r.value || {});
+    });
   }
 
   function saveSCPrivate(priv) {
-    if (!_sb) return;
-    _sb.from("store").upsert(
-      { tenant_id: NS, key: SUPER_PRIVATE_KEY, value: priv },
-      { onConflict: "tenant_id,key" }
-    ).then(function (r) {
+    brokerCall("set_config", { key: SUPER_PRIVATE_KEY, value: priv }, function (r) {
       if (r.error) console.error("[console] superconfig-private-skriving feila:", r.error);
     });
   }
@@ -256,7 +284,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   function buildLogin() {
     var app = document.getElementById("console-app");
-    if (!_sb) {
+    if (!_sbControl) {
       app.innerHTML =
         '<div class="cs-login-wrap"><div class="cs-login-box">' +
           '<div class="cs-login-brand"><span class="ti ti-layout-grid"></span> Console</div>' +
@@ -287,11 +315,14 @@ window.VwConsole = (function () {
       var email = document.getElementById("cs-email").value.trim().toLowerCase();
       var err   = document.getElementById("cs-login-err");
       if (!email) { err.textContent = "Skriv inn e-postadresse."; err.style.color = "#c0392b"; return; }
-      if (SUPERADMIN_EMAILS.indexOf(email) === -1) {
-        err.textContent = "Ingen tilgang til Console."; err.style.color = "#c0392b"; return;
-      }
+      // Ingen e-postliste-sjekk her lenger (Fase 8) — same melding uansett om
+      // e-posten er ein reell operatør eller ikkje, sidan shouldCreateUser:false
+      // uansett no-oppar trygt for ukjende e-postar. Den faktiske tilgangs-
+      // sjekken (operators.status = 'active') skjer FØRST etter OTP-verifisering,
+      // sjå renderLoginStep2 — unngår at denne sjekken kan brukast som eit
+      // "finst denne e-posten som operatør"-orakel.
       err.textContent = "Sender kode…"; err.style.color = "";
-      _sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function (res) {
+      _sbControl.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false } }).then(function (res) {
         if (res.error) { err.textContent = "Feil: " + res.error.message; err.style.color = "#c0392b"; return; }
         _otpEmail = email;
         renderLoginStep2();
@@ -327,24 +358,34 @@ window.VwConsole = (function () {
       var token = document.getElementById("cs-otp").value.trim();
       var err   = document.getElementById("cs-otp-err");
       err.textContent = "Verifiserer…"; err.style.color = "";
-      _sb.auth.verifyOtp({ email: _otpEmail, token: token, type: "email" }).then(function (vr) {
+      _sbControl.auth.verifyOtp({ email: _otpEmail, token: token, type: "email" }).then(function (vr) {
         if (vr.error) {
           err.textContent = "Feil kode — prøv igjen."; err.style.color = "#c0392b";
           document.getElementById("cs-otp").value = "";
           document.getElementById("cs-otp").focus();
           return;
         }
-        // SUPERADMIN_EMAILS (sjekka før OTP vart sendt) er den fulle tilgangssjekken —
-        // Vibeverk-operatøren er ikkje ein kundebrukar og skal ikkje trenge ei rad i
-        // denne kundens users-tabell. Sjå docs/decisions/ADR-0004.
-        setAuthed();
-        buildShell();
+        _session = vr.data.session;
+        // Den fulle tilgangssjekken (Fase 8): er denne brukaren ein aktiv rad
+        // i operators-tabellen i vibeverk-control? Vibeverk-operatøren er
+        // ikkje ein kundebrukar og skal ikkje trenge ei rad i denne kundens
+        // users-tabell — sjå docs/decisions/ADR-0004 (framleis gyldig
+        // resonnement, berre flytta til control-plane-tabellen).
+        checkOperatorActive(function (ok) {
+          if (!ok) {
+            _sbControl.auth.signOut();
+            _session = null;
+            err.textContent = "Ingen tilgang til Console."; err.style.color = "#c0392b";
+            return;
+          }
+          loadTenants(function () { buildShell(); });
+        });
       });
     });
     document.getElementById("cs-resend").addEventListener("click", function () {
       var err = document.getElementById("cs-otp-err");
       err.textContent = "Sender ny kode…"; err.style.color = "";
-      _sb.auth.signInWithOtp({ email: _otpEmail, options: { shouldCreateUser: false } }).then(function () {
+      _sbControl.auth.signInWithOtp({ email: _otpEmail, options: { shouldCreateUser: false } }).then(function () {
         err.textContent = "Ny kode sendt!"; err.style.color = "#16a34a";
       });
     });
@@ -361,7 +402,14 @@ window.VwConsole = (function () {
       '<div class="cs-wrap">' +
         '<aside class="cs-sidebar">' +
           '<div class="cs-brand"><span class="ti ti-layout-grid"></span> Console</div>' +
-          '<div class="cs-customer">' + C.esc((CFG.company && CFG.company.name) || "") + '</div>' +
+          '<div class="cs-tenant-picker">' +
+            '<select id="cs-tenant-select" title="Vel kunde">' +
+              _tenants.map(function (t) {
+                return '<option value="' + C.esc(t.id) + '"' + (_activeTenant && t.id === _activeTenant.id ? " selected" : "") + '>' +
+                  C.esc(t.slug) + '</option>';
+              }).join("") +
+            '</select>' +
+          '</div>' +
           '<nav class="cs-nav">' +
             NAV_ITEMS.map(function (n) {
               return '<button type="button" class="cs-nav__item" data-cs-nav="' + n.id + '">' +
@@ -380,6 +428,13 @@ window.VwConsole = (function () {
       btn.addEventListener("click", function () { navigate(btn.getAttribute("data-cs-nav")); });
     });
     document.querySelector(".cs-logout-btn").addEventListener("click", logout);
+    var tenantSelect = document.getElementById("cs-tenant-select");
+    if (tenantSelect) {
+      tenantSelect.addEventListener("change", function () {
+        var picked = _tenants.filter(function (t) { return t.id === tenantSelect.value; })[0];
+        if (picked) { _activeTenant = picked; navigate(activeSection); }
+      });
+    }
     navigate(activeSection);
   }
 
@@ -747,14 +802,15 @@ window.VwConsole = (function () {
     var supaUrl     = (CFG.supabase && CFG.supabase.url) || "—";
     var supaKey     = (CFG.supabase && CFG.supabase.anonKey) || "";
     var supaKeyShrt = supaKey ? supaKey.slice(0, 40) + "…" : "—";
-    var expiryMs    = parseInt(localStorage.getItem(AUTH_KEY) || "0", 10);
-    var expiryStr   = expiryMs > 0 ? new Date(expiryMs).toLocaleString("nb-NO") : "—";
+    var expiresAtSec = _session && _session.expires_at;
+    var expiryStr   = expiresAtSec ? new Date(expiresAtSec * 1000).toLocaleString("nb-NO") : "—";
 
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Innlogging</legend>' +
-          '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .4rem">Console brukar OTP via e-post — ingen passord å handtere her.</p>' +
-          '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Sesjon utløper: <strong>' + C.esc(expiryStr) + '</strong></p>' +
+          '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .4rem">Console brukar OTP via e-post mot vibeverk-control (Fase 8) — ingen passord å handtere her.</p>' +
+          '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Innlogga tenant: <strong>' + C.esc((_activeTenant && _activeTenant.slug) || "—") + '</strong></p>' +
+          '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Økta oppdaterast automatisk; gjeldande token utløper: <strong>' + C.esc(expiryStr) + '</strong></p>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Nettside-admin (for kunden)</legend>' +
           C.field({ id:"cs-apass", label:"Passord for #admin-inngang", value:"", placeholder:"Laster…" }) +
@@ -822,11 +878,19 @@ window.VwConsole = (function () {
   document.addEventListener("DOMContentLoaded", function () {
     App.ready(function () {
       applyConsoleTheme();
-      if (isAuthed()) {
-        buildShell();
-      } else {
-        buildLogin();
-      }
+      if (!_sbControl) { buildLogin(); return; }
+      // Sjekk om det finst ei ekte, framleis gyldig Supabase-sesjon mot
+      // vibeverk-control FØR vi viser skallet — ikkje eit lokalt tidsstempel
+      // som kan seie "innlogga" lenge etter at den underliggande JWT-en
+      // faktisk har gått ut (den gamle, no fiksa buggen, sjå AUTH-seksjonen).
+      _sbControl.auth.getSession().then(function (r) {
+        _session = r.data && r.data.session;
+        if (!_session) { buildLogin(); return; }
+        checkOperatorActive(function (ok) {
+          if (!ok) { logout(); return; }
+          loadTenants(function () { buildShell(); });
+        });
+      });
     });
   });
 
