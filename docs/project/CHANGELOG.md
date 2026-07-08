@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.20.2 — 2026-07-08
+
+### Phase 7 mechanism-proof completed: control-plane/data-plane split, `vibeverk-control` Supabase project
+- New dedicated Supabase project `vibeverk-control` (ref `jxoglthrnshabqmdmnui`) standing in as the control plane — `tenants`/`operators` tables, RLS, `resolve_tenant_by_hostname()` anon-safe RPC (explicit column list), `get_tenant_service_role_key()` Vault accessor (executable only by `service_role`/`postgres`), and a `broker-ping` Edge Function proving the full cross-project broker chain: operator auth → tenant lookup → Vault secret decrypt → cross-project `service_role` call against the real production project (`clzczbyklgdtdhgjphup`), verified end to end via a real operator login and a real HTTP call returning `success: true`, plus a negative-path check (no Authorization header → 401).
+- New `docs/decisions/ADR-0008-control-plane-data-plane-split.md` records the design rationale and consequences (Architect-consulted before implementation, per CLAUDE.md).
+- **Real bug found and fixed along the way**: Supabase's platform default ACLs (`pg_default_acl`) grant `EXECUTE` on new functions directly to `anon`/`authenticated`/`service_role`, independent of `PUBLIC` — a migration that only revokes from `PUBLIC` does not actually block `anon`. Fixed via an explicit follow-up migration revoking from `anon` directly; `CLAUDE.md`'s Supabase rules section now states this as a standing rule.
+- Per-tenant `service_role` keys are never stored as plain columns — stored via Supabase Vault, decrypted only inside the `SECURITY DEFINER` accessor function, never returned to any caller.
+- Repo layout: `supabase-control/` added as a sibling to `supabase/` (the existing directory, still linked to production, untouched) — its own `supabase/migrations/` history, deployed via explicit `--db-url` (pooler connection string) rather than `supabase link`, since this CLI version's `db push`/`db query` don't support `--project-ref` (only `functions deploy` does) and the two projects' local link state must not collide. `CLAUDE.md`'s repository-layout section updated accordingly.
+- **Scope note**: this is a mechanism-proof only — `broker-ping` is read-only and nothing in the live product (public site, Workspace, Console) reads from or writes to `vibeverk-control` yet. Phase 8 (rebuilding Console to authenticate against the control plane, real broker actions beyond the ping) is separate, not-yet-started work. Needs a Security Auditor pass before any real (non-ping) broker action is added.
+- No changes to the public site, Workspace, or the production data-plane project (`clzczbyklgdtdhgjphup`) — read-only against it throughout (one `auth.admin.listUsers` call for the mechanism-proof).
+
 ## 0.20.1 — 2026-07-08
 
 ### Phase 6 mechanism-proof completed: Vercel Routing Middleware confirmed viable (`.js`, not `.mjs`)

@@ -18,6 +18,7 @@ supabase/
   migration.sql      SUPERSEDED — frozen snapshot as of the 2026-07-07 baseline, not updated further
   hotfix_*.sql       Historical targeted fixes, all folded into the baseline migration — new fixes go in migrations/
   chat-tests.js      Browser-based chat integration tests (run in console while admin is logged in)
+supabase-control/    SEPARATE Supabase project (control plane, ref jxoglthrnshabqmdmnui) — tenant registry + operators, see ADR-0008. Sibling to supabase/, own supabase/migrations/ history. Never linked via `supabase link` (would collide with supabase/'s link to clzczbyklgdtdhgjphup) — always pass --db-url (pooler connection string) for db push/db query, --project-ref jxoglthrnshabqmdmnui for functions deploy.
 test.js              jsdom harness for public site
 test-workspace.js    jsdom harness for Workspace (renamed 2026-07-07 from test-intranet.js)
 .github/workflows/   CI: node test.js + node test-workspace.js on every push
@@ -80,8 +81,10 @@ All other tests must remain green. Do not silently remove or skip failing tests.
 - After adding or replacing any function: `NOTIFY pgrst, 'reload schema';`
 - All anon-facing functions must be `SECURITY DEFINER STABLE SET search_path = public`
 - Use explicit function signatures in `REVOKE`/`GRANT`: `REVOKE EXECUTE ON FUNCTION f(text, text) FROM PUBLIC`
+- **Supabase's platform default ACLs (`pg_default_acl`) grant `EXECUTE` on every newly created function directly to `anon`/`authenticated`/`service_role`, independent of `PUBLIC`.** `REVOKE ALL ... FROM PUBLIC` alone does NOT strip this — confirmed 2026-07-08 (see ADR-0008) via a real function that stayed anon-executable despite that revoke. Always explicitly `REVOKE ALL ON FUNCTION f(...) FROM anon, authenticated` (or whichever roles must not call it) as its own statement, and verify via `pg_default_acl`/a real anon-key call, not just a clean migration exit code.
 - Anon must never get direct `SELECT` on `chat_messages` or `chat_conversations`
 - The `store` table keeps `tenant_id` for backward compatibility — all other chat tables are single-tenant
+- Per-tenant `service_role` keys (control-plane `tenants.data_plane_service_role_secret_id`, see ADR-0008) are never stored as plain columns — always via `vault.create_secret`, decrypted only inside a `SECURITY DEFINER` function callable solely by `service_role`/`postgres`
 
 ## Deployment safeguard
 
