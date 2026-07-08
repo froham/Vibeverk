@@ -61,13 +61,21 @@ serve(async (req: Request) => {
   const controlSrvSb = createClient(controlUrl, controlSrvKey);
 
   async function audit(tenantId: string | null, action: string, result: "success" | "error", detail?: string) {
-    await controlSrvSb.from("broker_audit_log").insert({
+    const { error: auditErr } = await controlSrvSb.from("broker_audit_log").insert({
       operator_id: user.id,
       tenant_id: tenantId,
       action,
       result,
       detail: detail || null,
     });
+    // The audit log is the compensating control for this broker's
+    // concentrated blast radius (see ADR-0009) — a silently-failing insert
+    // here would mean actions keep succeeding with zero forensic trail.
+    // Never let it throw (that would break the actual action), but always
+    // surface the failure to function logs.
+    if (auditErr) {
+      console.error("[broker] KRITISK: audit-logg-skriving feila", { action, tenantId, auditErr: auditErr.message });
+    }
   }
 
   const body = await req.json().catch(() => ({}));
