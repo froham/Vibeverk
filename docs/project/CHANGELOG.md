@@ -30,6 +30,11 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.22.1 — 2026-07-08
+
+### Fix: Kundar-sjekklista viste alltid tom status/tilkopling
+`loadTenants()` henta berre `id, slug, hostnames` — nok for tenant-veljaren, men Kundar-sjekklista (status-merke, "kopla"/"ikkje kopla", aktiverings-sperra) treng òg `status`/`data_plane_url`/`data_plane_storage_key`/`routing_verified_at`. Funne under gjennomtenking av kva som bør manuelt testast etter Fase 9, før nokon faktisk merka det som ein synleg feil. Utvida SELECT-lista. Ingen SQL- eller Edge Function-endring. `test.js`/`test-workspace.js` uendra (504/1, 152/151/1).
+
 ## 0.22.0 — 2026-07-08
 
 ### Phase 9: semi-automated onboarding v1 (checklist bookkeeping, hard-gated from go-live)

@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.22.0";
+  var VIBEVERK_VERSION = "0.22.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -144,11 +144,18 @@ window.VwConsole = (function () {
   }
 
   function loadTenants(cb) {
-    _sbControl.from("tenants").select("id, slug, hostnames").order("slug").then(function (r) {
-      _tenants = r.data || [];
-      _activeTenant = _tenants[0] || null;
-      cb();
-    });
+    // Må hente ALLE felt Kundar-sjekklista (renderKdDetail) treng — status,
+    // data_plane_url, data_plane_storage_key, routing_verified_at — ikkje
+    // berre id/slug/hostnames (som var nok for tenant-veljaren åleine).
+    // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
+    // databasen faktisk har rette verdiar.
+    _sbControl.from("tenants")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_storage_key, routing_verified_at")
+      .order("slug").then(function (r) {
+        _tenants = r.data || [];
+        _activeTenant = _tenants[0] || null;
+        cb();
+      });
   }
 
   /* =========================================================================
