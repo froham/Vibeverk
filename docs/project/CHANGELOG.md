@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.22.2 — 2026-07-09
+
+### Phase 9 Security Auditor follow-up: 3 fixes (URL validation, missing field, operator self-escalation)
+- **M1**: `update_tenant_connection` (`tenant-admin` Edge Function) now validates `data_plane_url` matches a real Supabase project URL shape (`https://xxxx.supabase.co`) before storing it — previously accepted any string, which `verify_tenant_schema` then used as an outbound request target with an operator-supplied key, an SSRF-adjacent relay primitive once more than one operator exists.
+- **M2**: `loadTenants()` was still missing `data_plane_anon_key` from its SELECT (a follow-up gap in the same fix as 0.22.1) — the connection form rendered the anon-key field blank and would silently overwrite a previously saved key with an empty string on resubmission.
+- **M3 (pre-existing, not from Phase 9 itself, surfaced during the follow-up review)**: `operators_operator_all` RLS policy let any active operator write to *any* operator's row directly, including self-escalating role to `superadmin` — same class of gap as the `tenants_operator_all` fix from Phase 8, just missed for the sibling table. Narrowed to read-only (new migration `20260708222400_restrict_operators_to_read_only.sql`).
+- All three verified live: a fake connection URL is now rejected (400) while a real one succeeds; a direct PATCH attempt against an operator's own row now returns zero affected rows.
+- Also set up Resend custom SMTP for `vibeverk-control`'s Auth emails (Dashboard-only config, not tracked in repo) — removes the very low default rate limit on Supabase's built-in email sender, and copied the production Magic Link email template (code-only, no clickable link) so Console's OTP login screen actually receives a code to type.
+- Cache-bust: `console-core.js` 56 → 57.
+
 ## 0.22.1 — 2026-07-08
 
 ### Fix: Kundar-sjekklista viste alltid tom status/tilkopling

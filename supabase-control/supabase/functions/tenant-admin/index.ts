@@ -119,10 +119,21 @@ serve(async (req: Request) => {
   // ── update_tenant_connection ─────────────────────────────────────────────
   // Step 2/3 of the checklist: paste in the newly created project's URL +
   // anon key (both non-secret, safe to store as plain columns).
+  //
+  // Security Auditor finding M1 (2026-07-09, Phase 9 follow-up review):
+  // data_plane_url previously accepted any string, which verify_tenant_schema
+  // then used as an outbound request target using an operator-supplied
+  // key -- an SSRF-adjacent relay primitive once more than one operator
+  // exists. Restricted to the real Supabase project-URL shape.
+  const SUPABASE_PROJECT_URL_RE = /^https:\/\/[a-z0-9]+\.supabase\.co\/?$/;
   if (action === "update_tenant_connection") {
     const { data_plane_url, data_plane_anon_key } = body;
     if (!data_plane_url || !data_plane_anon_key) {
       return json({ error: "data_plane_url og data_plane_anon_key er påkrevd" }, 400);
+    }
+    if (!SUPABASE_PROJECT_URL_RE.test(data_plane_url)) {
+      await audit(tenant.id, action, "error", "ugyldig data_plane_url-format");
+      return json({ error: "data_plane_url må vera ein ekte Supabase-prosjekt-URL (https://xxxx.supabase.co)" }, 400);
     }
     const { error } = await controlSrvSb
       .from("tenants")
