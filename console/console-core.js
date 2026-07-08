@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.21.0";
+  var VIBEVERK_VERSION = "0.22.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -111,6 +111,21 @@ window.VwConsole = (function () {
     if (!_sbControl || !_activeTenant) { cb({ error: "Ikkje klar" }); return; }
     var body = Object.assign({ action: action, tenant_id: _activeTenant.id }, payload || {});
     _sbControl.functions.invoke("broker", { body: body }).then(function (r) {
+      if (r.error) { cb({ error: r.error.message || "Feil mot control-plane" }); return; }
+      cb(r.data || {});
+    });
+  }
+
+  // Fase 9: kallar tenant-admin Edge Function-en (kunde-onboarding-sjekklista)
+  // — ei eiga funksjon, atskilt frå broker over, sidan denne skriv direkte i
+  // tenant-registeret (control-plane-eigne skrivingar, ikkje kryssprosjekt-
+  // handlingar mot ein KUNDE sitt prosjekt slik broker gjer, bortsett frå
+  // verify_tenant_schema-handlinga). tenant_id er valfri her (register_tenant
+  // har ingen enno) — payload avgjer, ikkje _activeTenant.
+  function tenantAdminCall(action, payload, cb) {
+    if (!_sbControl) { cb({ error: "Ikkje klar" }); return; }
+    var body = Object.assign({ action: action }, payload || {});
+    _sbControl.functions.invoke("tenant-admin", { body: body }).then(function (r) {
       if (r.error) { cb({ error: r.error.message || "Feil mot control-plane" }); return; }
       cb(r.data || {});
     });
@@ -214,6 +229,7 @@ window.VwConsole = (function () {
     crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar"
   };
   var NAV_ITEMS = [
+    { id: "kundar",     icon: "building",    label: "Kundar" },
     { id: "produkt",    icon: "package",     label: "Produkt" },
     { id: "web",        icon: "world",       label: "Web" },
     { id: "workspace",  icon: "briefcase",   label: "Workspace" },
@@ -846,13 +862,185 @@ window.VwConsole = (function () {
   }
 
   /* =========================================================================
+     KUNDAR — Fase 9: semi-automatisert onboarding-sjekkliste (narrow scope)
+     -----------------------------------------------------------------------
+     Ingen kunde registrert her kan setjast 'active' før den ekte
+     hostname-ruteren (Fase 6) finst — activate_tenant i tenant-admin
+     Edge Function-en avviser ubetinga inntil routing_verified_at er sett,
+     noko INGENTING i dagens kode set. Sjå Fase 9-designnotatet (Arkitekt,
+     2026-07-08) for kvifor dette er strukturert slik.
+     ====================================================================== */
+  var _kdSelectedId = null;
+
+  function kdStatusBadge(status) {
+    var map = { provisioning: "#d4a017", active: "#1e8449", suspended: "#c0392b", archived: "#64748b" };
+    return '<span style="font-size:.75rem;font-weight:700;color:' + (map[status] || "#64748b") + '">' + C.esc(status || "") + '</span>';
+  }
+
+  function renderKundar(_sc, wrap) {
+    var selected = _tenants.filter(function (t) { return t.id === _kdSelectedId; })[0];
+
+    wrap.innerHTML =
+      '<div class="admin-group" style="margin-bottom:1.2rem">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">' +
+          '<strong>Registrerte kundar</strong>' +
+          '<button type="button" class="btn btn--primary btn--sm" id="kd-new-btn">+ Ny kunde</button>' +
+        '</div>' +
+        '<ul class="kd-list">' +
+          _tenants.map(function (t) {
+            return '<li class="kd-row" data-kd-row="' + C.esc(t.id) + '">' +
+              '<strong>' + C.esc(t.slug) + '</strong>' +
+              kdStatusBadge(t.status) +
+            '</li>';
+          }).join("") +
+          (_tenants.length ? "" : '<li class="kd-row"><span style="color:var(--color-muted)">Ingen kundar registrert enno.</span></li>') +
+        '</ul>' +
+      '</div>' +
+      '<div id="kd-new-form-wrap"></div>' +
+      '<div id="kd-detail-wrap"></div>';
+
+    wrap.querySelectorAll("[data-kd-row]").forEach(function (row) {
+      row.addEventListener("click", function () {
+        _kdSelectedId = row.getAttribute("data-kd-row");
+        renderKundar(_sc, wrap);
+      });
+    });
+
+    wrap.querySelector("#kd-new-btn").addEventListener("click", function () {
+      renderKdNewForm(wrap.querySelector("#kd-new-form-wrap"));
+    });
+
+    if (selected) renderKdDetail(selected, wrap.querySelector("#kd-detail-wrap"), wrap, _sc);
+  }
+
+  function renderKdNewForm(wrap) {
+    if (wrap.innerHTML) { wrap.innerHTML = ""; return; } // toggle av/på
+    wrap.innerHTML =
+      '<div class="admin-group" style="margin-bottom:1.2rem">' +
+        '<form id="kd-new-form">' +
+          C.field({ id: "kd-slug", label: "Slug (unik, t.d. \"kundenamn\")", placeholder: "kundenamn" }) +
+          C.field({ id: "kd-hostnames", label: "Domenenamn (kommaseparert)", placeholder: "kunde.no, www.kunde.no" }) +
+          C.field({ id: "kd-storagekey", label: "Lagringsnøkkel (storageKey frå kundens config.js)", placeholder: "t.d. kundenamn" }) +
+          '<p id="kd-new-err" style="font-size:.85rem;color:#c0392b;min-height:1.2em"></p>' +
+          '<button type="submit" class="btn btn--primary">Registrer kunde</button>' +
+        '</form>' +
+      '</div>';
+    wrap.querySelector("#kd-new-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var err = wrap.querySelector("#kd-new-err");
+      var slug = wrap.querySelector("#kd-slug").value.trim();
+      var storageKey = wrap.querySelector("#kd-storagekey").value.trim();
+      var hostnames = wrap.querySelector("#kd-hostnames").value.split(",").map(function (h) { return h.trim(); }).filter(Boolean);
+      if (!slug || !storageKey) { err.textContent = "Slug og lagringsnøkkel er påkrevd."; return; }
+      err.textContent = "Registrerer…";
+      tenantAdminCall("register_tenant", { slug: slug, hostnames: hostnames, data_plane_storage_key: storageKey }, function (r) {
+        if (r.error) { err.textContent = r.error; return; }
+        loadTenants(function () {
+          _kdSelectedId = r.tenant_id;
+          wrap.innerHTML = "";
+          navigate("kundar");
+        });
+      });
+    });
+  }
+
+  function renderKdDetail(tenant, wrap, fullWrap, _sc) {
+    var hasConnection = !!(tenant.data_plane_url);
+    var routingOk = !!tenant.routing_verified_at;
+
+    wrap.innerHTML =
+      '<div class="admin-group">' +
+        '<h3 style="margin:0 0 .8rem">Sjekkliste: ' + C.esc(tenant.slug) + ' ' + kdStatusBadge(tenant.status) + '</h3>' +
+
+        '<div class="kd-card"><strong>1. Registrert</strong> ✓' +
+          '<p class="field__hint">Slug: ' + C.esc(tenant.slug) + '. Lagringsnøkkel: ' + C.esc(tenant.data_plane_storage_key || "") + '.</p>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>2. Opprett Supabase-prosjekt</strong>' +
+          '<p class="field__hint">Gjer dette manuelt via Supabase Dashboard/CLI (kan ikkje automatiserast trygt — sjå Fase 9-notatet). Kom tilbake hit når prosjektet finst.</p>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>3. Kopling</strong> ' + (hasConnection ? "✓" : "—") +
+          '<form id="kd-conn-form" style="margin-top:.6rem">' +
+            C.field({ id: "kd-url", label: "data_plane_url", value: tenant.data_plane_url || "", placeholder: "https://xxxx.supabase.co" }) +
+            C.field({ id: "kd-anon", label: "data_plane_anon_key", value: tenant.data_plane_anon_key || "", placeholder: "eyJ…" }) +
+            '<button type="submit" class="btn btn--ghost btn--sm">Lagre kopling</button>' +
+          '</form>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>3b. Service_role-nøkkel</strong> (lagra trygt via Vault, aldri vist att)' +
+          '<form id="kd-key-form" style="margin-top:.6rem">' +
+            C.field({ id: "kd-srvkey", label: "service_role-nøkkel", type: "password", placeholder: "eyJ…" }) +
+            '<button type="submit" class="btn btn--ghost btn--sm">Lagre nøkkel</button>' +
+            '<p class="form__status" id="kd-key-status" style="margin-top:.4rem"></p>' +
+          '</form>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>4. Køyr og verifiser skjema</strong>' +
+          '<p class="field__hint">Køyr migrasjonane manuelt mot det nye prosjektet (<code>npx supabase db push --db-url …</code>), deretter:</p>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="kd-verify-btn">Verifiser skjema</button>' +
+          '<p id="kd-verify-result" class="field__hint"></p>' +
+        '</div>' +
+
+        '<div class="kd-card" style="opacity:.6"><strong>5. DNS / gå-live</strong>' +
+          '<p class="field__hint">Sperra: ekte domene-rute (Fase 6) er ikkje bygd enno.</p>' +
+        '</div>' +
+
+        '<div class="kd-card">' +
+          '<strong>6. Set aktiv</strong> — ' + (routingOk ? "klar" : "sperra (Fase 6 manglar)") +
+          '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + (routingOk ? "" : " disabled") + '>Set aktiv</button></div>' +
+          '<p id="kd-activate-result" class="field__hint"></p>' +
+        '</div>' +
+      '</div>';
+
+    wrap.querySelector("#kd-conn-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var url = wrap.querySelector("#kd-url").value.trim();
+      var anon = wrap.querySelector("#kd-anon").value.trim();
+      tenantAdminCall("update_tenant_connection", { tenant_id: tenant.id, data_plane_url: url, data_plane_anon_key: anon }, function (r) {
+        loadTenants(function () { renderKundar(_sc, fullWrap); });
+      });
+    });
+
+    wrap.querySelector("#kd-key-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var keyInp = wrap.querySelector("#kd-srvkey");
+      var key = keyInp.value;
+      if (!key) return;
+      tenantAdminCall("set_tenant_service_role_key", { tenant_id: tenant.id, service_role_key: key }, function (r) {
+        keyInp.value = "";
+        statusMsg(wrap.querySelector("#kd-key-status"), r.error || "✓ Lagra", !r.error);
+      });
+    });
+
+    wrap.querySelector("#kd-verify-btn").addEventListener("click", function () {
+      var out = wrap.querySelector("#kd-verify-result");
+      out.textContent = "Sjekkar…";
+      tenantAdminCall("verify_tenant_schema", { tenant_id: tenant.id }, function (r) {
+        if (r.error) { out.textContent = r.error; return; }
+        out.textContent = r.schema_ok ? "✓ Skjema OK" : "Manglar: " + r.missing_tables.join(", ");
+      });
+    });
+
+    wrap.querySelector("#kd-activate-btn").addEventListener("click", function () {
+      var out = wrap.querySelector("#kd-activate-result");
+      out.textContent = "…";
+      tenantAdminCall("activate_tenant", { tenant_id: tenant.id }, function (r) {
+        out.textContent = r.error || "✓ Aktivert";
+        if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
+      });
+    });
+  }
+
+  /* =========================================================================
      SEKSJONSDISPATCH
      ====================================================================== */
   var TITLES = {
-    produkt:"Produkt", web:"Web", workspace:"Workspace",
+    kundar:"Kundar", produkt:"Produkt", web:"Web", workspace:"Workspace",
     modular:"Modular", analyse:"Analyse", personvern:"Personvern", system:"System"
   };
   var RENDERERS = {
+    kundar:     renderKundar,
     produkt:    renderProdukt,
     web:        renderWeb,
     workspace:  renderWorkspace,

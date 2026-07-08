@@ -1,0 +1,38 @@
+# ADR-0010: Semi-automated onboarding v1 (Phase 9) — checklist bookkeeping, hard-gated from go-live
+
+**Status:** Accepted (shipped and verified live)
+**Date:** 2026-07-08
+
+## Context
+
+Phase 7 (control plane) and Phase 8 (Console auth + broker) are live. The original SaaS-scaling plan's Phase 9 was "semi-automated onboarding v1: operator registers customer metadata in Console; a provisioning checklist holds explicit approval per step, not one click." Before building it, the user asked the Architect to address an open tension directly: **Phase 6's real hostname→tenant→Supabase-project resolver was never built** — only a mechanism-proof (Vercel Routing Middleware that echoes the `Host` header) exists, deployed only to a disposable test project, never wired to `vibeverk.no`. Onboarding a second tenant into the registry produces a row nothing can actually route traffic to.
+
+The Architect's recommendation, accepted by the user: proceed with Phase 9 now, but **split two conflated concerns** — (a) getting a track record of the checklist/provisioning *process* (doesn't need Phase 6), versus (b) a tenant actually being *servable* (needs Phase 6). Build (a) now, with a hard structural gate preventing any tenant onboarded this way from being treated as (b) until Phase 6 exists.
+
+## Decision
+
+**New `tenants.routing_verified_at timestamptz` column** — nullable, and nothing in this phase's code, or anywhere else in the repository, ever sets it. It exists purely as a gate a future Phase 6 resolver-verification process must set before a tenant can go live.
+
+**New `tenant-admin` Edge Function** in `vibeverk-control`, kept separate from the already-reviewed `broker` function so this newer, less-reviewed write surface doesn't touch that tested code path. Same two-client auth pattern (anon client validates an active operator; service-role client performs the action), same `broker_audit_log` table for a single consistent trail. Actions:
+
+- `register_tenant` — creates a `tenants` row (`status` always `'provisioning'`, regardless of what the caller sends).
+- `update_tenant_connection` — stores `data_plane_url`/`data_plane_anon_key` (non-secret, plain columns).
+- `set_tenant_service_role_key` — the one place a tenant's service_role key is ever written, via a new `store_tenant_service_role_key()` SQL function that calls `vault.create_secret()` and updates the secret reference. Restricted to `service_role`/`postgres` only (`REVOKE ALL ... FROM PUBLIC, anon, authenticated`), same pattern as `get_tenant_service_role_key()`.
+- `verify_tenant_schema` — cross-project check (needs the Vault-decrypted key, like `broker`'s actions) against a new `verify_schema_fingerprint()` RPC added to the **production project's own migrations** (so every future customer's baseline includes it) — confirms expected tables exist rather than trusting a clean `db push` exit code.
+- `activate_tenant` — **refuses unconditionally** while `routing_verified_at IS NULL`. This is the hard gate: no tenant onboarded through this phase can reach `status = 'active'` until a real Phase 6 resolver exists and something (not yet built) sets that column.
+
+**Console UI**: a new "Kundar" section — tenant list, a "+ Ny kunde" registration form, and a per-tenant checklist detail view (register → manual project creation (informational, not automatable) → connection info → secret → schema verify → DNS/go-live (hard-blocked, greyed out) → activate (disabled unless `routing_verified_at` is set, which is never today)).
+
+**Deliberately not automated**: creating the actual Supabase project. This would require an org-scoped Management API token with create/delete/billing power over every project — a categorically bigger secret than the tenant-scoped Vault-stored keys this architecture already isolates — and a Console button click can't carry the same per-step human confirmation a chat-confirmed CLI command gets. Stays a manual step: the operator creates it via Dashboard/CLI, then pastes the resulting URL/keys into Console.
+
+## Consequences
+
+- **This is checklist/bookkeeping infrastructure, not "customer #2 can go live."** Anyone reading a `'provisioning'`-status tenant row must not assume it's closer to servable than schema-verified — the routing layer to reach it doesn't exist yet.
+- **New secret-writing path** (`set_tenant_service_role_key`) is a genuinely new attack surface not covered by ADR-0008/0009's existing Security Auditor sign-off — needs its own review before this is used for a real (non-test) customer.
+- `verify_schema_fingerprint()` is now part of the baseline every future customer project should have — if a customer project is ever provisioned from an older baseline snapshot instead of the current `supabase/migrations/` history, this check will itself reveal that gap (via its own absence, a clear RPC-not-found error) rather than silently passing.
+- **Found and fixed during live testing** (not just a clean deploy): the `vibeverk-control` migration was initially reported "run" by the user but had not actually applied (Dashboard "Success" was misread as confirmation without checking the actual verification query) — every action except `register_tenant` failed with a generic "unknown tenant" 404 until this was caught by directly querying `pg_proc`/`information_schema.columns` and re-running the migration. Lesson already generally documented (CLAUDE.md's "always verify the actual result... rather than trusting a clean exit code") — this is a concrete instance of exactly that rule, worth remembering for any future Dashboard-run SQL specifically: "Success" only means no syntax error, not that a specific object exists.
+- Live-tested end to end with a disposable test tenant (registered, given a fake connection + fake secret, schema-verify correctly failed against the fake project, activation correctly refused) — all test rows and the fake Vault secret were deleted afterward, including a foreign-key-driven cleanup order (`broker_audit_log` rows referencing a tenant must be deleted before the tenant row, by design — the audit table should never silently cascade-delete its own history).
+
+## Evidence
+
+Architect-agent design/risk assessment (2026-07-08, read-only), including the explicit recommendation to decouple "checklist track record" from "real servability" rather than either fully building or fully deferring Phase 9. Live verification via a real operator session (browser session injected via a genuine Supabase Auth token, not a mock): `register_tenant` → `update_tenant_connection` → `set_tenant_service_role_key` → `verify_tenant_schema` (correctly failed against a non-existent project) → `activate_tenant` (correctly refused, button disabled client-side too). Screenshots captured at each step. All test data removed afterward and confirmed via re-query.

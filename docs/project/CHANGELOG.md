@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.22.0 — 2026-07-08
+
+### Phase 9: semi-automated onboarding v1 (checklist bookkeeping, hard-gated from go-live)
+- New "Kundar" section in Console: tenant list, "+ Ny kunde" registration form, and a per-tenant onboarding checklist (register → manual Supabase project creation → connection info → service_role secret → schema verification → DNS/go-live (hard-blocked) → activate (disabled)).
+- New `tenant-admin` Edge Function in `vibeverk-control` (kept separate from `broker` so this newer write surface doesn't touch that already-reviewed code path): `register_tenant`, `update_tenant_connection`, `set_tenant_service_role_key` (writes via Vault, never a plain column), `verify_tenant_schema` (cross-project check against a new `verify_schema_fingerprint()` RPC added to the production baseline), `activate_tenant`.
+- **Hard structural gate, per the Architect's explicit recommendation**: new `tenants.routing_verified_at` column, nullable, set by nothing in this codebase — `activate_tenant` refuses unconditionally until a future Phase 6 resolver sets it. This is deliberate: Phase 6's real hostname→tenant resolver still doesn't exist (only a mechanism-proof), so no tenant onboarded through this checklist can be treated as actually servable yet.
+- **Deliberately not automated**: creating the actual new Supabase project — would need an org-scoped Management API token with power over every project, a bigger secret class than anything else in this architecture, and can't carry the same per-step human confirmation a chat-confirmed CLI command gets. Stays manual: operator creates it themselves, pastes results into Console.
+- **Real bug found via live testing**: the `vibeverk-control` migration was initially reported as run but hadn't actually applied — every action except `register_tenant` failed with "unknown tenant" until this was caught by directly querying `pg_proc`/`information_schema.columns` rather than trusting the Dashboard's "Success" message (which only means no syntax error, not that a specific object exists).
+- New `docs/decisions/ADR-0010-phase9-semi-automated-onboarding.md`.
+- Verified live end-to-end with a disposable test tenant: registration, connection info, secret storage, and the activation gate all confirmed working via a real browser session (Supabase Auth token injected into a real Playwright-driven page, not a mock) — schema verification correctly failed against the fake test project, activation correctly refused. All test data (tenant rows, audit log entries, the fake Vault secret) removed afterward and confirmed via re-query.
+- No changes to the public site, Workspace, or the existing broker/broker-ping functions. Cache-bust: `console-core.js` 53 → 55.
+
 ## 0.21.0 — 2026-07-08
 
 ### Phase 8: Console now authenticates against the control plane; first real broker actions
