@@ -30,6 +30,11 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.26.2 — 2026-07-09
+
+### `broker` redeployed with the `analytics` config-key fix
+`broker` Edge Function redeployed to `vibeverk-control` (`analytics` added to `ALLOWED_CONFIG_KEYS`, see 0.26.1). Verified live via a negative-path check (no `Authorization` header → 401), not just a clean deploy message. Docs-only otherwise (ADR-0009 updated). Cache-bust: `console-core.js` 68 → 69 (version string only).
+
 ## 0.26.1 — 2026-07-09
 
 ### Console's tenant picker was never actually tenant-aware for config reads — fixed
