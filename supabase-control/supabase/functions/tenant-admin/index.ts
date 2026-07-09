@@ -17,6 +17,31 @@
 // HARD GATE: activate_tenant refuses unconditionally until Phase 6's real
 // hostname->tenant resolver exists and sets tenants.routing_verified_at --
 // nothing in this function, or anywhere else yet, ever sets that column.
+//
+// Security Auditor follow-up round 2 (2026-07-09):
+// - Every action here now requires operators.role = 'superadmin', not just
+//   status = 'active'. This whole function is the newest, least-reviewed
+//   write surface in the control plane, and onboarding a customer is rare
+//   and high-stakes -- there's no current need for an ordinary operator to
+//   call any of these actions.
+// - update_tenant_connection / set_tenant_service_role_key now refuse
+//   unless the tenant is still status = 'provisioning' (finding 1, HIGH):
+//   previously a compromised active operator session could repoint an
+//   already-LIVE tenant's data-plane project or swap its service_role key
+//   with no status check at all.
+// - Mutating actions (register_tenant, update_tenant_connection,
+//   set_tenant_service_role_key, verify_tenant_schema, activate_tenant) now
+//   write the audit row BEFORE performing the action and abort with 500 if
+//   that write fails (finding 4) -- previously an audit-insert failure was
+//   only console.error'd and the privileged action proceeded regardless.
+// - verify_tenant_schema now persists its result onto
+//   tenants.schema_verified_at (set on pass, cleared to NULL on fail), and
+//   activate_tenant now requires status = 'provisioning', a non-empty
+//   data_plane_url, a stored service_role secret, AND schema_verified_at,
+//   in addition to the existing routing_verified_at gate (finding 2) --
+//   previously routing_verified_at was the only precondition checked, so a
+//   tenant with a blank connection or a never-verified schema could in
+//   principle be activated the moment Phase 6 starts setting that column.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -49,23 +74,58 @@ serve(async (req: Request) => {
   if (authErr || !user) return json({ error: "Ugyldig token" }, 401);
 
   const { data: operator } = await callerSb
-    .from("operators").select("status").eq("id", user.id).single();
+    .from("operators").select("status, role").eq("id", user.id).single();
   if (!operator || operator.status !== "active") {
     return json({ error: "Berre aktive operatørar" }, 403);
+  }
+  // Every action in this function is a tenant-onboarding/connection-critical
+  // write (or the one cross-project check that gates activation) -- not
+  // ordinary day-to-day operator work. Require superadmin uniformly rather
+  // than picking and choosing per action.
+  if (operator.role !== "superadmin") {
+    return json({ error: "Berre superadmin kan utføre kundeadministrasjon" }, 403);
   }
 
   const controlSrvSb = createClient(controlUrl, controlSrvKey);
 
-  async function audit(tenantId: string | null, action: string, result: "success" | "error", detail?: string) {
-    const { error: auditErr } = await controlSrvSb.from("broker_audit_log").insert({
-      operator_id: user.id,
-      tenant_id: tenantId,
-      action,
-      result,
-      detail: detail || null,
+  // Fail-closed audit pair for mutating actions: auditStart() writes the
+  // attempt BEFORE the privileged action runs and returns null if that
+  // insert itself failed (caller must then abort, never perform the
+  // action). auditFinish() flips the same row to its terminal result after
+  // the action completes -- if THAT update fails there's nothing left to
+  // abort, so it only logs to function logs, same as before.
+  async function auditStart(tenantId: string | null, action: string): Promise<string | null> {
+    const { data, error } = await controlSrvSb
+      .from("broker_audit_log")
+      .insert({ operator_id: user.id, tenant_id: tenantId, action, result: "pending" })
+      .select("id")
+      .single();
+    if (error) {
+      console.error("[tenant-admin] KRITISK: audit-logg (pre-action) feila", { action, tenantId, error: error.message });
+      return null;
+    }
+    return data.id as string;
+  }
+  async function auditFinish(auditId: string | null, result: "success" | "error", detail?: string) {
+    if (!auditId) return;
+    const { error } = await controlSrvSb
+      .from("broker_audit_log")
+      .update({ result, detail: detail || null })
+      .eq("id", auditId);
+    if (error) {
+      console.error("[tenant-admin] KRITISK: audit-logg (post-action) feila", { auditId, result, error: error.message });
+    }
+  }
+  // Non-mutating / already-rejected-before-any-write paths (unknown tenant,
+  // unknown action, precondition failures) keep the simpler single-call
+  // logger -- nothing has been mutated, so there's nothing to fail closed
+  // in front of.
+  async function auditReject(tenantId: string | null, action: string, detail: string) {
+    const { error } = await controlSrvSb.from("broker_audit_log").insert({
+      operator_id: user.id, tenant_id: tenantId, action, result: "error", detail,
     });
-    if (auditErr) {
-      console.error("[tenant-admin] KRITISK: audit-logg-skriving feila", { action, tenantId, auditErr: auditErr.message });
+    if (error) {
+      console.error("[tenant-admin] KRITISK: audit-logg-skriving feila", { action, tenantId, error: error.message });
     }
   }
 
@@ -81,6 +141,8 @@ serve(async (req: Request) => {
     if (!slug || !data_plane_storage_key) {
       return json({ error: "slug og data_plane_storage_key er påkrevd" }, 400);
     }
+    const auditId = await auditStart(null, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { data, error } = await controlSrvSb
       .from("tenants")
       .insert({
@@ -95,10 +157,10 @@ serve(async (req: Request) => {
       .select("id")
       .single();
     if (error) {
-      await audit(null, action, "error", error.message);
+      await auditFinish(auditId, "error", error.message);
       return json({ error: "Registrering feila (finst slugen alt?)" }, 400);
     }
-    await audit(data.id, action, "success");
+    await auditFinish(auditId, "success");
     return json({ success: true, tenant_id: data.id });
   }
 
@@ -108,11 +170,11 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, data_plane_url, data_plane_storage_key, status, routing_verified_at")
+    .select("id, slug, data_plane_url, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
-    await audit(tenant_id, action, "error", "ukjend tenant");
+    await auditReject(tenant_id, action, "ukjend tenant");
     return json({ error: "Ukjend tenant" }, 404);
   }
 
@@ -127,23 +189,29 @@ serve(async (req: Request) => {
   // exists. Restricted to the real Supabase project-URL shape.
   const SUPABASE_PROJECT_URL_RE = /^https:\/\/[a-z0-9]+\.supabase\.co\/?$/;
   if (action === "update_tenant_connection") {
+    if (tenant.status !== "provisioning") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    }
     const { data_plane_url, data_plane_anon_key } = body;
     if (!data_plane_url || !data_plane_anon_key) {
       return json({ error: "data_plane_url og data_plane_anon_key er påkrevd" }, 400);
     }
     if (!SUPABASE_PROJECT_URL_RE.test(data_plane_url)) {
-      await audit(tenant.id, action, "error", "ugyldig data_plane_url-format");
+      await auditReject(tenant.id, action, "ugyldig data_plane_url-format");
       return json({ error: "data_plane_url må vera ein ekte Supabase-prosjekt-URL (https://xxxx.supabase.co)" }, 400);
     }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { error } = await controlSrvSb
       .from("tenants")
       .update({ data_plane_url, data_plane_anon_key, updated_at: new Date().toISOString() })
       .eq("id", tenant_id);
     if (error) {
-      await audit(tenant.id, action, "error", error.message);
+      await auditFinish(auditId, "error", error.message);
       return json({ error: "Lagring feila" }, 500);
     }
-    await audit(tenant.id, action, "success");
+    await auditFinish(auditId, "success");
     return json({ success: true });
   }
 
@@ -152,8 +220,14 @@ serve(async (req: Request) => {
   // via the Vault-backed SQL function -- never stored as a plain column,
   // never logged (only that the action happened).
   if (action === "set_tenant_service_role_key") {
+    if (tenant.status !== "provisioning") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    }
     const { service_role_key } = body;
     if (!service_role_key) return json({ error: "service_role_key er påkrevd" }, 400);
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const secretName = "tenant-" + tenant.slug + "-service-role-" + Date.now();
     const { error } = await controlSrvSb.rpc("store_tenant_service_role_key", {
       p_tenant_id: tenant_id,
@@ -161,10 +235,10 @@ serve(async (req: Request) => {
       p_secret_name: secretName,
     });
     if (error) {
-      await audit(tenant.id, action, "error", error.message);
+      await auditFinish(auditId, "error", error.message);
       return json({ error: "Lagring av nøkkel feila" }, 500);
     }
-    await audit(tenant.id, action, "success");
+    await auditFinish(auditId, "success");
     return json({ success: true });
   }
 
@@ -172,12 +246,17 @@ serve(async (req: Request) => {
   // Step 4: a lightweight schema-fingerprint check against the newly
   // provisioned data-plane project -- cross-project, needs the
   // Vault-decrypted key. Confirms a handful of expected tables/functions
-  // exist rather than trusting a clean `db push` exit code alone.
+  // exist rather than trusting a clean `db push` exit code alone. Now
+  // persists the result onto tenants.schema_verified_at (set on pass,
+  // cleared on fail) so activate_tenant can actually require it, instead of
+  // this being a one-off check whose result only ever reached the caller.
   if (action === "verify_tenant_schema") {
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { data: tenantServiceKey, error: keyErr } = await controlSrvSb
       .rpc("get_tenant_service_role_key", { p_tenant_id: tenant_id });
     if (keyErr || !tenantServiceKey) {
-      await audit(tenant.id, action, "error", "fann ikkje service_role-nøkkel");
+      await auditFinish(auditId, "error", "fann ikkje service_role-nøkkel");
       return json({ error: "Fann ikkje service_role-nøkkel — steg 3 må gjerast først" }, 400);
     }
     const tenantSrvSb = createClient(tenant.data_plane_url, tenantServiceKey);
@@ -188,40 +267,54 @@ serve(async (req: Request) => {
     // been run yet or used an older baseline.
     const { data: rows, error: rpcErr } = await tenantSrvSb.rpc("verify_schema_fingerprint");
     if (rpcErr) {
-      await audit(tenant.id, action, "error", rpcErr.message);
+      await controlSrvSb.from("tenants").update({ schema_verified_at: null }).eq("id", tenant_id);
+      await auditFinish(auditId, "error", rpcErr.message);
       return json({ error: "Skjema-sjekk feila (manglar verify_schema_fingerprint()? køyr migrasjonane først)", reachable: false }, 500);
     }
     const missing = ((rows as { table_name: string; table_exists: boolean }[]) || [])
       .filter((r) => !r.table_exists)
       .map((r) => r.table_name);
     const ok = missing.length === 0;
-    await audit(tenant.id, action, ok ? "success" : "error", ok ? undefined : "manglar: " + missing.join(","));
+    await controlSrvSb
+      .from("tenants")
+      .update({ schema_verified_at: ok ? new Date().toISOString() : null })
+      .eq("id", tenant_id);
+    await auditFinish(auditId, ok ? "success" : "error", ok ? undefined : "manglar: " + missing.join(","));
     return json({ success: true, schema_ok: ok, missing_tables: missing });
   }
 
   // ── activate_tenant ───────────────────────────────────────────────────────
-  // Step 6, hard-gated: refuses unconditionally until routing_verified_at
-  // is set by a future Phase 6 process. Nothing in this codebase sets that
-  // column yet -- this action cannot succeed today, by design.
+  // Step 6. Requires ALL of: status still 'provisioning', a real connection
+  // (data_plane_url set), a stored service_role secret, a passing schema
+  // verification (schema_verified_at), AND routing_verified_at. The last of
+  // these remains a hard, structural gate: nothing in this codebase sets it
+  // yet, so this action cannot succeed today regardless of the other four,
+  // by design -- Phase 6's real hostname->tenant resolver must exist first.
   if (action === "activate_tenant") {
-    if (!tenant.routing_verified_at) {
-      await audit(tenant.id, action, "error", "routing_verified_at er ikkje sett (Fase 6 manglar)");
-      return json({
-        error: "Sperra: den ekte domene-ruteren (Fase 6) er ikkje bygd enno, så denne kunden kan ikkje setjast aktiv. Sjå ADR-0007/Fase 9-notat.",
-      }, 403);
+    const missing: string[] = [];
+    if (tenant.status !== "provisioning") missing.push("status må vera 'provisioning' (er: " + tenant.status + ")");
+    if (!tenant.data_plane_url) missing.push("tilkoplingsinfo (data_plane_url) manglar");
+    if (!tenant.data_plane_service_role_secret_id) missing.push("service_role-nøkkel manglar");
+    if (!tenant.schema_verified_at) missing.push("skjema er ikkje verifisert (køyr verify_tenant_schema)");
+    if (!tenant.routing_verified_at) missing.push("ruting er ikkje verifisert (Fase 6 manglar)");
+    if (missing.length > 0) {
+      await auditReject(tenant.id, action, missing.join("; "));
+      return json({ error: "Sperra: " + missing.join("; ") }, 403);
     }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { error } = await controlSrvSb
       .from("tenants")
       .update({ status: "active", updated_at: new Date().toISOString() })
       .eq("id", tenant_id);
     if (error) {
-      await audit(tenant.id, action, "error", error.message);
+      await auditFinish(auditId, "error", error.message);
       return json({ error: "Aktivering feila" }, 500);
     }
-    await audit(tenant.id, action, "success");
+    await auditFinish(auditId, "success");
     return json({ success: true });
   }
 
-  await audit(tenant.id, String(action), "error", "ukjend handling");
+  await auditReject(tenant.id, String(action), "ukjend handling");
   return json({ error: "Ukjend handling: " + action }, 400);
 });

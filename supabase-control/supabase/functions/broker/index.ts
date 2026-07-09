@@ -60,6 +60,37 @@ serve(async (req: Request) => {
 
   const controlSrvSb = createClient(controlUrl, controlSrvKey);
 
+  // Security Auditor follow-up round 2 (2026-07-09), finding 4: the two
+  // mutating actions below (set_config, reset_config) now write the audit
+  // row BEFORE performing the write and abort with 500 if that insert
+  // itself fails — previously a failed audit insert was only console.error'd
+  // and the write proceeded regardless, leaving zero forensic trail for a
+  // real config change. Read-only actions (get_private_config,
+  // get_tenant_status) keep the simpler post-hoc logger below, since there's
+  // no mutation to guard in front of.
+  async function auditStart(tenantId: string | null, action: string): Promise<string | null> {
+    const { data, error } = await controlSrvSb
+      .from("broker_audit_log")
+      .insert({ operator_id: user.id, tenant_id: tenantId, action, result: "pending" })
+      .select("id")
+      .single();
+    if (error) {
+      console.error("[broker] KRITISK: audit-logg (pre-action) feila", { action, tenantId, error: error.message });
+      return null;
+    }
+    return data.id as string;
+  }
+  async function auditFinish(auditId: string | null, result: "success" | "error", detail?: string) {
+    if (!auditId) return;
+    const { error } = await controlSrvSb
+      .from("broker_audit_log")
+      .update({ result, detail: detail || null })
+      .eq("id", auditId);
+    if (error) {
+      console.error("[broker] KRITISK: audit-logg (post-action) feila", { auditId, result, error: error.message });
+    }
+  }
+
   async function audit(tenantId: string | null, action: string, result: "success" | "error", detail?: string) {
     const { error: auditErr } = await controlSrvSb.from("broker_audit_log").insert({
       operator_id: user.id,
@@ -72,7 +103,9 @@ serve(async (req: Request) => {
     // concentrated blast radius (see ADR-0009) — a silently-failing insert
     // here would mean actions keep succeeding with zero forensic trail.
     // Never let it throw (that would break the actual action), but always
-    // surface the failure to function logs.
+    // surface the failure to function logs. Used only for read-only actions
+    // now (get_private_config, get_tenant_status) and the pre-tenant-lookup
+    // rejection paths below — mutating actions use auditStart/auditFinish.
     if (auditErr) {
       console.error("[broker] KRITISK: audit-logg-skriving feila", { action, tenantId, auditErr: auditErr.message });
     }
@@ -126,28 +159,32 @@ serve(async (req: Request) => {
       await audit(tenant.id, action, "error", "ikkje-tillaten nøkkel: " + key);
       return json({ error: "Ikkje-tillaten nøkkel" }, 400);
     }
+    const auditId = await auditStart(tenant.id, action + ":" + key);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { error } = await tenantSrvSb
       .from("store")
       .upsert({ tenant_id: storageKey, key, value }, { onConflict: "tenant_id,key" });
     if (error) {
-      await audit(tenant.id, action, "error", error.message);
+      await auditFinish(auditId, "error", error.message);
       return json({ error: "Skriving feila" }, 500);
     }
-    await audit(tenant.id, action + ":" + key, "success");
+    await auditFinish(auditId, "success");
     return json({ success: true });
   }
 
   // ── reset_config ─────────────────────────────────────────────────────────
   if (action === "reset_config") {
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { error } = await tenantSrvSb
       .from("store").delete()
       .eq("tenant_id", storageKey)
       .in("key", ALLOWED_CONFIG_KEYS);
     if (error) {
-      await audit(tenant.id, action, "error", error.message);
+      await auditFinish(auditId, "error", error.message);
       return json({ error: "Nullstilling feila" }, 500);
     }
-    await audit(tenant.id, action, "success");
+    await auditFinish(auditId, "success");
     return json({ success: true });
   }
 

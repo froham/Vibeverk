@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.24.0 — 2026-07-09
+
+### Security Auditor follow-up round 2: 5 fixes on `tenant-admin`/`broker` (control plane)
+A deeper Security Auditor pass against `supabase-control/supabase/functions/tenant-admin/index.ts` and `broker/index.ts`, prompted by the user, found and fixed five issues beyond the 0.22.2 follow-up. Full detail in `docs/decisions/ADR-0010-phase9-semi-automated-onboarding.md`'s new addendum. Summary:
+- **HIGH**: `update_tenant_connection`/`set_tenant_service_role_key` had no status guard — a compromised active operator could repoint or re-key an already-**live** tenant, not just one mid-onboarding. Now refuse unless `tenant.status = 'provisioning'`.
+- **MEDIUM/HIGH-future**: `activate_tenant` only checked `routing_verified_at`. New `tenants.schema_verified_at` column (set by `verify_tenant_schema` on pass, cleared on fail); `activate_tenant` now also requires `status = 'provisioning'`, a non-empty connection, a stored service key, and `schema_verified_at` — `routing_verified_at` remains the unconditional hard gate (Phase 6 still doesn't exist).
+- **MEDIUM**: `operators.role` was never checked on this function (only `status`). `tenant-admin` now requires `role = 'superadmin'` for every action, uniformly. `broker` left unchanged (lower-risk, day-to-day config surface).
+- **MEDIUM**: audit logging was fail-open — a failed insert only logged to console and the mutating action proceeded anyway. New `auditStart`/`auditFinish` pair writes the row (`result = 'pending'`) **before** mutating actions run in both functions and aborts with 500 if that insert fails.
+- **LOW**: `data_plane_url` validation existed only in the Edge Function. New DB-level `tenants_data_plane_url_format` CHECK constraint as a defense-in-depth backstop.
+- Console: `update_tenant_connection`'s submit handler silently swallowed errors (no status message shown, unlike the other checklist forms) — now shows `r.error` via a new `#kd-conn-status` element, since the new status-guard above gives this path a real failure mode to surface.
+- New migration `supabase-control/supabase/migrations/20260709160626_security_auditor_followup2_tenant_admin_hardening.sql` — **written but NOT deployed**, per the standing deployment safeguard. Needs to run against `vibeverk-staging` first and be verified there before `vibeverk-control`.
+- `node test.js`/`node test-workspace.js` re-run clean against the known baseline (504/1, 151/1) — these Edge Functions and this migration aren't covered by the jsdom harnesses; correctness here rests on code inspection plus the eventual staging verification.
+- No changes to the public site, Workspace, or production Supabase project. Cache-bust: `console-core.js` 59 → 60.
+
 ## 0.23.1 — 2026-07-09
 
 ### CI: also trigger on `pull_request`, not just `push`
