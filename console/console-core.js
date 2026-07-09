@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.23.1";
+  var VIBEVERK_VERSION = "0.24.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -972,6 +972,7 @@ window.VwConsole = (function () {
             C.field({ id: "kd-url", label: "data_plane_url", value: tenant.data_plane_url || "", placeholder: "https://xxxx.supabase.co" }) +
             C.field({ id: "kd-anon", label: "data_plane_anon_key", value: tenant.data_plane_anon_key || "", placeholder: "eyJ…" }) +
             '<button type="submit" class="btn btn--ghost btn--sm">Lagre kopling</button>' +
+            '<p class="form__status" id="kd-conn-status" style="margin-top:.4rem"></p>' +
           '</form>' +
         '</div>' +
 
@@ -1005,6 +1006,7 @@ window.VwConsole = (function () {
       var url = wrap.querySelector("#kd-url").value.trim();
       var anon = wrap.querySelector("#kd-anon").value.trim();
       tenantAdminCall("update_tenant_connection", { tenant_id: tenant.id, data_plane_url: url, data_plane_anon_key: anon }, function (r) {
+        if (r.error) { statusMsg(wrap.querySelector("#kd-conn-status"), r.error, false); return; }
         loadTenants(function () { renderKundar(_sc, fullWrap); });
       });
     });
