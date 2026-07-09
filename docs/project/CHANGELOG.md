@@ -30,6 +30,11 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.23.1 — 2026-07-09
+
+### CI: also trigger on `pull_request`, not just `push`
+Discovered while setting up GitHub branch protection (Steg 1 of the dev-workflow prep): `test.yml` only triggered `on: [push]`, so its status check wasn't reliably showing up for selection as a required check in the branch protection UI, and wouldn't robustly attach to a PR going forward. Changed to `on: [push, pull_request]`. Note: a push to a branch with an open PR will now run CI twice (once per event) — harmless (public repo, free Actions minutes), not worth adding concurrency-cancellation complexity for right now.
+
 ## 0.23.0 — 2026-07-09
 
 ### Dev-flow prep before Phase 6: dedicated staging Supabase project
