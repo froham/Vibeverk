@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.23.1 — 2026-07-09
+
+### CI: also trigger on `pull_request`, not just `push`
+Discovered while setting up GitHub branch protection (Steg 1 of the dev-workflow prep): `test.yml` only triggered `on: [push]`, so its status check wasn't reliably showing up for selection as a required check in the branch protection UI, and wouldn't robustly attach to a PR going forward. Changed to `on: [push, pull_request]`. Note: a push to a branch with an open PR will now run CI twice (once per event) — harmless (public repo, free Actions minutes), not worth adding concurrency-cancellation complexity for right now.
+
+## 0.23.0 — 2026-07-09
+
+### Dev-flow prep before Phase 6: dedicated staging Supabase project
+- New `vibeverk-staging` Supabase project (ref `syqnyfeponexmkdvnsga`), created as part of the dev-workflow review's top-priority recommendation: give migrations somewhere safe to land before they touch production. `supabase db push --linked` today points straight at the production project with no separate environment in between.
+- All 4 existing `supabase/migrations/` files (baseline schema + the two `service_role` grant fixes + the schema-fingerprint RPC) applied and verified against it directly (`information_schema.tables`/`routines`/`role_table_grants`), not just a clean CLI exit code — confirms staging's schema now matches production exactly.
+- The local `supabase/` working copy stays linked to production (`clzczbyklgdtdhgjphup`); staging is reached only via explicit `--db-url` (pooler connection string), same pattern already used for `supabase-control/`. No CLI relink performed — deliberately left as an open decision, not assumed.
+- Deliberately not done yet: seeding a fixed demo-tenant/config row into staging (depends on an undecided question — whether/how this project should be registered in `vibeverk-control`'s tenant table, which in turn depends on Phase 6 existing). Not yet wired into any CI/Preview-deploy flow.
+- No changes to production, the public site, Workspace, or Console's behavior. `CLAUDE.md`'s Supabase rules section and `docs/project/CURRENT_STATE.md` updated to record the new project. Cache-bust: `console-core.js` 57 → 58 (version bump only, no functional change).
+
 ## 0.22.2 — 2026-07-09
 
 ### Phase 9 Security Auditor follow-up: 3 fixes (URL validation, missing field, operator self-escalation)
