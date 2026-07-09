@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.27.1";
+  var VIBEVERK_VERSION = "0.27.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -212,8 +212,22 @@ window.VwConsole = (function () {
   // ikkje lenger direkte mot kundens eige prosjekt — sjå brokerCall() over.
   // Skriv IKKJE lenger til nokon lokal cache (fjerna saman med getSC()-fiksen
   // over — cachen var berre feil-kjelda, tente ingen føremål her lenger).
-  function saveSC(sc) {
-    brokerCall("set_config", { key: SUPER_KEY, value: sc }, function (r) {
+  //
+  // Security/QA-gjennomgang (2026-07-09, Codex + QA-agent, uavhengig av
+  // kvarandre): saveSC() las tidlegare tenant_id via brokerCall() sin EIGEN,
+  // FERSKE _activeTenant på skrivetidspunktet -- ikkje tenanten som var
+  // aktiv då operatøren opna/redigerte skjemaet. Dei seks
+  // lagre-handterarane gjer alle getSC(function(sc2){ ...; saveSC(sc2); }) --
+  // viss operatøren byter tenant i sidepanelet MEDAN getSC() sitt asynkrone
+  // kall står ustengt, ville saveSC() sin brokerCall() bruke DEN NYE
+  // tenanten, og skrive det gamle skjemaet sitt (feil) innhald inn i feil
+  // kunde sin store-rad. Fiksa ved at kvar lagre-handtering no fangar
+  // tenant-IDen FØR nokon asynkron lesing startar, og sender han eksplisitt
+  // her -- ikkje via den potensielt endra _activeTenant seinare.
+  function saveSC(sc, tenantId) {
+    var payload = { key: SUPER_KEY, value: sc };
+    if (tenantId) payload.tenant_id = tenantId;
+    brokerCall("set_config", payload, function (r) {
       if (r.error) console.error("[console] superconfig-skriving feila:", r.error);
     });
   }
@@ -225,7 +239,12 @@ window.VwConsole = (function () {
     // berre KONSOLLEN sin eigen, uavhengige lokale cache for den VERKELEGE
     // tenanten, ikkje nokon relevant tilstand for den tenanten som faktisk
     // er vald her.
-    brokerCall("reset_config", {}, function (r) {
+    // Same tenant-fanging som saveSC() -- fangar _activeTenant FØR kallet,
+    // ikkje avhengig av at han framleis er den same når nullstillinga
+    // faktisk køyrer.
+    var resettingTenantId = _activeTenant && _activeTenant.id;
+    var payload = resettingTenantId ? { tenant_id: resettingTenantId } : {};
+    brokerCall("reset_config", payload, function (r) {
       if (r.error) console.error("[console] nullstilling feila:", r.error);
       location.reload();
     });
@@ -251,8 +270,10 @@ window.VwConsole = (function () {
     });
   }
 
-  function saveSCPrivate(priv) {
-    brokerCall("set_config", { key: SUPER_PRIVATE_KEY, value: priv }, function (r) {
+  function saveSCPrivate(priv, tenantId) {
+    var payload = { key: SUPER_PRIVATE_KEY, value: priv };
+    if (tenantId) payload.tenant_id = tenantId;
+    brokerCall("set_config", payload, function (r) {
       if (r.error) console.error("[console] superconfig-private-skriving feila:", r.error);
     });
   }
@@ -509,7 +530,13 @@ window.VwConsole = (function () {
      ====================================================================== */
 
   function renderProdukt(sc, wrap) {
-    var mode = sc.productMode || CFG.productMode || "web";
+    // UX-gjennomgang (2026-07-09): brukte tidlegare CFG.productMode som
+    // fallback -- CFG er alltid KONSOLLEN sin eigen, verkelege primærtenant
+    // (aldri tenant-skopert), så ein splitter ny tenant synte den VERKELEGE
+    // tenanten sin produktmodus som om det var ein nøytral standard. Same
+    // feilklasse for alle CFG.*-fallback under (renderWeb/Workspace/
+    // Modular/Personvern) -- retta til nøytrale standardverdiar.
+    var mode = sc.productMode || "web";
     var opts = [
       { val: "web",       label: "Web",            desc: "Berre offentleg nettside — Workspace er blokkert" },
       { val: "workspace", label: "Workspace",       desc: "Berre Workspace — nettsida visar vidare til /workspace/" },
@@ -534,18 +561,25 @@ window.VwConsole = (function () {
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
       var checked = wrap.querySelector("input[name='cs-mode']:checked");
+      // Fanga FØR getSC() sitt asynkrone kall -- sjå saveSC() sitt notat om
+      // kvifor (unngår å skrive til feil tenant viss operatøren byter
+      // medan lesinga står ustengt).
+      var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
         sc2.productMode = checked ? checked.value : "web";
-        saveSC(sc2);
+        saveSC(sc2, savingTenantId);
         statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste sideopplasting.", true);
       });
     });
   }
 
   function renderWeb(sc, wrap) {
-    var col = Object.assign({}, CFG.colors,  sc.colors  || {});
-    var com = Object.assign({}, CFG.company, sc.company || {});
-    var fnt = Object.assign({}, CFG.fonts,   sc.fonts   || {});
+    // Ikkje CFG.colors/company/fonts som fallback -- sjå notatet i
+    // renderProdukt. Nøytrale standardverdiar for ein tenant som ikkje har
+    // lagra noko enno.
+    var col = Object.assign({}, sc.colors  || {});
+    var com = Object.assign({}, sc.company || {});
+    var fnt = Object.assign({}, sc.fonts   || {});
 
     wrap.innerHTML =
       '<form id="cs-form">' +
@@ -604,21 +638,24 @@ window.VwConsole = (function () {
     });
 
     wrap.querySelector("#cs-web-reset").addEventListener("click", function () {
-      var def = CFG.colors || {};
-      var fnt = CFG.fonts  || {};
-      wrap.querySelector("#cs-primary").value   = def.primary    || "#005cff";
-      wrap.querySelector("#cs-secondary").value = def.secondary  || "#ff7a00";
-      wrap.querySelector("#cs-bg").value        = def.background || "#f7fbff";
-      wrap.querySelector("#cs-text").value      = def.text       || "#142033";
-      wrap.querySelector("#cs-surface").value   = def.surface    || "#ffffff";
-      wrap.querySelector("#cs-dfont").value     = fnt.display    || "Poppins";
-      wrap.querySelector("#cs-bfont").value     = fnt.body       || "Nunito Sans";
-      wrap.querySelector("#cs-dweights").value  = (fnt.weights && fnt.weights.display) ? fnt.weights.display.join(",") : "600,700,800";
-      wrap.querySelector("#cs-bweights").value  = (fnt.weights && fnt.weights.body)    ? fnt.weights.body.join(",")    : "400,500,600";
+      // Same feilklasse som resten av CFG.*-fallback i denne fila (sjå
+      // renderProdukt sitt notat): "Nullstill til standard" skal gje ein
+      // FAST, nøytral standard -- ikkje kopiere KONSOLLEN sin eigen
+      // verkelege primærtenant sine live-verdiar via CFG.
+      wrap.querySelector("#cs-primary").value   = "#005cff";
+      wrap.querySelector("#cs-secondary").value = "#ff7a00";
+      wrap.querySelector("#cs-bg").value        = "#f7fbff";
+      wrap.querySelector("#cs-text").value      = "#142033";
+      wrap.querySelector("#cs-surface").value   = "#ffffff";
+      wrap.querySelector("#cs-dfont").value     = "Poppins";
+      wrap.querySelector("#cs-bfont").value     = "Nunito Sans";
+      wrap.querySelector("#cs-dweights").value  = "600,700,800";
+      wrap.querySelector("#cs-bweights").value  = "400,500,600";
     });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
+      var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
         sc2.company = {
           name:            wrap.querySelector("#cs-name").value.trim(),
@@ -643,7 +680,7 @@ window.VwConsole = (function () {
             body:    wrap.querySelector("#cs-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
           }
         };
-        saveSC(sc2);
+        saveSC(sc2, savingTenantId);
         statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Endringane er aktive ved neste sideopplasting.", true);
       });
     });
@@ -665,9 +702,12 @@ window.VwConsole = (function () {
       return;
     }
 
-    var wsp    = Object.assign({}, CFG.workspace || {}, sc.workspace || {});
-    var wspCol = Object.assign({}, CFG.colors || {}, wsp.colors || {});
-    var wspFnt = Object.assign({}, CFG.fonts  || {}, wsp.fonts  || {});
+    // Ikkje CFG.workspace/colors/fonts som fallback -- sjå notatet i
+    // renderProdukt. Feltnivå-standardverdiane under dekkjer det tomme
+    // tilfellet.
+    var wsp    = Object.assign({}, sc.workspace || {});
+    var wspCol = Object.assign({}, wsp.colors || {});
+    var wspFnt = Object.assign({}, wsp.fonts  || {});
     var pri    = (wsp.colors && wsp.colors.primary) || wsp.accentColor || wspCol.primary || "#2563eb";
 
     wrap.innerHTML =
@@ -749,6 +789,7 @@ window.VwConsole = (function () {
       e.preventDefault();
       var primary = wrap.querySelector("#cs-wsp-primary").value;
       var useCustomName = wrap.querySelector("#cs-wsp-use-name").checked;
+      var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
         sc2.workspace = Object.assign({}, sc2.workspace || {}, {
           name:        useCustomName ? wrap.querySelector("#cs-wsp-name").value.trim() : "",
@@ -770,15 +811,21 @@ window.VwConsole = (function () {
             }
           }
         });
-        saveSC(sc2);
+        saveSC(sc2, savingTenantId);
         statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste Workspace-opplasting.", true);
       });
     });
   }
 
+  function featureDefaults(labels) {
+    var d = {};
+    Object.keys(labels).forEach(function (k) { d[k] = true; });
+    return d;
+  }
+
   function renderModular(sc, wrap) {
-    var ft  = Object.assign({}, CFG.features         || {}, sc.features         || {});
-    var ift = Object.assign({}, CFG.intranettFeatures || {}, sc.intranettFeatures || {});
+    var ft  = Object.assign(featureDefaults(FEAT_LABELS),  sc.features         || {});
+    var ift = Object.assign(featureDefaults(IFEAT_LABELS), sc.intranettFeatures || {});
 
     wrap.innerHTML =
       '<form id="cs-form">' +
@@ -797,10 +844,11 @@ window.VwConsole = (function () {
       var feats = {}, ifeats = {};
       wrap.querySelectorAll("[data-cs-feat]").forEach(function (cb)  { feats[cb.getAttribute("data-cs-feat")]   = cb.checked; });
       wrap.querySelectorAll("[data-cs-ifeat]").forEach(function (cb) { ifeats[cb.getAttribute("data-cs-ifeat")] = cb.checked; });
+      var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
         sc2.features = feats;
         sc2.intranettFeatures = ifeats;
-        saveSC(sc2);
+        saveSC(sc2, savingTenantId);
         statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
       });
     });
@@ -817,6 +865,10 @@ window.VwConsole = (function () {
   // som resten av superconfig — "analytics" lagt til broker sin
   // ALLOWED_CONFIG_KEYS.
   function renderAnalyse(sc, wrap) {
+    // Fanga her, ikkje inne i submit-handteraren -- dette skjemaet
+    // representerer tenanten som var aktiv DÅ SIDA VART TEIKNA, uansett kva
+    // _activeTenant måtte verta seinare (sjå saveSC() sitt notat).
+    var savingTenantId = _activeTenant && _activeTenant.id;
     getStoreKey("analytics", function (an) {
       wrap.innerHTML =
         '<form id="cs-form">' +
@@ -835,7 +887,9 @@ window.VwConsole = (function () {
           plausible:      wrap.querySelector("#cs-an-pl").value.trim(),
           plausibleEmbed: wrap.querySelector("#cs-an-plembed").value.trim()
         };
-        brokerCall("set_config", { key: "analytics", value: value }, function (r) {
+        var payload = { key: "analytics", value: value };
+        if (savingTenantId) payload.tenant_id = savingTenantId;
+        brokerCall("set_config", payload, function (r) {
           if (r.error) { statusMsg(wrap.querySelector("#cs-status"), r.error, false); return; }
           statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
         });
@@ -854,7 +908,7 @@ window.VwConsole = (function () {
   }
 
   function renderPersonvern(sc, wrap) {
-    var priv = Object.assign({}, CFG.privacy || {}, sc.privacy || {});
+    var priv = Object.assign({}, sc.privacy || {});
     var textHtml = migrateLegacyPrivacyText(priv.text || "");
 
     wrap.innerHTML =
@@ -872,20 +926,21 @@ window.VwConsole = (function () {
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
       var textVal = App.ui.readRichTextField(wrap, "cs-priv-text");
+      var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
         sc2.privacy = {
           heading: wrap.querySelector("#cs-priv-heading").value.trim(),
           text:    textVal
         };
-        saveSC(sc2);
+        saveSC(sc2, savingTenantId);
         statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
       });
     });
   }
 
   function renderSystem(sc, wrap) {
-    var supaUrl     = (CFG.supabase && CFG.supabase.url) || "—";
-    var supaKey     = (CFG.supabase && CFG.supabase.anonKey) || "";
+    var supaUrl     = (_activeTenant && _activeTenant.data_plane_url) || "—";
+    var supaKey     = (_activeTenant && _activeTenant.data_plane_anon_key) || "";
     var supaKeyShrt = supaKey ? supaKey.slice(0, 40) + "…" : "—";
     var expiresAtSec = _session && _session.expires_at;
     var expiryStr   = expiresAtSec ? new Date(expiresAtSec * 1000).toLocaleString("nb-NO") : "—";
@@ -924,7 +979,8 @@ window.VwConsole = (function () {
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      saveSCPrivate({ adminPassword: apassInp.value });
+      var savingTenantId = _activeTenant && _activeTenant.id;
+      saveSCPrivate({ adminPassword: apassInp.value }, savingTenantId);
       statusMsg(wrap.querySelector("#cs-status"), "✓ Passord lagra!", true);
     });
     wrap.querySelector("#cs-reset-btn").addEventListener("click", resetSC);

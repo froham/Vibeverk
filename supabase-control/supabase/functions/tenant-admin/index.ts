@@ -105,6 +105,24 @@
 //   missing NOTIFY pgrst, 'reload schema' -- added.
 // - L2: verify_tenant_routing's outbound fetch had no timeout or response
 //   size bound -- added a 5s AbortController timeout and a 64KB read cap.
+//
+// Second-opinion review (2026-07-09/10), Codex external review + 4 parallel
+// read-only Claude reviewers, synthesized and fixed together with a Console
+// write-race (console-core.js) and a CFG-fallback leak (console-core.js) --
+// 2 findings landed here:
+// - Redirect-following gap: fetch() in verify_tenant_routing had no
+//   `redirect` option, so it followed 3xx responses automatically -- a
+//   hostname that passed assertHostnameSafeToFetch could still 30x-redirect
+//   to an unvalidated/private target, and this action would fetch AND trust
+//   that response. Fixed with `redirect: "manual"` plus explicit rejection
+//   of any 3xx/opaqueredirect result.
+// - IPv6/AAAA gap: isPrivateOrReservedIp() already had IPv6 patterns
+//   (::1, fe80::/10, fc00::/7) but they were unreachable -- only "A" records
+//   were ever resolved, so a hostname resolving solely to a private AAAA
+//   target slipped through unchecked. Fixed by also resolving "AAAA" in
+//   assertHostnameSafeToFetch and checking those results too; a normal
+//   "no AAAA record" lookup failure is not treated as blocking (only "A"
+//   failures are, unchanged from before).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -251,17 +269,29 @@ serve(async (req: Request) => {
   async function assertHostnameSafeToFetch(hostname: string): Promise<{ safe: boolean; reason?: string }> {
     if (!HOSTNAME_RE.test(hostname)) return { safe: false, reason: "ugyldig hostname-format" };
     if (IPV4_LITERAL_RE.test(hostname)) return { safe: false, reason: "IP-adresser er ikkje tillatne som hostname" };
+    let aRecords: string[];
     try {
-      const records = await Deno.resolveDns(hostname, "A");
-      for (const ip of records) {
-        if (isPrivateOrReservedIp(ip)) {
-          return { safe: false, reason: "hostname løyser til ei privat/reservert IP-adresse" };
-        }
-      }
-      return { safe: true };
+      aRecords = await Deno.resolveDns(hostname, "A");
     } catch (e) {
-      return { safe: false, reason: "DNS-oppslag feila: " + (e instanceof Error ? e.message : "ukjend feil") };
+      return { safe: false, reason: "DNS-oppslag (A) feila: " + (e instanceof Error ? e.message : "ukjend feil") };
     }
+    // Codex-runde 2026-07-09: isPrivateOrReservedIp() hadde alt IPv6-mønster
+    // (::1, fe80::/10, fc00::/7), men dei var uoppnåelege sidan berre "A"
+    // vart slått opp -- ein hostname med KUN ein privat AAAA-post (ingen A)
+    // slapp gjennom usjekka. Manglande AAAA-postar er normalt (dei fleste
+    // domene har berre A) og skal IKKJE blokkerast som feil.
+    let aaaaRecords: string[] = [];
+    try {
+      aaaaRecords = await Deno.resolveDns(hostname, "AAAA");
+    } catch {
+      aaaaRecords = [];
+    }
+    for (const ip of [...aRecords, ...aaaaRecords]) {
+      if (isPrivateOrReservedIp(ip)) {
+        return { safe: false, reason: "hostname løyser til ei privat/reservert IP-adresse" };
+      }
+    }
+    return { safe: true };
   }
 
   // ── register_tenant ──────────────────────────────────────────────────────
@@ -524,7 +554,16 @@ serve(async (req: Request) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const resp = await fetch("https://" + hostname + "/config.js", { method: "GET", signal: controller.signal });
+        // Codex-runde 2026-07-09: utan "redirect: manual" følgjer fetch()
+        // automatisk 3xx-svar -- ein hostname som besto assertHostnameSafeToFetch
+        // kunne likevel 30x-omdirigere til eit uvalidert/privat mål, og
+        // dette laget ville ha henta OG stolt på det svaret. Handsam alle
+        // 3xx som feil i staden for å følgja dei blindt.
+        const resp = await fetch("https://" + hostname + "/config.js", { method: "GET", signal: controller.signal, redirect: "manual" });
+        if (resp.type === "opaqueredirect" || (resp.status >= 300 && resp.status < 400)) {
+          results.push({ hostname, ok: false, detail: "omdirigering (HTTP " + (resp.status || "3xx") + ") er ikkje tillate" });
+          continue;
+        }
         if (!resp.ok) {
           results.push({ hostname, ok: false, detail: "HTTP " + resp.status });
           continue;
