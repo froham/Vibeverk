@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.25.1 — 2026-07-09
+
+### Pre-merge Security Auditor review of Phase 6: 2 HIGH + 1 MEDIUM + 2 LOW fixed
+A Security Auditor pass over the 0.25.0 diff, before merging to `main`, returned verdict **CAUTION** (not the clean PROCEED of the two prior control-plane rounds). Full detail in `docs/decisions/ADR-0007`'s Phase 6 addendum.
+- **H1**: `HOSTNAME_RE`'s own comment claimed it rejected bare IP literals — it didn't (`127.0.0.1`/`169.254.169.254` matched the domain shape fine), handing `verify_tenant_routing`'s real outbound fetch an SSRF-adjacent target. Fixed: new `IPV4_LITERAL_RE` rejection plus a real server-side DNS resolution + private/reserved-range check (`assertHostnameSafeToFetch`) before any fetch. DNS-rebinding is not fully closed — accepted residual risk given the superadmin gate and audit logging.
+- **H2**: widening `resolve_tenant_by_hostname()` to `'provisioning'` tenants means a tenant's real hostname/credentials go publicly live before RLS is meaningfully checked — `verify_tenant_schema` only confirmed tables *exist*, not that RLS was enabled. Fixed: `verify_schema_fingerprint()` (new migration `supabase/migrations/20260709193227_add_rls_check_to_schema_fingerprint.sql`) now also reports `rls_enabled` per table; `verify_tenant_schema` requires it. Narrows but doesn't eliminate the exposure window — tracked for before any real customer's hostname goes live.
+- **M1**: the new hostname-uniqueness trigger was a real TOCTOU race under READ COMMITTED. Fixed with a fixed-key `pg_advisory_xact_lock` serializing hostname-mutating transactions.
+- **L1/L2**: missing `NOTIFY pgrst, 'reload schema'` after the `resolve_tenant_by_hostname` DROP+CREATE; no timeout/size-cap on `verify_tenant_routing`'s outbound fetch. Both fixed (5s timeout, 64KB cap).
+- `node test.js`/`node test-workspace.js` re-run clean (504/1, 151/1). Still not deployed anywhere — code + migrations only. Cache-bust: `console-core.js` 62 → 63 (schema-verify result display now also shows RLS gaps).
+
 ## 0.25.0 — 2026-07-09
 
 ### Phase 6: real hostname→tenant resolver (code only, not yet deployed)

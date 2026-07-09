@@ -72,6 +72,30 @@
 // tenant not yet active was previously unresolvable, so routing could
 // never be verified, so it could never activate) and adding a
 // hostname-uniqueness trigger.
+//
+// Security Auditor pre-merge review of Phase 6 (2026-07-09), verdict
+// CAUTION -- 2 HIGH + 1 MEDIUM + 2 LOW, all fixed before merge:
+// - H1: HOSTNAME_RE's own comment claimed it rejected bare IP literals; it
+//   didn't -- "127.0.0.1"/"169.254.169.254" (cloud metadata) matched the
+//   domain shape fine, handing an SSRF-adjacent outbound-fetch target to
+//   verify_tenant_routing. Fixed via IPV4_LITERAL_RE plus a real DNS
+//   resolution + private/reserved-range check (assertHostnameSafeToFetch)
+//   before any fetch to an operator-supplied hostname.
+// - H2: widening resolve_tenant_by_hostname() to 'provisioning' tenants
+//   means a tenant's real hostname (and real Supabase credentials) can go
+//   publicly live before activate_tenant's gate ever runs -- and
+//   verify_tenant_schema previously only checked tables EXIST, not that
+//   RLS was enabled on them. Fixed: verify_schema_fingerprint() (customer
+//   baseline, see supabase/migrations/20260709193227_...) now also reports
+//   rls_enabled per table; verify_tenant_schema requires it, same as
+//   table existence.
+// - M1: the hostname-uniqueness trigger (this round's migration) was a
+//   real TOCTOU race under READ COMMITTED -- fixed with a fixed-key
+//   pg_advisory_xact_lock serializing hostname-mutating transactions.
+// - L1: the migration's DROP+CREATE of resolve_tenant_by_hostname() was
+//   missing NOTIFY pgrst, 'reload schema' -- added.
+// - L2: verify_tenant_routing's outbound fetch had no timeout or response
+//   size bound -- added a 5s AbortController timeout and a 64KB read cap.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -170,13 +194,66 @@ serve(async (req: Request) => {
   // been mutated in any of those, so there's nothing to fail closed in
   // front of.
 
-  // Real domain-name shape, no protocol/port/path -- used both when
-  // registering a tenant's hostnames and when verify_tenant_routing later
-  // decides which hostnames it's safe to make an outbound request to
-  // (Phase 6). Rejects things like "localhost", a bare IP, or
-  // "host:1234/path" that could otherwise be used to point an outbound
-  // fetch at internal infrastructure.
+  // Real domain-name shape, no protocol/port/path, no bare "localhost"
+  // (requires at least one dot) -- used both when registering a tenant's
+  // hostnames and when verify_tenant_routing decides which hostnames it's
+  // safe to make an outbound request to (Phase 6).
+  //
+  // Security Auditor finding H1 (Phase 6 pre-merge review, 2026-07-09):
+  // this regex alone does NOT reject a bare IPv4 literal like "127.0.0.1"
+  // or "169.254.169.254" (a cloud metadata address) -- digits satisfy the
+  // same character class as letters, so an all-numeric hostname still
+  // matches the domain shape. A prior version of this comment claimed
+  // otherwise; that claim was wrong. Fixed via the explicit
+  // IPV4_LITERAL_RE check below, used everywhere HOSTNAME_RE is checked.
   const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+  const IPV4_LITERAL_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+  function isPrivateOrReservedIp(ip: string): boolean {
+    const v4 = ip.match(/^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
+    if (v4) {
+      const a = parseInt(v4[1], 10);
+      const b = parseInt(v4[2], 10);
+      if (a === 10) return true;
+      if (a === 127) return true;
+      if (a === 169 && b === 254) return true; // link-local, includes the 169.254.169.254 cloud metadata address
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 192 && b === 168) return true;
+      if (a === 0) return true;
+      return false;
+    }
+    const lower = ip.toLowerCase();
+    if (lower === "::1") return true;
+    if (/^fe[89ab][0-9a-f]:/.test(lower)) return true; // link-local fe80::/10
+    if (/^f[cd][0-9a-f]{2}:/.test(lower)) return true; // unique local fc00::/7
+    return false;
+  }
+
+  // Full safety check before any outbound fetch to an operator-supplied
+  // hostname (Security Auditor finding H1): shape, bare-IP rejection, AND
+  // a real server-side DNS resolution to reject private/loopback/
+  // link-local targets -- closes the gap a syntax-only check leaves open
+  // (a legitimate-looking domain name whose DNS happens to point at
+  // internal infrastructure). Does NOT fully close DNS-rebinding (the
+  // resolved address could change between this check and the fetch() a
+  // moment later) -- accepted residual risk given this action is already
+  // superadmin-only and every outcome is audit-logged; see this round's
+  // ADR-0007 addendum.
+  async function assertHostnameSafeToFetch(hostname: string): Promise<{ safe: boolean; reason?: string }> {
+    if (!HOSTNAME_RE.test(hostname)) return { safe: false, reason: "ugyldig hostname-format" };
+    if (IPV4_LITERAL_RE.test(hostname)) return { safe: false, reason: "IP-adresser er ikkje tillatne som hostname" };
+    try {
+      const records = await Deno.resolveDns(hostname, "A");
+      for (const ip of records) {
+        if (isPrivateOrReservedIp(ip)) {
+          return { safe: false, reason: "hostname løyser til ei privat/reservert IP-adresse" };
+        }
+      }
+      return { safe: true };
+    } catch (e) {
+      return { safe: false, reason: "DNS-oppslag feila: " + (e instanceof Error ? e.message : "ukjend feil") };
+    }
+  }
 
   // ── register_tenant ──────────────────────────────────────────────────────
   // Step 1 of the checklist. Creates the tenants row; status is always
@@ -190,7 +267,7 @@ serve(async (req: Request) => {
     const cleanHostnames = (Array.isArray(hostnames) ? hostnames : [])
       .map((h: unknown) => String(h).trim().toLowerCase())
       .filter((h: string) => h.length > 0);
-    const badHostname = cleanHostnames.find((h: string) => !HOSTNAME_RE.test(h));
+    const badHostname = cleanHostnames.find((h: string) => !HOSTNAME_RE.test(h) || IPV4_LITERAL_RE.test(h));
     if (badHostname) {
       return json({ error: "Ugyldig hostname-format: " + badHostname }, 400);
     }
@@ -323,13 +400,25 @@ serve(async (req: Request) => {
   }
 
   // ── verify_tenant_schema ─────────────────────────────────────────────────
-  // Step 4: a lightweight schema-fingerprint check against the newly
-  // provisioned data-plane project -- cross-project, needs the
-  // Vault-decrypted key. Confirms a handful of expected tables/functions
-  // exist rather than trusting a clean `db push` exit code alone. Now
-  // persists the result onto tenants.schema_verified_at (set on pass,
-  // cleared on fail) so activate_tenant can actually require it, instead of
-  // this being a one-off check whose result only ever reached the caller.
+  // Step 4: a schema-fingerprint check against the newly provisioned
+  // data-plane project -- cross-project, needs the Vault-decrypted key.
+  // Confirms a handful of expected tables exist AND that RLS is actually
+  // enabled on them, rather than trusting a clean `db push` exit code
+  // alone. Now persists the result onto tenants.schema_verified_at (set on
+  // pass, cleared on fail) so activate_tenant can actually require it.
+  //
+  // Security Auditor finding H2 (Phase 6 pre-merge review, 2026-07-09): the
+  // RLS check was added specifically because resolve_tenant_by_hostname()
+  // (see this round's migration) now resolves 'provisioning' tenants too --
+  // meaning a tenant's real hostname can go publicly live, with its real
+  // Supabase credentials handed to any visitor's browser, before
+  // activate_tenant's gate ever runs. Checking table existence alone left
+  // a freshly `db push`-ed project (RLS not yet enabled on some table) as a
+  // real, unauthenticated data-exposure risk the moment DNS pointed at it.
+  // Checking rls_enabled here doesn't remove that exposure window
+  // entirely (schema_verified_at only gates activate_tenant, not whether
+  // the hostname already resolves) but it does mean a customer can't reach
+  // "schema verified" while a table is still wide open.
   if (action === "verify_tenant_schema") {
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
@@ -342,25 +431,33 @@ serve(async (req: Request) => {
     const tenantSrvSb = createClient(tenant.data_plane_url, tenantServiceKey);
     // Relies on verify_schema_fingerprint() existing in the tenant's own
     // project (added to the baseline migrations, see
-    // supabase/migrations/20260708212124_add_schema_fingerprint_rpc.sql) --
-    // if it's missing entirely, that itself means the schema push hasn't
-    // been run yet or used an older baseline.
+    // supabase/migrations/20260708212124_add_schema_fingerprint_rpc.sql,
+    // extended with rls_enabled by 20260709193227_add_rls_check_to_schema_fingerprint.sql)
+    // -- if it's missing entirely, or missing the rls_enabled column, that
+    // itself means the schema push hasn't been run yet or used an older
+    // baseline.
     const { data: rows, error: rpcErr } = await tenantSrvSb.rpc("verify_schema_fingerprint");
     if (rpcErr) {
       await controlSrvSb.from("tenants").update({ schema_verified_at: null }).eq("id", tenant_id);
       await auditFinish(auditId, "error", rpcErr.message);
       return json({ error: "Skjema-sjekk feila (manglar verify_schema_fingerprint()? køyr migrasjonane først)", reachable: false }, 500);
     }
-    const missing = ((rows as { table_name: string; table_exists: boolean }[]) || [])
-      .filter((r) => !r.table_exists)
+    type FingerprintRow = { table_name: string; table_exists: boolean; rls_enabled?: boolean };
+    const fingerprint = (rows as FingerprintRow[]) || [];
+    const missing = fingerprint.filter((r) => !r.table_exists).map((r) => r.table_name);
+    const rlsMissing = fingerprint
+      .filter((r) => r.table_exists && r.rls_enabled === false)
       .map((r) => r.table_name);
-    const ok = missing.length === 0;
+    const ok = missing.length === 0 && rlsMissing.length === 0;
     await controlSrvSb
       .from("tenants")
       .update({ schema_verified_at: ok ? new Date().toISOString() : null })
       .eq("id", tenant_id);
-    await auditFinish(auditId, ok ? "success" : "error", ok ? undefined : "manglar: " + missing.join(","));
-    return json({ success: true, schema_ok: ok, missing_tables: missing });
+    const detailParts: string[] = [];
+    if (missing.length) detailParts.push("manglar tabellar: " + missing.join(","));
+    if (rlsMissing.length) detailParts.push("RLS ikkje på: " + rlsMissing.join(","));
+    await auditFinish(auditId, ok ? "success" : "error", ok ? undefined : detailParts.join("; "));
+    return json({ success: true, schema_ok: ok, missing_tables: missing, rls_missing: rlsMissing });
   }
 
   // ── verify_tenant_routing ────────────────────────────────────────────────
@@ -391,21 +488,49 @@ serve(async (req: Request) => {
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const results: { hostname: string; ok: boolean; detail: string }[] = [];
     for (const hostname of hostnames) {
-      if (!HOSTNAME_RE.test(hostname)) {
-        results.push({ hostname, ok: false, detail: "ugyldig hostname-format" });
+      // Security Auditor finding H1: full safety check (shape + bare-IP
+      // rejection + real DNS resolution against private/reserved ranges)
+      // before this hostname is ever handed to fetch() below -- not just
+      // the syntactic HOSTNAME_RE test this used to be.
+      const safety = await assertHostnameSafeToFetch(hostname);
+      if (!safety.safe) {
+        results.push({ hostname, ok: false, detail: safety.reason || "utrygt hostname" });
         continue;
       }
+      // Security Auditor finding L2: bounded timeout and response size --
+      // an operator-supplied hostname could otherwise point at a slow or
+      // deliberately huge response.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const resp = await fetch("https://" + hostname + "/config.js", { method: "GET" });
+        const resp = await fetch("https://" + hostname + "/config.js", { method: "GET", signal: controller.signal });
         if (!resp.ok) {
           results.push({ hostname, ok: false, detail: "HTTP " + resp.status });
           continue;
         }
-        const text = await resp.text();
+        const reader = resp.body ? resp.body.getReader() : null;
+        let text = "";
+        if (reader) {
+          const decoder = new TextDecoder();
+          let totalBytes = 0;
+          const MAX_BYTES = 65536; // config.js is a few hundred bytes in practice
+          while (totalBytes < MAX_BYTES) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            totalBytes += value.byteLength;
+            text += decoder.decode(value, { stream: true });
+          }
+          await reader.cancel().catch(() => {});
+        } else {
+          text = await resp.text();
+        }
         const matches = text.indexOf(tenant.data_plane_url) !== -1 && text.indexOf(tenant.data_plane_anon_key) !== -1;
         results.push({ hostname, ok: matches, detail: matches ? "" : "config.js svara, men peika ikkje på denne kunden sitt prosjekt" });
       } catch (e) {
-        results.push({ hostname, ok: false, detail: e instanceof Error ? e.message : "nettverksfeil" });
+        const isAbort = e instanceof Error && e.name === "AbortError";
+        results.push({ hostname, ok: false, detail: isAbort ? "tidsavbrot (5s)" : (e instanceof Error ? e.message : "nettverksfeil") });
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
     const allOk = results.every((r) => r.ok);

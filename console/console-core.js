@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.25.0";
+  var VIBEVERK_VERSION = "0.25.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1031,7 +1031,14 @@ window.VwConsole = (function () {
       out.textContent = "Sjekkar…";
       tenantAdminCall("verify_tenant_schema", { tenant_id: tenant.id }, function (r) {
         if (r.error) { out.textContent = r.error; return; }
-        out.textContent = r.schema_ok ? "✓ Skjema OK" : "Manglar: " + r.missing_tables.join(", ");
+        if (r.schema_ok) {
+          out.textContent = "✓ Skjema OK (tabellar finst, RLS på)";
+        } else {
+          var parts = [];
+          if (r.missing_tables && r.missing_tables.length) parts.push("manglar tabellar: " + r.missing_tables.join(", "));
+          if (r.rls_missing && r.rls_missing.length) parts.push("RLS ikkje påslege: " + r.rls_missing.join(", "));
+          out.textContent = parts.join(" | ") || "Skjema-sjekk feila";
+        }
         // Refresh so step 5's button unlocks immediately once schema_ok,
         // instead of requiring a manual reload to see the new state.
         loadTenants(function () { renderKundar(_sc, fullWrap); });

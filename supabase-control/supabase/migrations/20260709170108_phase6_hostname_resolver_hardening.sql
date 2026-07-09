@@ -54,7 +54,6 @@ $$;
 -- function regardless of this REVOKE FROM PUBLIC -- confirmed harmless here
 -- since anon access is exactly what this function is for, but the GRANT
 -- below is still the thing actually making it callable, intentionally.
--- access is exactly what this function is for, but stated for clarity.
 REVOKE ALL ON FUNCTION resolve_tenant_by_hostname(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION resolve_tenant_by_hostname(text) TO anon;
 
@@ -71,12 +70,25 @@ GRANT EXECUTE ON FUNCTION resolve_tenant_by_hostname(text) TO anon;
 -- across rows" constraint) using the && (overlap) operator. Also
 -- normalizes hostnames to lowercase on write, so the case-insensitive
 -- resolver above and this overlap check always compare on the same footing.
+--
+-- Security Auditor finding M1 (Phase 6 pre-merge review, 2026-07-09): the
+-- EXISTS check below only sees COMMITTED rows under Postgres's default
+-- READ COMMITTED isolation -- two concurrent INSERT/UPDATEs with
+-- overlapping hostnames could each pass the check before either commits,
+-- landing exactly the collision this trigger exists to prevent. Fixed
+-- with a fixed-key advisory transaction lock (pg_advisory_xact_lock)
+-- taken BEFORE the check, serializing all hostname-mutating transactions
+-- against each other. Coarse-grained (one lock for all tenants, not
+-- per-hostname), but hostname registration/reconnection is a rare,
+-- superadmin-only operation -- contention is a non-issue, and this is far
+-- simpler than a separate unique-per-hostname junction table.
 -- =============================================================================
 CREATE OR REPLACE FUNCTION check_tenant_hostname_overlap()
 RETURNS trigger
 SECURITY DEFINER SET search_path = public
 LANGUAGE plpgsql AS $$
 BEGIN
+  PERFORM pg_advisory_xact_lock(729014); -- arbitrary constant, unique to this guard
   NEW.hostnames := (SELECT array_agg(lower(h)) FROM unnest(NEW.hostnames) AS h);
   IF NEW.hostnames IS NULL THEN
     NEW.hostnames := '{}';
@@ -103,3 +115,10 @@ CREATE TRIGGER tenants_hostname_overlap_guard
 -- future writes.
 UPDATE tenants SET hostnames = (SELECT array_agg(lower(h)) FROM unnest(hostnames) AS h)
 WHERE hostnames <> (SELECT array_agg(lower(h)) FROM unnest(hostnames) AS h);
+
+-- Security Auditor finding L1: resolve_tenant_by_hostname() was DROP+CREATE'd
+-- above with a new return signature -- without this, PostgREST could keep
+-- serving its previously cached function signature/plan until its schema
+-- cache naturally refreshes, per CLAUDE.md's standing rule for any
+-- function add/replace.
+NOTIFY pgrst, 'reload schema';
