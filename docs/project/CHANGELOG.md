@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.26.1 — 2026-07-09
+
+### Console's tenant picker was never actually tenant-aware for config reads — fixed
+Found directly by the canary test: picking the new tenant in Console's sidebar and editing its settings silently showed and saved the *real* `vibeverk` tenant's values instead. Architect-consulted before fixing (cross-cutting change).
+- **Root cause**: `getSC()` read a local cache populated once at page load from whichever project Console's own `config.js` pointed at (always the real tenant) — completely independent of `_activeTenant`. `saveSC()` *did* correctly route the actual write through `broker` (respecting the picked tenant), but also polluted that same local cache as a side effect.
+- **Fix**: `getSC()`/new `getStoreKey()` now read `superconfig` directly from the browser via a plain anon-key REST call against whichever tenant is picked — `superconfig` is intentionally anon-readable by RLS design (same pattern `core.js` itself already uses), so no broker/backend change was needed for this part. `renderSection()`'s dispatcher and 5 submit handlers converted from sync to async reads, with a generation-token guard against a stale callback writing into a reused DOM element. `saveSC()`/`resetSC()`'s local-cache side effects removed.
+- **Second, more serious bug found while scoping this**: `renderAnalyse` (Plausible settings) used `App.store` directly and **never actually reached Supabase for any tenant, including the real one** — edits were silently lost on reload. Fixed the same way: `"analytics"` added to `broker`'s `ALLOWED_CONFIG_KEYS`, routed through the same tenant-scoped read + broker write.
+- **Not fixed, flagged as follow-up**: `resetSC()` silently switches the operator to a different (alphabetically-first) tenant after reload, with no indication that happened.
+- `broker` Edge Function changed (`analytics` key) — **not yet redeployed**, pending explicit approval.
+- Full detail in `docs/decisions/ADR-0009`'s new addendum. `node test.js`/`node test-workspace.js` re-run clean (504/1, 151/1) — neither harness loads `console-core.js`. Cache-bust: `console-core.js` 67 → 68.
+
 ## 0.26.0 — 2026-07-09
 
 ### Phase 6 fully proven: positive-path canary tenant live end-to-end

@@ -33,7 +33,13 @@ const CORS = {
 
 // Only these two store keys may ever be read/written through this broker —
 // an explicit allowlist, not "any key the caller names."
-const ALLOWED_CONFIG_KEYS = ["superconfig", "superconfig-private"];
+// "analytics" added 2026-07-09 (Console tenant-picker follow-up): previously
+// read/written via App.store.get/set("analytics", ...) on the client, which
+// never actually reached Supabase for any tenant (App.store's write-through
+// is gated on a login state Console never establishes) -- routed through the
+// same broker path as superconfig now. reset_config below also clears it,
+// matching the "reset everything" intent of that button.
+const ALLOWED_CONFIG_KEYS = ["superconfig", "superconfig-private", "analytics"];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.26.0";
+  var VIBEVERK_VERSION = "0.26.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -160,20 +160,59 @@ window.VwConsole = (function () {
 
   /* =========================================================================
      SUPERCONFIG I/O
+     -------------------------------------------------------------------------
+     Fase 6-oppfølging (2026-07-09): getSC() las tidlegare frå App.store, ein
+     lokal cache fylt av core.js sin EIGEN, heilt separate hydrering av
+     KONSOLLEN sitt eige config.js-prosjekt (alltid det verkelege
+     produksjonsprosjektet, sidan Console lastar vibeverk.no sin eigen
+     config.js) — uavhengig av kva for tenant som er vald i sidepanelet. Dette
+     var eit medvite forenkla val i Fase 8 (då fanst berre éin tenant, så
+     "cachen sin tenant" og "vald tenant" var alltid same prosjekt). Den andre
+     ekte kanari-tenanten avslørte at dette faktisk er ein feil no: å velje ein
+     annan tenant synte framleis DEN VERKELEGE tenanten sine verdiar, og lagring
+     forureina den same lokale cachen.
+     Arkitekt-konsultert fiks: les tenant-skopert, direkte mot DEN VALDE
+     tenanten sitt eige prosjekt med anon-nøkkelen (superconfig er med vilje
+     anon-lesbar via store_anon_read RLS, nøyaktig same mønster core.js sjølv
+     brukar for sin eigen tenant) — ikkje via broker (broker sitt formål er
+     PRIVILEGERT kryssprosjekt-tilgang og audit-logging, unaudvendig for ei
+     lesing som allereie er meint å vera offentleg).
      ====================================================================== */
-  // Lesing: 'superconfig' er anon-lesbar (store_anon_read), så den vanlege
-  // localStorage-hydreringa frå core.js (som køyrer uavhengig av Console sin
-  // eigen OTP-sesjon) held cachen oppdatert — ingen endring naudsynt her.
-  function getSC() { return App.store.get(SUPER_KEY, {}) || {}; }
+  var _tenantPublicClients = {}; // cached per tenant id — unngår å laga ny klient kvar seksjonsbyte
 
-  // Skriving går no via broker Edge Function-en i vibeverk-control (Fase 8),
+  function tenantPublicClient() {
+    if (!_activeTenant) return null;
+    var cached = _tenantPublicClients[_activeTenant.id];
+    if (cached) return cached;
+    var client = window.supabase.createClient(_activeTenant.data_plane_url, _activeTenant.data_plane_anon_key,
+      { auth: { persistSession: false } }); // berre anon-lesing, ingen sesjon å halde ved lag
+    _tenantPublicClients[_activeTenant.id] = client;
+    return client;
+  }
+
+  // Generisk tenant-skopert lesing av éin store-nøkkel (anon-lesbar, som
+  // superconfig og analytics er) — direkte mot DEN VALDE tenanten sitt eige
+  // prosjekt, ikkje via broker og ikkje via nokon lokal cache.
+  function getStoreKey(key, cb) {
+    var sb = tenantPublicClient();
+    if (!sb) { cb({}); return; }
+    sb.from("store").select("value")
+      .eq("tenant_id", _activeTenant.data_plane_storage_key)
+      .eq("key", key)
+      .maybeSingle()
+      .then(function (r) {
+        if (r.error) { console.error("[console] lesing av '" + key + "' feila:", r.error); cb({}); return; }
+        cb((r.data && r.data.value) || {});
+      });
+  }
+
+  function getSC(cb) { getStoreKey(SUPER_KEY, cb); }
+
+  // Skriving går via broker Edge Function-en i vibeverk-control (Fase 8),
   // ikkje lenger direkte mot kundens eige prosjekt — sjå brokerCall() over.
-  // App.store.set()/.remove() held berre den lokale cachen i sync (ufarleg
-  // biverknad: dei køar òg ei skriving for core.js sin HEILT SEPARATE,
-  // sesjonspersisterande klient, som normalt ikkje er innlogga som denne
-  // kundens admin frå Console og difor no-oppar via RLS — uendra frå før).
+  // Skriv IKKJE lenger til nokon lokal cache (fjerna saman med getSC()-fiksen
+  // over — cachen var berre feil-kjelda, tente ingen føremål her lenger).
   function saveSC(sc) {
-    App.store.set(SUPER_KEY, sc);
     brokerCall("set_config", { key: SUPER_KEY, value: sc }, function (r) {
       if (r.error) console.error("[console] superconfig-skriving feila:", r.error);
     });
@@ -181,7 +220,11 @@ window.VwConsole = (function () {
 
   function resetSC() {
     if (!confirm("Nullstill all superconfig og gå tilbake til config.js-verdiane?")) return;
-    App.store.remove(SUPER_KEY);
+    // App.store.remove(SUPER_KEY) fjerna saman med resten av den lokale
+    // cache-fjerninga (sjå getSC()/saveSC() sine notat) -- den nullstilte
+    // berre KONSOLLEN sin eigen, uavhengige lokale cache for den VERKELEGE
+    // tenanten, ikkje nokon relevant tilstand for den tenanten som faktisk
+    // er vald her.
     brokerCall("reset_config", {}, function (r) {
       if (r.error) console.error("[console] nullstilling feila:", r.error);
       location.reload();
@@ -490,11 +533,12 @@ window.VwConsole = (function () {
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var sc2 = getSC();
       var checked = wrap.querySelector("input[name='cs-mode']:checked");
-      sc2.productMode = checked ? checked.value : "web";
-      saveSC(sc2);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste sideopplasting.", true);
+      getSC(function (sc2) {
+        sc2.productMode = checked ? checked.value : "web";
+        saveSC(sc2);
+        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste sideopplasting.", true);
+      });
     });
   }
 
@@ -575,32 +619,33 @@ window.VwConsole = (function () {
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var sc2 = getSC();
-      sc2.company = {
-        name:            wrap.querySelector("#cs-name").value.trim(),
-        tagline:         wrap.querySelector("#cs-tagline").value.trim(),
-        logoUrl:         wrap.querySelector("#cs-logo").value.trim(),
-        metaDescription: wrap.querySelector("#cs-metadesc").value.trim(),
-        ogImage:         wrap.querySelector("#cs-ogimage").value.trim(),
-        favicon:         wrap.querySelector("#cs-favicon").value.trim()
-      };
-      sc2.colors = {
-        primary:    wrap.querySelector("#cs-primary").value,
-        secondary:  wrap.querySelector("#cs-secondary").value,
-        background: wrap.querySelector("#cs-bg").value,
-        text:       wrap.querySelector("#cs-text").value,
-        surface:    wrap.querySelector("#cs-surface").value
-      };
-      sc2.fonts = {
-        display: wrap.querySelector("#cs-dfont").value.trim(),
-        body:    wrap.querySelector("#cs-bfont").value.trim(),
-        weights: {
-          display: wrap.querySelector("#cs-dweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean),
-          body:    wrap.querySelector("#cs-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
-        }
-      };
-      saveSC(sc2);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Endringane er aktive ved neste sideopplasting.", true);
+      getSC(function (sc2) {
+        sc2.company = {
+          name:            wrap.querySelector("#cs-name").value.trim(),
+          tagline:         wrap.querySelector("#cs-tagline").value.trim(),
+          logoUrl:         wrap.querySelector("#cs-logo").value.trim(),
+          metaDescription: wrap.querySelector("#cs-metadesc").value.trim(),
+          ogImage:         wrap.querySelector("#cs-ogimage").value.trim(),
+          favicon:         wrap.querySelector("#cs-favicon").value.trim()
+        };
+        sc2.colors = {
+          primary:    wrap.querySelector("#cs-primary").value,
+          secondary:  wrap.querySelector("#cs-secondary").value,
+          background: wrap.querySelector("#cs-bg").value,
+          text:       wrap.querySelector("#cs-text").value,
+          surface:    wrap.querySelector("#cs-surface").value
+        };
+        sc2.fonts = {
+          display: wrap.querySelector("#cs-dfont").value.trim(),
+          body:    wrap.querySelector("#cs-bfont").value.trim(),
+          weights: {
+            display: wrap.querySelector("#cs-dweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean),
+            body:    wrap.querySelector("#cs-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
+          }
+        };
+        saveSC(sc2);
+        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Endringane er aktive ved neste sideopplasting.", true);
+      });
     });
   }
 
@@ -703,30 +748,31 @@ window.VwConsole = (function () {
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
       var primary = wrap.querySelector("#cs-wsp-primary").value;
-      var sc2 = getSC();
       var useCustomName = wrap.querySelector("#cs-wsp-use-name").checked;
-      sc2.workspace = Object.assign({}, sc2.workspace || {}, {
-        name:        useCustomName ? wrap.querySelector("#cs-wsp-name").value.trim() : "",
-        accentColor: primary,
-        colors: {
-          primary:    primary,
-          secondary:  wrap.querySelector("#cs-wsp-secondary").value,
-          background: wrap.querySelector("#cs-wsp-bg").value,
-          text:       wrap.querySelector("#cs-wsp-text").value,
-          surface:    wrap.querySelector("#cs-wsp-surface").value,
-          muted:      wrap.querySelector("#cs-wsp-muted").value
-        },
-        fonts: {
-          display: wrap.querySelector("#cs-wsp-dfont").value.trim(),
-          body:    wrap.querySelector("#cs-wsp-bfont").value.trim(),
-          weights: {
-            display: wrap.querySelector("#cs-wsp-dweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean),
-            body:    wrap.querySelector("#cs-wsp-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
+      getSC(function (sc2) {
+        sc2.workspace = Object.assign({}, sc2.workspace || {}, {
+          name:        useCustomName ? wrap.querySelector("#cs-wsp-name").value.trim() : "",
+          accentColor: primary,
+          colors: {
+            primary:    primary,
+            secondary:  wrap.querySelector("#cs-wsp-secondary").value,
+            background: wrap.querySelector("#cs-wsp-bg").value,
+            text:       wrap.querySelector("#cs-wsp-text").value,
+            surface:    wrap.querySelector("#cs-wsp-surface").value,
+            muted:      wrap.querySelector("#cs-wsp-muted").value
+          },
+          fonts: {
+            display: wrap.querySelector("#cs-wsp-dfont").value.trim(),
+            body:    wrap.querySelector("#cs-wsp-bfont").value.trim(),
+            weights: {
+              display: wrap.querySelector("#cs-wsp-dweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean),
+              body:    wrap.querySelector("#cs-wsp-bweights").value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
+            }
           }
-        }
+        });
+        saveSC(sc2);
+        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste Workspace-opplasting.", true);
       });
-      saveSC(sc2);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste Workspace-opplasting.", true);
     });
   }
 
@@ -751,35 +797,49 @@ window.VwConsole = (function () {
       var feats = {}, ifeats = {};
       wrap.querySelectorAll("[data-cs-feat]").forEach(function (cb)  { feats[cb.getAttribute("data-cs-feat")]   = cb.checked; });
       wrap.querySelectorAll("[data-cs-ifeat]").forEach(function (cb) { ifeats[cb.getAttribute("data-cs-ifeat")] = cb.checked; });
-      var sc2 = getSC();
-      sc2.features = feats;
-      sc2.intranettFeatures = ifeats;
-      saveSC(sc2);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+      getSC(function (sc2) {
+        sc2.features = feats;
+        sc2.intranettFeatures = ifeats;
+        saveSC(sc2);
+        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+      });
     });
   }
 
+  // Fase 6-oppfølging (2026-07-09): brukte tidlegare App.store.get/set("analytics", …)
+  // — verken tenant-skopert (same feil som getSC(), sjå notatet der) ELLER
+  // nokosinne faktisk skrive gjennom til Supabase for NOKON tenant (App.store
+  // sitt write-through er gata på _isAuthed, som berre vert sett av ei
+  // signInWithPassword mot ein tenant sitt eige prosjekt — noko Console aldri
+  // gjer, den autentiserer berre mot vibeverk-control). Endringar vart altså
+  // stille tapt ved sideoppfrisking, for alle kundar. Retta til same
+  // tenant-skoperte lesing (getStoreKey) og broker-skriving (saveSC-mønster)
+  // som resten av superconfig — "analytics" lagt til broker sin
+  // ALLOWED_CONFIG_KEYS.
   function renderAnalyse(sc, wrap) {
-    var an = App.store.get("analytics", null) || (CFG.analytics || {});
+    getStoreKey("analytics", function (an) {
+      wrap.innerHTML =
+        '<form id="cs-form">' +
+          '<fieldset class="admin-group"><legend>Analyse</legend>' +
+            C.field({ id:"cs-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"vibeverk.no" }) +
+            C.field({ id:"cs-an-plembed", label:"Plausible – delt dashboard-lenke", value: an.plausibleEmbed || "",
+              placeholder:"https://plausible.io/share/…",
+              hint:"Plausible → Site Settings → Visibility → Embed dashboard." }) +
+          '</fieldset>' +
+          saveBtn() +
+        '</form>';
 
-    wrap.innerHTML =
-      '<form id="cs-form">' +
-        '<fieldset class="admin-group"><legend>Analyse</legend>' +
-          C.field({ id:"cs-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"vibeverk.no" }) +
-          C.field({ id:"cs-an-plembed", label:"Plausible – delt dashboard-lenke", value: an.plausibleEmbed || "",
-            placeholder:"https://plausible.io/share/…",
-            hint:"Plausible → Site Settings → Visibility → Embed dashboard." }) +
-        '</fieldset>' +
-        saveBtn() +
-      '</form>';
-
-    wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
-      e.preventDefault();
-      App.store.set("analytics", {
-        plausible:      wrap.querySelector("#cs-an-pl").value.trim(),
-        plausibleEmbed: wrap.querySelector("#cs-an-plembed").value.trim()
+      wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        var value = {
+          plausible:      wrap.querySelector("#cs-an-pl").value.trim(),
+          plausibleEmbed: wrap.querySelector("#cs-an-plembed").value.trim()
+        };
+        brokerCall("set_config", { key: "analytics", value: value }, function (r) {
+          if (r.error) { statusMsg(wrap.querySelector("#cs-status"), r.error, false); return; }
+          statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+        });
       });
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
     });
   }
 
@@ -811,13 +871,15 @@ window.VwConsole = (function () {
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var sc2 = getSC();
-      sc2.privacy = {
-        heading: wrap.querySelector("#cs-priv-heading").value.trim(),
-        text:    App.ui.readRichTextField(wrap, "cs-priv-text")
-      };
-      saveSC(sc2);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+      var textVal = App.ui.readRichTextField(wrap, "cs-priv-text");
+      getSC(function (sc2) {
+        sc2.privacy = {
+          heading: wrap.querySelector("#cs-priv-heading").value.trim(),
+          text:    textVal
+        };
+        saveSC(sc2);
+        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+      });
     });
   }
 
@@ -1089,14 +1151,25 @@ window.VwConsole = (function () {
     system:     renderSystem
   };
 
+  // Generasjonsteljar: vaktar mot at eit forelda getSC()-kall (frå ein
+  // seksjon/tenant brukaren alt har forlate) skriv inn i eit #cs-section-wrap
+  // som no høyrer til ein heilt annan seksjon (same element-id vert attbrukt).
+  var _renderGen = 0;
+
   function renderSection(id) {
     var content = document.getElementById("cs-content");
     if (!content) return;
+    var myGen = ++_renderGen;
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +
       '<div id="cs-section-wrap"></div>';
     var fn = RENDERERS[id];
-    if (fn) fn(getSC(), document.getElementById("cs-section-wrap"));
+    if (!fn) return;
+    var wrap = document.getElementById("cs-section-wrap"); // fanga no, før det asynkrone hoppet
+    getSC(function (sc) {
+      if (myGen !== _renderGen) return; // avløyst av ein seinare navigate()/tenant-byte
+      fn(sc, wrap);
+    });
   }
 
   /* =========================================================================
