@@ -61,6 +61,17 @@
 //   to broker_audit_log, but a probing or compromised-but-unauthorized
 //   caller left zero trace. Body parsing moved earlier so action/tenant_id
 //   are available to log even on an auth failure.
+//
+// Phase 6 (2026-07-09, Architect-designed, see ADR-0007's Phase 6 addendum):
+// new verify_tenant_routing action -- the one thing in this codebase that
+// can ever set routing_verified_at, which activate_tenant already required
+// unconditionally. Needed a companion migration
+// (20260709170108_phase6_hostname_resolver_hardening.sql) widening
+// resolve_tenant_by_hostname() to also resolve 'provisioning' tenants
+// (otherwise this action's own outbound check could never succeed -- a
+// tenant not yet active was previously unresolvable, so routing could
+// never be verified, so it could never activate) and adding a
+// hostname-uniqueness trigger.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -159,6 +170,14 @@ serve(async (req: Request) => {
   // been mutated in any of those, so there's nothing to fail closed in
   // front of.
 
+  // Real domain-name shape, no protocol/port/path -- used both when
+  // registering a tenant's hostnames and when verify_tenant_routing later
+  // decides which hostnames it's safe to make an outbound request to
+  // (Phase 6). Rejects things like "localhost", a bare IP, or
+  // "host:1234/path" that could otherwise be used to point an outbound
+  // fetch at internal infrastructure.
+  const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
   // ── register_tenant ──────────────────────────────────────────────────────
   // Step 1 of the checklist. Creates the tenants row; status is always
   // 'provisioning' regardless of what the caller sends (a new tenant is
@@ -168,13 +187,20 @@ serve(async (req: Request) => {
     if (!slug || !data_plane_storage_key) {
       return json({ error: "slug og data_plane_storage_key er påkrevd" }, 400);
     }
+    const cleanHostnames = (Array.isArray(hostnames) ? hostnames : [])
+      .map((h: unknown) => String(h).trim().toLowerCase())
+      .filter((h: string) => h.length > 0);
+    const badHostname = cleanHostnames.find((h: string) => !HOSTNAME_RE.test(h));
+    if (badHostname) {
+      return json({ error: "Ugyldig hostname-format: " + badHostname }, 400);
+    }
     const auditId = await auditStart(null, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { data, error } = await controlSrvSb
       .from("tenants")
       .insert({
         slug,
-        hostnames: Array.isArray(hostnames) ? hostnames : [],
+        hostnames: cleanHostnames,
         data_plane_storage_key,
         data_plane_url: "",
         data_plane_anon_key: "",
@@ -185,6 +211,13 @@ serve(async (req: Request) => {
       .single();
     if (error) {
       await auditFinish(auditId, "error", error.message);
+      // The hostname-overlap trigger (Phase 6 migration) raises a Postgres
+      // exception if a hostname is already claimed by another tenant --
+      // surface that distinctly rather than the generic "finst slugen alt?"
+      // message, which would be misleading here.
+      if (error.message && error.message.indexOf("already registered to another tenant") !== -1) {
+        return json({ error: "Ein eller fleire hostnames er alt registrert på ein annan kunde" }, 409);
+      }
       return json({ error: "Registrering feila (finst slugen alt?)" }, 400);
     }
     await auditFinish(auditId, "success");
@@ -197,7 +230,7 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, data_plane_url, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at")
+    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
@@ -330,13 +363,69 @@ serve(async (req: Request) => {
     return json({ success: true, schema_ok: ok, missing_tables: missing });
   }
 
+  // ── verify_tenant_routing ────────────────────────────────────────────────
+  // Step 5 (Phase 6): the only action in this codebase that can ever set
+  // routing_verified_at, which activate_tenant requires below. For every
+  // hostname registered to this tenant, makes a REAL server-side HTTP
+  // request (never trusts a client-supplied claim) to
+  // https://<hostname>/config.js and confirms both that it responds 200
+  // AND that the returned body actually names THIS tenant's
+  // data_plane_url/data_plane_anon_key -- not just that some config.js was
+  // served. That second check is what would catch a hostname pointed at
+  // someone else's deployment (the write-time half of the same protection
+  // is the hostname-uniqueness trigger added in this round's migration).
+  // Requires resolve_tenant_by_hostname() to already resolve 'provisioning'
+  // tenants (same migration) -- otherwise the fetch below would 404/serve
+  // nothing even for a correctly-configured hostname.
+  if (action === "verify_tenant_routing") {
+    if (tenant.status !== "provisioning") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    }
+    const hostnames = (tenant.hostnames as string[]) || [];
+    if (hostnames.length === 0) {
+      await auditReject(tenant.id, action, "ingen hostnames registrert");
+      return json({ error: "Ingen hostnames registrert for denne kunden" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const results: { hostname: string; ok: boolean; detail: string }[] = [];
+    for (const hostname of hostnames) {
+      if (!HOSTNAME_RE.test(hostname)) {
+        results.push({ hostname, ok: false, detail: "ugyldig hostname-format" });
+        continue;
+      }
+      try {
+        const resp = await fetch("https://" + hostname + "/config.js", { method: "GET" });
+        if (!resp.ok) {
+          results.push({ hostname, ok: false, detail: "HTTP " + resp.status });
+          continue;
+        }
+        const text = await resp.text();
+        const matches = text.indexOf(tenant.data_plane_url) !== -1 && text.indexOf(tenant.data_plane_anon_key) !== -1;
+        results.push({ hostname, ok: matches, detail: matches ? "" : "config.js svara, men peika ikkje på denne kunden sitt prosjekt" });
+      } catch (e) {
+        results.push({ hostname, ok: false, detail: e instanceof Error ? e.message : "nettverksfeil" });
+      }
+    }
+    const allOk = results.every((r) => r.ok);
+    await controlSrvSb
+      .from("tenants")
+      .update({ routing_verified_at: allOk ? new Date().toISOString() : null })
+      .eq("id", tenant_id)
+      .eq("status", "provisioning");
+    await auditFinish(auditId, allOk ? "success" : "error", allOk ? undefined : JSON.stringify(results));
+    return json({ success: true, routing_ok: allOk, results });
+  }
+
   // ── activate_tenant ───────────────────────────────────────────────────────
   // Step 6. Requires ALL of: status still 'provisioning', a real connection
   // (data_plane_url set), a stored service_role secret, a passing schema
-  // verification (schema_verified_at), AND routing_verified_at. The last of
-  // these remains a hard, structural gate: nothing in this codebase sets it
-  // yet, so this action cannot succeed today regardless of the other four,
-  // by design -- Phase 6's real hostname->tenant resolver must exist first.
+  // verification (schema_verified_at), AND routing_verified_at -- the last of
+  // these is now set by verify_tenant_routing above, once Phase 6's actual
+  // resolver (middleware.js + /api/tenant-config.js) is deployed somewhere
+  // that hostname can reach. Until then, no tenant's hostnames will resolve
+  // to a real Vibeverk deployment, so this check keeps failing honestly.
   if (action === "activate_tenant") {
     const missing: string[] = [];
     if (tenant.status !== "provisioning") missing.push("status må vera 'provisioning' (er: " + tenant.status + ")");
