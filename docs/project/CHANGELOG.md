@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.26.0 — 2026-07-09
+
+### Phase 6 fully proven: positive-path canary tenant live end-to-end
+The user ran the complete onboarding checklist live through Console against a real canary tenant (`phase6-canary`, hostname `vibeverk-j1yg.vercel.app`, data-plane `vibeverk-staging`): register → connection → secret → schema-verify (RLS confirmed on) → routing-verify (a real HTTPS call from `vibeverk-control` to the public hostname) → activate — all succeeded for the first time via real code, not a manual `UPDATE`.
+- **Confirmed via an actual browser visit**: `https://vibeverk-j1yg.vercel.app/` now renders a real Vibeverk page (not the earlier 404); `curl /config.js` shows the generated config correctly pointing at `vibeverk-staging` with `storageKey: "canary"` — this tenant's own values.
+- Page appears visually "empty" (default tagline, active chat widget, no real content) — **expected**, not a bug: no `superconfig`/content rows exist yet for this tenant, and full branding parity was always deliberately out of scope for `api/tenant-config.js` (see ADR-0007's Phase 6 addendum). That layer works the same way it already does for the one real customer, via Console's normal config editor.
+- **This closes every item on Phase 6's "explicitly NOT done" list.** The actual blocker for onboarding customer #2 (identified back in Fase 9/ADR-0010) no longer exists as a technical gap — remaining before a *real* (non-canary) customer: the accepted-for-now Security Auditor risk items (H2's exposure window, DNS-rebinding) and a decision on cleaning up/repurposing the canary tenant and Vercel project.
+- Docs-only otherwise (ADR-0007 updated). Cache-bust: `console-core.js` 66 → 67 (version string only).
+
 ## 0.25.4 — 2026-07-09
 
 ### Live Vercel deployment test: `middleware.js` + `api/tenant-config.js` confirmed working
