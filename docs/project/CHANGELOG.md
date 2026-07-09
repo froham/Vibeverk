@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.27.0 — 2026-07-09
+
+### Security Auditor finding H2 fully closed (provisioning-tenant exposure window)
+Closes the one accepted-for-now risk item left over from the Phase 6 Security Auditor review — the user explicitly asked to close this before running a fresh security review and doing version bookkeeping on the rest of the session's work.
+- **Before**: a `'provisioning'` tenant (real hostname, real Supabase credentials) was fully publicly servable from the moment steps 1–3 of onboarding were done (register + connection + secret) — well before schema/RLS verification (step 4) ever ran.
+- **Fix**: new migration `supabase-control/supabase/migrations/20260709224325_close_provisioning_tenant_exposure_window.sql` — `resolve_tenant_by_hostname()` now only resolves a `'provisioning'` tenant once `schema_verified_at` is set. No circularity introduced: `verify_tenant_schema` never depended on hostname resolution, and the checklist's own step order already guarantees schema-verify (step 4) runs before routing-verify (step 5) needs the tenant to resolve.
+- `verify_tenant_routing` also now checks this precondition explicitly for a clear error message, instead of a confusing per-hostname "HTTP 404" if ever called out of order via direct API access.
+- **Security Auditor pass on this fix: verdict PROCEED**, no BLOCKER/HIGH. One MEDIUM accepted and documented in the ADR (not fixed): `schema_verified_at` is a point-in-time flag with nothing re-validating it before `activate_tenant` — pre-existing, out of scope for this patch, narrow practical exposure today.
+- Full detail in `docs/decisions/ADR-0007`'s Phase 6 addendum. `node test.js`/`node test-workspace.js` re-run clean (504/1, 151/1). **Migration written, not yet deployed** — pending explicit approval, same as the standing safeguard for every remote Supabase action. Cache-bust: `console-core.js` 69 → 70 (version string only).
+
 ## 0.26.2 — 2026-07-09
 
 ### `broker` redeployed with the `analytics` config-key fix

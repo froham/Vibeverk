@@ -88,7 +88,16 @@
 //   RLS was enabled on them. Fixed: verify_schema_fingerprint() (customer
 //   baseline, see supabase/migrations/20260709193227_...) now also reports
 //   rls_enabled per table; verify_tenant_schema requires it, same as
-//   table existence.
+//   table existence. **Follow-up, 2026-07-09**: the auditor's own review
+//   noted this narrowed but didn't eliminate the exposure window -- a
+//   tenant was still publicly resolvable from the moment it merely had a
+//   hostname+connection registered (steps 1-3), before schema_verified_at
+//   was ever set (step 4). Closed via migration
+//   20260709224325_close_provisioning_tenant_exposure_window.sql:
+//   resolve_tenant_by_hostname() now only resolves a 'provisioning' tenant
+//   once schema_verified_at is non-null. verify_tenant_routing (below) now
+//   checks that precondition explicitly too, for a clear error instead of
+//   a confusing per-hostname "HTTP 404" if called out of order.
 // - M1: the hostname-uniqueness trigger (this round's migration) was a
 //   real TOCTOU race under READ COMMITTED -- fixed with a fixed-key
 //   pg_advisory_xact_lock serializing hostname-mutating transactions.
@@ -478,6 +487,18 @@ serve(async (req: Request) => {
     if (tenant.status !== "provisioning") {
       await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
       return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    }
+    // Security Auditor finding H2, closed 2026-07-09: resolve_tenant_by_hostname()
+    // (see this round's migration) now only resolves a 'provisioning' tenant
+    // once schema_verified_at is set -- so calling this before step 4 (verify
+    // schema) would otherwise just fail with a confusing "HTTP 404" per
+    // hostname, when the real problem is an unmet precondition. Checked here
+    // explicitly for a clear error message; Console's own UI already disables
+    // this step's button until schema_ok, this is defense-in-depth for a
+    // direct API call.
+    if (!tenant.schema_verified_at) {
+      await auditReject(tenant.id, action, "skjema er ikkje verifisert enno");
+      return json({ error: "Skjema må vera verifisert (steg 4) før ruting kan verifiserast" }, 403);
     }
     const hostnames = (tenant.hostnames as string[]) || [];
     if (hostnames.length === 0) {
