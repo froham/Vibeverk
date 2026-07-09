@@ -42,6 +42,25 @@
 //   previously routing_verified_at was the only precondition checked, so a
 //   tenant with a blank connection or a never-verified schema could in
 //   principle be activated the moment Phase 6 starts setting that column.
+//
+// Security Auditor pre-merge review of the round-2 changes above (2026-07-09)
+// found two further MEDIUM gaps, also fixed here:
+// - M1 (TOCTOU): the new status guards were check-then-act in application
+//   code, not enforced by the database itself -- two near-simultaneous
+//   requests could both pass the JS-level "status === provisioning" check
+//   before either write landed. The actual UPDATE statements for
+//   update_tenant_connection and activate_tenant now repeat the status
+//   condition (`.eq("status", "provisioning")`) so the guard is enforced by
+//   the single atomic UPDATE itself, not just the earlier read; a zero-row
+//   result is treated as the precondition no longer holding. The same fix
+//   is applied inside store_tenant_service_role_key() (SQL function, see
+//   this round's migration) since that write happens via RPC, not a plain
+//   .update() call here.
+// - M2: authorization failures (inactive operator, wrong role) were not
+//   audit-logged at all -- every other rejection path in this file writes
+//   to broker_audit_log, but a probing or compromised-but-unauthorized
+//   caller left zero trace. Body parsing moved earlier so action/tenant_id
+//   are available to log even on an auth failure.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -73,9 +92,28 @@ serve(async (req: Request) => {
   const { data: { user }, error: authErr } = await callerSb.auth.getUser();
   if (authErr || !user) return json({ error: "Ugyldig token" }, 401);
 
+  // Parsed early (before the operator checks below) so a rejected
+  // authorization attempt can still be logged with the action/tenant_id it
+  // was trying to reach (M2 fix) -- previously this happened after, so an
+  // unauthorized caller left zero trace.
+  const body = await req.json().catch(() => ({}));
+  const { action, tenant_id } = body;
+
+  const controlSrvSb = createClient(controlUrl, controlSrvKey);
+
+  async function auditReject(tenantId: string | null, actionName: string, detail: string) {
+    const { error } = await controlSrvSb.from("broker_audit_log").insert({
+      operator_id: user.id, tenant_id: tenantId, action: actionName, result: "error", detail,
+    });
+    if (error) {
+      console.error("[tenant-admin] KRITISK: audit-logg-skriving feila", { actionName, tenantId, error: error.message });
+    }
+  }
+
   const { data: operator } = await callerSb
     .from("operators").select("status, role").eq("id", user.id).single();
   if (!operator || operator.status !== "active") {
+    await auditReject(tenant_id || null, action || "ukjend", "avvist: ikkje aktiv operatør");
     return json({ error: "Berre aktive operatørar" }, 403);
   }
   // Every action in this function is a tenant-onboarding/connection-critical
@@ -83,10 +121,9 @@ serve(async (req: Request) => {
   // ordinary day-to-day operator work. Require superadmin uniformly rather
   // than picking and choosing per action.
   if (operator.role !== "superadmin") {
+    await auditReject(tenant_id || null, action || "ukjend", "avvist: ikkje superadmin (rolle: " + operator.role + ")");
     return json({ error: "Berre superadmin kan utføre kundeadministrasjon" }, 403);
   }
-
-  const controlSrvSb = createClient(controlUrl, controlSrvKey);
 
   // Fail-closed audit pair for mutating actions: auditStart() writes the
   // attempt BEFORE the privileged action runs and returns null if that
@@ -116,21 +153,11 @@ serve(async (req: Request) => {
       console.error("[tenant-admin] KRITISK: audit-logg (post-action) feila", { auditId, result, error: error.message });
     }
   }
-  // Non-mutating / already-rejected-before-any-write paths (unknown tenant,
-  // unknown action, precondition failures) keep the simpler single-call
-  // logger -- nothing has been mutated, so there's nothing to fail closed
-  // in front of.
-  async function auditReject(tenantId: string | null, action: string, detail: string) {
-    const { error } = await controlSrvSb.from("broker_audit_log").insert({
-      operator_id: user.id, tenant_id: tenantId, action, result: "error", detail,
-    });
-    if (error) {
-      console.error("[tenant-admin] KRITISK: audit-logg-skriving feila", { action, tenantId, error: error.message });
-    }
-  }
-
-  const body = await req.json().catch(() => ({}));
-  const { action } = body;
+  // auditReject (used above for the auth-failure paths too) covers the rest
+  // of the non-mutating / already-rejected-before-any-write paths below
+  // (unknown tenant, unknown action, precondition failures) -- nothing has
+  // been mutated in any of those, so there's nothing to fail closed in
+  // front of.
 
   // ── register_tenant ──────────────────────────────────────────────────────
   // Step 1 of the checklist. Creates the tenants row; status is always
@@ -164,8 +191,8 @@ serve(async (req: Request) => {
     return json({ success: true, tenant_id: data.id });
   }
 
-  // Every action below operates on an existing tenant.
-  const { tenant_id } = body;
+  // Every action below operates on an existing tenant (tenant_id already
+  // destructured above, alongside action, for the auth-failure audit path).
   if (!tenant_id) return json({ error: "tenant_id er påkrevd" }, 400);
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
@@ -203,13 +230,25 @@ serve(async (req: Request) => {
     }
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
-    const { error } = await controlSrvSb
+    // Security Auditor pre-merge finding M1: repeat the status condition on
+    // the actual UPDATE (not just the earlier JS-level read above) so the
+    // guard is enforced atomically against the row's state at write time --
+    // closes the window where a concurrent activate_tenant could flip the
+    // tenant to 'active' between the read at the top of this request and
+    // this write.
+    const { data: updated, error } = await controlSrvSb
       .from("tenants")
       .update({ data_plane_url, data_plane_anon_key, updated_at: new Date().toISOString() })
-      .eq("id", tenant_id);
+      .eq("id", tenant_id)
+      .eq("status", "provisioning")
+      .select("id");
     if (error) {
       await auditFinish(auditId, "error", error.message);
       return json({ error: "Lagring feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
+      return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
     }
     await auditFinish(auditId, "success");
     return json({ success: true });
@@ -229,6 +268,11 @@ serve(async (req: Request) => {
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const secretName = "tenant-" + tenant.slug + "-service-role-" + Date.now();
+    // Security Auditor pre-merge finding M1: store_tenant_service_role_key()
+    // itself now re-checks status = 'provisioning' atomically inside its own
+    // UPDATE (see this round's migration) -- the JS-level check above is a
+    // fast-path rejection, the SQL function is what actually enforces it
+    // against a concurrent status change.
     const { error } = await controlSrvSb.rpc("store_tenant_service_role_key", {
       p_tenant_id: tenant_id,
       p_key: service_role_key,
@@ -236,6 +280,9 @@ serve(async (req: Request) => {
     });
     if (error) {
       await auditFinish(auditId, "error", error.message);
+      if (error.message && error.message.indexOf("not in status provisioning") !== -1) {
+        return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
+      }
       return json({ error: "Lagring av nøkkel feila" }, 500);
     }
     await auditFinish(auditId, "success");
@@ -303,13 +350,21 @@ serve(async (req: Request) => {
     }
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
-    const { error } = await controlSrvSb
+    // Same M1 atomicity fix as update_tenant_connection above: repeat the
+    // status condition on the write itself.
+    const { data: updated, error } = await controlSrvSb
       .from("tenants")
       .update({ status: "active", updated_at: new Date().toISOString() })
-      .eq("id", tenant_id);
+      .eq("id", tenant_id)
+      .eq("status", "provisioning")
+      .select("id");
     if (error) {
       await auditFinish(auditId, "error", error.message);
       return json({ error: "Aktivering feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
+      return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
     }
     await auditFinish(auditId, "success");
     return json({ success: true });

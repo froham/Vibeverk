@@ -17,6 +17,12 @@
 // "support access" question (see ADR-0008 and the Phase 8 design notes),
 // which needs Privacy/Compliance input before being decided — not
 // pre-empted here.
+//
+// Security Auditor pre-merge review (2026-07-09) of the round-2 hardening
+// in the sibling tenant-admin function found finding M2 applies here too:
+// an inactive-operator rejection was never audit-logged. Body parsing moved
+// earlier so the rejected action/tenant_id can still be logged.
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -52,13 +58,31 @@ serve(async (req: Request) => {
   const { data: { user }, error: authErr } = await callerSb.auth.getUser();
   if (authErr || !user) return json({ error: "Ugyldig token" }, 401);
 
+  // Parsed early (before the operator check below) so a rejected
+  // authorization attempt can still be logged with the action/tenant_id it
+  // was trying to reach (Security Auditor pre-merge finding M2) --
+  // previously this happened after, so an unauthorized caller left zero
+  // trace.
+  const body = await req.json().catch(() => ({}));
+  const { action, tenant_id } = body;
+
+  const controlSrvSb = createClient(controlUrl, controlSrvKey);
+
+  async function auditRejectEarly(detail: string) {
+    const { error } = await controlSrvSb.from("broker_audit_log").insert({
+      operator_id: user.id, tenant_id: tenant_id || null, action: action || "ukjend", result: "error", detail,
+    });
+    if (error) {
+      console.error("[broker] KRITISK: audit-logg-skriving feila", { action, tenant_id, error: error.message });
+    }
+  }
+
   const { data: operator } = await callerSb
     .from("operators").select("status").eq("id", user.id).single();
   if (!operator || operator.status !== "active") {
+    await auditRejectEarly("avvist: ikkje aktiv operatør");
     return json({ error: "Berre aktive operatørar" }, 403);
   }
-
-  const controlSrvSb = createClient(controlUrl, controlSrvKey);
 
   // Security Auditor follow-up round 2 (2026-07-09), finding 4: the two
   // mutating actions below (set_config, reset_config) now write the audit
@@ -111,8 +135,8 @@ serve(async (req: Request) => {
     }
   }
 
-  const body = await req.json().catch(() => ({}));
-  const { action, tenant_id } = body;
+  // action/tenant_id already destructured above, before the operator check,
+  // for the auth-failure audit path.
   if (!tenant_id) return json({ error: "tenant_id er påkrevd" }, 400);
 
   const { data: tenant, error: tenantErr } = await controlSrvSb

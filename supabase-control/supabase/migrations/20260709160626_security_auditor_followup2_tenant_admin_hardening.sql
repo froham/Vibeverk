@@ -30,3 +30,39 @@ ALTER TABLE tenants ADD CONSTRAINT tenants_data_plane_url_format
 ALTER TABLE broker_audit_log DROP CONSTRAINT IF EXISTS broker_audit_log_result_check;
 ALTER TABLE broker_audit_log ADD CONSTRAINT broker_audit_log_result_check
   CHECK (result IN ('pending', 'success', 'error'));
+
+-- Pre-merge Security Auditor review of the above (M1, TOCTOU): the Edge
+-- Function's tenant.status === 'provisioning' checks for
+-- update_tenant_connection/set_tenant_service_role_key/activate_tenant were
+-- read-then-branch in application code, not enforced atomically by the
+-- database. The two plain-table actions were fixed by repeating
+-- `.eq("status", "provisioning")` on their own UPDATE calls in
+-- tenant-admin/index.ts (no SQL change needed for those). This function is
+-- the one write that happens via RPC instead of a direct .update() call, so
+-- the same guard has to live here: the UPDATE now only applies while the
+-- row is still 'provisioning', and a zero-row result raises an exception
+-- rather than silently doing nothing (which would otherwise look identical
+-- to success to a caller not checking rowcount).
+CREATE OR REPLACE FUNCTION store_tenant_service_role_key(p_tenant_id uuid, p_key text, p_secret_name text)
+RETURNS void
+SECURITY DEFINER SET search_path = public, vault
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_secret_id uuid;
+  v_updated_rows int;
+BEGIN
+  SELECT vault.create_secret(p_key, p_secret_name) INTO v_secret_id;
+  UPDATE tenants SET data_plane_service_role_secret_id = v_secret_id, updated_at = now()
+  WHERE id = p_tenant_id AND status = 'provisioning';
+  GET DIAGNOSTICS v_updated_rows = ROW_COUNT;
+  IF v_updated_rows = 0 THEN
+    -- The Vault secret above was already created by this point -- accepted
+    -- tradeoff: a rare, low-severity orphaned secret on this rejection path
+    -- is preferable to wrapping the whole function in a row lock just to
+    -- avoid it. The tenant row itself was never touched, so there's no
+    -- inconsistency, only an unused secret to clean up eventually.
+    RAISE EXCEPTION 'tenant % is not in status provisioning (or does not exist)', p_tenant_id;
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION store_tenant_service_role_key(uuid, text, text) FROM PUBLIC, anon, authenticated;

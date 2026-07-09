@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.24.1 — 2026-07-09
+
+### Pre-merge Security Auditor review of 0.24.0: 2 MEDIUM fixes (TOCTOU, unaudited auth failures)
+A fresh Security Auditor pass over the 0.24.0 diff before merging to `main` found no BLOCKER/HIGH code findings (verdict: PROCEED WITH NOTED RISKS) but two MEDIUM gaps, fixed on the same branch. Full detail in `docs/decisions/ADR-0010-phase9-semi-automated-onboarding.md`'s second addendum.
+- **M1 (TOCTOU)**: the 0.24.0 status guards were check-then-act in application code, not atomic. `update_tenant_connection`/`activate_tenant`'s own `UPDATE`s now repeat `.eq("status", "provisioning")`; `store_tenant_service_role_key()` (the one write via RPC) got the equivalent fix inside the SQL function via `GET DIAGNOSTICS`/`RAISE EXCEPTION`. A zero-row result now returns 409, not a false "success."
+- **M2**: authorization failures (inactive operator, wrong role) weren't audit-logged in either function. Body parsing moved earlier in both so the rejected `action`/`tenant_id` can be logged even on a 403.
+- Flagged but not code — an **operational pre-deploy check**: nothing in this repo's migrations ever sets `operators.role = 'superadmin'`, so before `tenant-admin` (which now requires it for every action) is deployed, the live `vibeverk-control` operator row must be confirmed as `superadmin` first, or every action 403s for the only real operator. Added to ADR-0010's pre-deploy checklist.
+- `node test.js`/`node test-workspace.js` re-run clean (504/1, 151/1). Still not deployed anywhere — code + migration only. Cache-bust: `console-core.js` 60 → 61 (version string only).
+
 ## 0.24.0 — 2026-07-09
 
 ### Security Auditor follow-up round 2: 5 fixes on `tenant-admin`/`broker` (control plane)
