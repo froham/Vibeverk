@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.25.4 — 2026-07-09
+
+### Live Vercel deployment test: `middleware.js` + `api/tenant-config.js` confirmed working
+Resolves the "no live deployment test yet" gap from the Phase 6 ADR. Reused the existing `vibeverk-j1yg` Vercel project (the earlier `.js`-vs-`.mjs` isolation-test project, already `Framework Preset: Other`) — its own `vibeverk-j1yg.vercel.app` address is a real, free, DNS-free hostname, no new domain purchase needed.
+- `VIBEVERK_CONTROL_URL`/`VIBEVERK_CONTROL_ANON_KEY` env vars set and deployed via `vercel --prod`.
+- **Real bug found and fixed**: Vercel CLI's `vercel env add` with a piped-stdin value silently saved an empty string despite a clean "✓ Added" confirmation — traced via a live 502 (`TypeError: Invalid URL string`) in `api/tenant-config.js`. Fixed using the explicit `--value "..." --no-sensitive` flag instead, verified by actually pulling the value back down before redeploying. New memory saved on this CLI gotcha for future sessions.
+- Verified against the real deployment (negative-path, unregistered hostname): `curl -i https://vibeverk-j1yg.vercel.app/` → real 404 with middleware's own message (not `index.html`); `curl -i https://vibeverk-j1yg.vercel.app/config.js` → 404 with `window.SITE_CONFIG = null;`.
+- **Still not done**: the positive-path end-to-end test (register a canary tenant, full checklist, confirm a real page renders) — needs either a live Console session or a directly-authenticated API call as the superadmin operator.
+- Docs-only otherwise (ADR-0007 updated). Cache-bust: `console-core.js` 65 → 66 (version string only).
+
 ## 0.25.3 — 2026-07-09
 
 ### `tenant-admin`/`broker` Edge Functions redeployed to `vibeverk-control`
