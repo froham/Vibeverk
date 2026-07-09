@@ -30,6 +30,11 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.27.1 — 2026-07-09
+
+### H2 fix deployed and verified live
+Migration applied to `vibeverk-control` via Dashboard SQL Editor, confirmed via `pg_get_functiondef()` showing the exact new `WHERE` clause (not just "Success"). `tenant-admin` redeployed with the `verify_tenant_routing` precondition check, confirmed via negative-path check (401, no auth). A real anon-key REST call to `resolve_tenant_by_hostname` confirmed both grant preservation and that the already-active `phase6-canary` tenant still resolves correctly, unaffected by the new precondition. Docs-only otherwise (ADR-0007 updated). Cache-bust: `console-core.js` 70 → 71 (version string only).
+
 ## 0.27.0 — 2026-07-09
 
 ### Security Auditor finding H2 fully closed (provisioning-tenant exposure window)
