@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.25.2 — 2026-07-09
+
+### Phase 6 SQL migrations deployed and verified live (Edge Functions still not deployed)
+Both Phase 6 SQL migrations applied for real, each followed by a direct verification query — not just a clean "Success" message, per this repo's own standing rule.
+- `supabase/migrations/20260709193227_add_rls_check_to_schema_fingerprint.sql` → `vibeverk-staging`: confirmed `verify_schema_fingerprint()`'s new `rls_enabled` column, and a real call returned `rls_enabled = true` for all 5 expected tables.
+- `supabase-control/supabase/migrations/20260709170108_phase6_hostname_resolver_hardening.sql` (plus the still-pending `20260709160626` from the prior security round) → the real `vibeverk-control` project, since it has no staging replica of its own. Pre-check confirmed zero `tenants` rows would violate the new `data_plane_url` CHECK constraint before running. Confirmed live: widened `resolve_tenant_by_hostname()` (now returns `data_plane_storage_key`), the hostname-overlap trigger, `schema_verified_at` column, atomic `store_tenant_service_role_key()`. The one real tenant's `hostnames` (`vibeverk.no`) present and lowercase.
+- **Still not deployed anywhere**: the `tenant-admin`/`broker` Edge Functions, `middleware.js`, `api/tenant-config.js`. This round is SQL-only — no real hostname is any more or less servable than before.
+- Docs-only change otherwise (ADR-0007/ADR-0010 updated with deployment confirmation). Cache-bust: `console-core.js` 63 → 64 (version string only).
+
 ## 0.25.1 — 2026-07-09
 
 ### Pre-merge Security Auditor review of Phase 6: 2 HIGH + 1 MEDIUM + 2 LOW fixed
