@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.24.1";
+  var VIBEVERK_VERSION = "0.25.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -150,7 +150,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, routing_verified_at")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at")
       .order("slug").then(function (r) {
         _tenants = r.data || [];
         _activeTenant = _tenants[0] || null;
@@ -953,7 +953,9 @@ window.VwConsole = (function () {
 
   function renderKdDetail(tenant, wrap, fullWrap, _sc) {
     var hasConnection = !!(tenant.data_plane_url);
+    var schemaOk = !!tenant.schema_verified_at;
     var routingOk = !!tenant.routing_verified_at;
+    var hasHostnames = !!(tenant.hostnames && tenant.hostnames.length);
 
     wrap.innerHTML =
       '<div class="admin-group">' +
@@ -990,12 +992,14 @@ window.VwConsole = (function () {
           '<p id="kd-verify-result" class="field__hint"></p>' +
         '</div>' +
 
-        '<div class="kd-card" style="opacity:.6"><strong>5. DNS / gå-live</strong>' +
-          '<p class="field__hint">Sperra: ekte domene-rute (Fase 6) er ikkje bygd enno.</p>' +
+        '<div class="kd-card"' + (schemaOk && hasHostnames ? "" : ' style="opacity:.6"') + '><strong>5. Verifiser ruting</strong> ' + (routingOk ? "✓" : "—") +
+          '<p class="field__hint">Hostnames: ' + (hasHostnames ? C.esc(tenant.hostnames.join(", ")) : "ingen registrert") + '. Krev at DNS/Vercel-oppsettet for desse peikar hit FØR du trykkjer — sjekken gjer eit ekte HTTP-kall mot kvar hostname.</p>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="kd-routing-btn"' + (schemaOk && hasHostnames ? "" : " disabled") + '>Verifiser ruting</button>' +
+          '<p id="kd-routing-result" class="field__hint"></p>' +
         '</div>' +
 
         '<div class="kd-card">' +
-          '<strong>6. Set aktiv</strong> — ' + (routingOk ? "klar" : "sperra (Fase 6 manglar)") +
+          '<strong>6. Set aktiv</strong> — ' + (routingOk ? "klar" : "sperra (ruting ikkje verifisert enno)") +
           '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + (routingOk ? "" : " disabled") + '>Set aktiv</button></div>' +
           '<p id="kd-activate-result" class="field__hint"></p>' +
         '</div>' +
@@ -1027,7 +1031,33 @@ window.VwConsole = (function () {
       out.textContent = "Sjekkar…";
       tenantAdminCall("verify_tenant_schema", { tenant_id: tenant.id }, function (r) {
         if (r.error) { out.textContent = r.error; return; }
-        out.textContent = r.schema_ok ? "✓ Skjema OK" : "Manglar: " + r.missing_tables.join(", ");
+        if (r.schema_ok) {
+          out.textContent = "✓ Skjema OK (tabellar finst, RLS på)";
+        } else {
+          var parts = [];
+          if (r.missing_tables && r.missing_tables.length) parts.push("manglar tabellar: " + r.missing_tables.join(", "));
+          if (r.rls_missing && r.rls_missing.length) parts.push("RLS ikkje påslege: " + r.rls_missing.join(", "));
+          out.textContent = parts.join(" | ") || "Skjema-sjekk feila";
+        }
+        // Refresh so step 5's button unlocks immediately once schema_ok,
+        // instead of requiring a manual reload to see the new state.
+        loadTenants(function () { renderKundar(_sc, fullWrap); });
+      });
+    });
+
+    wrap.querySelector("#kd-routing-btn").addEventListener("click", function () {
+      var out = wrap.querySelector("#kd-routing-result");
+      out.textContent = "Sjekkar (ekte HTTP-kall mot kvar hostname, kan ta nokre sekund)…";
+      tenantAdminCall("verify_tenant_routing", { tenant_id: tenant.id }, function (r) {
+        if (r.error) { out.textContent = r.error; return; }
+        if (r.routing_ok) {
+          out.textContent = "✓ Ruting verifisert for alle hostnames";
+        } else {
+          out.textContent = (r.results || []).map(function (row) {
+            return row.hostname + ": " + (row.ok ? "OK" : (row.detail || "feila"));
+          }).join(" | ");
+        }
+        loadTenants(function () { renderKundar(_sc, fullWrap); });
       });
     });
 

@@ -30,6 +30,29 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.25.1 — 2026-07-09
+
+### Pre-merge Security Auditor review of Phase 6: 2 HIGH + 1 MEDIUM + 2 LOW fixed
+A Security Auditor pass over the 0.25.0 diff, before merging to `main`, returned verdict **CAUTION** (not the clean PROCEED of the two prior control-plane rounds). Full detail in `docs/decisions/ADR-0007`'s Phase 6 addendum.
+- **H1**: `HOSTNAME_RE`'s own comment claimed it rejected bare IP literals — it didn't (`127.0.0.1`/`169.254.169.254` matched the domain shape fine), handing `verify_tenant_routing`'s real outbound fetch an SSRF-adjacent target. Fixed: new `IPV4_LITERAL_RE` rejection plus a real server-side DNS resolution + private/reserved-range check (`assertHostnameSafeToFetch`) before any fetch. DNS-rebinding is not fully closed — accepted residual risk given the superadmin gate and audit logging.
+- **H2**: widening `resolve_tenant_by_hostname()` to `'provisioning'` tenants means a tenant's real hostname/credentials go publicly live before RLS is meaningfully checked — `verify_tenant_schema` only confirmed tables *exist*, not that RLS was enabled. Fixed: `verify_schema_fingerprint()` (new migration `supabase/migrations/20260709193227_add_rls_check_to_schema_fingerprint.sql`) now also reports `rls_enabled` per table; `verify_tenant_schema` requires it. Narrows but doesn't eliminate the exposure window — tracked for before any real customer's hostname goes live.
+- **M1**: the new hostname-uniqueness trigger was a real TOCTOU race under READ COMMITTED. Fixed with a fixed-key `pg_advisory_xact_lock` serializing hostname-mutating transactions.
+- **L1/L2**: missing `NOTIFY pgrst, 'reload schema'` after the `resolve_tenant_by_hostname` DROP+CREATE; no timeout/size-cap on `verify_tenant_routing`'s outbound fetch. Both fixed (5s timeout, 64KB cap).
+- `node test.js`/`node test-workspace.js` re-run clean (504/1, 151/1). Still not deployed anywhere — code + migrations only. Cache-bust: `console-core.js` 62 → 63 (schema-verify result display now also shows RLS gaps).
+
+## 0.25.0 — 2026-07-09
+
+### Phase 6: real hostname→tenant resolver (code only, not yet deployed)
+Architect-designed (second consult, read-only) implementation of the real hostname→tenant resolver that Phase 9's `activate_tenant` has been hard-gated on since it was built. Full design rationale in `docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md`'s new Phase 6 addendum.
+- **Found and fixed a real circular dependency before it could block anything**: `resolve_tenant_by_hostname()` only resolved `status='active'` tenants, but the only way to *set* `routing_verified_at` (required for activation) is a live HTTP check through the tenant's hostname — which needs the RPC to resolve a `'provisioning'` tenant. Widened the RPC's status filter, added case-insensitive hostname matching, and added `data_plane_storage_key` to its output (new migration `20260709170108_phase6_hostname_resolver_hardening.sql`).
+- **New hostname-uniqueness trigger**: no constraint previously stopped two tenants from claiming the same hostname (only `slug` is `UNIQUE`) — a real cross-tenant config leak risk via this same RPC. Enforced via a `BEFORE INSERT OR UPDATE` trigger using Postgres's array-overlap operator, since `hostnames` is an array column.
+- **New `tenant-admin` action `verify_tenant_routing`**: real server-side HTTP checks (never a client-supplied claim) against every registered hostname, confirming both a 200 and that the response actually names this tenant's own project — sets `routing_verified_at` on a full pass, clears it on any failure. Hostnames are validated against a domain-shape regex before any outbound fetch (same SSRF-adjacent discipline as the earlier `data_plane_url` finding).
+- **New `api/tenant-config.js`** (Vercel Function) generates `window.SITE_CONFIG=...` per request from the control plane instead of a static per-customer `config.js` fork — deliberately minimal (no full branding parity; the existing superconfig/broker layer still supplies that after activation).
+- **`middleware.js` rewritten** from the Host-echo mechanism-proof to the real implementation: rewrites `/config.js` to the new function, and resolves the tenant for page requests so an unknown hostname gets a real 404. Still named `middleware.js`, never `.mjs` (see the 2026-07-08 ADR-0007 addendum).
+- **Console**: the "5. DNS / gå-live" checklist card is no longer permanently greyed out — it calls `verify_tenant_routing` and shows per-hostname results; "6. Set aktiv" unlocks from the real result instead of an always-false placeholder. `loadTenants()`'s SELECT extended with `data_plane_service_role_secret_id`/`schema_verified_at` to match.
+- **Deliberately NOT done**: no live deployment, no DNS/domain test, no fresh Security Auditor pass on the new outbound-fetch action yet — all explicitly called out in the ADR addendum as required before any real (non-canary) tenant depends on this. Nothing here touches `vibeverk.no`, which stays on GitHub Pages untouched.
+- `node test.js`/`node test-workspace.js` re-run clean (504/1, 151/1) — none of the new files are exercised by the jsdom harnesses; correctness here rests on code inspection plus the still-pending live verification. Cache-bust: `console-core.js` 61 → 62.
+
 ## 0.24.1 — 2026-07-09
 
 ### Pre-merge Security Auditor review of 0.24.0: 2 MEDIUM fixes (TOCTOU, unaudited auth failures)
