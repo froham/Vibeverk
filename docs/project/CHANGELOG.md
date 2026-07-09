@@ -30,6 +30,13 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.25.3 — 2026-07-09
+
+### `tenant-admin`/`broker` Edge Functions redeployed to `vibeverk-control`
+Both functions redeployed (`npx supabase functions deploy ... --workdir supabase-control`), bringing them up to date with this session's work: both Security Auditor rounds' fixes and the new `verify_tenant_routing` action. Verified live via a real negative-path check (no `Authorization` header → 401 on both endpoints), not just a clean deploy message.
+- **`middleware.js` and `api/tenant-config.js` still not deployed anywhere** — no Vercel project has either file yet. No real hostname's servability changes as a result of this deploy.
+- Docs-only otherwise (ADR-0007 updated). Cache-bust: `console-core.js` 64 → 65 (version string only).
+
 ## 0.25.2 — 2026-07-09
 
 ### Phase 6 SQL migrations deployed and verified live (Edge Functions still not deployed)
