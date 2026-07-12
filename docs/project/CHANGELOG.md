@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.28.0 — 2026-07-12
+
+### Console: edit domain names for a tenant before activation
+Testing the `phase6-canary` fix surfaced a real gap: Console's "Kundar" onboarding checklist had no way to edit a tenant's registered domain name(s) after step 1 ("Registrert") — `register_tenant` only ever creates a row once, and `tenant-admin`'s other actions only covered the connection (step 3), the service-role key (3b), schema verification (4), routing verification (5), and activation (6). A typo in a hostname, or moving from a temporary test domain to the real production domain right before go-live, had no fix short of registering a brand-new tenant.
+
+Added `update_tenant_hostnames` to `supabase-control/supabase/functions/tenant-admin/index.ts`, following the exact same conventions as `update_tenant_connection`: gated on `status = 'provisioning'` (checked both before the write and atomically in the `UPDATE` itself, closing the same TOCTOU window the 2026-07-09 Security Auditor round fixed elsewhere in this file), same hostname-shape validation and hostname-uniqueness-trigger error mapping as `register_tenant`, and the same audit-log-before-mutate pattern. Console's "1. Registrert" card now shows an editable domain-name field while a tenant is still provisioning, and a plain read-only list once it's active (mirroring the backend gate, not just relying on it). No new migration needed — the existing hostname-overlap trigger already covers `UPDATE OF hostnames`, not just `INSERT`.
+
+### Security review finding, fixed before merge: stale `schema_verified_at` reopened the provisioning-tenant exposure window
+A security review of the above change (before deployment) found that `update_tenant_hostnames` reset `routing_verified_at` to `NULL` on every hostname change (correctly — a routing check against the *old* hostnames says nothing about the *new* ones) but left `schema_verified_at` untouched. `resolve_tenant_by_hostname()` (anon-callable, see `20260709224325_close_provisioning_tenant_exposure_window.sql`) gates whether a `provisioning` tenant's `data_plane_url`/`data_plane_anon_key`/etc. are publicly resolvable **solely** on `schema_verified_at IS NOT NULL` — it never checks `routing_verified_at`. Since this is the first-ever post-registration hostname-mutation path, switching a tenant's hostname after schema verification (an expected part of this feature's own use case — moving from a test domain to the real one before go-live) would have immediately exposed the *new* hostname's connection info via that anon RPC, before routing was ever verified for it, defeating the specific protection that migration was written to add. Fixed by also resetting `schema_verified_at: null` in the same `UPDATE` — any hostname change now requires both step 4 (schema) and step 5 (routing) to be re-verified before activation, not just step 5. Console's hint text updated to match.
+
+**Not yet deployed**: this Edge Function change needs `npx supabase functions deploy tenant-admin --project-ref jxoglthrnshabqmdmnui` against `vibeverk-control` before it's live — pending explicit approval per the deployment safeguard.
+
+---
+
 ## 0.27.4 — 2026-07-12
 
 ### Extend `DEFAULT_CFG_SHAPE` to content fields (`hero`/`about`/`contact`/`news`/`services`/`contactSection`)
