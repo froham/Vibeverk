@@ -354,6 +354,65 @@ serve(async (req: Request) => {
     return json({ error: "Ukjend tenant" }, 404);
   }
 
+  // ── update_tenant_hostnames ──────────────────────────────────────────────
+  // Step 1 of the checklist ("Registrert") had no edit path at all until
+  // now -- register_tenant only ever creates a row, once. Typos happen, and
+  // a tenant commonly moves from a temporary test domain to its real one
+  // just before go-live, so requiring a brand-new tenant row for that is
+  // unnecessary friction. Same status gate, hostname validation, and
+  // hostname-overlap-trigger error mapping as register_tenant.
+  //
+  // Also resets routing_verified_at AND schema_verified_at: a routing check
+  // against the OLD hostnames says nothing about whether the NEW ones
+  // actually route -- without this, activate_tenant could activate a
+  // tenant off a stale verification for hostnames that no longer apply.
+  //
+  // Security review finding (2026-07-12): resolve_tenant_by_hostname() (see
+  // 20260709224325_close_provisioning_tenant_exposure_window.sql) is
+  // anon-callable and exposes a 'provisioning' tenant's data_plane_url/
+  // data_plane_anon_key/theme/etc. for any of its hostnames gated SOLELY on
+  // schema_verified_at IS NOT NULL -- it never checks routing_verified_at.
+  // Resetting only routing_verified_at here left schema_verified_at (set
+  // for the OLD hostnames) still valid for the NEW ones, so switching a
+  // tenant's hostname after schema verification would immediately expose
+  // the new hostname's connection info via that anon RPC, before routing
+  // was ever verified for it. Must reset both together.
+  if (action === "update_tenant_hostnames") {
+    if (tenant.status !== "provisioning") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    }
+    const { hostnames } = body;
+    const cleanHostnames = (Array.isArray(hostnames) ? hostnames : [])
+      .map((h: unknown) => String(h).trim().toLowerCase())
+      .filter((h: string) => h.length > 0);
+    const badHostname = cleanHostnames.find((h: string) => !HOSTNAME_RE.test(h) || IPV4_LITERAL_RE.test(h));
+    if (badHostname) {
+      return json({ error: "Ugyldig hostname-format: " + badHostname }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: updated, error } = await controlSrvSb
+      .from("tenants")
+      .update({ hostnames: cleanHostnames, routing_verified_at: null, schema_verified_at: null, updated_at: new Date().toISOString() })
+      .eq("id", tenant_id)
+      .eq("status", "provisioning")
+      .select("id");
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      if (error.message && error.message.indexOf("already registered to another tenant") !== -1) {
+        return json({ error: "Ein eller fleire hostnames er alt registrert på ein annan kunde" }, 409);
+      }
+      return json({ error: "Lagring feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
+      return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
+    }
+    await auditFinish(auditId, "success");
+    return json({ success: true });
+  }
+
   // ── update_tenant_connection ─────────────────────────────────────────────
   // Step 2/3 of the checklist: paste in the newly created project's URL +
   // anon key (both non-secret, safe to store as plain columns).

@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.27.4";
+  var VIBEVERK_VERSION = "0.28.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1081,6 +1081,15 @@ window.VwConsole = (function () {
 
         '<div class="kd-card"><strong>1. Registrert</strong> ✓' +
           '<p class="field__hint">Slug: ' + C.esc(tenant.slug) + '. Lagringsnøkkel: ' + C.esc(tenant.data_plane_storage_key || "") + '.</p>' +
+          (tenant.status === "provisioning"
+            ? '<form id="kd-hostnames-form" style="margin-top:.6rem">' +
+                C.field({ id: "kd-hostnames-edit", label: "Domenenamn (kommaseparert)", value: (tenant.hostnames || []).join(", "), placeholder: "kunde.no, www.kunde.no" }) +
+                '<button type="submit" class="btn btn--ghost btn--sm">Lagre domenenamn</button>' +
+                '<p class="field__hint">Endrar du domenenamn må steg 4 (skjema) og steg 5 (ruting) verifiserast på nytt før aktivering.</p>' +
+                '<p class="form__status" id="kd-hostnames-status" style="margin-top:.4rem"></p>' +
+              '</form>'
+            : '<p class="field__hint">Domenenamn: ' + (hasHostnames ? C.esc(tenant.hostnames.join(", ")) : "ingen registrert") + ' (kan ikkje endrast etter aktivering).</p>'
+          ) +
         '</div>' +
 
         '<div class="kd-card"><strong>2. Opprett Supabase-prosjekt</strong>' +
@@ -1122,6 +1131,18 @@ window.VwConsole = (function () {
           '<p id="kd-activate-result" class="field__hint"></p>' +
         '</div>' +
       '</div>';
+
+    var hostnamesForm = wrap.querySelector("#kd-hostnames-form");
+    if (hostnamesForm) {
+      hostnamesForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var hostnames = wrap.querySelector("#kd-hostnames-edit").value.split(",").map(function (h) { return h.trim(); }).filter(Boolean);
+        tenantAdminCall("update_tenant_hostnames", { tenant_id: tenant.id, hostnames: hostnames }, function (r) {
+          if (r.error) { statusMsg(wrap.querySelector("#kd-hostnames-status"), r.error, false); return; }
+          loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
 
     wrap.querySelector("#kd-conn-form").addEventListener("submit", function (e) {
       e.preventDefault();
