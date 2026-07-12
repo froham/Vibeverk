@@ -30,6 +30,11 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.30.2 — 2026-07-12
+
+### "Om oss" now has an ingress field too, matching Tjenester/Aktuelt/Kontakt
+User request: bring "Om oss" in line with the other three sections, which all got a heading + optional ingress field in 0.30.0. Added `about.intro` (empty by default, same as the other sections' ingress fields — not a structural default like `heading`, since this is closer to actual marketing-style copy). `components.js`'s `about()` now does `eyebrow(d.intro || d.heading)`, the same fallback pattern already used by `services()`/`news()`/`contact()`. New admin field under "Om oss" in `adminContent()`; `content.about.intro` seeded/saved the same way as `content.about.heading`.
+
 ## 0.30.1 — 2026-07-12
 
 ### Fix: Console showed a useless generic error for every failed Edge Function call

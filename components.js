@@ -324,7 +324,7 @@ window.Components = (function () {
       <section id="om-oss" class="section reveal">
         <div class="container about ${hasImg ? "about--with-media" : ""}">
           <div class="about__body">
-            ${eyebrow(d.heading)}
+            ${eyebrow(d.intro || d.heading)}
             <h2 class="section__title">${esc(d.heading)}</h2>
             <div class="prose">${sanitizeRichHtml(d.text)}</div>
           </div>
