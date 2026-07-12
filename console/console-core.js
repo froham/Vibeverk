@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.31.0";
+  var VIBEVERK_VERSION = "0.31.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -175,7 +175,11 @@ window.VwConsole = (function () {
       .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at")
       .order("slug").then(function (r) {
         _tenants = r.data || [];
-        _activeTenant = _tenants[0] || null;
+        // Ikkje default til ein arkivert tenant -- sidan sidepanel-veljaren
+        // (buildShell()) no skjuler arkiverte, ville _activeTenant elles peike
+        // på ein tenant som ikkje finst blant valgmoglegheitene i det heile.
+        var selectable = _tenants.filter(function (t) { return t.status !== "archived"; });
+        _activeTenant = selectable[0] || _tenants[0] || null;
         cb();
       });
   }
@@ -513,7 +517,7 @@ window.VwConsole = (function () {
           '<div class="cs-brand"><span class="ti ti-layout-grid"></span> Console</div>' +
           '<div class="cs-tenant-picker">' +
             '<select id="cs-tenant-select" title="Vel kunde">' +
-              _tenants.map(function (t) {
+              _tenants.filter(function (t) { return t.status !== "archived"; }).map(function (t) {
                 return '<option value="' + C.esc(t.id) + '"' + (_activeTenant && t.id === _activeTenant.id ? " selected" : "") + '>' +
                   C.esc(t.slug) + '</option>';
               }).join("") +

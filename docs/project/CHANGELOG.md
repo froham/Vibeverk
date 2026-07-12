@@ -30,6 +30,13 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.31.1 — 2026-07-12
+
+### Console: archived tenants also removed from the sidebar tenant picker
+0.31.0 hid archived tenants from the "Registrerte kundar" list but missed the *other* place `_tenants` is rendered as a list: the sidebar's `<select id="cs-tenant-select">`, which picks `_activeTenant` for the whole Console (web/produkt/personvern/analyse tabs). Filtered the same way. Also fixed `loadTenants()`'s default: it picked `_tenants[0]` unconditionally, so if the alphabetically-first tenant happened to be archived, `_activeTenant` would point at a tenant no longer present among the dropdown's own options — now defaults to the first non-archived tenant, falling back to any tenant only if every tenant is archived.
+
+**⚠️ `tenant-admin` still needs redeploying** — 0.31.0's `update_tenant_slug` merged into `main` but the running Edge Function in `vibeverk-control` wasn't redeployed yet, so it's still returning "Ukjend handling: update_tenant_slug" live. Redeploy with `npx supabase functions deploy tenant-admin --project-ref jxoglthrnshabqmdmnui` before considering this done.
+
 ## 0.31.0 — 2026-07-12
 
 **⚠️ Requires an `npx supabase functions deploy tenant-admin --project-ref jxoglthrnshabqmdmnui` after merge** — same as 0.30.0/0.30.1, a `git merge` alone does not update the running Edge Function. (Confirmed the hard way this round: 0.30.0's `archive_tenant`/active-status hostname edit sat merged on `main` but undeployed for a while — user hit the old "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" and "Ukjend handling: archive_tenant" errors from the stale deployed function before this was caught and redeployed.)
