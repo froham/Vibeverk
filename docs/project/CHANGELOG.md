@@ -30,6 +30,13 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.27.3 — 2026-07-12
+
+### Fix white-screen crash on new Phase 6 tenants: `CFG.company` undefined in `applyTheme()`
+A new tenant onboarded through the Phase 6 dynamic-config path (`api/tenant-config.js`, resolved via `middleware.js`/`resolve_tenant_by_hostname`) got a white page with an uncaught `TypeError: Cannot read properties of undefined (reading 'name')` at `core.js` `applyTheme()`, called from `actualInit()`. Root cause: `api/tenant-config.js` deliberately generates a minimal `window.SITE_CONFIG` skeleton with no `company`/`colors`/`fonts` keys at all (full branding is meant to come later from the superconfig/broker layer, applied inside `boot()` — which never gets reached because `applyTheme()` runs first and crashes). `core.js`'s `applyTheme()` was written before Phase 6 existed, when `CFG` always came from a static per-customer `config.js` fork guaranteeing a `company` object — one unguarded read (`CFG.company.name` on the title line) crashed instead of falling back like the equivalent reads elsewhere in the same file already do (`applyMeta()`, the footer credit, etc.). Also would have crashed again as soon as an operator configured branding for the tenant, since `applySuperConfig()`'s `Object.assign(CFG.company, sc.company)` also assumes `CFG.company` already exists as an object. Fixed by normalizing `CFG.company`/`CFG.colors`/`CFG.fonts` to `{}` once, right where `CFG` is captured at the top of `core.js`, instead of patching each read site individually. `?v=N` bumped on `core.js`'s four script tags (`index.html`, `admin/index.html`, `workspace/index.html`, `console/index.html`).
+
+---
+
 ## 0.27.2 — 2026-07-10
 
 ### Five-source parallel review (Codex + 4 read-only Claude reviewers) — top 4 findings fixed

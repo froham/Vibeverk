@@ -12,6 +12,13 @@
 window.App = (function () {
 
   const CFG = window.SITE_CONFIG;   // ← all kundekonfig
+  // Fase 6-tenantar (api/tenant-config.js) genererer eit minimalt SITE_CONFIG-skjelett
+  // utan company/colors/fonts — normaliser til tomme objekt her, ikkje berre lokalt i
+  // applyTheme(), sidan applySuperConfig() seinare gjer Object.assign(CFG.company, ...)
+  // rett mot desse feltene og krev at dei finst som objekt.
+  CFG.company = CFG.company || {};
+  CFG.colors  = CFG.colors  || {};
+  CFG.fonts   = CFG.fonts   || {};
   const OPT_CHAT = Object.assign({ enabled: true }, (CFG && CFG.chat) || {});
   const C   = window.Components;    // ← gjenbrukbare komponenter
   const NS  = CFG.storageKey || "site";   // ← localStorage-prefiks fra config
