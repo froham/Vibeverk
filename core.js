@@ -12,13 +12,64 @@
 window.App = (function () {
 
   const CFG = window.SITE_CONFIG;   // ← all kundekonfig
-  // Fase 6-tenantar (api/tenant-config.js) genererer eit minimalt SITE_CONFIG-skjelett
-  // utan company/colors/fonts — normaliser til tomme objekt her, ikkje berre lokalt i
-  // applyTheme(), sidan applySuperConfig() seinare gjer Object.assign(CFG.company, ...)
-  // rett mot desse feltene og krev at dei finst som objekt.
-  CFG.company = CFG.company || {};
-  CFG.colors  = CFG.colors  || {};
-  CFG.fonts   = CFG.fonts   || {};
+
+  // ─── STANDARDSKJEMA FOR NESTA CFG-FELT ─────────────────────────────────────
+  // Fase 6-tenantar (api/tenant-config.js) genererer eit minimalt SITE_CONFIG-
+  // skjelett (berre supabase/storageKey/productMode/features/intranettFeatures/
+  // theme) — resten av core.js (applyTheme, applySuperConfig, m.m.) føreset at
+  // company/colors/fonts/features/intranettFeatures/privacy/admin/workspace alltid
+  // finst som objekt, sidan dei historisk alltid kom frå ein fullstendig statisk
+  // config.js-fork (sjå config.js sine tilsvarande nøklar for kva shape kvar av
+  // desse skal ha). fillConfigDefaults() fyller berre inn manglande nøklar/nivå —
+  // ho overskriv ALDRI ein verdi som alt finst, så lagra/lasta config vinn alltid
+  // over defaults, rekursivt for kvart nesta nivå (ein enkel toppnivå-spread ville
+  // ikkje fylt inn manglande under-nøklar i eit delvis nesta objekt, t.d.
+  // privacy:{heading:"x"} utan «text»).
+  //
+  // Mutasjon skjer i objektet CFG *peikar på* (same referanse som
+  // window.SITE_CONFIG), ikkje eit nytt objekt — fleire filer (module-chat.js,
+  // console-core.js, workspace/*) les window.SITE_CONFIG direkte og må sjå dei
+  // same felta som core.js sjølv muterer via superconfig-laget.
+  const DEFAULT_CFG_SHAPE = {
+    company:  { name: "", tagline: "", logoUrl: "", metaDescription: "", ogImage: "", favicon: "" },
+    colors:   {},
+    fonts:    {},
+    features: {},
+    intranettFeatures: {},
+    privacy:  { heading: "Personvern og databehandling", text: "" },
+    admin:    { password: "", tripleClickFooter: true },
+    workspace: {}
+  };
+
+  function fillConfigDefaults(target, defaults) {
+    Object.keys(defaults).forEach(function (key) {
+      const defVal = defaults[key];
+      const isPlainObjectDefault = defVal !== null && typeof defVal === "object" && !Array.isArray(defVal);
+      if (isPlainObjectDefault) {
+        const hasUsableValue = target[key] !== null && typeof target[key] === "object" && !Array.isArray(target[key]);
+        if (!hasUsableValue) target[key] = {};
+        fillConfigDefaults(target[key], defVal);
+      } else if (!(key in target) || target[key] === undefined) {
+        target[key] = defVal;
+      }
+    });
+    return target;
+  }
+
+  (function applyConfigDefaults() {
+    const missingTopLevel = Object.keys(DEFAULT_CFG_SHAPE).filter(function (key) {
+      return !(key in CFG) || CFG[key] === undefined;
+    });
+    if (missingTopLevel.length) {
+      console.warn(
+        "[vibeverk] SITE_CONFIG manglar felt: " + missingTopLevel.join(", ") +
+        " — brukar standardverdiar til tenanten sin eigen konfigurasjon (superconfig/broker) er sett opp."
+      );
+    }
+    fillConfigDefaults(CFG, DEFAULT_CFG_SHAPE);
+  })();
+  // ──────────────────────────────────────────────────────────────────────────
+
   const OPT_CHAT = Object.assign({ enabled: true }, (CFG && CFG.chat) || {});
   const C   = window.Components;    // ← gjenbrukbare komponenter
   const NS  = CFG.storageKey || "site";   // ← localStorage-prefiks fra config
