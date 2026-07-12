@@ -249,6 +249,8 @@
     .rtfield__editor { min-height: 120px; border: 1px solid var(--color-border); border-radius: 0 0 8px 8px; padding: .7rem .8rem; background: var(--color-bg); font: inherit; line-height: 1.6; }
     .rtfield__editor:focus { outline: none; border-color: var(--color-primary); }
     .rtfield__editor ul, .rtfield__editor ol { padding-left: 1.4rem; margin: .4rem 0; }
+    .rtfield__counter { margin: 0; text-align: right; }
+    .rtfield__counter.is-over { color: #c0392b; font-weight: 600; }
     .tab { background: none; border: 0; font: inherit; font-size: .9rem; font-weight: 600; color: var(--color-muted); padding: .5rem .65rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
     .tab.is-active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
     .admin-form { display: grid; gap: 1rem; align-items: start; }
@@ -313,8 +315,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="../config.js?v=8"></script>
-  <script src="../components.js?v=9"></script>
-  <script src="../core.js?v=42"></script>
+  <script src="../components.js?v=10"></script>
+  <script src="../core.js?v=43"></script>
 
   <!-- Same modular som index.html — slik at alle admin-faner er tilgjengelege -->
   <script src="../module-booking.js?v=13"></script>
