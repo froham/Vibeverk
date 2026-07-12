@@ -47,12 +47,19 @@ window.App = (function () {
     privacy:  { heading: "Personvern og databehandling", text: "" },
     admin:    { password: "", tripleClickFooter: true },
     workspace: {},
-    hero:     { title: "", subtitle: "", ctaLabel: "", ctaTarget: "", image: "" },
-    about:    { heading: "", text: "", imageUrl: "" },
+    // NB: dette er nøytrale STRUKTURELLE standardar (seksjonsnamn, CTA-mål,
+    // kvitteringstekst) -- generiske ord som "Om oss"/"Tjenester" som ei
+    // kvar bedrift ville bruke, IKKJE Vibeverk sitt eige salstekst-innhald
+    // (title/subtitle/text/intro er framleis tomme av same grunn som før:
+    // sjå 0.27.4-oppføringa i CHANGELOG.md). Ei tom overskrift render som eit
+    // synleg tomt <h2> i components.js -- difor treng nettopp desse eit
+    // standardverdi, medan fritekst-felta ikkje skal gjette kundens innhald.
+    hero:     { title: "", subtitle: "", ctaLabel: "Ta kontakt", ctaTarget: "#kontakt", image: "" },
+    about:    { heading: "Om oss", text: "", imageUrl: "" },
     contact:  { email: "", phone: "", address: "", extra: [], social: {} },
-    news:     { heading: "", intro: "", frontCount: 3, posts: [] },
-    services: { heading: "", intro: "", cards: [] },
-    contactSection: { heading: "", intro: "", successMessage: "" }
+    news:     { heading: "Aktuelt", intro: "", frontCount: 3, posts: [] },
+    services: { heading: "Tjenester", intro: "", cards: [] },
+    contactSection: { heading: "Kontakt", intro: "", successMessage: "Takk! Vi tar kontakt så snart vi kan." }
   };
 
   function fillConfigDefaults(target, defaults) {
@@ -430,12 +437,26 @@ window.App = (function () {
     content = {
       // ← seedet fra config.hero, kan overstyres i admin (inkl. bilde + fokuspunkt)
       hero: Object.assign({
-        title: CFG.hero.title, subtitle: CFG.hero.subtitle, image: CFG.hero.image || ""
+        title: CFG.hero.title, subtitle: CFG.hero.subtitle,
+        ctaLabel: CFG.hero.ctaLabel, ctaTarget: CFG.hero.ctaTarget, image: CFG.hero.image || ""
       }, overrides.hero || {}),
       // ← seedet fra config.about (tekst + valgfritt bilde)
       about: Object.assign({
-        text: CFG.about.text, image: CFG.about.imageUrl || ""
+        heading: CFG.about.heading, text: CFG.about.text, image: CFG.about.imageUrl || ""
       }, overrides.about || {}),
+      // ← seedet fra config.services/news/contactSection sine seksjonsnivå-felt
+      // (overskrift/ingress/kvitteringstekst) -- ikkje å forveksle med
+      // content.services/content.news, som er lista over enkeltkort/innlegg.
+      servicesSection: Object.assign({
+        heading: CFG.services.heading, intro: CFG.services.intro
+      }, overrides.servicesSection || {}),
+      newsSection: Object.assign({
+        heading: CFG.news.heading, intro: CFG.news.intro
+      }, overrides.newsSection || {}),
+      contactSection: Object.assign({
+        heading: CFG.contactSection.heading, intro: CFG.contactSection.intro,
+        successMessage: CFG.contactSection.successMessage
+      }, overrides.contactSection || {}),
       // ← seedet fra config.contact (+ egendefinerte felter, redigerbart i admin)
       contact: (function () {
         var c = Object.assign({
@@ -1019,7 +1040,7 @@ window.App = (function () {
       addLead({ name: name, email: email, message: message });
 
       form.reset();
-      setStatus(status, CFG.contactSection.successMessage, "ok"); // ← config-tekst
+      setStatus(status, content.contactSection.successMessage || CFG.contactSection.successMessage, "ok");
     });
   }
   function setStatus(el, msg, kind) {
@@ -1724,14 +1745,31 @@ window.App = (function () {
           ${C.field({ id: "f-hero-title", label: "Tittel", value: content.hero.title })}
           ${C.field({ id: "f-hero-sub", label: "Undertittel", multiline: true, rows: 2, value: content.hero.subtitle })}
           ${imgField("f-hero-image", "Bakgrunnsbilde (vises i full bredde)", content.hero.image, 2.4)}
+          ${C.field({ id: "f-hero-cta-label", label: "Knappetekst", value: content.hero.ctaLabel, placeholder: "Ta kontakt" })}
+          ${C.field({ id: "f-hero-cta-target", label: "Knappen peker til (seksjon-id)", value: content.hero.ctaTarget, placeholder: "#kontakt", hint: "Tomt = knappen vises ikke" })}
         </fieldset>
         <fieldset class="admin-group">
           <legend>Om oss</legend>
+          ${C.field({ id: "f-about-heading", label: "Overskrift", value: content.about.heading, placeholder: "Om oss" })}
           ${C.richTextField({ id: "f-about", label: "Tekst", value: content.about.text })}
           ${imgField("f-about-image", "Bilde", content.about.image, 4/3)}
         </fieldset>
         <fieldset class="admin-group">
+          <legend>Tjenester-seksjon</legend>
+          <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Selve tjenestekortene redigeres i egen fane («Tjenester») — her styres kun overskriften over dem.</p>
+          ${C.field({ id: "f-svc-heading", label: "Overskrift", value: content.servicesSection.heading, placeholder: "Tjenester" })}
+          ${C.field({ id: "f-svc-intro", label: "Ingress (valgfri)", value: content.servicesSection.intro, placeholder: "" })}
+        </fieldset>
+        <fieldset class="admin-group">
+          <legend>Aktuelt-seksjon</legend>
+          <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Selve sakene redigeres i egen fane («Aktuelt») — her styres kun overskriften over dem.</p>
+          ${C.field({ id: "f-news-heading", label: "Overskrift", value: content.newsSection.heading, placeholder: "Aktuelt" })}
+          ${C.field({ id: "f-news-intro", label: "Ingress (valgfri)", value: content.newsSection.intro, placeholder: "" })}
+        </fieldset>
+        <fieldset class="admin-group">
           <legend>Kontaktinfo</legend>
+          ${C.field({ id: "f-cs-heading", label: "Overskrift", value: content.contactSection.heading, placeholder: "Kontakt" })}
+          ${C.field({ id: "f-cs-intro", label: "Ingress (valgfri)", value: content.contactSection.intro, placeholder: "" })}
           ${C.field({ id: "f-c-email", label: "E-post", value: content.contact.email })}
           ${C.field({ id: "f-c-phone", label: "Telefon", value: content.contact.phone })}
           ${C.field({ id: "f-c-address", label: "Adresse", value: content.contact.address })}
@@ -1740,6 +1778,7 @@ window.App = (function () {
             <div data-extra-list>${(content.contact.extra || []).map(extraRow).join("")}</div>
             ${C.button({ label: "Legg til felt", icon: "plus", variant: "ghost", attrs: 'data-extra-add' })}
           </div>
+          ${C.field({ id: "f-cs-success", label: "Bekreftelsesmelding etter innsending", value: content.contactSection.successMessage, placeholder: "Takk! Vi tar kontakt så snart vi kan." })}
         </fieldset>
         <fieldset class="admin-group">
           <legend>Sosiale medier</legend>
@@ -1775,11 +1814,21 @@ window.App = (function () {
 
     body.querySelector("[data-content]").addEventListener("submit", function (e) {
       e.preventDefault();
-      content.hero.title    = body.querySelector("#f-hero-title").value;
-      content.hero.subtitle = body.querySelector("#f-hero-sub").value;
-      content.hero.image    = readImageField(body, "f-hero-image");
+      content.hero.title     = body.querySelector("#f-hero-title").value;
+      content.hero.subtitle  = body.querySelector("#f-hero-sub").value;
+      content.hero.image     = readImageField(body, "f-hero-image");
+      content.hero.ctaLabel  = body.querySelector("#f-hero-cta-label").value.trim();
+      content.hero.ctaTarget = body.querySelector("#f-hero-cta-target").value.trim();
+      content.about.heading = body.querySelector("#f-about-heading").value.trim();
       content.about.text    = readRichTextField(body, "f-about");
       content.about.image   = readImageField(body, "f-about-image");
+      content.servicesSection.heading = body.querySelector("#f-svc-heading").value.trim();
+      content.servicesSection.intro   = body.querySelector("#f-svc-intro").value.trim();
+      content.newsSection.heading = body.querySelector("#f-news-heading").value.trim();
+      content.newsSection.intro   = body.querySelector("#f-news-intro").value.trim();
+      content.contactSection.heading        = body.querySelector("#f-cs-heading").value.trim();
+      content.contactSection.intro          = body.querySelector("#f-cs-intro").value.trim();
+      content.contactSection.successMessage = body.querySelector("#f-cs-success").value.trim();
       content.contact.email = body.querySelector("#f-c-email").value;
       content.contact.phone = body.querySelector("#f-c-phone").value;
       content.contact.address = body.querySelector("#f-c-address").value;
@@ -3792,7 +3841,7 @@ window.App = (function () {
     registerModule({ id: "om-oss",   label: "Om oss",   order: 20,
       render: function () {
         return C.about(Object.assign({}, CFG.about, {
-          text: content.about.text, image: Media.resolveImage(content.about.image)
+          heading: content.about.heading, text: content.about.text, image: Media.resolveImage(content.about.image)
         }));
       } });
 
@@ -3801,23 +3850,24 @@ window.App = (function () {
         const cards = content.services.map(function (c) {
           return Object.assign({}, c, { image: Media.resolveImage(c.image) });
         });
-        return C.services(Object.assign({}, CFG.services, { cards: cards }));
+        return C.services(Object.assign({}, CFG.services, content.servicesSection, { cards: cards }));
       } });
 
     registerModule({ id: "aktuelt",  label: "Aktuelt",  order: 40,
       render: function () {
         const all = resolvedPosts();
+        const newsCfg = Object.assign({}, CFG.news, content.newsSection);
         if (feat("newsArchive")) {
           const n = CFG.news.frontCount || 3;
-          return C.news(CFG.news, all.slice(0, n), { teaser: true, total: all.length, frontCount: n });
+          return C.news(newsCfg, all.slice(0, n), { teaser: true, total: all.length, frontCount: n });
         }
-        return C.news(CFG.news, all, {});   // ingen arkiv: vis alle i full lengde
+        return C.news(newsCfg, all, {});   // ingen arkiv: vis alle i full lengde
       } });
 
     registerModule({ id: "kontakt",  label: "Kontakt",  order: 50,
       render: function () {
         // extra og sosiale lenker fra redigerbar tilstand (kan slås av med feature-flagg)
-        return C.contact(CFG.contactSection, Object.assign({}, content.contact, {
+        return C.contact(Object.assign({}, CFG.contactSection, content.contactSection), Object.assign({}, content.contact, {
           social: feat("social") ? content.contact.social : null
         }));
       } });

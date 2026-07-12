@@ -177,7 +177,17 @@
     .card__media { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; }
     .card__icon { display: inline-grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; background: var(--color-tint); color: var(--color-primary); font-size: 1.5rem; margin-bottom: 1rem; }
     .card__title { font-size: 1.2rem; margin-bottom: .4rem; }
-    .card__text { color: var(--color-muted); font-size: .98rem; margin: 0; }
+    /* Kortlengda varierer fritt med kundens tekst (rik-tekst, kan inkludere
+       lister/avsnitt) -- utan ei visuell takhøgd her ville eitt langt kort
+       (typisk éin kunde som skriv mykje) tvinge HEILE raden (grid-auto-rows:
+       1fr over) til si høgd, sidan resten av korta strekk seg til å matche.
+       Klippa (ikkje trunkert i data) ved ca. 5 linjer -- full tekst er
+       framleis lagra og vist andre stader (t.d. i admin), berre ikkje her. */
+    .card__text {
+      color: var(--color-muted); font-size: .98rem; margin: 0;
+      max-height: 7.5em; overflow: hidden;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
+    }
 
     /* --- Aktuelt (innlegg) ------------------------------------------------ */
     /* Status-system (Ny/Lest/Løst) */
@@ -553,8 +563,8 @@
        ====================================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js?v=8"></script>
-  <script src="components.js?v=7"></script>
-  <script src="core.js?v=40"></script>
+  <script src="components.js?v=8"></script>
+  <script src="core.js?v=41"></script>
   <!-- Ekstra-moduler lastes her, etter core.js -->
   <script src="module-booking.js?v=13"></script>
   <script src="module-quote.js?v=11"></script>

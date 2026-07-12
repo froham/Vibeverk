@@ -377,10 +377,26 @@ serve(async (req: Request) => {
   // tenant's hostname after schema verification would immediately expose
   // the new hostname's connection info via that anon RPC, before routing
   // was ever verified for it. Must reset both together.
+  //
+  // Extended 2026-07-12 (user request) to also allow this action for
+  // status = 'active', not just 'provisioning'. Deliberately the simple/
+  // immediate-effect variant (user's explicit choice over a safer
+  // re-verification-gated flow): resolve_tenant_by_hostname() resolves an
+  // 'active' tenant unconditionally (status = 'active' short-circuits the
+  // schema/routing checks entirely, see that migration), so there is no
+  // exposure-window risk here the way there is for 'provisioning' -- the
+  // new hostname just starts resolving to this tenant's real connection
+  // info the moment this write commits, with no verification step. That's
+  // the intended behaviour (fast-path fix for a typo on a live customer),
+  // not a gap. schema_verified_at/routing_verified_at are only reset when
+  // still 'provisioning' -- for an 'active' tenant they no longer gate
+  // anything, and clearing them would misleadingly make Console's steps
+  // 4/5 badges look unverified again for a tenant that needs no further
+  // action.
   if (action === "update_tenant_hostnames") {
-    if (tenant.status !== "provisioning") {
-      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
-      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    if (tenant.status !== "provisioning" && tenant.status !== "active") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' eller 'active' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er 'provisioning' eller 'active'" }, 403);
     }
     const { hostnames } = body;
     const cleanHostnames = (Array.isArray(hostnames) ? hostnames : [])
@@ -392,11 +408,16 @@ serve(async (req: Request) => {
     }
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const updatePayload: Record<string, unknown> = { hostnames: cleanHostnames, updated_at: new Date().toISOString() };
+    if (tenant.status === "provisioning") {
+      updatePayload.routing_verified_at = null;
+      updatePayload.schema_verified_at = null;
+    }
     const { data: updated, error } = await controlSrvSb
       .from("tenants")
-      .update({ hostnames: cleanHostnames, routing_verified_at: null, schema_verified_at: null, updated_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq("id", tenant_id)
-      .eq("status", "provisioning")
+      .eq("status", tenant.status)
       .select("id");
     if (error) {
       await auditFinish(auditId, "error", error.message);
@@ -407,7 +428,7 @@ serve(async (req: Request) => {
     }
     if (!updated || updated.length === 0) {
       await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
-      return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
+      return json({ error: "Tenanten sin status endra seg — prøv igjen" }, 409);
     }
     await auditFinish(auditId, "success");
     return json({ success: true });
@@ -698,6 +719,42 @@ serve(async (req: Request) => {
     if (!updated || updated.length === 0) {
       await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
       return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
+    }
+    await auditFinish(auditId, "success");
+    return json({ success: true });
+  }
+
+  // ── archive_tenant ────────────────────────────────────────────────────────
+  // "Sletting" for a tenant is a soft archive, never a hard DELETE: a real
+  // DELETE would break broker_audit_log's tenant_id trail for no benefit,
+  // since the customer's actual data-plane Supabase project is a completely
+  // separate project this control-plane row never touches either way --
+  // removing the row wouldn't remove any customer data, only the ability to
+  // ever look back at what happened. Archiving also fully stops public
+  // exposure as a side effect with no extra code: resolve_tenant_by_hostname()
+  // (see the migrations above) only ever resolves status = 'active'
+  // unconditionally, or status = 'provisioning' with schema_verified_at set
+  // -- 'archived' matches neither branch, so an archived tenant's hostnames
+  // stop resolving the moment this write commits.
+  if (action === "archive_tenant") {
+    if (tenant.status === "archived") {
+      return json({ error: "Tenanten er alt arkivert" }, 409);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: updated, error } = await controlSrvSb
+      .from("tenants")
+      .update({ status: "archived", updated_at: new Date().toISOString() })
+      .eq("id", tenant_id)
+      .eq("status", tenant.status)
+      .select("id");
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Arkivering feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
+      return json({ error: "Tenanten sin status endra seg — prøv igjen" }, 409);
     }
     await auditFinish(auditId, "success");
     return json({ success: true });
