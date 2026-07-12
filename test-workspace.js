@@ -570,6 +570,70 @@ nav("#/notes"); nav("#/dashboard");
   nav("#/notes"); nav("#/dashboard");
 })();
 
+/* --- Z) FUNKSJONSFLAGG AV: intranettFeatures.kb = false (dagens faktiske
+   standard i config.js) skal skjule Kunnskapsbase heilt -- ingen nav-lenke,
+   ingen dashboard-hurtighandling, og direkte navigering til #/kb skal IKKJE
+   krasje, berre falle tilbake til «Modul ikke funnet». Resten av denne fila
+   tvingar kb:true (sjå intranettFeatures-patchen heilt øvst) for å kunne
+   teste sjølve KB-funksjonaliteten (seksjon J) -- det finst difor ingen
+   annan stad som stadfestar av-stien. Krev sin eigen, separate DOM: kva
+   modular som registrerer seg vert avgjort éin gong ved skriptlasting
+   (App.ready() sin gate i module-kb.js), ikkje reevaluert om flagget skulle
+   endre seg seinare i den same, alt-lasta konteksten. --------------------- */
+(function () {
+  const dom2 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window2 = dom2.window;
+  window2.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window2.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window2.scrollTo = () => {};
+  window2.HTMLElement.prototype.scrollIntoView = () => {};
+  window2.URL.createObjectURL = window2.URL.createObjectURL || (() => "blob:mock");
+  window2.URL.revokeObjectURL = window2.URL.revokeObjectURL || (() => {});
+  window2.confirm = () => true;
+
+  // Ingen intranettFeatures-patching her -- poenget er nettopp å teste
+  // config.js sin ekte, upatcha standard (kb: false).
+  [
+    "config.js", "components.js", "core.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js",
+    "workspace/module-kb.js"
+  ].forEach(f => window2.eval(fs.readFileSync(f, "utf8")));
+
+  const _NS2 = window2.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window2.eval(`sessionStorage.setItem("${_NS2}:admin","admin")`);
+  window2.document.dispatchEvent(new window2.Event("DOMContentLoaded", { bubbles: true }));
+  const doc2 = window2.document;
+
+  function nav2(hash) {
+    window2.location.hash = hash;
+    window2.dispatchEvent(new window2.Event("hashchange"));
+  }
+
+  assert(window2.SITE_CONFIG.intranettFeatures.kb === false,
+    "z1: føresetnad for denne seksjonen -- config.js sin ekte standard har kb: false");
+  assert(!doc2.querySelector('[data-inav="kb"]'),
+    "z2: «Kunnskapsbase» finst ikkje i sidebar-navigasjonen når funksjonen er av");
+  assert(!doc2.querySelector("[data-dash-new-kb]"),
+    "z3: dashboardet viser ikkje «Ny KB-artikkel»-hurtighandlinga når funksjonen er av");
+  assert(typeof window2._kbOpenNew !== "function",
+    "z4: window._kbOpenNew finst ikkje når funksjonen er av (module-kb.js sin App.ready-gate returnerte tidleg)");
+
+  let navThrew = false;
+  try { nav2("#/kb"); } catch (e) { navThrew = true; }
+  assert(!navThrew,
+    "z5: direkte navigering til #/kb krasjar ikkje sjølv om modulen aldri registrerte seg");
+  assert(doc2.getElementById("intranet-main").textContent.indexOf("Modul ikke funnet") > -1,
+    "z6: #/kb fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
+})();
+
 /* --- RESULTAT ------------------------------------------------------------- */
 const ok  = globalThis.__ok  || 0;
 const err = globalThis.__err || 0;

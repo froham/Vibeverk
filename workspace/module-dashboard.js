@@ -388,20 +388,20 @@
     var newAnnBtn = root.querySelector("[data-dash-new-ann]");
     if (newAnnBtn) newAnnBtn.addEventListener("click", function (e) {
       e.preventDefault();
+      // module-announcements.js sin editor er inline i den asynkront-lasta
+      // lista (#ann-editor finst ikkje før loadItems() er ferdig) -- ein
+      // fast setTimeout+querySelector-klikk her var eit kappløp mot det
+      // ekte Supabase-kallet og trefte ofte for tidleg. window._annOpenNew()
+      // set berre eit flagg mount() sjekkar når det faktisk er trygt.
+      if (typeof window._annOpenNew === "function") window._annOpenNew();
       Intranet.navigate("announcements");
-      setTimeout(function () {
-        var annBtn = document.querySelector("#ann-new-btn");
-        if (annBtn) annBtn.click();
-      }, 100);
     });
     var newKbBtn = root.querySelector("[data-dash-new-kb]");
     if (newKbBtn) newKbBtn.addEventListener("click", function (e) {
       e.preventDefault();
+      // Same grunn som over -- sjå window._kbOpenNew() i module-kb.js.
+      if (typeof window._kbOpenNew === "function") window._kbOpenNew();
       Intranet.navigate("kb");
-      setTimeout(function () {
-        var kbBtn = document.querySelector("#kb-new-btn");
-        if (kbBtn) kbBtn.click();
-      }, 100);
     });
 
     /* --- Aktivitetslogg: gardin-toggle --------------------------------- */

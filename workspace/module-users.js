@@ -165,10 +165,20 @@
         if (!confirm("Fjerne brukar «" + name + "»? Dette kan ikkje angras.")) return;
         callManageUser("remove", { user_id: uid })
           .then(function (res) {
-            if (res.error) { alert("Feil: " + res.error); return; }
+            if (res && res.error) {
+              // res.error kan i prinsippet vera anna enn ein streng viss
+              // Edge Function-svaret ein dag endrar form -- unngå å vise
+              // "[object Object]"/"{}" til admin, sjå supabase/functions/
+              // manage-user/index.ts sin feilhandtering for rotårsaka dette
+              // faktisk oppstod frå (manglande ON DELETE på tasks/
+              // announcements/kb_articles sine forfattar-FK-ar).
+              var msg = typeof res.error === "string" ? res.error : "Ukjend feil frå tenaren.";
+              alert("Feil: " + msg);
+              return;
+            }
             loadAndRender(root, ctx, sb);
           })
-          .catch(function () { alert("Nettverksfeil."); });
+          .catch(function (e) { alert("Nettverksfeil: " + ((e && e.message) || "ukjend.")); });
       });
     });
   }

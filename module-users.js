@@ -197,7 +197,18 @@
               if (!confirm('Fjerne "' + name + '"? Brukaren mister tilgang umiddelbart.')) return;
               btn.disabled = true;
               callFn({ action: "remove", user_id: uid }).then(function (r) {
-                if (r.error) { alert("Feil: " + r.error); btn.disabled = false; return; }
+                if (r && r.error) {
+                  // r.error kan i prinsippet vera anna enn ein streng viss
+                  // Edge Function-svaret endrar form -- unngå å vise
+                  // "[object Object]"/"{}" til admin, sjå supabase/functions/
+                  // manage-user/index.ts sin feilhandtering for rotårsaka
+                  // (manglande ON DELETE på tasks/announcements/kb_articles
+                  // sine forfattar-FK-ar).
+                  var msg = typeof r.error === "string" ? r.error : "Ukjend feil frå tenaren.";
+                  alert("Feil: " + msg);
+                  btn.disabled = false;
+                  return;
+                }
                 renderAdmin(container); // reload list
               });
             });

@@ -270,27 +270,23 @@
 
     App.ui.bindImageFields(ed);
 
-    /* Modus-veksling — oppdater forhåndsvisnings-aspect-ratio */
+    /* Modus-veksling — oppdater forhåndsvisnings-aspect-ratio.
+       Rekna sjølv å utleie ny vindaugestorleik her (i staden for å be
+       bindImageFields() sin eigen layout()-funksjon om det via
+       imgfield:relayout) var rotårsaka til ein reell drage-feil: den
+       lokale utrekninga trefte aldri crop/outAspect inne i
+       bindImageFields() sin lukking, så eit drag rett etter modusbyte
+       brukte framleis dei GAMLE crop-måla, sjølv om vindauget synte den
+       nye storleiken. Fiksa 2026-07-12 ved å la det finnast berre éin
+       stad (core.js sin layout()) som reknar ut crop-mål — sjå notatet
+       ved imgfield:relayout i core.js sin bindImageFields(). */
     ed.querySelectorAll('[name="sb-mode"]').forEach(function (radio) {
       radio.addEventListener("change", function () {
         var newAspect = radio.value === "parallax" ? (9/16) : (16/9);
-        /* Oppdater data-aspect på preview-elementet og trigger re-layout */
+        var wrap = ed.querySelector("[data-imgfield]");
         var preview = ed.querySelector(".imgfield__preview");
-        if (preview) {
-          preview.setAttribute("data-aspect", newAspect);
-          /* Trigge re-render ved å kalle layout på nytt (imageField har allereie init) */
-          var img = preview.querySelector("img");
-          if (img && img.naturalWidth) {
-            var newWW, newWH;
-            var imgAsp = img.naturalWidth / img.naturalHeight;
-            if (imgAsp > newAspect) { newWH = 100; newWW = (newAspect / imgAsp) * 100; }
-            else { newWW = 100; newWH = (imgAsp / newAspect) * 100; }
-            var win = preview.querySelector("[data-crop-window]");
-            if (win) { win.style.width = newWW + "%"; win.style.height = newWH + "%"; }
-            preview.style.aspectRatio = String(imgAsp);
-            preview.style.width = "min(100%, " + Math.round(340 * imgAsp) + "px)";
-          }
-        }
+        if (preview) preview.setAttribute("data-aspect", newAspect);
+        if (wrap) wrap.dispatchEvent(new Event("imgfield:relayout"));
       });
     });
 

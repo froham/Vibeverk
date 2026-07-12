@@ -44,7 +44,12 @@
     var s = document.createElement("style");
     s.id = "faq-styles";
     s.textContent = [
-      ".faq-img{width:100%;max-height:320px;object-fit:cover;border-radius:var(--radius);margin-bottom:1.6rem;display:block}",
+      // aspect-ratio:3 lagt til -- utan ein fast aspect-ratio hadde object-fit:cover
+      // ofte ingen synleg effekt (biletet viste berre sitt eige naturlege
+      // format opp til max-height), så det lagra fokuspunktet var reelt
+      // verknadslaust. 3 matchar det editoren alt lova (App.ui.imageField sitt
+      // aspect-argument, sjå openFaqContentEditor()).
+      ".faq-img{width:100%;aspect-ratio:3;max-height:320px;object-fit:cover;border-radius:var(--radius);margin-bottom:1.6rem;display:block}",
       ".faq-intro{color:var(--color-muted);margin:0 0 1.6rem;max-width:680px}",
       ".faq-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--color-border)}",
       ".faq-item{border-bottom:1px solid var(--color-border)}",
@@ -71,7 +76,7 @@
     if (!items.length && !fc.intro && !fc.image) return "";   // ingen innhold → skjul
 
     var img = App.media.resolveImage(fc.image);
-    var imgHtml = img.src ? '<img class="faq-img" src="' + esc(img.src) + '" alt="" loading="lazy">' : "";
+    var imgHtml = img.src ? '<img class="faq-img" src="' + esc(img.src) + '" alt="" loading="lazy" style="object-position:' + esc(img.pos || "50% 50%") + '">' : "";
     var introHtml = fc.intro ? '<p class="faq-intro">' + esc(fc.intro) + '</p>' : "";
 
     var listHtml = items.length
