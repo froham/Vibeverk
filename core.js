@@ -16,15 +16,23 @@ window.App = (function () {
   // ─── STANDARDSKJEMA FOR NESTA CFG-FELT ─────────────────────────────────────
   // Fase 6-tenantar (api/tenant-config.js) genererer eit minimalt SITE_CONFIG-
   // skjelett (berre supabase/storageKey/productMode/features/intranettFeatures/
-  // theme) — resten av core.js (applyTheme, applySuperConfig, m.m.) føreset at
-  // company/colors/fonts/features/intranettFeatures/privacy/admin/workspace alltid
-  // finst som objekt, sidan dei historisk alltid kom frå ein fullstendig statisk
-  // config.js-fork (sjå config.js sine tilsvarande nøklar for kva shape kvar av
-  // desse skal ha). fillConfigDefaults() fyller berre inn manglande nøklar/nivå —
-  // ho overskriv ALDRI ein verdi som alt finst, så lagra/lasta config vinn alltid
+  // theme) — resten av core.js (applyTheme, applySuperConfig, loadContent, m.m.)
+  // føreset at company/colors/fonts/features/intranettFeatures/privacy/admin/
+  // workspace/hero/about/contact/news/services/contactSection alltid finst som
+  // objekt, sidan dei historisk alltid kom frå ein fullstendig statisk config.js-
+  // fork (sjå config.js sine tilsvarande nøklar for kva shape kvar av desse skal
+  // ha). fillConfigDefaults() fyller berre inn manglande nøklar/nivå — ho
+  // overskriv ALDRI ein verdi som alt finst, så lagra/lasta config vinn alltid
   // over defaults, rekursivt for kvart nesta nivå (ein enkel toppnivå-spread ville
   // ikkje fylt inn manglande under-nøklar i eit delvis nesta objekt, t.d.
   // privacy:{heading:"x"} utan «text»).
+  //
+  // Innhaldsfelta (hero/about/contact/news/services/contactSection) får TOMME
+  // standardverdiar her, IKKJE config.js sitt eige demo-/eksempelinnhald —
+  // elles ville ein fersk tenant utan seeda innhald synt fram Vibeverk sin eigen
+  // placeholder-tekst/produktkort/blogginnlegg som om det var ekte kundeinnhald
+  // (same klasse feil som CFG-fallback-lekkasjen i Console, sjå
+  // docs/project/CHANGELOG.md 0.27.2, punkt 2).
   //
   // Mutasjon skjer i objektet CFG *peikar på* (same referanse som
   // window.SITE_CONFIG), ikkje eit nytt objekt — fleire filer (module-chat.js,
@@ -38,7 +46,13 @@ window.App = (function () {
     intranettFeatures: {},
     privacy:  { heading: "Personvern og databehandling", text: "" },
     admin:    { password: "", tripleClickFooter: true },
-    workspace: {}
+    workspace: {},
+    hero:     { title: "", subtitle: "", ctaLabel: "", ctaTarget: "", image: "" },
+    about:    { heading: "", text: "", imageUrl: "" },
+    contact:  { email: "", phone: "", address: "", extra: [], social: {} },
+    news:     { heading: "", intro: "", frontCount: 3, posts: [] },
+    services: { heading: "", intro: "", cards: [] },
+    contactSection: { heading: "", intro: "", successMessage: "" }
   };
 
   function fillConfigDefaults(target, defaults) {
