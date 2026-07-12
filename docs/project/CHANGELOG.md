@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.27.4 — 2026-07-12
+
+### Extend `DEFAULT_CFG_SHAPE` to content fields (`hero`/`about`/`contact`/`news`/`services`/`contactSection`)
+Verified 0.27.3's fix live against the real `phase6-canary` tenant (production deploy of `vibeverk-j1yg.vercel.app`, fetched and executed its actual served `config.js`/`core.js`): the `applySuperConfig()` crash was confirmed gone, but a *different* crash immediately surfaced in `loadContent()` — `Cannot read properties of undefined (reading 'title')` on `CFG.hero.title` (`core.js:419`). Same root cause as 0.27.3, one tier further down: `api/tenant-config.js`'s skeleton never seeds `hero`/`about`/`contact`/`news`/`services`/`contactSection` at all, and `loadContent()`'s direct reads (`CFG.hero.title/subtitle/image`, `CFG.about.text/imageUrl`, `CFG.contact.email/phone/address/extra/social`, `CFG.news.posts`, `CFG.services.cards`, `CFG.contactSection.successMessage`) assumed — like the 0.27.3 fields — that a static `config.js` fork always populated them.
+
+Fixed by extending the same `DEFAULT_CFG_SHAPE`/`fillConfigDefaults()` mechanism from 0.27.3 to cover these six keys. Deliberately seeded with **empty** values (`title: ""`, `cards: []`, etc.), not `config.js`'s own demo/placeholder copy ("Klare råd. Konkrete resultater.", the sample service cards, the seed blog posts) — copying that in would have silently shown Vibeverk's own marketing/demo content on a real customer's freshly-provisioned site as if it were their content, the same class of bug as the CFG-fallback leak fixed in 0.27.2 (see that entry, point 2). Re-verified against the exact live config fetched from `vibeverk-j1yg.vercel.app`: `App.init()` now completes with no throw. `?v=N` bumped on `core.js`'s four script tags.
+
+---
+
 ## 0.27.3 — 2026-07-12
 
 ### Fix white-screen/crash-loop on new Phase 6 tenants: missing nested `CFG` objects
