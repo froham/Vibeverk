@@ -30,6 +30,11 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.30.1 — 2026-07-12
+
+### Fix: Console showed a useless generic error for every failed Edge Function call
+User report: archiving a tenant and editing its domain names both failed with "Edge Function returned a non-2xx status code" — no indication of the real reason. Root cause: `supabase-js`'s `functions.invoke()` sets that exact generic string on `error.message` for **every** non-2xx response, regardless of what the function actually returned — our own `json({ error: "..." }, 4xx/5xx)` response bodies (e.g. "Tenanten er alt arkivert", "Berre superadmin kan utføre kundeadministrasjon") were only ever reachable via `error.context` (the raw `Response` object), which `brokerCall()`/`tenantAdminCall()` in `console/console-core.js` never read. This wasn't specific to the two new actions from 0.30.0 — every single Console action that goes through either of these two helpers has been silently swallowing its real error message the same way, for as long as they've existed; it just took a failing call for someone to notice. Fixed with a shared `extractFunctionErrorMessage()` helper that awaits `error.context.json()` and falls back to the generic message only if that itself fails (e.g. a network-level error with no response body at all).
+
 ## 0.30.0 — 2026-07-12
 
 **⚠️ Security review not yet run for this version.** `tenant-admin/index.ts` changed twice in this round (`archive_tenant`, and `update_tenant_hostnames` extended to `status = 'active'`, both below) without a `/security-review` pass afterward — deliberately deferred at the user's request, to be run before merge. **Whoever picks this up next: run `/security-review` against this branch's diff before merging or deploying**, per CLAUDE.md's "security-sensitive changes" rule (this touches tenant status transitions and public hostname resolution). Specifically worth the reviewer's attention: whether `archive_tenant`'s lack of a "from which status" allowlist (it accepts archiving from any non-archived status, including mid-provisioning) is intended, and whether the new active-tenant hostname edit's "immediate effect, no re-verification" behavior (explicit user choice, documented inline in that function) still holds up given `archive_tenant` now exists alongside it.
