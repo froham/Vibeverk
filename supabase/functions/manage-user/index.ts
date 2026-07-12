@@ -70,9 +70,24 @@ serve(async (req: Request) => {
     if (!user_id) return json({ error: "user_id er påkrevd" }, 400);
     if (user_id === user.id) return json({ error: "Kan ikkje slette deg sjølv" }, 400);
 
-    const { error } = await adminSb.auth.admin.deleteUser(user_id);
-    if (error) return json({ error: error.message }, 400);
-    return json({ success: true });
+    // auth.admin.deleteUser() cascades DELETE FROM auth.users, which Postgres
+    // cascades further into public.users (ON DELETE CASCADE), which in turn
+    // hits tasks/announcements/kb_articles' author FKs -- a real FK-violation
+    // error, not a network/auth failure, if those FKs still lack an ON DELETE
+    // action (see supabase/migrations/20260712203346_fix_user_delete_fk_restrict.sql).
+    // Wrapped in try/catch because a DB-level error here can reject rather
+    // than resolve to {error}, depending on how GoTrue surfaces it -- an
+    // uncaught rejection would otherwise propagate to the Deno runtime's own
+    // generic error handler and return an opaque/empty body to the client
+    // (observed live as "Feil: {}", the actual bug report this fixes).
+    try {
+      const { error } = await adminSb.auth.admin.deleteUser(user_id);
+      if (error) return json({ error: error.message || "Sletting feila (ukjend årsak frå Supabase Auth)" }, 400);
+      return json({ success: true });
+    } catch (e) {
+      const msg = (e && typeof e === "object" && "message" in e) ? String((e as { message: unknown }).message) : String(e);
+      return json({ error: "Sletting feila: " + msg }, 500);
+    }
   }
 
   return json({ error: "Ukjend handling: " + action }, 400);

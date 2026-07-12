@@ -19,6 +19,7 @@
   var _sb       = App.supabase;
   var STORE_KEY = "wsp-announcements";
   var _items    = [];
+  var _openNewOnLoad = false; // sett av window._annOpenNew(), sjå notatet ved mount()
 
   /* =========================================================================
      TILGANG
@@ -188,9 +189,14 @@
   function mount(outlet, ctx) {
     var root = outlet.querySelector("#ann-root") || outlet;
     root.innerHTML = '<p style="color:var(--color-muted);padding:1rem">Lastar…</p>';
+    // Fanga FØR loadItems() sitt asynkrone kall, ikkje inne i callbacken --
+    // window._annOpenNew() kan verta kalla når som helst mellom no og då.
+    var openNew = _openNewOnLoad;
+    _openNewOnLoad = false;
     loadItems(function () {
       renderList(root, ctx);
       renderBanner();
+      if (openNew && canEdit(ctx)) openEditor(root, null, ctx);
     });
   }
 
@@ -254,7 +260,7 @@
           '<i class="ti ti-speakerphone"></i> Viktig</span>'
         : '') +
       (img && img.src
-        ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin-bottom:.8rem;display:block">'
+        ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:180px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;margin-bottom:.8rem;display:block">'
         : '') +
       '<strong style="font-size:1rem;display:block;margin-bottom:.2rem">' + C.esc(a.title) + '</strong>' +
       '<div style="font-size:.78rem;color:var(--color-muted);margin-bottom:.5rem">' + formatDate(a.created_at || a.published_at) + '</div>' +
@@ -323,7 +329,7 @@
       '</div>' +
       '<div style="padding:1.2rem 1.4rem">' +
         (img && img.src
-          ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin-bottom:1.1rem;display:block">'
+          ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;max-height:320px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;margin-bottom:1.1rem;display:block">'
           : '') +
         (item.content
           ? '<div style="font-size:.95rem;line-height:1.75;color:var(--color-text)">' + C.sanitizeRichHtml(item.content) + '</div>'
@@ -418,6 +424,14 @@
     setTimeout(renderBanner, 50);
   }
   window._annRenderBanner = renderBanner;
+
+  // Kalla frå Dashboard sin "Ny kunngjering"-snarveg (module-dashboard.js) --
+  // openEditor() krev at #ann-editor alt finst i DOM-en, som berre skjer
+  // etter at loadItems() sitt asynkrone Supabase-kall er ferdig, så denne
+  // set berre eit flagg som mount() sjekkar når det faktisk er trygt å opne.
+  window._annOpenNew = function () {
+    _openNewOnLoad = true;
+  };
 
   Intranet.registerModule({
     id:       "announcements",

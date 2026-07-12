@@ -346,7 +346,7 @@
         '<div class="bk-asset__body">' +
           '<h3 class="bk-asset__title">' + esc(a.name) + '</h3>' +
           (a.description ? '<p class="bk-asset__desc">' + esc(a.description) + '</p>' : '') +
-          (img.src ? '<img src="' + esc(img.src) + '" alt="" class="bk-asset__img bk-asset__img--inline">' : '') +
+          (img.src ? '<img src="' + esc(img.src) + '" alt="" class="bk-asset__img bk-asset__img--inline" style="object-position:' + esc(img.pos || "50% 50%") + '">' : '') +
           picker +
           '<div class="bk-confirm" data-confirm></div>' +
           '<button type="button" class="btn btn--ghost bk-request" data-book="' + esc(a.id) + '">Forespør annet tidspunkt</button>' +
@@ -642,7 +642,10 @@
         '<h4>' + (a ? "Rediger ressurs" : "Ny ressurs") + '</h4>' +
         C.field({ id:"as-name", label:"Navn", required:true, value:a?a.name:"" }) +
         C.field({ id:"as-desc", label:"Beskrivelse", multiline:true, rows:2, value:a?a.description:"" }) +
-        App.ui.imageField("as-image", "Bilde", a?a.image:"", 16/10) +
+        // Sideforhold 21/9, ikkje 16/10 -- må matche .bk-asset__img sin ekte
+        // aspect-ratio (module-booking.js CSS) elles viser fokuspunkt-
+        // veljaren eit anna utsnitt enn det som faktisk vert vist på sida.
+        App.ui.imageField("as-image", "Bilde", a?a.image:"", 21/9) +
         '<div class="field"><label for="as-vis">Synlighet</label>' +
           '<select id="as-vis">' +
             '<option value="public" '+(!a||a.visibility==="public"?"selected":"")+'>Offentlig (vises med kalender)</option>' +

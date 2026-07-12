@@ -1534,7 +1534,12 @@ window.App = (function () {
       const credRadios = wrap.querySelectorAll("[data-imgfield-credit-type]");
       const credTx  = wrap.querySelector("[data-imgfield-credit-text]");
       const altInput = wrap.querySelector("[data-imgfield-alt]");
-      const outAspect = parseFloat(preview.getAttribute("data-aspect")) || (16 / 9);
+      // Lesast på nytt kvar gong layout() køyrer (ikkje ein éin-gongs const) --
+      // module-scrollbanner.js sin modus-veksling (statisk/parallax) endrar
+      // data-aspect etter at feltet alt er bunde, og treng at eit nytt
+      // layout()-kall faktisk brukar den NYE verdien, ikkje ein fastfrosen
+      // snapshot frå bindetidspunktet.
+      function currentAspect() { return parseFloat(preview.getAttribute("data-aspect")) || (16 / 9); }
 
       let state, crop = null;   // crop = { ww, wh } i prosent av forhåndsvisningen
       try { state = Media.norm(JSON.parse(hidden.value)); } catch (e) { state = Media.norm(hidden.value); }
@@ -1550,6 +1555,7 @@ window.App = (function () {
         win.style.top  = (p[1] * (100 - crop.wh) / 100) + "%";
       }
       function layout(natW, natH) {
+        const outAspect = currentAspect();
         const imgAspect = (natW && natH) ? (natW / natH) : outAspect;
         const maxH = 340;
         preview.style.aspectRatio = String(imgAspect);
@@ -1562,6 +1568,17 @@ window.App = (function () {
         if (win) { win.style.width = ww + "%"; win.style.height = wh + "%"; }
         placeWindow();
       }
+      // Kalla utanfrå (t.d. module-scrollbanner.js sin modus-veksling) etter
+      // at data-aspect på preview-elementet har endra seg -- re-kjører layout()
+      // med det biletet som alt er lasta, i staden for at kallaren prøver å
+      // replikere layout() sin matte sjølv utanfrå (som var rotårsaka til at
+      // draging vart feil rett etter ein modusbyte: crop/outAspect var
+      // fastfrosne frå bindetidspunktet og vart aldri oppdaterte, sjølv om
+      // vindauget sin synlege storleik vart det).
+      wrap.addEventListener("imgfield:relayout", function () {
+        const img = preview.querySelector("img");
+        if (img && img.naturalWidth) layout(img.naturalWidth, img.naturalHeight);
+      });
       function render() {
         const src = Media.resolve(state.src);
         if (!src) {
@@ -1652,6 +1669,24 @@ window.App = (function () {
         if (win) { win.style.left = nl + "%"; win.style.top = nt + "%"; }
       });
       window.addEventListener("pointerup", function () { if (dragging) { dragging = false; preview.classList.remove("is-grabbing"); } });
+
+      // Tastaturstyring (piltastar) — biletfeltet hadde ingen tilgjengeleg
+      // måte å flytte fokuspunktet på utan mus/touch før dette.
+      preview.addEventListener("keydown", function (e) {
+        if (!state.src || !crop) return;
+        var STEP = 5;
+        var dx = e.key === "ArrowLeft" ? -STEP : e.key === "ArrowRight" ? STEP : 0;
+        var dy = e.key === "ArrowUp"   ? -STEP : e.key === "ArrowDown"  ? STEP : 0;
+        if (!dx && !dy) return;
+        e.preventDefault();
+        var p = parsePos(state.pos);
+        var nx = Math.max(0, Math.min(100, p[0] + dx));
+        var ny = Math.max(0, Math.min(100, p[1] + dy));
+        state.pos = Math.round(nx) + "% " + Math.round(ny) + "%";
+        sync();
+        placeWindow();
+        preview.setAttribute("aria-valuetext", Math.round(nx) + "% frå venstre, " + Math.round(ny) + "% frå toppen");
+      });
 
       render();
     });
@@ -2709,31 +2744,161 @@ window.App = (function () {
     }
     return keys;
   }
+  // Tabellar flytta ut av den generiske store-tabellen 2026-07-03/06 (sjå
+  // docs/project/CHANGELOG.md/CURRENT_STATE.md) -- desse har ALDRI vore ein
+  // del av allStoreKeys()/Store, sidan dei eigande modulane skriv direkte
+  // til Supabase når _sb finst og berre fell tilbake til Store når Supabase
+  // IKKJE er konfigurert. Sikkerhetskopien fanga difor berre ein krympande
+  // delmengd av det faktiske innhaldet på sida -- den bekrefta rotårsaka til
+  // at sletta data ikkje kom tilbake ved import (dei var aldri i eksporten).
+  // `notes` er MED VILJE UTELATE: notes_own-RLS-policyen
+  // (supabase/migrations/20260707000001_baseline_schema.sql) gjev kvar
+  // brukar berre tilgang til sine EIGNE notat, ingen admin-unntak -- ein
+  // "full sikkerhetskopi" som stille berre fangar den eksporterande admin
+  // sine eigne notat (og ingen andre sine) ville vore misvisande. Å leggje
+  // til eit admin-unntak i RLS er ei eiga personvernavgjerd, ikkje ein del
+  // av denne feilrettinga -- sjå Privacy/Compliance Advisor før det evt.
+  // vert bygd.
+  const BACKUP_TABLES = [
+    "crm_bedrifter", "crm_customers", "crm_comms",
+    "leads", "bookings",
+    "tasks", "announcements", "kb_articles", "links"
+  ];
+
+  // Kolonnar som refererer users(id): dei NOT NULL-kolonnane må droppe heile
+  // rada viss forfattaren er borte (kan ikkje reparerast utan å gjette ein
+  // ny eigar), dei nullbare kan berre nullstillast og rada elles behaldast.
+  // Sjå supabase/migrations/20260712203346_fix_user_delete_fk_restrict.sql
+  // for kvifor tasks/announcements/kb_articles sine forfattar-FK-ar i det
+  // heile kan verta hengande att viss brukaren som skreiv dei er sletta.
+  const BACKUP_USER_FK_RULES = {
+    tasks:         { required: "created_by", nullable: "assigned_to" },
+    announcements: { required: "author_id" },
+    kb_articles:   { required: "author_id" },
+    links:         { nullable: "created_by" }
+  };
+
+  // FK-trygg gjenopprettings-rekkefølgje: bedrifter før kundar (kundar sin
+  // bedrift_id refererer bedrifter), kundar før comms (comms.customer_id er
+  // NOT NULL REFERENCES crm_customers, ON DELETE CASCADE) -- resten har
+  // ingen FK til kvarandre, berre til users (handtert separat via
+  // validUserIds i restoreTable(), uavhengig av rekkefølgje).
+  const BACKUP_TABLE_RESTORE_ORDER = BACKUP_TABLES;
+
+  // PostgREST avgrensar .select() til 1000 rader som standard -- side
+  // gjennom med .range() til ei kortare side kjem attende. Kastar (i staden
+  // for å logge og halde fram med det som alt er henta) viss ei side feilar
+  // -- ein stille avkorta eksport er nett den typen usynleg datatap denne
+  // heile fiksen skal rette, ikkje noko å gjenta ein gong til her.
+  function fetchAllRows(table) {
+    if (!_sb) return Promise.resolve([]);
+    const PAGE = 1000;
+    function page(offset, acc) {
+      return _sb.from(table).select("*").range(offset, offset + PAGE - 1).then(function (r) {
+        if (r.error) return Promise.reject(new Error("Henting av " + table + " feila: " + r.error.message));
+        const rows = r.data || [];
+        acc = acc.concat(rows);
+        if (rows.length < PAGE) return acc;
+        return page(offset + PAGE, acc);
+      });
+    }
+    return page(0, []);
+  }
+
   function exportBackup() {
-    const payload = buildBackupPayload();
-    const stamp = new Date().toISOString().slice(0, 10);
-    const slug  = ((CFG.company && CFG.company.name) || "side").toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "side";
-    downloadBlob("sikkerhetskopi-" + slug + "-" + stamp + ".json", JSON.stringify(payload, null, 2), "application/json");
+    return buildBackupPayload().then(function (payload) {
+      const stamp = new Date().toISOString().slice(0, 10);
+      const slug  = ((CFG.company && CFG.company.name) || "side").toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "side";
+      downloadBlob("sikkerhetskopi-" + slug + "-" + stamp + ".json", JSON.stringify(payload, null, 2), "application/json");
+      return payload;
+    });
   }
   function buildBackupPayload() {
     const keys = allStoreKeys();
     const data = {};
     keys.forEach(function (k) { data[k] = Store.get(k, null); });
-    return {
-      vibeverk_backup: true,
-      version: 1,
-      site: (CFG.company && CFG.company.name) || "",
-      exportedAt: new Date().toISOString(),
-      data: data
-    };
+    return Promise.all(BACKUP_TABLES.map(fetchAllRows)).then(function (results) {
+      const tables = {};
+      BACKUP_TABLES.forEach(function (t, i) { tables[t] = results[i]; });
+      data.tables = tables;
+      return {
+        vibeverk_backup: true,
+        version: 2,
+        site: (CFG.company && CFG.company.name) || "",
+        exportedAt: new Date().toISOString(),
+        data: data
+      };
+    });
   }
+
+  // Tøm-så-set-inn-att for éin tabell, med FK-reparasjon mot brukarar som
+  // ikkje lenger finst. Kastar (avviser Promise-en) viss sjølve tømminga
+  // eller innsettinga feilar på Supabase-sida -- restoreBackupData() sin
+  // sekvensielle kjede stoggar då naturleg ved det punktet, og alle
+  // attverande tabellar vert ståande urørt i sin FØR-gjenoppretting-tilstand
+  // (ikkje tomme) i staden for at heile operasjonen stille gir eit
+  // ufullstendig resultat.
+  function restoreTable(table, rows, validUserIds) {
+    if (!_sb) return Promise.resolve({ table: table, restored: 0, skipped: 0 });
+    rows = rows || [];
+    const rule = BACKUP_USER_FK_RULES[table];
+    let skipped = 0;
+    if (rule && rule.required) {
+      rows = rows.filter(function (r) {
+        const ok = !r[rule.required] || validUserIds.has(r[rule.required]);
+        if (!ok) skipped++;
+        return ok;
+      });
+    }
+    if (rule && rule.nullable) {
+      rows = rows.map(function (r) {
+        if (r[rule.nullable] && !validUserIds.has(r[rule.nullable])) {
+          const patched = Object.assign({}, r);
+          patched[rule.nullable] = null;
+          return patched;
+        }
+        return r;
+      });
+    }
+    return _sb.from(table).delete().not("id", "is", null).then(function (delRes) {
+      if (delRes.error) return Promise.reject(new Error("Tømming av " + table + " feila: " + delRes.error.message));
+      if (!rows.length) return { table: table, restored: 0, skipped: skipped };
+      return _sb.from(table).insert(rows).then(function (insRes) {
+        if (insRes.error) return Promise.reject(new Error("Gjenoppretting av " + table + " feila: " + insRes.error.message));
+        return { table: table, restored: rows.length, skipped: skipped };
+      });
+    });
+  }
+
   // Skriver ALT fra et parset backup-objekt tilbake (full overskriving — fjerner
   // først alt eksisterende under navnerommet, slik at gjenoppretting blir et
-  // eksakt speil av kopien, ikke en sammenslåing).
+  // eksakt speil av kopien, ikke en sammenslåing). Sidan 2026-07-12 dekker
+  // dette òg dei ni tabellane i BACKUP_TABLES (tidlegare vart desse aldri
+  // fanga opp i det heile, sjå notatet der). Prosesserer éin tabell om
+  // gongen (tøm-så-set-inn), ikkje eit globalt tøm-alt-så-set-inn-alt-steg,
+  // slik at eit avbrot midtvegs berre råkar tabellen som var under arbeid.
+  // Gammal-forma sikkerhetskopiar (utan data.tables, frå før 2026-07-12)
+  // held fram med å gjenopprette akkurat det dei alltid har gjort.
   function restoreBackupData(data) {
     allStoreKeys().forEach(function (k) { Store.remove(k); });
-    Object.keys(data).forEach(function (k) { Store.set(k, data[k]); });
+    Object.keys(data).forEach(function (k) { if (k !== "tables") Store.set(k, data[k]); });
+
+    if (!data.tables || !_sb) {
+      return Promise.resolve({ legacyBackup: !data.tables, tableResults: [] });
+    }
+
+    return _sb.from("users").select("id").then(function (r) {
+      const validUserIds = new Set((r.data || []).map(function (u) { return u.id; }));
+      let chain = Promise.resolve();
+      const results = [];
+      BACKUP_TABLE_RESTORE_ORDER.forEach(function (t) {
+        chain = chain.then(function () {
+          return restoreTable(t, data.tables[t], validUserIds).then(function (res) { results.push(res); });
+        });
+      });
+      return chain.then(function () { return { legacyBackup: false, tableResults: results }; });
+    });
   }
   function importBackup(file, onDone) {
     const reader = new FileReader();
@@ -2746,8 +2911,22 @@ window.App = (function () {
         onDone(false, "Dette ser ikke ut som en gyldig sikkerhetskopi.");
         return;
       }
-      restoreBackupData(parsed.data);
-      onDone(true, "Sikkerhetskopi importert.");
+      restoreBackupData(parsed.data).then(function (result) {
+        let msg = "Sikkerhetskopi importert.";
+        if (result.legacyBackup) {
+          msg += " Denne sikkerhetskopien er fra før tabell-migreringen — CRM/oppgaver/kunnskapsbase/aktuelt/lenker/henvendelser/bookinger er ikke inkludert i den.";
+        } else if (result.tableResults.length) {
+          const totalRestored = result.tableResults.reduce(function (s, r) { return s + r.restored; }, 0);
+          const totalSkipped  = result.tableResults.reduce(function (s, r) { return s + r.skipped;  }, 0);
+          msg += " " + totalRestored + " rader gjenopprettet" +
+            (totalSkipped ? ", " + totalSkipped + " hoppet over (forfatteren finnes ikke lenger)" : "") + "." +
+            " Hvis Workspace er åpen i en annen fane, last den siden på nytt også.";
+        }
+        onDone(true, msg);
+      }).catch(function (e) {
+        console.error("[backup] import feila:", e);
+        onDone(false, "Import feilet: " + ((e && e.message) || "ukjent feil.") + " Data gjenopprettet før feilpunktet er beholdt, resten av det gamle innholdet er urørt.");
+      });
     };
     reader.readAsText(file);
   }
@@ -2831,7 +3010,19 @@ window.App = (function () {
         <p class="form__status" data-backup-status style="margin-top:.6rem" role="status" aria-live="polite"></p>
       </div>`;
 
-    body.querySelector("[data-backup-export]").addEventListener("click", exportBackup);
+    body.querySelector("[data-backup-export]").addEventListener("click", function (e) {
+      const btn = e.currentTarget;
+      const st  = body.querySelector("[data-backup-status]");
+      btn.disabled = true;
+      if (st) { st.textContent = "Henter data …"; st.className = "form__status"; }
+      exportBackup()
+        .then(function () { if (st) st.textContent = ""; })
+        .catch(function (err) {
+          console.error("[backup] eksport feila:", err);
+          if (st) { st.textContent = "Eksport feilet: " + ((err && err.message) || "ukjent feil."); st.className = "form__status is-error"; }
+        })
+        .then(function () { btn.disabled = false; });
+    });
 
     body.querySelectorAll("[data-mod-export]").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -2931,7 +3122,19 @@ window.App = (function () {
         <p class="form__status" data-cust-backup-status style="margin-top:.6rem" role="status" aria-live="polite"></p>
       </div>`;
 
-    body.querySelector("[data-cust-backup-export]").addEventListener("click", exportBackup);
+    body.querySelector("[data-cust-backup-export]").addEventListener("click", function (e) {
+      const btn = e.currentTarget;
+      const st  = body.querySelector("[data-cust-backup-status]");
+      btn.disabled = true;
+      if (st) { st.textContent = "Henter data …"; st.className = "form__status"; }
+      exportBackup()
+        .then(function () { if (st) st.textContent = ""; })
+        .catch(function (err) {
+          console.error("[backup] eksport feila:", err);
+          if (st) { st.textContent = "Eksport feilet: " + ((err && err.message) || "ukjent feil."); st.className = "form__status is-error"; }
+        })
+        .then(function () { btn.disabled = false; });
+    });
     body.querySelector("[data-cust-backup-import]").addEventListener("change", function (e) {
       const file = e.target.files[0];
       if (!file) return;

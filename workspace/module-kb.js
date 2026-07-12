@@ -18,6 +18,7 @@
   var _sb       = App.supabase;
   var STORE_KEY = "wsp-kb";
   var _articles = [];
+  var _openNewOnLoad = false; // sett av window._kbOpenNew(), sjå notatet ved mount()
 
   /* =========================================================================
      TILGANG
@@ -206,9 +207,14 @@
     var root = outlet.querySelector("#kb-root") || outlet;
     injectStyles();
     root.innerHTML = '<p style="color:var(--color-muted);padding:1rem">Lastar…</p>';
+    // Fanga FØR loadArticles() sitt asynkrone kall, ikkje inne i callbacken --
+    // window._kbOpenNew() kan verta kalla når som helst mellom no og då.
+    var openNew = _openNewOnLoad;
+    _openNewOnLoad = false;
     loadArticles(function () {
       if (sub) renderArticleView(root, sub, ctx);
       else     renderHome(root, ctx);
+      if (openNew && isAdmin(ctx)) openEditor(root, null, ctx);
     });
   }
 
@@ -471,6 +477,14 @@
       });
     });
   }
+
+  // Kalla frå Dashboard sin "Ny KB-artikkel"-snarveg (module-dashboard.js) --
+  // openEditor() krev at #kb-editor-area alt finst i DOM-en, som berre skjer
+  // etter at loadArticles() sitt asynkrone Supabase-kall er ferdig, så denne
+  // set berre eit flagg som mount() sjekkar når det faktisk er trygt å opne.
+  window._kbOpenNew = function () {
+    _openNewOnLoad = true;
+  };
 
   /* =========================================================================
      REGISTRERING

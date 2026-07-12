@@ -223,6 +223,31 @@ assert(posAfter === "75% 50%", "dra utsnittet flytter beskjæringen: " + posAfte
 const win = heroPrev.querySelector("[data-crop-window]");
 assert(win && win.style.width === "60%", "utsnitt-vindu vises med riktig bredde: " + (win && win.style.width));
 
+// 3) Tastaturstyring: piltastar flytter fokuspunktet i steg på 5 %, uavhengig av mus/touch.
+assert(heroPrev.getAttribute("tabindex") === "0" && heroPrev.getAttribute("role") === "slider", "fokuspunkt-veljaren er tastatur-fokuserbar (tabindex + role=slider)");
+heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+const posAfterRight = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
+assert(posAfterRight === "80% 50%", "ArrowRight flytter fokuspunktet 5% mot høgre: " + posAfterRight);
+heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+const posAfterDown = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
+assert(posAfterDown === "80% 55%", "ArrowDown flytter fokuspunktet 5% nedover: " + posAfterDown);
+heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }));
+const posAfterReturn = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
+assert(posAfterReturn === "75% 50%", "ArrowLeft/ArrowUp flytter tilbake (klemt til [0,100], konsistent steg): " + posAfterReturn);
+
+// 4) imgfield:relayout: bindImageFields() sin layout() skal lese data-aspect PÅ NYTT
+// kvar gong, ikkje ein fastfrosen verdi frå bindetidspunktet — regresjonstest for
+// module-scrollbanner.js sin modus-veksle-feil (dra vart feil rett etter statisk/
+// parallax-byte fordi crop/outAspect aldri vart oppdatert). Biletet er 2000×500
+// (aspekt 4); byt data-aspect frå hero sin 2.4 til eit portrett-forhold (9/16 ≈ 0.5625,
+// smalare enn biletet) og stadfest at utsnitt-vindauget faktisk endrar breidde.
+heroPrev.setAttribute("data-aspect", String(9 / 16));
+heroWrap.dispatchEvent(new window.Event("imgfield:relayout", { bubbles: false }));
+const winAfterRelayout = heroPrev.querySelector("[data-crop-window]");
+assert(winAfterRelayout && winAfterRelayout.style.width === "14.0625%", "imgfield:relayout re-kjører layout() med FRISK data-aspect, ikkje ein fastfrosen verdi frå bindetidspunktet: " + (winAfterRelayout && winAfterRelayout.style.width));
+heroPrev.setAttribute("data-aspect", "2.4"); // rydd opp att for resten av suiten
+
 doc.querySelector("[data-content]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
 const heroStyle = doc.getElementById("hjem").getAttribute("style") || "";
 assert(doc.getElementById("hjem").classList.contains("has-image"), "hero har bilde");
@@ -1773,27 +1798,51 @@ const __asyncTests = (async () => {
 
   // buildBackupPayload: fanger opp alt under navnerommet, ikke bare enkelte deler
   window.App.store.set("superconfig", { test: true }); // sikre at superconfig er i backup-testen
-  var payload = window.App.buildBackupPayload();
+  var payload = await window.App.buildBackupPayload();
   assert(payload.vibeverk_backup === true, "backup-payload har gjenkjenningsmerke");
-  assert(Array.isArray(payload.data.leads), "henvendelser/tilbud er med i sikkerhetskopien");
-  assert(Array.isArray(payload.data["booking-bookings"]), "booking-data er med i sikkerhetskopien");
-  assert(Array.isArray(payload.data["crm-customers"]), "crm-data er med i sikkerhetskopien");
+  assert(payload.version === 2, "backup-payload er versjon 2 (inkluderer tabelldata)");
+  assert(Array.isArray(payload.data.leads), "henvendelser/tilbud (lokal fallback) er med i sikkerhetskopien");
+  assert(Array.isArray(payload.data["booking-bookings"]), "booking-data (lokal fallback) er med i sikkerhetskopien");
+  assert(Array.isArray(payload.data["crm-customers"]), "crm-data (lokal fallback) er med i sikkerhetskopien");
   assert(payload.data.content && typeof payload.data.content === "object", "redigerbart innhold er med i sikkerhetskopien");
   assert(payload.data.superconfig !== undefined, "super-admin-innstillinger er med i sikkerhetskopien");
   assert(Object.keys(payload.data).some(function (k) { return k.indexOf("media:") === 0; }), "opplastede bilder (media:-nøkler) er med i sikkerhetskopien");
+  // Regresjonstest for 0.32.0-fiksen: buildBackupPayload()/restoreBackupData() fanga
+  // tidlegare BERRE generiske store-nøklar -- crm_customers/crm_bedrifter/crm_comms/
+  // leads/bookings/tasks/announcements/kb_articles/links flytta ut av store-tabellen
+  // 2026-07-03/06 og vart aldri fanga opp, sjølv om dei framleis kunne innehalde
+  // ekte, sidan-sletta data. Sjekk at det nye tables-feltet faktisk finst og listar
+  // alle ni, minus notes (med vilje utelate, sjå notatet ved BACKUP_TABLES i core.js).
+  assert(payload.data.tables && typeof payload.data.tables === "object", "sikkerhetskopien har eit tables-felt for dei tabellane som flytta ut av store 2026-07-03/06");
+  ["crm_bedrifter", "crm_customers", "crm_comms", "leads", "bookings", "tasks", "announcements", "kb_articles", "links"].forEach(function (t) {
+    assert(Array.isArray(payload.data.tables[t]), "tables." + t + " er ei liste (tom i dette Supabase-lause testmiljøet)");
+  });
+  assert(!("notes" in payload.data.tables), "notes er MED VILJE utelate frå tabell-sikkerhetskopien (personlege, RLS-avgrensa til kvar brukar sjølv)");
 
   // restoreBackupData: full overskriving, ikke sammenslåing — testes med snapshot/gjenoppretting
   // rundt selve testen, slik at resten av suiten ikke påvirkes av den destruktive operasjonen.
-  var snapshotBeforeRestore = window.App.buildBackupPayload();
+  var snapshotBeforeRestore = await window.App.buildBackupPayload();
   var leadsCountBefore = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]").length;
   window.localStorage.setItem("nordpunkt:dummy-test-key", JSON.stringify("skal forsvinne"));
-  window.App.restoreBackupData({ leads: [{ id:"restored-1", name:"Gjenopprettet", email:"r@test.no", message:"x", time:new Date().toISOString(), status:"ny" }] });
+  var restoreResult = await window.App.restoreBackupData({ leads: [{ id:"restored-1", name:"Gjenopprettet", email:"r@test.no", message:"x", time:new Date().toISOString(), status:"ny" }] });
+  assert(restoreResult.legacyBackup === true, "gjenoppretting av ei gammal-forma kopi (utan tables-felt, frå før 0.32.0) markerast som legacyBackup");
   assert(window.localStorage.getItem("nordpunkt:dummy-test-key") === null, "gjenoppretting fjerner nøkler som ikke finst i kopien (full overskriving)");
   var leadsAfterRestore = JSON.parse(window.localStorage.getItem("nordpunkt:leads"));
   assert(leadsAfterRestore.length === 1 && leadsAfterRestore[0].name === "Gjenopprettet", "gjenoppretting skriver inn nøyaktig det som er i kopien");
   assert(window.localStorage.getItem("nordpunkt:booking-assets") === null, "gjenoppretting fjerner data fra moduler som ikke var med i kopien");
+
+  // Ny-forma kopi (med tables-felt), men Supabase ikkje konfigurert i testmiljøet:
+  // skal IKKJE krasje og skal ikkje bli markert som legacyBackup, sjølv om ingen
+  // tabellar faktisk vart forsøkt gjenoppretta (kan ikkje nå Supabase her).
+  var newFormatRestoreResult = await window.App.restoreBackupData({
+    leads: [],
+    tables: { tasks: [], announcements: [], kb_articles: [], links: [], leads: [], bookings: [], crm_customers: [], crm_bedrifter: [], crm_comms: [] }
+  });
+  assert(newFormatRestoreResult.legacyBackup === false, "gjenoppretting av ei ny-forma kopi (med tables-felt) vert IKKJE markert som legacyBackup, sjølv om Supabase ikkje er konfigurert her");
+  assert(Array.isArray(newFormatRestoreResult.tableResults) && newFormatRestoreResult.tableResults.length === 0, "utan _sb konfigurert vert ingen tabellar faktisk forsøkt gjenoppretta (tomt resultat, ikkje eit krasj)");
+
   // Gjenopprett til tilstanden før denne testen
-  window.App.restoreBackupData(snapshotBeforeRestore.data);
+  await window.App.restoreBackupData(snapshotBeforeRestore.data);
   var leadsAfterRestoreBack = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]");
   assert(leadsAfterRestoreBack.length === leadsCountBefore, "full gjenoppretting tilbake til opprinnelig tilstand fungerer (snapshot/restore-syklus)");
 

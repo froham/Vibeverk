@@ -66,7 +66,7 @@ window.Components = (function () {
     return `
       <div class="field imgfield" data-imgfield>
         <label>${esc(o.label)}</label>
-        <div class="imgfield__preview" data-imgfield-preview data-aspect="${aspect}"></div>
+        <div class="imgfield__preview" data-imgfield-preview data-aspect="${aspect}" tabindex="0" role="slider" aria-label="Fokuspunkt for utsnitt — bruk piltastene for å flytte" aria-valuetext="Midten"></div>
         <p class="imgfield__hint" data-imgfield-hint></p>
         <div class="imgfield__controls">
           <label class="btn btn--ghost imgfield__btn">
