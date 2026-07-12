@@ -1430,9 +1430,20 @@ window.App = (function () {
       const hidden = wrap.querySelector('input[type="hidden"]');
       editor.innerHTML = hidden.value || "";
 
-      function sync() { hidden.value = C.sanitizeRichHtml(editor.innerHTML); }
+      // textContent (ikkje innerHTML) tel berre synleg tekst, akkurat som
+      // stripHtml() ville gjort — men utan å måtte regex-parse HTML-en sjølv.
+      const counter = wrap.querySelector("[data-rtfield-counter]");
+      function updateCounter() {
+        if (!counter) return;
+        const max = parseInt(counter.getAttribute("data-max"), 10) || 0;
+        const len = editor.textContent.length;
+        counter.textContent = len + "/" + max + " tegn";
+        counter.classList.toggle("is-over", len > max);
+      }
+      function sync() { hidden.value = C.sanitizeRichHtml(editor.innerHTML); updateCounter(); }
       editor.addEventListener("input", sync);
       editor.addEventListener("blur", sync);
+      updateCounter();
 
       wrap.querySelectorAll("[data-rt-cmd]").forEach(function (btn) {
         btn.addEventListener("click", function (e) {
@@ -2001,6 +2012,11 @@ window.App = (function () {
   // Tabler-ikonnavn består av små bokstaver, tall og bindestrek — saner input.
   function cleanIcon(v) { return String(v || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, ""); }
 
+  // Matchar ca. den visuelle klippa (.card__text sin CSS max-height/line-clamp
+  // i index.html) -- håndhevet her ved lagring, slik at teksten aldri stille
+  // forsvinn ved visning uten at noen kan se/rette det (2026-07-12, brukarrapport).
+  const SERVICE_CARD_TEXT_MAX = 200;
+
   function openServiceEditor(body, id) {
     const editing = id ? content.services.find(function (c) { return c.id === id; }) : null;
     const editor = body.querySelector("[data-svc-editor]");
@@ -2015,12 +2031,13 @@ window.App = (function () {
           </div>
         </div>
         ${C.field({ id: "s-title", label: "Tittel", required: true, value: editing ? editing.title : "" })}
-        ${C.richTextField({ id: "s-text", label: "Beskrivelse", value: editing ? editing.text : "" })}
+        ${C.richTextField({ id: "s-text", label: "Beskrivelse", value: editing ? editing.text : "", maxChars: SERVICE_CARD_TEXT_MAX })}
         ${imgField("s-image", "Bilde (valgfritt — erstatter ikonet)", editing ? editing.image : "", 16/10)}
         <div class="admin-row__actions">
           ${C.button({ label: editing ? "Oppdater" : "Opprett", type: "submit", variant: "primary" })}
           ${C.button({ label: "Avbryt", variant: "ghost", attrs: 'data-cancel' })}
         </div>
+        <p class="form__status" data-svc-status role="status" aria-live="polite"></p>
       </form>`;
 
     bindImageFields(editor);
@@ -2040,6 +2057,15 @@ window.App = (function () {
       const text = readRichTextField(editor, "s-text");
       const image = readImageField(editor, "s-image");
       if (!title) return;
+      // Handhevet ved lagring (ikkje berre visuelt klipt ved framvisning, sjå
+      // .card__text sin CSS-cap) -- så teksten som faktisk vart skrive inn
+      // alltid får plass, i staden for å stille forsvinne på den ferdige sida.
+      const plainLen = C.stripHtml(text).length;
+      if (plainLen > SERVICE_CARD_TEXT_MAX) {
+        setStatus(editor.querySelector("[data-svc-status]"),
+          "Beskrivelsen er " + plainLen + " tegn — maks " + SERVICE_CARD_TEXT_MAX + " for at kortet skal holde seg innenfor vanlig størrelse. Kort ned og prøv igjen.", "error");
+        return;
+      }
       if (editing) {
         editing.icon = icon; editing.title = title; editing.text = text; editing.image = image;
       } else {

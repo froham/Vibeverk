@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.30.3 — 2026-07-12
+
+### Fix: service card text could be silently truncated with no way to read the rest
+Follow-up to the 0.30.0 `.card__text` CSS clamp (added so one long customer-entered card wouldn't force the whole "Tjenester" grid row to its height). User pointed out the clamp had no "read more"/modal escape hatch — any text past the visual cap was just gone, invisible, unrecoverable from the front end. Discussed a `.card__text` max-height clamp + a "read more" modal against a hard input-time character limit; user chose the character limit (keeps the image option, avoids building a second detail-page pattern just for this one card type).
+
+Added a reusable `maxChars` option to `richTextField()` in `components.js`: renders a live "x/N tegn" counter (turns red past the limit) under the editor, counted from `editor.textContent` (visible text only, not HTML markup) so formatting doesn't eat into the budget. `bindRichTextFields()` in `core.js` wires the live update. Service cards' description field now sets `maxChars: 200` (roughly what the existing CSS clamp can actually show) and **enforces it at save time** in `openServiceEditor()` — blocks the save with an inline error naming the actual character count, rather than silently letting it through and clipping on the live site. Chosen over a "read more" modal: the CSS clamp stays as a defensive fallback for older content saved before this limit existed, but new/edited cards can no longer hit it in the first place.
+
+`?v=N` bumped on `core.js`/`components.js`'s four script tags and `console/console-core.js` (shares `richTextField`/`bindRichTextFields` via `core.js`, no direct code change but kept in step for the platform version display).
+
 ## 0.30.2 — 2026-07-12
 
 ### "Om oss" now has an ingress field too, matching Tjenester/Aktuelt/Kontakt
