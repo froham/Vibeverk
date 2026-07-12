@@ -55,7 +55,7 @@ window.App = (function () {
     // synleg tomt <h2> i components.js -- difor treng nettopp desse eit
     // standardverdi, medan fritekst-felta ikkje skal gjette kundens innhald.
     hero:     { title: "", subtitle: "", ctaLabel: "Ta kontakt", ctaTarget: "#kontakt", image: "" },
-    about:    { heading: "Om oss", text: "", imageUrl: "" },
+    about:    { heading: "Om oss", intro: "", text: "", imageUrl: "" },
     contact:  { email: "", phone: "", address: "", extra: [], social: {} },
     news:     { heading: "Aktuelt", intro: "", frontCount: 3, posts: [] },
     services: { heading: "Tjenester", intro: "", cards: [] },
@@ -442,7 +442,7 @@ window.App = (function () {
       }, overrides.hero || {}),
       // ← seedet fra config.about (tekst + valgfritt bilde)
       about: Object.assign({
-        heading: CFG.about.heading, text: CFG.about.text, image: CFG.about.imageUrl || ""
+        heading: CFG.about.heading, intro: CFG.about.intro, text: CFG.about.text, image: CFG.about.imageUrl || ""
       }, overrides.about || {}),
       // ← seedet fra config.services/news/contactSection sine seksjonsnivå-felt
       // (overskrift/ingress/kvitteringstekst) -- ikkje å forveksle med
@@ -1751,6 +1751,7 @@ window.App = (function () {
         <fieldset class="admin-group">
           <legend>Om oss</legend>
           ${C.field({ id: "f-about-heading", label: "Overskrift", value: content.about.heading, placeholder: "Om oss" })}
+          ${C.field({ id: "f-about-intro", label: "Ingress (valgfri)", value: content.about.intro, placeholder: "" })}
           ${C.richTextField({ id: "f-about", label: "Tekst", value: content.about.text })}
           ${imgField("f-about-image", "Bilde", content.about.image, 4/3)}
         </fieldset>
@@ -1820,6 +1821,7 @@ window.App = (function () {
       content.hero.ctaLabel  = body.querySelector("#f-hero-cta-label").value.trim();
       content.hero.ctaTarget = body.querySelector("#f-hero-cta-target").value.trim();
       content.about.heading = body.querySelector("#f-about-heading").value.trim();
+      content.about.intro   = body.querySelector("#f-about-intro").value.trim();
       content.about.text    = readRichTextField(body, "f-about");
       content.about.image   = readImageField(body, "f-about-image");
       content.servicesSection.heading = body.querySelector("#f-svc-heading").value.trim();
@@ -3841,7 +3843,7 @@ window.App = (function () {
     registerModule({ id: "om-oss",   label: "Om oss",   order: 20,
       render: function () {
         return C.about(Object.assign({}, CFG.about, {
-          heading: content.about.heading, text: content.about.text, image: Media.resolveImage(content.about.image)
+          heading: content.about.heading, intro: content.about.intro, text: content.about.text, image: Media.resolveImage(content.about.image)
         }));
       } });
 
