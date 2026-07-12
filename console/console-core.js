@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.31.1";
+  var VIBEVERK_VERSION = "0.31.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -933,6 +933,55 @@ window.VwConsole = (function () {
     return App.ui.textToRichHtml(t);
   }
 
+  // Same tekstformular som computeDefaultPrivacyText() i core.js (Vibeverk sin
+  // standard personvernstekst, modul-medviten) -- MEN tek sc/an som argument
+  // i staden for å lese CFG/modules/Store, sidan CFG i Konsollen alltid er
+  // konsollen sin eigen, verkelege primærtenant (aldri tenant-skopert, sjå
+  // notatet ved renderProdukt). Å kalle App.computeDefaultPrivacyText() her
+  // ville lekt konsollen sin EIGEN tenant sine modulval inn i ein annan kunde
+  // sitt forslag. Hald denne i sync med core.js-versjonen viss teksten
+  // endrar seg der.
+  function computeTenantPrivacyDefault(sc, an) {
+    var ft = sc.features || {};
+    var hasContactForm = ft.contactForm !== false;
+    var hasTilbud   = !!ft.quote;
+    var hasBooking  = !!ft.booking;
+    var hasAnalytics = !!(an && (an.plausible || an.plausibleEmbed));
+
+    var collectBits = [];
+    if (hasContactForm) collectBits.push("en henvendelse");
+    if (hasTilbud)  collectBits.push("ber om tilbud");
+    if (hasBooking) collectBits.push("reserverer en booking");
+    if (!collectBits.length) collectBits.push("tar kontakt med oss");
+    var collectPhrase = collectBits.length > 1
+      ? collectBits.slice(0, -1).join(", ") + " eller " + collectBits[collectBits.length - 1]
+      : collectBits[0];
+
+    var storedBits = [];
+    if (hasContactForm) storedBits.push("henvendelser");
+    if (hasTilbud)  storedBits.push("tilbud");
+    if (hasBooking) storedBits.push("bookinger");
+    if (!storedBits.length) storedBits.push("kontaktopplysninger");
+    var storedPhrase = storedBits.length > 1
+      ? storedBits.slice(0, -1).join(", ") + " og " + storedBits[storedBits.length - 1]
+      : storedBits[0];
+
+    var cookieText = hasAnalytics
+      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
+      : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
+
+    return "Når du sender oss " + collectPhrase + ", lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +
+      "Hvor lagres opplysningene?\n" +
+      "Nettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
+      "Bruker vi cookies?\n" + cookieText + "\n\n" +
+      "Hvor lenge lagres opplysningene?\n" +
+      "Vi oppbevarer " + storedPhrase + " så lenge det er nødvendig for å følge opp saken din. Du kan når som helst be om at opplysningene dine slettes.\n\n" +
+      "Dine rettigheter\n" +
+      "Du har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold.\n\n" +
+      "Samtykke\n" +
+      "Ved å sende inn dette skjemaet samtykker du til at vi behandler opplysningene dine slik beskrevet over.";
+  }
+
   function renderPersonvern(sc, wrap) {
     var priv = Object.assign({}, sc.privacy || {});
     var textHtml = migrateLegacyPrivacyText(priv.text || "");
@@ -942,12 +991,28 @@ window.VwConsole = (function () {
         '<fieldset class="admin-group"><legend>Personvernerklæring</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, og via «Personvern»-lenka i footer.</p>' +
           C.field({ id:"cs-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
+          '<div style="margin:-.3rem 0 .6rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-priv-fetch">↺ Hent Vibeverk sin standardtekst</button>' +
+            '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Set inn same GDPR-standardtekst som gjeld overalt før noko er tilpassa — modul-tilpassa til kva som faktisk er aktivert for denne kunden (kontaktskjema/tilbud/booking/analyse). Kan redigerast fritt etterpå.</p>' +
+          '</div>' +
           C.richTextField({ id:"cs-priv-text", label:"Tekst", value: textHtml }) +
         '</fieldset>' +
         saveBtn() +
       '</form>';
 
     App.ui.bindRichTextFields(wrap);
+
+    wrap.querySelector("#cs-priv-fetch").addEventListener("click", function () {
+      var hidden = wrap.querySelector("#cs-priv-text");
+      var hasExisting = hidden && App.ui.readRichTextField(wrap, "cs-priv-text").trim();
+      if (hasExisting && !confirm("Dette erstattar teksten som står i feltet no. Fortsette?")) return;
+      getStoreKey("analytics", function (an) {
+        var html = App.ui.textToRichHtml(computeTenantPrivacyDefault(sc, an));
+        var editor = hidden.closest("[data-rtfield]").querySelector("[data-rt-editor]");
+        editor.innerHTML = html;
+        editor.dispatchEvent(new Event("input"));
+      });
+    });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
