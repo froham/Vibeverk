@@ -307,7 +307,7 @@ window.Components = (function () {
           <h1 class="hero__title">${esc(d.title)}</h1>
           <p class="hero__subtitle">${esc(d.subtitle)}</p>
           <div class="hero__actions">
-            ${button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" })}
+            ${d.ctaLabel && d.ctaTarget ? button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : ""}
           </div>
         </div>
         ${img ? creditBadge(img) : ""}

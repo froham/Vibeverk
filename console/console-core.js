@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.28.0";
+  var VIBEVERK_VERSION = "0.30.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1081,14 +1081,16 @@ window.VwConsole = (function () {
 
         '<div class="kd-card"><strong>1. Registrert</strong> ✓' +
           '<p class="field__hint">Slug: ' + C.esc(tenant.slug) + '. Lagringsnøkkel: ' + C.esc(tenant.data_plane_storage_key || "") + '.</p>' +
-          (tenant.status === "provisioning"
+          (tenant.status === "provisioning" || tenant.status === "active"
             ? '<form id="kd-hostnames-form" style="margin-top:.6rem">' +
                 C.field({ id: "kd-hostnames-edit", label: "Domenenamn (kommaseparert)", value: (tenant.hostnames || []).join(", "), placeholder: "kunde.no, www.kunde.no" }) +
                 '<button type="submit" class="btn btn--ghost btn--sm">Lagre domenenamn</button>' +
-                '<p class="field__hint">Endrar du domenenamn må steg 4 (skjema) og steg 5 (ruting) verifiserast på nytt før aktivering.</p>' +
+                '<p class="field__hint">' + (tenant.status === "provisioning"
+                  ? 'Endrar du domenenamn må steg 4 (skjema) og steg 5 (ruting) verifiserast på nytt før aktivering.'
+                  : '⚠️ Kunden er aktiv — endring tek effekt UMIDDELBART på det livesida svarer på, utan ny verifisering. Sjekk at DNS/Vercel peikar rett FØR du lagrar.') + '</p>' +
                 '<p class="form__status" id="kd-hostnames-status" style="margin-top:.4rem"></p>' +
               '</form>'
-            : '<p class="field__hint">Domenenamn: ' + (hasHostnames ? C.esc(tenant.hostnames.join(", ")) : "ingen registrert") + ' (kan ikkje endrast etter aktivering).</p>'
+            : '<p class="field__hint">Domenenamn: ' + (hasHostnames ? C.esc(tenant.hostnames.join(", ")) : "ingen registrert") + ' (kan ikkje endrast i denne statusen).</p>'
           ) +
         '</div>' +
 
@@ -1130,6 +1132,15 @@ window.VwConsole = (function () {
           '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + (routingOk ? "" : " disabled") + '>Set aktiv</button></div>' +
           '<p id="kd-activate-result" class="field__hint"></p>' +
         '</div>' +
+
+        (tenant.status !== "archived"
+          ? '<div class="kd-card" style="border-color:#c0392b">' +
+              '<strong style="color:#c0392b">Fareområde</strong>' +
+              '<p class="field__hint">Arkivering er ei mjuk sletting — tenanten sluttar umiddelbart å svare på sine hostnames (via resolve_tenant_by_hostname), men registerraden og revisjonssporet vert verande. Kunden sitt eige Supabase-prosjekt vert ikkje sletta eller påverka.</p>' +
+              '<button type="button" class="btn btn--ghost btn--sm" id="kd-archive-btn" style="color:#c0392b;border-color:#c0392b">Arkiver kunde</button>' +
+              '<p id="kd-archive-result" class="field__hint"></p>' +
+            '</div>'
+          : '') +
       '</div>';
 
     var hostnamesForm = wrap.querySelector("#kd-hostnames-form");
@@ -1208,6 +1219,19 @@ window.VwConsole = (function () {
         if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
       });
     });
+
+    var archiveBtn = wrap.querySelector("#kd-archive-btn");
+    if (archiveBtn) {
+      archiveBtn.addEventListener("click", function () {
+        if (!confirm("Arkivere «" + tenant.slug + "»? Kunden sluttar umiddelbart å svare på sine hostnames.")) return;
+        var out = wrap.querySelector("#kd-archive-result");
+        out.textContent = "…";
+        tenantAdminCall("archive_tenant", { tenant_id: tenant.id }, function (r) {
+          out.textContent = r.error || "✓ Arkivert";
+          if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
   }
 
   /* =========================================================================
