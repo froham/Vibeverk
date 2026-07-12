@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.30.0";
+  var VIBEVERK_VERSION = "0.30.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -104,6 +104,28 @@ window.VwConsole = (function () {
     location.reload();
   }
 
+  // supabase-js sitt functions.invoke() set berre ei GENERISK melding
+  // ("Edge Function returned a non-2xx status code") på error.message for
+  // KVAR EINASTE ikkje-2xx respons, uansett kva funksjonen faktisk svarte.
+  // Vår eigen json({ error: "..." }, 4xx/5xx)-kropp (t.d. "Tenanten er alt
+  // arkivert", "Berre superadmin kan utføre kundeadministrasjon") ligg berre
+  // tilgjengeleg via error.context (den rå Response-en) og må lesast async.
+  // Utan dette synte Console berre den generiske meldinga uansett kva som
+  // faktisk gjekk gale (fann dette 2026-07-12 via brukarrapport om
+  // arkivering/domenenamn-endring — men bugen råka ALLE handlingar via
+  // brokerCall/tenantAdminCall, ikkje berre desse to).
+  function extractFunctionErrorMessage(error, cb) {
+    if (error && error.context && typeof error.context.json === "function") {
+      error.context.json().then(function (body) {
+        cb((body && body.error) || (error && error.message) || "Feil mot control-plane");
+      }).catch(function () {
+        cb((error && error.message) || "Feil mot control-plane");
+      });
+      return;
+    }
+    cb((error && error.message) || "Feil mot control-plane");
+  }
+
   // Kallar den nye broker Edge Function-en i vibeverk-control. Krev at
   // operatøren er innlogga (Authorization-header vert sett automatisk av
   // _sbControl frå gjeldande sesjon) og at ein aktiv tenant er vald.
@@ -111,7 +133,7 @@ window.VwConsole = (function () {
     if (!_sbControl || !_activeTenant) { cb({ error: "Ikkje klar" }); return; }
     var body = Object.assign({ action: action, tenant_id: _activeTenant.id }, payload || {});
     _sbControl.functions.invoke("broker", { body: body }).then(function (r) {
-      if (r.error) { cb({ error: r.error.message || "Feil mot control-plane" }); return; }
+      if (r.error) { extractFunctionErrorMessage(r.error, function (msg) { cb({ error: msg }); }); return; }
       cb(r.data || {});
     });
   }
@@ -126,7 +148,7 @@ window.VwConsole = (function () {
     if (!_sbControl) { cb({ error: "Ikkje klar" }); return; }
     var body = Object.assign({ action: action }, payload || {});
     _sbControl.functions.invoke("tenant-admin", { body: body }).then(function (r) {
-      if (r.error) { cb({ error: r.error.message || "Feil mot control-plane" }); return; }
+      if (r.error) { extractFunctionErrorMessage(r.error, function (msg) { cb({ error: msg }); }); return; }
       cb(r.data || {});
     });
   }
