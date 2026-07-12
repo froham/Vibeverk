@@ -232,6 +232,14 @@ window.Components = (function () {
   function richTextField(opts) {
     const o = opts || {};
     const id = esc(o.id);
+    // maxChars: valgfri, håndhevet tegngrense på SYNLEG tekst (ikkje HTML-
+    // markup) — brukt for kort tekst som skal halde seg innanfor ei fast
+    // visuell høgd (t.d. tjenestekort), i staden for å klippe stille ved
+    // visning utan at nokon kan sjå/rette det att. Telljar oppdaterast live
+    // av bindRichTextFields() i core.js.
+    const counter = o.maxChars
+      ? `<p class="rtfield__counter field__hint" data-rtfield-counter data-max="${esc(o.maxChars)}">0/${esc(o.maxChars)} tegn</p>`
+      : "";
     return `
       <div class="field rtfield" data-rtfield>
         <label>${esc(o.label)}</label>
@@ -249,6 +257,7 @@ window.Components = (function () {
           <button type="button" data-rt-clear title="Fjern formatering">${icon("clear-formatting")}</button>
         </div>
         <div class="rtfield__editor" contenteditable="true" data-rt-editor aria-label="${esc(o.label)}"></div>
+        ${counter}
         <input type="hidden" id="${id}" value="${esc(sanitizeRichHtml(o.value || ""))}">
       </div>`;
   }
@@ -324,7 +333,7 @@ window.Components = (function () {
       <section id="om-oss" class="section reveal">
         <div class="container about ${hasImg ? "about--with-media" : ""}">
           <div class="about__body">
-            ${eyebrow(d.heading)}
+            ${eyebrow(d.intro || d.heading)}
             <h2 class="section__title">${esc(d.heading)}</h2>
             <div class="prose">${sanitizeRichHtml(d.text)}</div>
           </div>
