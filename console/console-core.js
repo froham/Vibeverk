@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.30.3";
+  var VIBEVERK_VERSION = "0.31.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1018,6 +1018,10 @@ window.VwConsole = (function () {
      2026-07-08) for kvifor dette er strukturert slik.
      ====================================================================== */
   var _kdSelectedId = null;
+  // Arkiverte kundar er "ferdige"/frosne (sjå archive_tenant) -- ingen vits i
+  // å sjå dei blanda med aktive/provisioning i det daglege overblikket.
+  // Skjult som standard, vist berre via avkryssingsboksen under.
+  var _kdShowArchived = false;
 
   function kdStatusBadge(status) {
     var map = { provisioning: "#d4a017", active: "#1e8449", suspended: "#c0392b", archived: "#64748b" };
@@ -1026,6 +1030,8 @@ window.VwConsole = (function () {
 
   function renderKundar(_sc, wrap) {
     var selected = _tenants.filter(function (t) { return t.id === _kdSelectedId; })[0];
+    var archivedCount = _tenants.filter(function (t) { return t.status === "archived"; }).length;
+    var visible = _kdShowArchived ? _tenants : _tenants.filter(function (t) { return t.status !== "archived"; });
 
     wrap.innerHTML =
       '<div class="admin-group" style="margin-bottom:1.2rem">' +
@@ -1033,14 +1039,19 @@ window.VwConsole = (function () {
           '<strong>Registrerte kundar</strong>' +
           '<button type="button" class="btn btn--primary btn--sm" id="kd-new-btn">+ Ny kunde</button>' +
         '</div>' +
+        (archivedCount
+          ? '<label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--color-muted);margin-bottom:.6rem;cursor:pointer">' +
+              '<input type="checkbox" id="kd-show-archived"' + (_kdShowArchived ? " checked" : "") + '> Vis arkiverte (' + archivedCount + ')' +
+            '</label>'
+          : "") +
         '<ul class="kd-list">' +
-          _tenants.map(function (t) {
+          visible.map(function (t) {
             return '<li class="kd-row" data-kd-row="' + C.esc(t.id) + '">' +
               '<strong>' + C.esc(t.slug) + '</strong>' +
               kdStatusBadge(t.status) +
             '</li>';
           }).join("") +
-          (_tenants.length ? "" : '<li class="kd-row"><span style="color:var(--color-muted)">Ingen kundar registrert enno.</span></li>') +
+          (visible.length ? "" : '<li class="kd-row"><span style="color:var(--color-muted)">Ingen kundar registrert enno.</span></li>') +
         '</ul>' +
       '</div>' +
       '<div id="kd-new-form-wrap"></div>' +
@@ -1052,6 +1063,14 @@ window.VwConsole = (function () {
         renderKundar(_sc, wrap);
       });
     });
+
+    var showArchivedCb = wrap.querySelector("#kd-show-archived");
+    if (showArchivedCb) {
+      showArchivedCb.addEventListener("change", function () {
+        _kdShowArchived = showArchivedCb.checked;
+        renderKundar(_sc, wrap);
+      });
+    }
 
     wrap.querySelector("#kd-new-btn").addEventListener("click", function () {
       renderKdNewForm(wrap.querySelector("#kd-new-form-wrap"));
@@ -1102,7 +1121,15 @@ window.VwConsole = (function () {
         '<h3 style="margin:0 0 .8rem">Sjekkliste: ' + C.esc(tenant.slug) + ' ' + kdStatusBadge(tenant.status) + '</h3>' +
 
         '<div class="kd-card"><strong>1. Registrert</strong> ✓' +
-          '<p class="field__hint">Slug: ' + C.esc(tenant.slug) + '. Lagringsnøkkel: ' + C.esc(tenant.data_plane_storage_key || "") + '.</p>' +
+          (tenant.status !== "archived"
+            ? '<form id="kd-slug-form" style="margin-top:.6rem">' +
+                C.field({ id: "kd-slug-edit", label: "Slug", value: tenant.slug, placeholder: "kundenamn" }) +
+                '<button type="submit" class="btn btn--ghost btn--sm">Lagre slug</button>' +
+                '<p class="field__hint">Berre visningsnamn i Console — påverkar ikkje domene, ruting eller kundens eigen konfigurasjon.</p>' +
+                '<p class="form__status" id="kd-slug-status" style="margin-top:.4rem"></p>' +
+              '</form>'
+            : '<p class="field__hint">Slug: ' + C.esc(tenant.slug) + ' (arkivert — kan ikkje endrast).</p>') +
+          '<p class="field__hint">Lagringsnøkkel: ' + C.esc(tenant.data_plane_storage_key || "") + '.</p>' +
           (tenant.status === "provisioning" || tenant.status === "active"
             ? '<form id="kd-hostnames-form" style="margin-top:.6rem">' +
                 C.field({ id: "kd-hostnames-edit", label: "Domenenamn (kommaseparert)", value: (tenant.hostnames || []).join(", "), placeholder: "kunde.no, www.kunde.no" }) +
@@ -1164,6 +1191,18 @@ window.VwConsole = (function () {
             '</div>'
           : '') +
       '</div>';
+
+    var slugForm = wrap.querySelector("#kd-slug-form");
+    if (slugForm) {
+      slugForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var slug = wrap.querySelector("#kd-slug-edit").value.trim().toLowerCase();
+        tenantAdminCall("update_tenant_slug", { tenant_id: tenant.id, slug: slug }, function (r) {
+          if (r.error) { statusMsg(wrap.querySelector("#kd-slug-status"), r.error, false); return; }
+          loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
 
     var hostnamesForm = wrap.querySelector("#kd-hostnames-form");
     if (hostnamesForm) {

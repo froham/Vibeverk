@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.31.0 — 2026-07-12
+
+**⚠️ Requires an `npx supabase functions deploy tenant-admin --project-ref jxoglthrnshabqmdmnui` after merge** — same as 0.30.0/0.30.1, a `git merge` alone does not update the running Edge Function. (Confirmed the hard way this round: 0.30.0's `archive_tenant`/active-status hostname edit sat merged on `main` but undeployed for a while — user hit the old "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" and "Ukjend handling: archive_tenant" errors from the stale deployed function before this was caught and redeployed.)
+
+### Console: edit a tenant's slug regardless of status
+User wanted to rename a tenant's slug after it was already deployed/active — turned out `slug` was never editable at all (`register_tenant` set it once, no update path existed). Added `update_tenant_slug` to `tenant-admin/index.ts`. Unlike `update_tenant_hostnames`, this is **not** restricted to `'provisioning'`: traced every use of `slug` and confirmed it's purely a human-readable identifier (Console display + the label baked into the Vault secret name string) with zero connection to `resolve_tenant_by_hostname()` or any public routing/exposure — so there's no exposure-window reasoning that would justify a status restriction the way there was for hostnames. Allowed for any status except `'archived'` (a frozen, soft-deleted tenant has no reason to be renamed), same superadmin-gating/audit-logging/atomic-status-recheck pattern as every other action in this file. Console's "1. Registrert" card now has an editable slug field alongside the domain-name field.
+
+### Console: archived tenants hidden from the list by default
+User feedback: archived tenants cluttered the same list as active/provisioning ones with no way to tell them apart at a glance beyond the status badge. `renderKundar()` now filters `status = 'archived'` tenants out of the list unless a new "Vis arkiverte (N)" checkbox (only shown at all when at least one archived tenant exists) is checked. Selecting/viewing an archived tenant's detail checklist directly is unaffected — the filter only applies to the list view.
+
 ## 0.30.3 — 2026-07-12
 
 ### Fix: service card text could be silently truncated with no way to read the rest

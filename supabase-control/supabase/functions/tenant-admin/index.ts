@@ -434,6 +434,47 @@ serve(async (req: Request) => {
     return json({ success: true });
   }
 
+  // ── update_tenant_slug ────────────────────────────────────────────────────
+  // Slug is purely a human-readable identifier (Console display + the label
+  // baked into the Vault secret name in set_tenant_service_role_key below) --
+  // unlike hostnames it has NO connection to resolve_tenant_by_hostname() or
+  // any public routing/exposure, so (unlike update_tenant_hostnames above)
+  // there's no reason to restrict this to 'provisioning' only. Allowed for
+  // any status except 'archived' -- a frozen, soft-deleted tenant has no
+  // reason to be renamed.
+  const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+  if (action === "update_tenant_slug") {
+    if (tenant.status === "archived") {
+      await auditReject(tenant.id, action, "tenant er arkivert");
+      return json({ error: "Ein arkivert tenant kan ikkje endrast" }, 403);
+    }
+    const newSlug = String(body.slug || "").trim().toLowerCase();
+    if (!newSlug || !SLUG_RE.test(newSlug)) {
+      return json({ error: "Ugyldig slug-format (berre små bokstavar, tal og bindestrek)" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: updated, error } = await controlSrvSb
+      .from("tenants")
+      .update({ slug: newSlug, updated_at: new Date().toISOString() })
+      .eq("id", tenant_id)
+      .neq("status", "archived")
+      .select("id");
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      if (error.message && error.message.indexOf("duplicate key") !== -1) {
+        return json({ error: "Slugen «" + newSlug + "» er alt i bruk av ein annan kunde" }, 409);
+      }
+      return json({ error: "Lagring feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
+      return json({ error: "Tenanten vart arkivert mens handlinga køyrde" }, 409);
+    }
+    await auditFinish(auditId, "success");
+    return json({ success: true });
+  }
+
   // ── update_tenant_connection ─────────────────────────────────────────────
   // Step 2/3 of the checklist: paste in the newly created project's URL +
   // anon key (both non-secret, safe to store as plain columns).
