@@ -30,7 +30,12 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
-## 0.31.1 — 2026-07-12
+## 0.31.2 — 2026-07-12
+
+### Console: tenant-picker kontrast + "Hent Vibeverk sin standardtekst" for personvern
+To brukarmelde forbetringar i Console:
+- `.cs-tenant-picker select` sin nedtrekksliste (`<option>`) arva mørk sidebar-tekstfarge utan eigen bakgrunnsfarge — nettlesaren (Chrome/Windows) rendrar sjølve opne lista med OS-native lys bakgrunn, så alternativa vart nesten usynlege (lys tekst på lys bakgrunn). La til eksplisitt `color`/`background` på `option`.
+- Personvern-fana fekk ein ny "↺ Hent Vibeverk sin standardtekst"-knapp som fyller rik-tekst-feltet med det same modul-medvitne GDPR-forslaget som `computeDefaultPrivacyText()` i core.js alt brukar som stille fallback før noko er lagra (sjå kommentaren der: "Kan kallast frå Konsollen for å generere eit nytt forslag" — no faktisk kalt derfrå). Duplikatlogikk med eige namn (`computeTenantPrivacyDefault`) i staden for å kalle core.js-versjonen direkte: CFG/modules/Store der er alltid Console sin EIGEN primærtenant (same feilklasse som Produkt/Web/Workspace/Modular-fana sine tidlegare CFG-fallback-bugs), så funksjonen tek `sc`/`an` (henta via `getStoreKey("analytics", …)`) som argument i staden. Spør om stadfesting før overskriving viss feltet alt har innhald.
 
 ### Console: archived tenants also removed from the sidebar tenant picker
 0.31.0 hid archived tenants from the "Registrerte kundar" list but missed the *other* place `_tenants` is rendered as a list: the sidebar's `<select id="cs-tenant-select">`, which picks `_activeTenant` for the whole Console (web/produkt/personvern/analyse tabs). Filtered the same way. Also fixed `loadTenants()`'s default: it picked `_tenants[0]` unconditionally, so if the alphabetically-first tenant happened to be archived, `_activeTenant` would point at a tenant no longer present among the dropdown's own options — now defaults to the first non-archived tenant, falling back to any tenant only if every tenant is archived.
