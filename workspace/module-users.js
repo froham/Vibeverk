@@ -162,7 +162,7 @@
       btn.addEventListener("click", function () {
         var uid  = btn.getAttribute("data-uid");
         var name = btn.getAttribute("data-name");
-        if (!confirm("Fjerne brukar «" + name + "»? Dette kan ikkje angras.")) return;
+        if (!confirm("Fjerne brukar «" + name + "»? Oppgåver/kunngjeringar/KB-artiklar dei har laga vert IKKJE sletta (berre forfattaren fjernast frå dei). Dette kan ikkje angrast.")) return;
         callManageUser("remove", { user_id: uid })
           .then(function (res) {
             if (res && res.error) {

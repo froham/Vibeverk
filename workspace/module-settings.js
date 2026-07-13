@@ -285,7 +285,7 @@
     /* Bind reset (berre admin) */
     var resetBtn = root.querySelector("#settings-reset");
     if (resetBtn) resetBtn.addEventListener("click", function () {
-      if (!confirm("Er du sikker? All intranett-data slettes permanent.")) return;
+      if (!confirm("Nullstiller innstillingar, oppgåver, notat og aktivitetslogg for Workspace. Kunngjeringar, kunnskapsbase, lenker og anna innhald vert IKKJE påverka. Kan ikkje angrast. Er du sikker?")) return;
       resetWspData();
       applyPrefs({ theme: "light", density: "normal" });
       var st = root.querySelector("#settings-reset-status");
