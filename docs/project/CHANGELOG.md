@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.33.1 — 2026-07-13
+
+### `tasks` RLS tightening deployed to production
+
+0.33.0's `supabase/migrations/20260713130659_tighten_tasks_read_rls.sql` (staging-tested and merged via PR #26) applied to production (`clzczbyklgdtdhgjphup`) and confirmed live via a direct `pg_policies` query (`tasks_read`'s `qual` now `(assigned_to = auth.uid()) OR (created_by = auth.uid())`). No code change, doc-only + version bump.
+
+`VIBEVERK_VERSION` 0.33.0 → 0.33.1, `console-core.js?v=85→86`.
+
 ## 0.33.0 — 2026-07-13
 
 ### Copy-clarity initiative (punkt 0) — phase 1: Console's destructive actions, plus the shared foundation
