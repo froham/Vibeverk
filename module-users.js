@@ -194,7 +194,7 @@
             btn.addEventListener("click", function () {
               var uid = btn.getAttribute("data-del");
               var name = btn.getAttribute("data-del-name");
-              if (!confirm('Fjerne "' + name + '"? Brukaren mister tilgang umiddelbart.')) return;
+              if (!confirm('Fjerne "' + name + '"? Brukaren mister tilgang umiddelbart. Oppgåver/kunngjeringar/KB-artiklar dei har laga vert IKKJE sletta (berre forfattaren fjernast frå dei). Dette kan ikkje angrast.')) return;
               btn.disabled = true;
               callFn({ action: "remove", user_id: uid }).then(function (r) {
                 if (r && r.error) {

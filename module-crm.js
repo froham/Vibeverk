@@ -993,7 +993,7 @@
     var delBtn=body.querySelector("[data-crm-del-cust]");
     if (delBtn) delBtn.addEventListener("click",function(){
       if (isWorkspaceMember()) return;
-      if (!confirm("Slett ALL data for "+c.email+"?")) return;
+      if (!confirm("Slett kunden "+c.email+", inkludert alle henvendelser/tilbod, bookingar, kommunikasjonshistorikk og chatsamtalar knytt til e-postadressa? Kan ikkje angrast.")) return;
       deleteAllForEmail(customerEmails(c)); deleteCustomer(id);
       if (opts.fromBedrift) renderBedrift(body,opts.fromBedrift); else renderAdmin(body);
     });
