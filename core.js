@@ -1546,6 +1546,14 @@ window.App = (function () {
 
       function parsePos(p) { const m = String(p).split(/\s+/); return [parseFloat(m[0]) || 50, parseFloat(m[1]) || 50]; }
       function sync() { hidden.value = JSON.stringify(state); }
+      // Oppdaterer aria-valuetext frå faktisk state.pos -- kalla både ved
+      // opning (render()) og etter kvar piltast-flytting, slik at ein
+      // skjermlesar aldri får høyre den hardkoda "Midten"-startverdien for
+      // eit bilete som alt har eit ikkje-sentrert fokuspunkt lagra.
+      function updateValueText() {
+        const p = parsePos(state.pos);
+        preview.setAttribute("aria-valuetext", Math.round(p[0]) + "% frå venstre, " + Math.round(p[1]) + "% frå toppen");
+      }
 
       function placeWindow() {
         const win = preview.querySelector("[data-crop-window]");
@@ -1592,7 +1600,8 @@ window.App = (function () {
         preview.style.aspectRatio = ""; preview.style.width = "";
         preview.innerHTML = '<img class="cropper__img" draggable="false" alt="" src="' + src + '">' +
                             '<div class="cropper__window" data-crop-window></div>';
-        if (hint) hint.textContent = "Dra det lyse utsnittet for å velge hva som vises på siden.";
+        if (hint) hint.textContent = "Dra det lyse utsnittet for å velge hva som vises på siden, eller bruk piltastene når feltet er fokusert.";
+        updateValueText();
         const img = preview.querySelector("img");
         if (img.complete && img.naturalWidth) layout(img.naturalWidth, img.naturalHeight);
         else { img.onload = function () { layout(img.naturalWidth, img.naturalHeight); }; img.onerror = function () { layout(0, 0); }; }
@@ -1685,7 +1694,7 @@ window.App = (function () {
         state.pos = Math.round(nx) + "% " + Math.round(ny) + "%";
         sync();
         placeWindow();
-        preview.setAttribute("aria-valuetext", Math.round(nx) + "% frå venstre, " + Math.round(ny) + "% frå toppen");
+        updateValueText();
       });
 
       render();
@@ -2765,26 +2774,6 @@ window.App = (function () {
     "tasks", "announcements", "kb_articles", "links"
   ];
 
-  // Kolonnar som refererer users(id): dei NOT NULL-kolonnane må droppe heile
-  // rada viss forfattaren er borte (kan ikkje reparerast utan å gjette ein
-  // ny eigar), dei nullbare kan berre nullstillast og rada elles behaldast.
-  // Sjå supabase/migrations/20260712203346_fix_user_delete_fk_restrict.sql
-  // for kvifor tasks/announcements/kb_articles sine forfattar-FK-ar i det
-  // heile kan verta hengande att viss brukaren som skreiv dei er sletta.
-  const BACKUP_USER_FK_RULES = {
-    tasks:         { required: "created_by", nullable: "assigned_to" },
-    announcements: { required: "author_id" },
-    kb_articles:   { required: "author_id" },
-    links:         { nullable: "created_by" }
-  };
-
-  // FK-trygg gjenopprettings-rekkefølgje: bedrifter før kundar (kundar sin
-  // bedrift_id refererer bedrifter), kundar før comms (comms.customer_id er
-  // NOT NULL REFERENCES crm_customers, ON DELETE CASCADE) -- resten har
-  // ingen FK til kvarandre, berre til users (handtert separat via
-  // validUserIds i restoreTable(), uavhengig av rekkefølgje).
-  const BACKUP_TABLE_RESTORE_ORDER = BACKUP_TABLES;
-
   // PostgREST avgrensar .select() til 1000 rader som standard -- side
   // gjennom med .range() til ei kortare side kjem attende. Kastar (i staden
   // for å logge og halde fram med det som alt er henta) viss ei side feilar
@@ -2834,70 +2823,50 @@ window.App = (function () {
 
   // Tøm-så-set-inn-att for éin tabell, med FK-reparasjon mot brukarar som
   // ikkje lenger finst. Kastar (avviser Promise-en) viss sjølve tømminga
-  // eller innsettinga feilar på Supabase-sida -- restoreBackupData() sin
-  // sekvensielle kjede stoggar då naturleg ved det punktet, og alle
-  // attverande tabellar vert ståande urørt i sin FØR-gjenoppretting-tilstand
-  // (ikkje tomme) i staden for at heile operasjonen stille gir eit
-  // ufullstendig resultat.
-  function restoreTable(table, rows, validUserIds) {
-    if (!_sb) return Promise.resolve({ table: table, restored: 0, skipped: 0 });
-    rows = rows || [];
-    const rule = BACKUP_USER_FK_RULES[table];
-    let skipped = 0;
-    if (rule && rule.required) {
-      rows = rows.filter(function (r) {
-        const ok = !r[rule.required] || validUserIds.has(r[rule.required]);
-        if (!ok) skipped++;
-        return ok;
-      });
-    }
-    if (rule && rule.nullable) {
-      rows = rows.map(function (r) {
-        if (r[rule.nullable] && !validUserIds.has(r[rule.nullable])) {
-          const patched = Object.assign({}, r);
-          patched[rule.nullable] = null;
-          return patched;
-        }
-        return r;
-      });
-    }
-    return _sb.from(table).delete().not("id", "is", null).then(function (delRes) {
-      if (delRes.error) return Promise.reject(new Error("Tømming av " + table + " feila: " + delRes.error.message));
-      if (!rows.length) return { table: table, restored: 0, skipped: skipped };
-      return _sb.from(table).insert(rows).then(function (insRes) {
-        if (insRes.error) return Promise.reject(new Error("Gjenoppretting av " + table + " feila: " + insRes.error.message));
-        return { table: table, restored: rows.length, skipped: skipped };
-      });
-    });
-  }
-
   // Skriver ALT fra et parset backup-objekt tilbake (full overskriving — fjerner
   // først alt eksisterende under navnerommet, slik at gjenoppretting blir et
-  // eksakt speil av kopien, ikke en sammenslåing). Sidan 2026-07-12 dekker
-  // dette òg dei ni tabellane i BACKUP_TABLES (tidlegare vart desse aldri
-  // fanga opp i det heile, sjå notatet der). Prosesserer éin tabell om
-  // gongen (tøm-så-set-inn), ikkje eit globalt tøm-alt-så-set-inn-alt-steg,
-  // slik at eit avbrot midtvegs berre råkar tabellen som var under arbeid.
+  // eksakt speil av kopien, ikke en sammenslåing).
+  //
+  // Dei ni Supabase-tabellane vert gjenoppretta via restore_backup_tables()
+  // (sjå supabase/migrations/20260713104738_restore_backup_tables_rpc.sql) --
+  // éin RPC-transaksjon som tøm-og-set-inn-att ALT NI tabellane atomisk,
+  // ikkje den tidlegare klient-orkestrerte tøm-så-set-inn-PER-TABELL logikken
+  // (restoreTable(), fjerna 2026-07-13). Den logikken var ein reell BLOCKER
+  // (ekstern tryggingsgjennomgang, sjå docs/project/CURRENT_STATE.md): ingen
+  // transaksjon (ein feila INSERT etter ein vellukka DELETE mista data utan
+  // veg tilbake), og FK-kaskadar (crm_bedrifter -> crm_customers ON DELETE
+  // SET NULL, crm_customers -> crm_comms ON DELETE CASCADE) gjorde "éin
+  // tabell om gongen"-isolasjonen kommentaren hevda illusorisk. Sjølve
+  // forfattar-FK-reparasjonen (nullstill created_by/author_id/assigned_to
+  // for sletta brukarar, aldri drop rada -- sjå
+  // 20260712203346_fix_user_delete_fk_restrict.sql) skjer no inni RPC-en,
+  // ikkje her.
+  //
   // Gammal-forma sikkerhetskopiar (utan data.tables, frå før 2026-07-12)
-  // held fram med å gjenopprette akkurat det dei alltid har gjort.
+  // held fram med å gjenopprette akkurat det dei alltid har gjort (reint
+  // Store/localStorage, aldri via RPC-en).
   function restoreBackupData(data) {
-    allStoreKeys().forEach(function (k) { Store.remove(k); });
-    Object.keys(data).forEach(function (k) { if (k !== "tables") Store.set(k, data[k]); });
+    // Skriv Store/localStorage FØRST berre viss det ikkje finst noka RPC-
+    // gjenoppretting å vente på -- elles må RPC-en faktisk lukkast FØR Store
+    // vert rørt (sjå under). Ein tidlegare versjon skreiv Store uvilkårleg
+    // aller først, uansett -- viss RPC-en då feila, var Store/localStorage
+    // (og den asynkrone write-through-synken mot Supabase sin store-tabell)
+    // alt overskrive, sjølv om feilmeldinga sa "ingen endringar vart gjort".
+    // Fanga av Security Auditor 2026-07-13 (HIGH), retta same dag.
+    function restoreStore() {
+      allStoreKeys().forEach(function (k) { Store.remove(k); });
+      Object.keys(data).forEach(function (k) { if (k !== "tables") Store.set(k, data[k]); });
+    }
 
     if (!data.tables || !_sb) {
+      restoreStore();
       return Promise.resolve({ legacyBackup: !data.tables, tableResults: [] });
     }
 
-    return _sb.from("users").select("id").then(function (r) {
-      const validUserIds = new Set((r.data || []).map(function (u) { return u.id; }));
-      let chain = Promise.resolve();
-      const results = [];
-      BACKUP_TABLE_RESTORE_ORDER.forEach(function (t) {
-        chain = chain.then(function () {
-          return restoreTable(t, data.tables[t], validUserIds).then(function (res) { results.push(res); });
-        });
-      });
-      return chain.then(function () { return { legacyBackup: false, tableResults: results }; });
+    return _sb.rpc("restore_backup_tables", { p_tables: data.tables }).then(function (r) {
+      if (r.error) return Promise.reject(new Error("Gjenoppretting feila: " + r.error.message));
+      restoreStore();
+      return { legacyBackup: false, tableResults: r.data || [] };
     });
   }
   function importBackup(file, onDone) {
@@ -2907,9 +2876,24 @@ window.App = (function () {
       let parsed;
       try { parsed = JSON.parse(reader.result); }
       catch (e) { onDone(false, "Fila kunne ikke leses som JSON — er det en sikkerhetskopi fra denne siden?"); return; }
-      if (!parsed || typeof parsed.data !== "object" || !parsed.data) {
-        onDone(false, "Dette ser ikke ut som en gyldig sikkerhetskopi.");
+      if (!parsed || parsed.vibeverk_backup !== true || typeof parsed.data !== "object" || !parsed.data) {
+        onDone(false, "Dette ser ikke ut som en gyldig sikkerhetskopi fra denne siden.");
         return;
+      }
+      // Manifest-validering FØR noko vert sletta: ei avkorta/handmodifisert
+      // fil skal avvisast, ikkje stille tømme dei manglande tabellane (same
+      // BLOCKER-funn som over — RPC-en validerer det same på nytt server-
+      // side, dette er berre ein rask, venleg klient-side sjekk).
+      if (parsed.data.tables) {
+        if (typeof parsed.data.tables !== "object" || Array.isArray(parsed.data.tables)) {
+          onDone(false, "Sikkerhetskopien har et ugyldig «tables»-felt.");
+          return;
+        }
+        const missing = BACKUP_TABLES.filter(function (t) { return !Array.isArray(parsed.data.tables[t]); });
+        if (missing.length) {
+          onDone(false, "Sikkerhetskopien mangler eller har skadet data for: " + missing.join(", ") + ". Import avbrutt.");
+          return;
+        }
       }
       restoreBackupData(parsed.data).then(function (result) {
         let msg = "Sikkerhetskopi importert.";
@@ -2917,15 +2901,15 @@ window.App = (function () {
           msg += " Denne sikkerhetskopien er fra før tabell-migreringen — CRM/oppgaver/kunnskapsbase/aktuelt/lenker/henvendelser/bookinger er ikke inkludert i den.";
         } else if (result.tableResults.length) {
           const totalRestored = result.tableResults.reduce(function (s, r) { return s + r.restored; }, 0);
-          const totalSkipped  = result.tableResults.reduce(function (s, r) { return s + r.skipped;  }, 0);
+          const totalOrphaned = result.tableResults.reduce(function (s, r) { return s + (r.orphaned || 0); }, 0);
           msg += " " + totalRestored + " rader gjenopprettet" +
-            (totalSkipped ? ", " + totalSkipped + " hoppet over (forfatteren finnes ikke lenger)" : "") + "." +
+            (totalOrphaned ? ", " + totalOrphaned + " fikk forfatter fjernet (personen finnes ikke lenger)" : "") + "." +
             " Hvis Workspace er åpen i en annen fane, last den siden på nytt også.";
         }
         onDone(true, msg);
       }).catch(function (e) {
         console.error("[backup] import feila:", e);
-        onDone(false, "Import feilet: " + ((e && e.message) || "ukjent feil.") + " Data gjenopprettet før feilpunktet er beholdt, resten av det gamle innholdet er urørt.");
+        onDone(false, "Import feilet: " + ((e && e.message) || "ukjent feil.") + " Ingen endringer ble gjort (hele gjenopprettingen skjer i én transaksjon, som enten fullføres helt eller ikke i det hele tatt).");
       });
     };
     reader.readAsText(file);
@@ -2985,7 +2969,7 @@ window.App = (function () {
         <p class="prose prose--muted" style="margin:0 0 1.6rem">${levelText}</p>
 
         <h4 class="an-heading">Last ned sikkerhetskopi</h4>
-        <p class="prose prose--muted" style="margin:0 0 .8rem">Laster ned ALT innhold på denne siden — tekst, bilder, henvendelser, bookinger, kunder og innstillinger — som én fil. Bruk denne jevnlig, og alltid før du gjør store endringer.</p>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">Laster ned ALT innhold på denne siden — tekst, bilder, henvendelser, bookinger, kunder (inkl. kommunikasjonshistorikk), oppgaver, kunngjøringer, kunnskapsbase, lenker og innstillinger — som én fil. Bruk denne jevnlig, og alltid før du gjør store endringer.${window.VwChat ? " Merk: chat-samtaler er ikke med i denne fila — bruk «Chat (JSON)» under (dekker kun chat lagret lokalt i denne nettleseren, ikke chat på tvers av enheter)." : ""}</p>
         <ul class="backup-summary">
           ${rows.map(function (r) { return '<li><span>' + C.esc(r[0]) + '</span><strong>' + r[1] + '</strong></li>'; }).join("")}
         </ul>
@@ -3002,7 +2986,7 @@ window.App = (function () {
         </div>
 
         <h4 class="an-heading" style="margin-top:2rem">Importer sikkerhetskopi</h4>
-        <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} Dette overskriver ALT eksisterende innhold på denne siden med innholdet i fila. Kan ikke angres. Last ned en fersk sikkerhetskopi av nåværende innhold først hvis du er usikker.</p>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} Dette overskriver kunder/henvendelser/bookinger/oppgaver/kunngjøringer/kunnskapsbase/lenker/innstillinger på denne siden med innholdet i fila (chat-samtaler og personlige notater er ikke berørt). Kan ikke angres. Last ned en fersk sikkerhetskopi av nåværende innhold først hvis du er usikker.</p>
         <label class="btn btn--ghost backup-filebtn">
           ${C.icon("upload")} Velg sikkerhetskopi-fil
           <input type="file" accept="application/json" hidden data-backup-import>
@@ -3057,7 +3041,7 @@ window.App = (function () {
       const file = e.target.files[0];
       if (!file) return;
       const st = body.querySelector("[data-backup-status]");
-      if (!confirm("Dette overskriver ALT eksisterende innhold på denne siden med innholdet i «" + file.name + "». Dette kan ikke angres. Er du sikker?")) {
+      if (!confirm("Dette overskriver ALT eksisterende innhold på denne siden med innholdet i «" + file.name + "» (unntatt chat og personlige notater, se merknad over). Dette kan ikke angres. Er du sikker?")) {
         e.target.value = "";
         return;
       }
@@ -3091,7 +3075,6 @@ window.App = (function () {
     const leads    = getLeads ? getLeads() : [];
     const bookings = bookingBookings();
     const customers= crmCustomers();
-    const custConvs= Store.get("chat:convs",       []) || [];
 
     body.innerHTML = `
       <div class="bk-wrap">
@@ -3103,18 +3086,17 @@ window.App = (function () {
         <p class="prose prose--muted" style="margin:0 0 1.6rem">${C.esc(levelText)}</p>
 
         <h4 class="an-heading">Last ned sikkerhetskopi</h4>
-        <p class="prose prose--muted" style="margin:0 0 .5rem">Laster ned alt innhold på denne siden som én fil. Ta sikkerhetskopi jevnlig og alltid før store endringer.</p>
+        <p class="prose prose--muted" style="margin:0 0 .5rem">Laster ned alt innhold på denne siden som én fil — inkludert kunder, henvendelser, bookinger, oppgaver, kunngjøringer, kunnskapsbase og lenker. Ta sikkerhetskopi jevnlig og alltid før store endringer.${window.VwChat ? " Merk: chat-samtaler er ikke med i denne fila." : ""}</p>
         <ul class="backup-summary" style="margin-bottom:1rem">
           <li><span>Kontakthenvendelser</span><strong>${leads.filter(function(l){return !isTilbud(l);}).length}</strong></li>
           <li><span>Tilbud</span><strong>${leads.filter(isTilbud).length}</strong></li>
           <li><span>Bookinger</span><strong>${bookings.length}</strong></li>
           <li><span>Kunder</span><strong>${customers.length}</strong></li>
-          ${window.VwChat ? `<li><span>Chat-samtaler</span><strong>${custConvs.length}</strong></li>` : ""}
         </ul>
         ${C.button({ label:"Last ned sikkerhetskopi", icon:"download", variant:"primary", attrs:"data-cust-backup-export" })}
 
         <h4 class="an-heading" style="margin-top:2rem">Importer sikkerhetskopi</h4>
-        <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} <strong>OBS:</strong> Dette overskriver ALT eksisterende innhold med innholdet i fila. Kan ikke angres.</p>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} <strong>OBS:</strong> Dette overskriver ALT eksisterende innhold med innholdet i fila (unntatt chat). Kan ikke angres.</p>
         <label class="btn btn--ghost backup-filebtn">
           ${C.icon("upload")} Velg fil
           <input type="file" accept="application/json" hidden data-cust-backup-import>
@@ -3139,7 +3121,7 @@ window.App = (function () {
       const file = e.target.files[0];
       if (!file) return;
       const st = body.querySelector("[data-cust-backup-status]");
-      if (!confirm("Dette overskriver ALT eksisterende innhold med «" + file.name + "». Er du sikker?")) { e.target.value = ""; return; }
+      if (!confirm("Dette overskriver ALT eksisterende innhold med «" + file.name + "» (unntatt chat, se merknad over). Er du sikker?")) { e.target.value = ""; return; }
       importBackup(file, function (ok, msg) {
         if (ok) { st.textContent = msg + " Laster på nytt…"; st.className = "form__status is-ok"; setTimeout(function () { location.reload(); }, 700); }
         else    { st.textContent = msg; st.className = "form__status is-error"; e.target.value = ""; }
