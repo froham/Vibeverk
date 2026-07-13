@@ -28,6 +28,8 @@ test-workspace.js    jsdom harness for Workspace (renamed 2026-07-07 from test-i
 
 All labels, hints, tooltips, placeholders and confirm-dialog text must follow `docs/architecture/copy-style-guide.md` — plain, non-technical language, and the Tier A (routine) / Tier B (destructive) convention for save/delete communication. This applies across all three surfaces (public site/Web-admin, Workspace, Console).
 
+**This is a standing, continuous requirement, not a one-off sweep** (the 2026-07-13 four-phase pass that introduced `copy-style-guide.md` was the initial catch-up, not a completed checklist). Whenever you add or change a form field, a save/delete/reset action, a confirm dialog, or any other user-facing string — as part of ANY task, however small — apply the style guide's rules to that text at the point of writing it, the same way cache-busting or test-passing is a standing expectation on every change, not something scheduled separately. A new non-obvious field gets a `hint`/`help`; a new destructive action gets Tier B copy; jargon gets caught before it ships, not in a later retrofit pass.
+
 ## Module conventions
 
 - All modules are IIFEs: `(function () { "use strict"; ... })();`
@@ -101,7 +103,7 @@ All other tests must remain green. Do not silently remove or skip failing tests.
 
 - Run **Vibeverk Security Auditor** before considering security-sensitive changes ready for merge or deployment.
 - Run **Privacy and Compliance Advisor** before launch of any feature that collects, stores, shares, analyses or exposes personal data.
-- Run **UX and Mobile Reviewer** after meaningful UI, module, modal, layout or responsive changes.
+- Run **UX and Mobile Reviewer** after meaningful UI, module, modal, layout or responsive changes — its checklist includes checking new/changed user-facing text against `docs/architecture/copy-style-guide.md`, not just visual/responsive quality.
 - Security-sensitive changes include: authentication, roles, permissions, superadmin access, Supabase RLS, storage, file sharing, APIs, webhooks, third-party integrations, payment-related integrations and customer data.
 - Privacy drafts must match verified functionality and confirmed customer facts — never invent data flows.
 - No agent may claim legal compliance or security assurance solely based on AI review.

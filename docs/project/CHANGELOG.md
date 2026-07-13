@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.33.5 — 2026-07-13
+
+### Copy-clarity is now a standing rule, not a one-off sweep
+
+User asked (2026-07-13) for the copy-clarity discipline from phases 1–4 to be made continuous going forward, applied at the point of writing any new/changed user-facing text rather than swept up later. Doc/process-only change, no application code touched:
+
+- `CLAUDE.md`'s "User-facing text" section now states explicitly this is a standing requirement on every task, however small — same expectation as cache-busting or keeping tests green.
+- `.claude/agents/vibeverk-ux-mobile-reviewer.md` gained a new "Copy clarity" checklist section, checking new/changed text against `docs/architecture/copy-style-guide.md`, Tier A/B/B-inline usage, and whether a surface is missing shared CSS a new copy element depends on — so future UX/Mobile Reviewer passes catch this automatically, not just visual/responsive issues.
+- `docs/architecture/copy-style-guide.md` itself reworded to distinguish the original four-phase catch-up sweep (now historical context) from the ongoing, standing rule — the rollout order section is relabeled accordingly.
+
+`VIBEVERK_VERSION` 0.33.4 → 0.33.5, `console-core.js?v=89→90` (version-display only, no functional change).
+
 ## 0.33.4 — 2026-07-13
 
 ### Copy-clarity initiative (punkt 0) — phase 4, slice 1: Console's feature-toggle tooltips

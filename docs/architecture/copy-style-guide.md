@@ -2,6 +2,8 @@
 
 Stadfesta av bruker 2026-07-13: klarhet i brukerflaten er ikke en finpuss, det er selve forretningsideen — Vibeverk skal hjelpe ikke-tekniske SMB-kunder ta i bruk digitale verktøy de faktisk forstår. Denne fila samler reglene for hvordan tekst i grensesnittet (etiketter, placeholders, hjelpetekster, bekreftelsesdialoger) skal skrives, på tvers av alle tre flatene (offentlig side/Web-admin, Workspace, Console). Utarbeidet med vibeverk-architect 2026-07-13 etter en gjennomgang av eksisterende mønstre — se [`docs/roadmap/ROADMAP.md`](../roadmap/ROADMAP.md) "Next" punkt 0 for bakgrunn og videre plan.
 
+**Dette er en stående regel, ikke en engangssjekkliste å bli ferdig med** (stadfesta av bruker 2026-07-13, sjå `CLAUDE.md` "User-facing text"). Kvar gong du legg til eller endrar eit felt, ei lagre-/slette-/nullstill-handling, ein `confirm()`-dialog, eller anna brukarvend tekst — som del av KVA SOM HELST oppgåve, uansett kor liten — skal reglane under følgjast DER OG DA, ikkje samlast opp til ein seinare opprydningsrunde. UX/Mobile Reviewer (`.claude/agents/vibeverk-ux-mobile-reviewer.md`) sjekkar no dette som ein fast del av kvar gjennomgang.
+
 ## Grunnregelen
 
 Skriv som om du forklarer det til noen som aldri har brukt et adminpanel før. Aldri fagsjargong — si hva som faktisk skjer, i vanlige ord.
@@ -50,11 +52,13 @@ Referanseeksempel (allerede i koden, `core.js`, backup-import): *"Dette overskri
 
 Console sin kunde-sjekkliste (registrer → kopling → hemmelig → skjema → ruting → aktiver) er allerede riktig form for enhver Console-handling med reelle konsekvenser — nummerert steg, status (✓/—), inline forklaring, og advarsel der relevant. Nye Console-handlinger med reell konsekvens (arkivere, endre domene, rotere hemmelighet, aktivere) skal følge samme mal, ikke finne opp sin egen form. **Ikke bygget ennå**: `renderKdDetail()` i `console-core.js` bygger i dag hvert `.kd-card`-steg som håndrullet strengkonkatenering — anbefalt (ikke gjort) å trekke dette ut til en delt `kdCard()`-hjelpefunksjon før flere Console-handlinger legges til, se `docs/roadmap/ROADMAP.md` "Next" punkt 0.
 
-## Rekkefølge for gjennomgang (ikke gjort på én gang)
+## Rekkefølge for den opphavlege innhentingsrunden (fase 1-4, 2026-07-13)
 
-1. **Console sine destruktive/høy-konsekvens-handlinger først** (minst filflate, høyest konsekvens per feil)
-2. **Workspace sine destruktive handlinger**
-3. **Web-admin sine paneler**
-4. **Generelle tooltips/hint overalt**, opportunistisk modul for modul
+Denne rekkefølgja gjaldt kun den initielle oppryddinga av EKSISTERANDE tekst — ikkje ei framtidig arbeidskø. Nytt/endra arbeid følgjer reglane over løpande, uavhengig av kva fase det tilhøyrer:
 
-Se `docs/roadmap/ROADMAP.md` "Next" punkt 0 for status på hvor langt denne gjennomgangen faktisk har kommet.
+1. **Console sine destruktive/høy-konsekvens-handlinger først** (minst filflate, høyest konsekvens per feil) — fullført v0.33.0/0.33.1
+2. **Workspace sine destruktive handlinger** — fullført v0.33.2
+3. **Web-admin sine paneler** — fullført v0.33.3
+4. **Generelle tooltips/hint overalt**, opportunistisk modul for modul — starta v0.33.4 (Console sine 25 funksjonsbrytarar), resten ope-slutta
+
+Se `docs/roadmap/ROADMAP.md` "Next" punkt 0 for status på kor langt den opphavlege innhentingsrunden faktisk har kome (attverande: Console sine andre fanar, og dei ikkje-destruktive felta i Workspace/Web-admin).
