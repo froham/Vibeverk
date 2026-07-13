@@ -634,10 +634,21 @@ serve(async (req: Request) => {
   // Requires resolve_tenant_by_hostname() to already resolve 'provisioning'
   // tenants (same migration) -- otherwise the fetch below would 404/serve
   // nothing even for a correctly-configured hostname.
+  //
+  // Architect design (2026-07-13): also allowed for status = 'active', same
+  // dual-status pattern already used by update_tenant_hostnames below --
+  // a real, currently-live customer legitimately needs routing re-verified
+  // after go-live too (DNS provider migration, added hostname), and the only
+  // alternative -- reverting an already-active tenant back to 'provisioning'
+  // just to run this check -- is itself dangerous, since
+  // resolve_tenant_by_hostname() treats the two statuses differently
+  // (active resolves unconditionally; provisioning requires
+  // schema_verified_at). 'archived' still rejected: nothing is publicly
+  // resolvable for an archived tenant, so there is nothing to verify.
   if (action === "verify_tenant_routing") {
-    if (tenant.status !== "provisioning") {
-      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
-      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    if (tenant.status !== "provisioning" && tenant.status !== "active") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' eller 'active' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning' eller 'active'" }, 403);
     }
     // Security Auditor finding H2, closed 2026-07-09: resolve_tenant_by_hostname()
     // (see this round's migration) now only resolves a 'provisioning' tenant
@@ -715,11 +726,47 @@ serve(async (req: Request) => {
       }
     }
     const allOk = results.every((r) => r.ok);
-    await controlSrvSb
-      .from("tenants")
-      .update({ routing_verified_at: allOk ? new Date().toISOString() : null })
-      .eq("id", tenant_id)
-      .eq("status", "provisioning");
+    // Architect design (2026-07-13): on failure, only clear routing_verified_at
+    // for a still-provisioning tenant (unchanged behavior -- this still gates
+    // activate_tenant below). For an already-active tenant, a failed re-check
+    // must NOT null out "last known good" history -- a transient DNS hiccup
+    // shouldn't flip Console's badge back to "unverified" for a customer who
+    // is, in fact, still being served correctly right now. The audit log
+    // below records the failed re-check either way, so no visibility is lost.
+    const updatePayload: { routing_verified_at?: string | null } = {};
+    if (allOk) {
+      updatePayload.routing_verified_at = new Date().toISOString();
+    } else if (tenant.status === "provisioning") {
+      updatePayload.routing_verified_at = null;
+    }
+    // Security Auditor finding (2026-07-13): this write spans a per-hostname
+    // fetch loop that can take several seconds -- unlike every sibling action
+    // in this file (update_tenant_hostnames, activate_tenant, archive_tenant),
+    // it previously never checked whether the row actually matched, so a
+    // status change mid-flight (e.g. another operator archiving this tenant)
+    // would silently persist nothing while the audit log still said
+    // "success". Now mirrors the sibling pattern: check row count, record a
+    // distinct audit outcome when the tenant's status moved out from under
+    // this call, and tell the caller instead of reporting a false success.
+    if (Object.keys(updatePayload).length > 0) {
+      // .eq("status", tenant.status) -- not the old hardcoded "provisioning" --
+      // otherwise this write would silently affect 0 rows for an active tenant,
+      // leaving the operator with a misleading result and nothing persisted.
+      const { data: updated, error: updateErr } = await controlSrvSb
+        .from("tenants")
+        .update(updatePayload)
+        .eq("id", tenant_id)
+        .eq("status", tenant.status)
+        .select("id");
+      if (updateErr) {
+        await auditFinish(auditId, "error", updateErr.message);
+        return json({ error: "Klarte ikkje lagre rutingresultatet" }, 500);
+      }
+      if (!updated || updated.length === 0) {
+        await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde — resultatet vart ikkje lagra");
+        return json({ error: "Tenanten sin status endra seg medan sjekken køyrde — prøv igjen" }, 409);
+      }
+    }
     await auditFinish(auditId, allOk ? "success" : "error", allOk ? undefined : JSON.stringify(results));
     return json({ success: true, routing_ok: allOk, results });
   }
