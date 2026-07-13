@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.33.3 — 2026-07-13
+
+### Copy-clarity initiative (punkt 0) — phase 3: Web-admin's panels
+
+Third step of the rollout order from `docs/architecture/copy-style-guide.md` (Console → Workspace → Web-admin → general tooltips).
+
+- **`module-crm.js`'s "Slett kunde" confirm (two identical call sites — the customer-list row delete and the customer-detail-view delete)** was verified against its actual implementation first: `deleteAllForEmail()` + `deleteCustomer()` genuinely does cover leads/tilbud, bookings, CRM communication history and chat conversations matched by email — the old terse "Slett ALL data for {email}?" was *not* misleading in scope (unlike the Workspace settings-reset fixed in phase 2), but it never stated irreversibility or what specifically gets removed. Reworded to name the actual scope and state it cannot be undone.
+- **`module-users.js`'s (Web-admin's own, root-level file) remove-user confirm** — same clarification as the equivalent `workspace/module-users.js` fix in phase 2: authored tasks/announcements/KB articles are orphaned, not deleted.
+- **The GDPR erasure form's confirm (`core.js`, "Slett ALL data knyttet til «email»")** was checked against `deleteByEmail()`'s actual implementation and found to be already accurate (covers leads/tilbud, bookings, CRM customers, and chat) — left unchanged, no fix needed.
+
+**Not touched this round**: the simpler single-item deletes already reviewed as adequate in earlier phases (templates, snippets, single comm-history entries, scrollbanner sections) — same reasoning as phases 1–2, these already name the specific item being removed.
+
+Tests: `test.js` 524/1, `test-workspace.js` 157/1 unchanged. `?v=N` bumped: `module-crm.js` (21→22, all three HTML entry points that load it), `module-users.js` (13→14, `index.html`/`admin/index.html`), `console-core.js` (87→88, version-display only). `VIBEVERK_VERSION` 0.33.2 → 0.33.3.
+
 ## 0.33.2 — 2026-07-13
 
 ### Copy-clarity initiative (punkt 0) — phase 2: Workspace's destructive actions
