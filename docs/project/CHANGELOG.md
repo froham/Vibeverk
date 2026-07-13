@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.33.2 — 2026-07-13
+
+### Copy-clarity initiative (punkt 0) — phase 2: Workspace's destructive actions
+
+Second step of the rollout order from `docs/architecture/copy-style-guide.md` (Console → Workspace → Web-admin → general tooltips).
+
+- **`module-settings.js`'s "Nullstill intranett-data" `confirm()` was actively misleading** — it said "All intranett-data slettes permanent", but `resetWspData()` only ever clears four specific Store keys (`wsp-settings`, `wsp-tasks`, `wsp-notes`, `wsp-activity`) — announcements, KB, links, CRM etc. are untouched. The danger-zone hint text *above* the button already stated this correctly ("Nullstiller kun intranett-data (oppgaver, notater, aktivitetslogg, innstillinger)"), so the confirm dialog directly contradicted its own neighboring hint. Reworded to match the accurate scope.
+- **`workspace/module-users.js`'s remove-user confirm** now states that the removed user's authored tasks/announcements/KB articles are NOT deleted (only the author reference is cleared, per the 20260712203346 FK fix) — directly relevant given that's recently-changed behavior worth surfacing at the point of the action, not just documented in a migration comment.
+- **Fixed a real CSS bug found during the Architect consultation** (2026-07-13, phase 1 review): `workspace/index.html` only defined `.form__status.is-err`, but three Workspace modules (`module-tasks.js`, `module-links.js`, `module-kb.js`) use that class while two others (`module-announcements.js`, `module-settings.js`) use `.is-error` instead — an inconsistency within Workspace's own code, not just vs. other surfaces. Error messages using `is-error` rendered uncolored/unstyled. Fixed by making the CSS rule match both class names, rather than picking one and rewriting five files' worth of JS.
+
+**Not touched this round** (per the established rollout order): the simpler single-item delete confirms (announcements/notes/mediabank/tasks/links/kb/orgdrift) already name the specific item being deleted and were judged adequate as-is; Web-admin's panels and the general inline-tooltip pass remain for later phases.
+
+Tests: `test.js` 524/1, `test-workspace.js` 157/1 unchanged. `?v=N` bumped: `module-settings.js` (6→7), `module-users.js` (3→4), both in `workspace/index.html`. `VIBEVERK_VERSION` 0.33.1 → 0.33.2.
+
 ## 0.33.1 — 2026-07-13
 
 ### `tasks` RLS tightening deployed to production
