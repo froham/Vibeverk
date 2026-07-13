@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.33.7";
+  var VIBEVERK_VERSION = "0.34.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -172,7 +172,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at")
       .order("slug").then(function (r) {
         _tenants = r.data || [];
         // Ikkje default til ein arkivert tenant -- sidan sidepanel-veljaren
@@ -1218,6 +1218,7 @@ window.VwConsole = (function () {
     var schemaOk = !!tenant.schema_verified_at;
     var routingOk = !!tenant.routing_verified_at;
     var hasHostnames = !!(tenant.hostnames && tenant.hostnames.length);
+    var adminInvitedOk = !!tenant.first_admin_invited_at;
 
     wrap.innerHTML =
       '<div class="admin-group">' +
@@ -1273,6 +1274,15 @@ window.VwConsole = (function () {
           '<p id="kd-verify-result" class="field__hint"></p>' +
         '</div>' +
 
+        '<div class="kd-card"' + (schemaOk ? "" : ' style="opacity:.6"') + '><strong>4b. Inviter admin-brukar</strong> ' + (adminInvitedOk ? "✓" : "—") +
+          '<p class="field__hint">Sender ei ekte invitasjonslenke til kunden sin fyrste admin-brukar (dei set sjølv passord). Kan sendast fleire gongar (t.d. om e-posten ikkje kjem fram).</p>' +
+          '<form id="kd-invite-form" style="margin-top:.6rem">' +
+            C.field({ id: "kd-invite-email", label: "E-post til fyrste admin", placeholder: "post@kunden.no" }) +
+            '<button type="submit" class="btn btn--ghost btn--sm"' + (schemaOk ? "" : " disabled") + '>Send invitasjon</button>' +
+            '<p class="form__status" id="kd-invite-status" style="margin-top:.4rem"></p>' +
+          '</form>' +
+        '</div>' +
+
         '<div class="kd-card"' + (schemaOk && hasHostnames ? "" : ' style="opacity:.6"') + '><strong>5. Verifiser ruting</strong> ' + (routingOk ? "✓" : "—") +
           '<p class="field__hint">Hostnames: ' + (hasHostnames ? C.esc(tenant.hostnames.join(", ")) : "ingen registrert") + '. Krev at DNS/Vercel-oppsettet for desse peikar hit FØR du trykkjer — sjekken gjer eit ekte HTTP-kall mot kvar hostname.' +
             (tenant.status === "active" ? " Kan òg køyrast etter at kunden er aktiv, t.d. etter at DNS er flytta til ny leverandør — sjekken les berre av og påverkar ikkje den ekte trafikken." : "") +
@@ -1282,11 +1292,22 @@ window.VwConsole = (function () {
         '</div>' +
 
         '<div class="kd-card">' +
-          '<strong>6. Set aktiv</strong> — ' + (tenant.status === "active" ? "kunden er alt aktiv" : (routingOk ? "klar" : "sperra (ruting ikkje verifisert enno)")) +
+          '<strong>6. Set aktiv</strong> — ' + (tenant.status === "active" ? "kunden er alt aktiv" : ((routingOk && adminInvitedOk) ? "klar" : "sperra (" + [!routingOk && "ruting ikkje verifisert", !adminInvitedOk && "ingen admin-brukar invitert"].filter(Boolean).join(", ") + " enno)")) +
           '<p class="field__hint">⚠️ Gjer kunden LIVE: nettsida/Workspace svarer no faktisk på domenenamna over, for alle besøkjande. Dette er det siste steget — dobbeltsjekk at alt over faktisk er korrekt fyrst.</p>' +
-          '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + (routingOk ? "" : " disabled") + '>Set aktiv</button></div>' +
+          '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + ((routingOk && adminInvitedOk) ? "" : " disabled") + '>Set aktiv</button></div>' +
           '<p id="kd-activate-result" class="field__hint"></p>' +
         '</div>' +
+
+        (tenant.status !== "archived"
+          ? '<div class="kd-card"><strong>Support-tilgang</strong>' +
+              '<p class="field__hint">Lagar ei mellombels innloggingslenke for ein eksisterande admin-brukar, slik at du kan hjelpe kunden direkte utan å kjenne passordet deira. Lenka går berre til DEG (ikkje til kunden) og går ut av seg sjølv. Kunden ser ei tydeleg melding i Workspace mens ho er i bruk.</p>' +
+              '<form id="kd-support-form" style="margin-top:.6rem">' +
+                C.field({ id: "kd-support-email", label: "E-post til admin-brukaren", placeholder: "post@kunden.no" }) +
+                '<button type="submit" class="btn btn--ghost btn--sm">Lag support-lenke</button>' +
+                '<p class="form__status" id="kd-support-status" style="margin-top:.4rem;word-break:break-all"></p>' +
+              '</form>' +
+            '</div>'
+          : '') +
 
         (tenant.status !== "archived"
           ? '<div class="kd-card" style="border-color:#c0392b">' +
@@ -1361,6 +1382,34 @@ window.VwConsole = (function () {
         loadTenants(function () { renderKundar(_sc, fullWrap); });
       });
     });
+
+    var inviteForm = wrap.querySelector("#kd-invite-form");
+    if (inviteForm) {
+      inviteForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var email = wrap.querySelector("#kd-invite-email").value.trim().toLowerCase();
+        var out = wrap.querySelector("#kd-invite-status");
+        out.textContent = "Sender…";
+        tenantAdminCall("invite_tenant_admin", { tenant_id: tenant.id, email: email }, function (r) {
+          statusMsg(out, r.error || "✓ Invitasjon sendt til " + email, !r.error);
+          if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
+
+    var supportForm = wrap.querySelector("#kd-support-form");
+    if (supportForm) {
+      supportForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var email = wrap.querySelector("#kd-support-email").value.trim().toLowerCase();
+        var out = wrap.querySelector("#kd-support-status");
+        out.textContent = "Lagar lenke…";
+        tenantAdminCall("generate_support_access", { tenant_id: tenant.id, email: email }, function (r) {
+          if (r.error) { statusMsg(out, r.error, false); return; }
+          out.innerHTML = "✓ <a href=\"" + C.esc(r.action_link) + "\" target=\"_blank\" rel=\"noopener\">Opne support-økt</a> (bruk snart — lenka går ut av seg sjølv)";
+        });
+      });
+    }
 
     wrap.querySelector("#kd-routing-btn").addEventListener("click", function () {
       var out = wrap.querySelector("#kd-routing-result");

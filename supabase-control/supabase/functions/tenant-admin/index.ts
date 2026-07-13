@@ -346,7 +346,7 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at")
+    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
@@ -620,6 +620,155 @@ serve(async (req: Request) => {
     return json({ success: true, schema_ok: ok, missing_tables: missing, rls_missing: rlsMissing });
   }
 
+  // ── invite_tenant_admin ──────────────────────────────────────────────────
+  // Step 4b (Architect design, 2026-07-13): closes the onboarding gap found
+  // during vibeverk-as-tenant dry-run testing -- a freshly provisioned
+  // tenant has zero Auth users in its own project, so nobody can log in
+  // until someone manually creates a user via the Supabase dashboard. This
+  // sends a REAL Supabase invite (via the tenant's own Admin API, using the
+  // already-stored Vault service_role key -- same cross-project pattern as
+  // verify_tenant_schema above) to the customer's real first-admin email.
+  // The tenant's own baseline schema already has everything needed to turn
+  // that into a role='admin' row: handle_new_user() (see
+  // supabase/migrations/20260707000001_baseline_schema.sql) inserts into
+  // public.users with role taken from raw_user_meta_data->>'role' whenever
+  // NEW.invited_at IS NOT NULL -- so this deliberately does NOT hand-write a
+  // users row itself, only passes role/display_name in the invite's data
+  // payload and lets that existing trigger do the rest.
+  //
+  // A standing, shared default-admin account across every tenant was
+  // considered and explicitly rejected (Architect design): it's a classic
+  // never-rotated-shared-secret risk, and worse, it would be a persistent,
+  // undisclosed account sitting inside a customer's OWN database --
+  // something a customer inspecting their own auth.users table would
+  // reasonably read as an undisclosed backdoor. A one-time, real-identity
+  // invite has none of that exposure.
+  //
+  // Gated on schema_verified_at (not routing_verified_at/activation) --
+  // resolve_tenant_by_hostname() already resolves a 'provisioning' tenant
+  // once schema_verified_at is set (see the exposure-window-closing
+  // migration), which is what the invite's redirectTo link needs to
+  // actually work when the customer clicks it.
+  if (action === "invite_tenant_admin") {
+    // .trim().toLowerCase() -- GoTrue normalizes Auth emails to lowercase on
+    // invite/signup, and handle_new_user() copies that straight into
+    // public.users.email; a differently-cased input here would otherwise
+    // silently mismatch generate_support_access's later lookup.
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const { display_name } = body;
+    if (!email || email.indexOf("@") === -1) {
+      return json({ error: "Gyldig e-postadresse er påkrevd" }, 400);
+    }
+    if (!tenant.schema_verified_at) {
+      await auditReject(tenant.id, action, "skjema er ikkje verifisert enno");
+      return json({ error: "Skjema må vera verifisert (steg 4) før admin-brukar kan inviterast" }, 403);
+    }
+    if (!tenant.data_plane_service_role_secret_id) {
+      await auditReject(tenant.id, action, "service_role-nøkkel manglar");
+      return json({ error: "Service_role-nøkkel manglar (steg 3b)" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: tenantServiceKey, error: keyErr } = await controlSrvSb
+      .rpc("get_tenant_service_role_key", { p_tenant_id: tenant_id });
+    if (keyErr || !tenantServiceKey) {
+      await auditFinish(auditId, "error", "fann ikkje service_role-nøkkel");
+      return json({ error: "Fann ikkje service_role-nøkkel" }, 400);
+    }
+    const tenantSrvSb = createClient(tenant.data_plane_url, tenantServiceKey);
+    const hostnames = (tenant.hostnames as string[]) || [];
+    const redirectTo = hostnames.length > 0 ? "https://" + hostnames[0] + "/workspace/" : undefined;
+    const { data: inviteData, error: inviteErr } = await tenantSrvSb.auth.admin.inviteUserByEmail(email, {
+      data: { role: "admin", display_name: display_name || email.split("@")[0] },
+      redirectTo,
+    });
+    if (inviteErr) {
+      await auditFinish(auditId, "error", inviteErr.message);
+      return json({ error: "Invitasjon feila: " + inviteErr.message }, 500);
+    }
+    await controlSrvSb
+      .from("tenants")
+      .update({ first_admin_invited_at: tenant.first_admin_invited_at || new Date().toISOString() })
+      .eq("id", tenant_id);
+    // Audit log records that an invite was sent and to whom (needed to know
+    // who has admin access to a customer's project) -- flagged for a Privacy
+    // and Compliance Advisor pass before this handles a real paying
+    // customer's data, since this is customer PII in a control-plane table
+    // readable by every superadmin, not yet reviewed for that.
+    await auditFinish(auditId, "success", "invitert: " + email);
+    return json({ success: true, user_id: inviteData?.user?.id });
+  }
+
+  // ── generate_support_access ──────────────────────────────────────────────
+  // Architect design (2026-07-13): lets an operator help a customer
+  // directly, without knowing their password and without any standing
+  // shared credential. Mints a genuinely time-limited Supabase magic-link
+  // for an EXISTING real admin user at that tenant (impersonation via real
+  // identity, not a phantom account) -- naturally expires per the tenant
+  // project's own OTP-expiry setting, nothing persistent left behind.
+  //
+  // Deliberately does NOT persist the returned link/token anywhere (it is a
+  // live bearer credential until used or expired) -- only the fact that an
+  // operator requested access, for whom, and when goes into
+  // broker_audit_log. Console shows the link once for the operator to open
+  // directly; it is never emailed to the customer, since the entire point
+  // is bypassing the need for their password for a direct support session.
+  //
+  // Allowed for 'provisioning' or 'active' (not 'archived') -- support
+  // access can legitimately be needed before a tenant ever goes live, e.g.
+  // while helping finish onboarding.
+  if (action === "generate_support_access") {
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!email || email.indexOf("@") === -1) {
+      return json({ error: "Gyldig e-postadresse er påkrevd" }, 400);
+    }
+    if (tenant.status === "archived") {
+      await auditReject(tenant.id, action, "tenant er arkivert");
+      return json({ error: "Kan ikkje gje support-tilgang til ein arkivert kunde" }, 403);
+    }
+    if (!tenant.data_plane_service_role_secret_id) {
+      await auditReject(tenant.id, action, "service_role-nøkkel manglar");
+      return json({ error: "Service_role-nøkkel manglar (steg 3b)" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: tenantServiceKey, error: keyErr } = await controlSrvSb
+      .rpc("get_tenant_service_role_key", { p_tenant_id: tenant_id });
+    if (keyErr || !tenantServiceKey) {
+      await auditFinish(auditId, "error", "fann ikkje service_role-nøkkel");
+      return json({ error: "Fann ikkje service_role-nøkkel" }, 400);
+    }
+    const tenantSrvSb = createClient(tenant.data_plane_url, tenantServiceKey);
+    // Confirm a real admin user actually exists for this email before
+    // minting a link -- a clear error naming Problem 1 (invite_tenant_admin)
+    // as the fix, rather than a confusing failure from generateLink() itself
+    // against an email with no user.
+    const { data: existingUser, error: userLookupErr } = await tenantSrvSb
+      .from("users")
+      .select("id, role")
+      .eq("email", email)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (userLookupErr || !existingUser) {
+      await auditFinish(auditId, "error", "ingen admin-brukar med denne e-posten finst (inviter admin_brukar først)");
+      return json({ error: "Ingen admin-brukar med denne e-posten finst enno — inviter admin-brukar først (steg 4b)" }, 404);
+    }
+    const hostnames = (tenant.hostnames as string[]) || [];
+    const redirectTo = hostnames.length > 0 ? "https://" + hostnames[0] + "/workspace/?support=1" : undefined;
+    const { data: linkData, error: linkErr } = await tenantSrvSb.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: { redirectTo },
+    });
+    if (linkErr) {
+      await auditFinish(auditId, "error", linkErr.message);
+      return json({ error: "Klarte ikkje lage support-lenke: " + linkErr.message }, 500);
+    }
+    // Never log the actual link/token -- it's a live bearer credential.
+    await auditFinish(auditId, "success", "support-tilgang generert for: " + email);
+    return json({ success: true, action_link: linkData?.properties?.action_link });
+  }
+
   // ── verify_tenant_routing ────────────────────────────────────────────────
   // Step 5 (Phase 6): the only action in this codebase that can ever set
   // routing_verified_at, which activate_tenant requires below. For every
@@ -786,6 +935,12 @@ serve(async (req: Request) => {
     if (!tenant.data_plane_service_role_secret_id) missing.push("service_role-nøkkel manglar");
     if (!tenant.schema_verified_at) missing.push("skjema er ikkje verifisert (køyr verify_tenant_schema)");
     if (!tenant.routing_verified_at) missing.push("ruting er ikkje verifisert (Fase 6 manglar)");
+    // Architect design (2026-07-13): a tenant with zero admin users has no
+    // path to log in at all once live -- confirms an invite was SENT, not
+    // accepted (same class of cached-check as schema/routing_verified_at
+    // above), but that's enough to stop a customer going live with nobody
+    // able to sign in.
+    if (!tenant.first_admin_invited_at) missing.push("ingen admin-brukar er invitert enno (køyr invite_tenant_admin)");
     if (missing.length > 0) {
       await auditReject(tenant.id, action, missing.join("; "));
       return json({ error: "Sperra: " + missing.join("; ") }, 403);
