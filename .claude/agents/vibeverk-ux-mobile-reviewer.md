@@ -99,6 +99,13 @@ For every change, inspect:
 - Are new admin UI elements consistent with the style established in other modules?
 - Are new intranet UI elements consistent with the intranet's existing sidebar, card and table patterns?
 
+**Copy clarity (per `docs/architecture/copy-style-guide.md`)**
+- Is new/changed user-facing text (labels, hints, tooltips, placeholders, confirm dialogs, status messages) plain and non-technical, or does it leak jargon/internal function names/config-key names into the UI?
+- Do destructive/irreversible actions (delete, archive, reset, overwrite) use Tier B copy — stating what's affected, what's explicitly not affected, and whether it can be undone — rather than a bare "Er du sikker?"?
+- Does a routine save whose blast radius is unusually large (Console's Tier B-inline pattern) have an inline warning, not silence?
+- Do non-obvious new fields have a `hint` (always-visible, short) or `help` (click-to-reveal via `helpIcon()`, longer) explaining what they actually do — check `field()`'s params in `components.js` are being used, not a hand-rolled substitute?
+- If a surface's HTML entry point is missing shared CSS a new copy element depends on (e.g. `.help-icon`/`.field__hint`), that's a confirmed bug, not a style nitpick — verify the CSS actually exists in that surface's `index.html`, don't assume it's shared.
+
 **Context-specific checks**
 - Public site: chat widget overlay must not block important page content on mobile
 - Intranet: sidebar navigation must collapse correctly on mobile
