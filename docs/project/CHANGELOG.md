@@ -30,6 +30,36 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.33.7 — 2026-07-13
+
+### `verify_tenant_routing` can now re-verify already-active tenants
+
+Follow-up to the schema-fingerprint grant fix above: the `vibeverk.no` tenant row is `status='active'` but has never had its routing verified (`routing_verified_at` was null, and `verify_tenant_routing` refused to run for anything but `status='provisioning'`). User asked whether it'd be reasonable to also allow this for active tenants, since a real customer will eventually need routing re-verified post-go-live too (DNS provider migration, hostname change) — the only alternative (temporarily reverting an already-live tenant back to `'provisioning'` just to run a diagnostic) is itself risky, since `resolve_tenant_by_hostname()` treats the two statuses differently.
+
+Design by the Architect (read-only advisory pass), then implemented in `supabase-control/supabase/functions/tenant-admin/index.ts`:
+- Status guard widened to `!== "provisioning" && !== "active"` (rejects only `archived`), mirroring the existing dual-status pattern already used by `update_tenant_hostnames` in the same file.
+- Fixed a real bug the Architect caught before it shipped: the final `.update(...).eq("status", "provisioning")` would have silently written 0 rows for an active tenant once the top guard was loosened — now `.eq("status", tenant.status)`.
+- On a **failed** re-verification, `routing_verified_at` is now only nulled for a still-`provisioning` tenant (unchanged, still gates `activate_tenant`) — for an active tenant it's left untouched, so a transient DNS hiccup doesn't wipe "last known good" history for a customer who is, in fact, still being served correctly. The audit log records every outcome regardless.
+- Console copy (Tier A): step 5's hint now clarifies it's safe to re-run post-activation; step 6 no longer shows the misleading "sperra" framing for a tenant that's already active.
+
+Reviewed by a general-purpose agent standing in for the "Vibeverk Security Auditor" role — `vibeverk-security-auditor`/`vibeverk-reviewer` have no `.claude/agents/*.md` file (only `.codex/agents/*.toml` equivalents), a standing, already-documented Claude-vs-Codex gap (see `CURRENT_STATE.md`, dated back to 2026-07-04), not something newly discovered this session. No HIGH/MEDIUM findings. One LOW finding fixed here: the final UPDATE had no row-count check (unlike every sibling action in this file), so a status change mid-flight (e.g. another operator archiving the tenant while the routing check's per-hostname fetch loop was still running) could have persisted nothing while the audit log still said "success" — now mirrors the sibling pattern (`update_tenant_hostnames`/`archive_tenant`), checking the row count and recording a distinct audit outcome + a 409 to the caller if the status moved out from under the call. A second LOW finding (an active tenant's routing re-verification is blocked by `schema_verified_at`, which `resolve_tenant_by_hostname()` doesn't actually require for active tenants) was left as a known, non-urgent quirk — not fixed.
+
+**Follow-up needed, not yet done:** decide what to do about the missing `vibeverk-security-auditor`/`vibeverk-reviewer` agent definitions — either author them for real, or stop referencing them in CLAUDE.md/the handoff skill as if they exist. (See `docs/project/CURRENT_STATE.md` "Known limitations" — these exist as Codex-only `.codex/agents/*.toml` configs, a standing fact already documented as far back as 2026-07-04, not a fresh discovery.)
+
+Tests unaffected (no application code touched — Edge Function + doc/console-copy change only). `?v=N` bumped: `console-core.js` (90→91). `VIBEVERK_VERSION` 0.33.6 → 0.33.7.
+
+## 0.33.6 — 2026-07-13
+
+### Fixed: `service_role` couldn't call `verify_schema_fingerprint()` on production
+
+Part of the vibeverk-as-tenant migration work: set up `VIBEVERK_CONTROL_URL`/`VIBEVERK_CONTROL_ANON_KEY` env vars on the "vibeverk" Vercel project (the one at `vibeverk.vercel.app`, distinct from the local repo's linked `vibeverk-j1yg` canary project) and redeployed — confirmed the middleware + `api/tenant-config.js` tenant-resolution mechanism now works correctly (a real lookup against `vibeverk-control`, correctly rejecting the unregistered `vibeverk.vercel.app` hostname with a proper 404 instead of the earlier broken 500). Also added `vibeverk.no` as an (unverified, no real traffic yet — DNS still points at GitHub Pages) domain alias on that project, ahead of any future DNS cutover decision.
+
+While re-verifying the existing (historically unverified, `status='active'`) `vibeverk.no` tenant row via Console's checklist, "Verifiser skjema" failed with "manglar verify_schema_fingerprint()?" even though the function existed on production. Root cause: both migrations that created it (`20260708212124_add_schema_fingerprint_rpc.sql`, `20260709193227_add_rls_check_to_schema_fingerprint.sql`) `REVOKE ALL ... FROM PUBLIC, anon, authenticated` but never explicitly `GRANT EXECUTE ... TO service_role` — same class of gap ADR-0008/ADR-0009 already documented (never assume `service_role` has a grant). Confirmed via `has_function_privilege('service_role', ..., 'EXECUTE')` = `false` on production. Fixed with `20260713162850_grant_service_role_schema_fingerprint.sql`, applied to production, re-verified `= true`. Console's "Verifiser skjema" now passes (`schema_ok`) for the `vibeverk.no` tenant row.
+
+Still open: `routing_verified_at` remains unverified for this tenant row — `verify_tenant_routing` requires `status = 'provisioning'`, but this row is already `'active'` (set outside the normal checklist flow, historically). Deciding how to handle that (temporarily revert to provisioning, or add a new action variant for already-active tenants) is deferred — no DNS cutover should happen without resolving this first. **Resolved same day, see 0.33.7 above.**
+
+No application code touched by this entry's SQL-only fix beyond the migration itself. `VIBEVERK_VERSION` 0.33.5 → 0.33.6 (no `console-core.js` cache-bust needed — no JS file changed in this round).
+
 ## 0.33.5 — 2026-07-13
 
 ### Copy-clarity is now a standing rule, not a one-off sweep
