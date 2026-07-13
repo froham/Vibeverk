@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.33.4 — 2026-07-13
+
+### Copy-clarity initiative (punkt 0) — phase 4, slice 1: Console's feature-toggle tooltips
+
+Fourth (and, per the style guide, open-ended/opportunistic) step of the rollout: general inline tooltips for non-obvious fields, not just destructive actions. This round's bounded slice: Console's "Modular" section, where 25 feature-flag checkboxes (`FEAT_LABELS`/`IFEAT_LABELS` — controlling everything from Booking/Chat/CRM to internal Workspace features) had short, sometimes cryptic labels (e.g. "Native e-post" for `crmFull`) with **zero explanation of what any of them actually did**.
+
+- New `FEAT_HELP`/`IFEAT_HELP` maps in `console/console-core.js` — a plain-language, one-sentence description per flag.
+- `checkboxGrid()` gained an optional fourth `help` parameter, rendering `C.helpIcon(help[k])` next to each checkbox label when a description exists — reuses the existing `helpIcon()`/`field({help})` primitives from phase 1, no new component.
+
+**Real gap found and fixed while implementing this**: `console/index.html` had **no `.help-icon`/`.help-icon__pop` CSS at all** — unlike `index.html`/`admin/index.html`/`workspace/index.html`, which all already have it. Without this, the new tooltip buttons would have rendered completely unstyled, with the explanation text always visible inline instead of hidden until clicked (the popover has no default `display:none` without the CSS). Added the identical CSS block Console was missing. `bindHelpIcons()`'s click-toggle behavior itself did not need any new wiring — confirmed in phase 1 that `core.js`'s shared, unconditional bootstrap already covers Console.
+
+**Verified empirically** (no automated test harness exists for Console): a jsdom script rendering the exact `checkboxGrid()`+`helpIcon()` output confirmed the popover is `display:none` before a click, `display:block` after, with the correct 18×18px icon sizing — not just a code-reading assumption.
+
+**Scope note**: this is the first slice of an open-ended phase — Console's other sections (Web/Workspace theme fields, Analyse, Personvern) and the other two surfaces' non-destructive fields have not been reviewed yet. Continuing incrementally in future rounds rather than attempting the whole product surface at once.
+
+Tests: `test.js` 524/1, `test-workspace.js` 157/1 unaffected (no automated Console coverage exists). `?v=N` bumped: `console-core.js` (88→89). `VIBEVERK_VERSION` 0.33.3 → 0.33.4.
+
 ## 0.33.3 — 2026-07-13
 
 ### Copy-clarity initiative (punkt 0) — phase 3: Web-admin's panels
