@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.33.3";
+  var VIBEVERK_VERSION = "0.33.4";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -320,10 +320,43 @@ window.VwConsole = (function () {
     references:"Referansar", faq:"FAQ", siteSearch:"Søk i toppmeny",
     crm:"Kunder", crmFull:"Native e-post", mediabank:"Mediebank", scrollbanner:"Banner", chat:"Chat"
   };
+  // Kva kvar bryter faktisk gjer -- rendrast som ein helpIcon() ved sida av
+  // kvar checkbox (copy-clarity-initiativet, fase 4, 2026-07-13). Vald i
+  // staden for å gjette meining frå den korte labelen åleine, sidan fleire
+  // (t.d. "crmFull"/"Native e-post") ikkje er sjølvforklarande.
+  var FEAT_HELP = {
+    newsArchive: "Viser eit arkiv med ALLE tidlegare Aktuelt-innlegg, ikkje berre dei nyaste på framsida.",
+    search:      "Legg til eit søkefelt i arkiv-visninga for Aktuelt-innlegg.",
+    attachments: "Lèt besøkjande laste opp vedlegg (t.d. bilete) i Tilbod-skjemaet.",
+    social:      "Viser lenker til sosiale medium (Facebook, Instagram m.m.) i footer.",
+    contactForm: "Viser sjølve kontaktskjemaet på Kontakt-sida. Kontaktinfo (e-post/telefon/adresse) vert alltid vist, uansett.",
+    booking:     "Aktiverer Booking-seksjonen der besøkjande kan reservere tid/ressursar sjølv.",
+    quote:       "Aktiverer Tilbod-seksjonen der besøkjande kan be om pristilbod.",
+    references:  "Aktiverer ein seksjon for kundecase/tidlegare prosjekt.",
+    faq:         "Aktiverer eit spørsmål-og-svar-avsnitt.",
+    siteSearch:  "Legg til eit søkefelt i topp-navigasjonen.",
+    crm:         "Aktiverer kundehandtering (CRM) i Web-admin.",
+    crmFull:     "Sender e-post direkte frå systemet i staden for å opne kunden sin eigen e-postklient (Outlook e.l.) ved svar til kundar.",
+    mediabank:   "Aktiverer eit bildegalleri synleg for besøkjande på nettsida.",
+    scrollbanner:"Viser eit rullande biletbanner (t.d. på framsida).",
+    chat:        "Aktiverer live chat-widgeten for besøkjande."
+  };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
     mediaInternal:"Mediebank", links:"Lenker", orgdrift:"Org & drift",
     crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar"
+  };
+  var IFEAT_HELP = {
+    announcements: "Kunngjeringar/interne nyheiter, synleg for alle i Workspace.",
+    notes:         "Personlege notat -- kvar tilsett ser berre sine eigne.",
+    kb:            "Intern kunnskapsbase/dokumentasjon for dei tilsette.",
+    mediaInternal: "Internt bildearkiv for tilsette -- skilt frå det offentlege mediebank-galleriet (sjå Nettside-fana).",
+    links:         "Ei samling nyttige lenker (t.d. til andre system) synleg i Workspace.",
+    orgdrift:      "Organisasjons- og driftsinformasjon (t.d. bemanning, faste rutinar).",
+    crm:           "Gjev tilgang til kundehandtering (CRM) frå Workspace, i tillegg til Web-admin.",
+    booking:       "Sjå og handtere bookingar frå Workspace.",
+    quote:         "Sjå og handtere tilbodsførespurnadar frå Workspace.",
+    contact:       "Sjå og svare på kontakthenvendingar frå Workspace."
   };
   var NAV_ITEMS = [
     { id: "kundar",     icon: "building",    label: "Kundar" },
@@ -367,12 +400,13 @@ window.VwConsole = (function () {
     setTimeout(function () { if (el) el.textContent = ""; }, 3500);
   }
 
-  function checkboxGrid(obj, labels, attr) {
+  function checkboxGrid(obj, labels, attr, help) {
     return '<div class="cs-checkbox-grid">' +
       Object.keys(obj).map(function (k) {
         return '<label class="cs-checkbox-label">' +
           '<input type="checkbox" data-' + attr + '="' + C.esc(k) + '"' + (obj[k] !== false ? " checked" : "") + '> ' +
           C.esc(labels[k] || k) +
+          (help && help[k] ? " " + C.helpIcon(help[k]) : "") +
         '</label>';
       }).join("") +
     '</div>';
@@ -856,11 +890,11 @@ window.VwConsole = (function () {
     wrap.innerHTML =
       '<form id="cs-form">' +
         '<fieldset class="admin-group"><legend>Nettside</legend>' +
-          checkboxGrid(ft, FEAT_LABELS, "cs-feat") +
+          checkboxGrid(ft, FEAT_LABELS, "cs-feat", FEAT_HELP) +
         '</fieldset>' +
         '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Workspace</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Dashboard, Oppgåver og Innstillingar er alltid på og visast ikkje her.</p>' +
-          checkboxGrid(ift, IFEAT_LABELS, "cs-ifeat") +
+          checkboxGrid(ift, IFEAT_LABELS, "cs-ifeat", IFEAT_HELP) +
         '</fieldset>' +
         saveBtn() +
       '</form>';

@@ -75,6 +75,14 @@
     .field { display: grid; gap: .35rem; }
     .field label { font-size: .85rem; font-weight: 600; color: var(--color-text); }
     .field__hint  { font-size: .78rem; color: var(--color-muted); margin: -.1rem 0 0; }
+    /* Delt med field({help})/helpIcon() i components.js -- manglet heilt i
+       Console frå før (2026-07-13, copy-clarity-initiativet fase 4): utan
+       denne rendrar helpIcon()-knappen ustilt, og "pop"-teksten vises alltid
+       i staden for berre ved klikk. Bindinga (bindHelpIcons()) kjem alt frå
+       core.js sin delte, ubetinga bootstrap -- ingen eigen binding trengst her. */
+    .help-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-border); color: var(--color-muted); font-size: .72rem; font-weight: 700; border: none; cursor: pointer; vertical-align: middle; margin-left: .35rem; padding: 0; line-height: 1; }
+    .help-icon__pop { display: none; position: absolute; bottom: 135%; left: 50%; transform: translateX(-50%); width: 230px; background: var(--color-text); color: #fff; font-size: .78rem; font-weight: 400; line-height: 1.45; padding: .65rem .75rem; border-radius: 8px; z-index: 20; text-align: left; }
+    .help-icon.is-open .help-icon__pop { display: block; }
     .field input:not([type="color"]), .field textarea {
       font: inherit; padding: .7rem .85rem; border-radius: 10px;
       border: 1.5px solid var(--color-border); background: var(--color-surface);
@@ -268,6 +276,6 @@
   <script src="../config.js?v=8"></script>
   <script src="../components.js?v=12"></script>
   <script src="../core.js?v=45"></script>
-  <script src="console-core.js?v=88"></script>
+  <script src="console-core.js?v=89"></script>
 </body>
 </html>
