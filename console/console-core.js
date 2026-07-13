@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.32.3";
+  var VIBEVERK_VERSION = "0.33.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -259,7 +259,7 @@ window.VwConsole = (function () {
   }
 
   function resetSC() {
-    if (!confirm("Nullstill all superconfig og gå tilbake til config.js-verdiane?")) return;
+    if (!confirm("Nullstille ALLE tilpassa innstillingar for denne kunden (farger, fontar, tekstar, aktiverte funksjonar, personvernstekst osv.) tilbake til dei nøytrale standardverdiane? Dette skjer umiddelbart og er synleg for besøkjande med ein gong. Kan ikkje angrast. Er du sikker?")) return;
     // App.store.remove(SUPER_KEY) fjerna saman med resten av den lokale
     // cache-fjerninga (sjå getSC()/saveSC() sine notat) -- den nullstilte
     // berre KONSOLLEN sin eigen, uavhengige lokale cache for den VERKELEGE
@@ -1054,7 +1054,7 @@ window.VwConsole = (function () {
           '</div>' +
         '</fieldset>' +
         '<fieldset class="admin-group cs-danger-zone"><legend>Faresone</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Nullstilling slettar all superconfig og startar frå config.js-verdiane. Kan ikkje angrast.</p>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Nullstiller ALLE tilpassa innstillingar for denne kunden (farger, fontar, tekstar, aktiverte funksjonar, personvernstekst osv.) tilbake til dei nøytrale standardverdiane. Dette skjer umiddelbart og er synleg for besøkjande på kunden sitt nettside/Workspace med ein gong. Kan ikkje angrast.</p>' +
           '<button type="button" class="btn btn--ghost" id="cs-reset-btn" style="border-color:#c0392b;color:#c0392b">Nullstill all konfig</button>' +
         '</fieldset>' +
         '<div style="display:flex;gap:.6rem;align-items:center;margin-top:1.4rem">' +
@@ -1247,6 +1247,7 @@ window.VwConsole = (function () {
 
         '<div class="kd-card">' +
           '<strong>6. Set aktiv</strong> — ' + (routingOk ? "klar" : "sperra (ruting ikkje verifisert enno)") +
+          '<p class="field__hint">⚠️ Gjer kunden LIVE: nettsida/Workspace svarer no faktisk på domenenamna over, for alle besøkjande. Dette er det siste steget — dobbeltsjekk at alt over faktisk er korrekt fyrst.</p>' +
           '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + (routingOk ? "" : " disabled") + '>Set aktiv</button></div>' +
           '<p id="kd-activate-result" class="field__hint"></p>' +
         '</div>' +
@@ -1254,7 +1255,7 @@ window.VwConsole = (function () {
         (tenant.status !== "archived"
           ? '<div class="kd-card" style="border-color:#c0392b">' +
               '<strong style="color:#c0392b">Fareområde</strong>' +
-              '<p class="field__hint">Arkivering er ei mjuk sletting — tenanten sluttar umiddelbart å svare på sine hostnames (via resolve_tenant_by_hostname), men registerraden og revisjonssporet vert verande. Kunden sitt eige Supabase-prosjekt vert ikkje sletta eller påverka.</p>' +
+              '<p class="field__hint">Arkivering gjer kunden IKKJE lenger tilgjengeleg på domena sine, umiddelbart. Kunden sitt eige Supabase-prosjekt (og alt innhaldet der) vert IKKJE sletta eller påverka — berre denne registreringa i Console vert markert arkivert. Det finst i dag ingen måte å oppheve dette på i Console.</p>' +
               '<button type="button" class="btn btn--ghost btn--sm" id="kd-archive-btn" style="color:#c0392b;border-color:#c0392b">Arkiver kunde</button>' +
               '<p id="kd-archive-result" class="field__hint"></p>' +
             '</div>'
@@ -1353,7 +1354,7 @@ window.VwConsole = (function () {
     var archiveBtn = wrap.querySelector("#kd-archive-btn");
     if (archiveBtn) {
       archiveBtn.addEventListener("click", function () {
-        if (!confirm("Arkivere «" + tenant.slug + "»? Kunden sluttar umiddelbart å svare på sine hostnames.")) return;
+        if (!confirm("Arkivere «" + tenant.slug + "»? Kunden sluttar UMIDDELBART å svare på domenenamna sine (nettside og Workspace vert utilgjengeleg for besøkjande). Kunden sitt eige Supabase-prosjekt vert IKKJE sletta eller påverka. Det finst i dag ingen måte å oppheve arkivering på i Console — ta kontakt med utviklar om dette må reverserast. Er du sikker?")) return;
         var out = wrap.querySelector("#kd-archive-result");
         out.textContent = "…";
         tenantAdminCall("archive_tenant", { tenant_id: tenant.id }, function (r) {

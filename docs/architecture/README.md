@@ -8,5 +8,6 @@ This explains how Vibeverk is actually built today. It must be updated when real
 | [module-conventions.md](module-conventions.md) | IIFE module contract: structure, registration, render/mount, storage, cache busting |
 | [storage-and-data-flow.md](storage-and-data-flow.md) | localStorage namespace, App.store API, Supabase sync, superconfig, chat data flow |
 | [roles-and-tenants.md](roles-and-tenants.md) | Tenant isolation model, user roles, the three admin surfaces and their auth methods |
+| [copy-style-guide.md](copy-style-guide.md) | How user-facing text (labels, hints, tooltips, confirm dialogs) should read across all three surfaces — plain language, when to use `field({hint,help})` vs `helpIcon()`, the Tier A/B save-and-destructive-action convention |
 
 Together, `storage-and-data-flow.md` and `roles-and-tenants.md` cover what a "data-and-tenancy" document would — storage patterns, Supabase usage and tenant/role handling are already split across these two well-maintained files by topic (storage mechanics vs. roles/tenancy), and merging them into one new file would lose that separation without adding anything. Treat the pair as jointly authoritative for that scope.

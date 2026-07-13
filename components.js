@@ -104,6 +104,9 @@ window.Components = (function () {
   // Liten klikkbar hjelpeboble for ikke-selvforklarende admin-funksjoner.
   // Klikk i stedet for hover, så den fungerer likt på mobil og desktop.
   // Bindes globalt én gang (se bindHelpIcons i core.js) — krever ingen egen binding her.
+  // Bruk helpIcon()/field({hint,help}) fremfor å håndrulle egne forklarings-
+  // avsnitt — se docs/architecture/copy-style-guide.md for når man bruker
+  // hvilken, og hvordan man skriver selve teksten (tone, unngå fagsjargong).
   function helpIcon(text) {
     return `<button type="button" class="help-icon" data-help-toggle aria-label="Hjelp">?<span class="help-icon__pop">${esc(text)}</span></button>`;
   }
@@ -270,7 +273,7 @@ window.Components = (function () {
       ? `<textarea id="${id}" name="${id}" rows="${o.rows || 5}" ${o.required ? "required" : ""} placeholder="${esc(o.placeholder || "")}">${esc(o.value || "")}</textarea>`
       : `<input id="${id}" name="${id}" type="${o.type || "text"}" ${o.required ? "required" : ""} placeholder="${esc(o.placeholder || "")}" value="${esc(o.value || "")}">`;
     return `<div class="field">
-      <label for="${id}">${esc(o.label)}</label>
+      <label for="${id}">${esc(o.label)}${o.help ? " " + helpIcon(o.help) : ""}</label>
       ${control}
       ${o.hint ? `<p class="field__hint">${esc(o.hint)}</p>` : ""}
     </div>`;

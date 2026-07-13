@@ -24,6 +24,10 @@ test-workspace.js    jsdom harness for Workspace (renamed 2026-07-07 from test-i
 .github/workflows/   CI: node test.js + node test-workspace.js on every push
 ```
 
+## User-facing text
+
+All labels, hints, tooltips, placeholders and confirm-dialog text must follow `docs/architecture/copy-style-guide.md` — plain, non-technical language, and the Tier A (routine) / Tier B (destructive) convention for save/delete communication. This applies across all three surfaces (public site/Web-admin, Workspace, Console).
+
 ## Module conventions
 
 - All modules are IIFEs: `(function () { "use strict"; ... })();`

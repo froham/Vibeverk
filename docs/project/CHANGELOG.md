@@ -30,6 +30,30 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.33.0 — 2026-07-13
+
+### Copy-clarity initiative (punkt 0) — phase 1: Console's destructive actions, plus the shared foundation
+
+Kicked off the "forklaringstekster og brukarvennlegheit" initiative from `docs/roadmap/ROADMAP.md` "Next" punkt 0 (user-prioritized above the Sunnvask showcase-customer work), designed with the vibeverk-architect agent same day. Two small, concrete decisions also actioned: `tasks` RLS tightened (see below) and a tenant RLS-read decision recorded (no code change needed there — see CURRENT_STATE.md).
+
+**Foundation** (per Architect recommendation — extend existing patterns, don't invent new ones):
+- New `docs/architecture/copy-style-guide.md`: the plain-language rule (with a jargon → Norwegian-plain glossary), when to use `field({hint})` vs the new `field({help})` vs a full explanatory paragraph, and a two-tier convention for save/destructive-action communication (Tier A — routine/reversible, inline hint only; Tier B — destructive/irreversible, a `confirm()` stating scope/exclusions/reversibility; Tier B-inline — Console-specific, for a routine save whose blast radius is unusually large). Cross-linked from `docs/architecture/README.md` and a new "User-facing text" section in `CLAUDE.md`.
+- `components.js`'s `field()` gained an optional `help` param (renders the existing `helpIcon()` next to the label) — extends the existing primitive rather than adding a competing component, per the Architect's explicit recommendation. Backward-compatible (optional, no behavior change for existing callers).
+- A short pointer comment added above `helpIcon()` in `components.js`, linking to the new style guide.
+
+**Console copy fixes (Tier B / Tier B-inline applied to the highest-consequence gaps found)**:
+- **"Set aktiv" (activate a tenant) had ZERO explanatory text before** — the single biggest gap found: this makes a customer's site/Workspace actually live and publicly reachable, with no warning at all. Added an inline Tier B-inline warning explaining the real consequence in plain terms.
+- **"Arkiver kunde"**: the `confirm()` and the danger-zone hint above it both upgraded to full Tier B (states what's affected, what's explicitly NOT affected — the customer's own Supabase project is untouched — and, honestly, that there is currently no way to reverse archiving in Console at all, rather than silently implying otherwise). The old hint text also named an internal function (`resolve_tenant_by_hostname`) directly in user-facing copy — removed, replaced with a plain description of the actual effect.
+- **"Nullstill all konfig"**: both the danger-zone hint and the `confirm()` reworded to drop the jargon term "superconfig", replaced with a plain description of what's actually reset (colors, fonts, text, enabled features, privacy text).
+
+**Scope note**: per the Architect's recommended sequencing (Console's destructive actions first, since it's the smallest file surface with the highest consequence per mistake), this round deliberately did NOT yet: generalize Console's `.kd-card` checklist markup into a shared helper function (recommended, but deferred — Console has no automated test coverage at all, and this is a larger internal refactor better done as its own verified step rather than blended in here), touch Workspace's destructive-action copy, Web-admin's panels, or the wider inline-tooltip pass. See `docs/roadmap/ROADMAP.md` "Next" punkt 0 for the full remaining plan and rollout order.
+
+**Testing**: no automated test harness exists for Console (`test.js`/`test-workspace.js` don't cover it — a pre-existing, documented gap). Verified via `node --check` (syntax), careful manual review of the edited strings for balanced quotes, and confirming `test.js`/`test-workspace.js` are unaffected by the shared `components.js` change (524/1, 157/1, both unchanged).
+
+**UX/Mobile Reviewer pass run same day (per CLAUDE.md's rule for meaningful UI changes). Verdict: ship with one noted fix — applied.** Live-browser login to Console wasn't possible for the reviewer either (real OTP auth), so this was a code-reading review. Confirmed one real gap: the "Nullstill all konfig" hint/confirm text (unlike its "Arkiver"/"Set aktiv" siblings) never stated the reset takes effect *immediately, live, on the customer's actual site* — fixed, both texts now say so explicitly. The reviewer also flagged that Console never wires up `bindHelpIcons()`, so a future `field({help})` call there would render an inert "?" button — **checked empirically (not just via code-reading) and found to be a false positive**: `core.js`'s own unconditional `boot()` (which every surface including Console loads) already calls `bindHelpIcons()` once globally, confirmed via a live jsdom test (a simulated `[data-help-toggle]` click inside `#console-app` correctly toggled `is-open`) — no fix needed, and none applied (adding a second call would have broken the toggle, per the already-documented `workspace/workspace-core.js` double-binding landmine). Also fixed: `docs/architecture/copy-style-guide.md` referenced a `kdCard()` helper as if it already existed — corrected to state it's a recommended future extraction, not yet built.
+
+`?v=N` bumped: `components.js` (11→12, all four HTML entry points), `console-core.js` (84→85, `console/index.html`). `VIBEVERK_VERSION` 0.32.3 → 0.33.0.
+
 ## 0.32.3 — 2026-07-13
 
 ### Real fix for the backup/restore BLOCKER: transactional `restore_backup_tables()` RPC
