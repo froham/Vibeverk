@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.0 — 2026-07-13
+
+### Tenant admin-user bootstrap + operator support access
+
+Found while dry-run testing the vibeverk-as-tenant migration: a freshly-provisioned tenant's own Supabase project has zero Auth users — nobody could log into Workspace/Admin for it until someone manually created a user via the Supabase dashboard. User asked for a real fix, plus a way for an operator to help a customer remotely without knowing their password. Explicitly considered and rejected: a standing/shared default-admin account — a persistent, undisclosed credential sitting inside a customer's *own* database is a real trust/compliance problem the moment anyone inspects their own `auth.users` table, and is a classic never-rotated-shared-secret risk besides.
+
+Designed by the Architect, reviewed by a general-purpose agent standing in for the Security Auditor role (no blocking findings; two low-effort fixes applied — email case-normalization before lookups — and two "before a real paying customer" follow-ups noted below). Implemented:
+
+- **`invite_tenant_admin`** (new `tenant-admin` action, Console step "4b"): sends a real Supabase invite to the customer's actual first-admin email, using the tenant's own Vault-stored service_role key (same cross-project pattern as `verify_tenant_schema`). Reuses the existing `handle_new_user()` trigger to create the `role='admin'` row — no hand-written insert. Sets `tenants.first_admin_invited_at` (new column, `supabase-control` migration `20260713175909`).
+- **`activate_tenant`** now also requires `first_admin_invited_at` to be set — a tenant can no longer go live with literally no path for anyone to log in.
+- **`generate_support_access`** (new action, Console "Support-tilgang" card): mints a genuinely time-limited Supabase magic-link for an *existing* real admin user, so an operator can help directly without a password and without any standing credential. Requires an admin user to already exist (points at `invite_tenant_admin` otherwise). Never persists the link/token itself — only that an operator requested access, for whom, and when, in `broker_audit_log`.
+- **Workspace support-session banner**: when a magic-link redirect includes `?support=1` and a real session is confirmed, `workspace-core.js` renders a persistent banner ("Ein Vibeverk-supportøkt er aktiv på denne kontoen no.") — the only signal available to the customer, since the underlying Auth session is otherwise indistinguishable from a genuine login by that same user.
+
+**Known follow-ups, not yet done** (per the security review, non-blocking for the current dry-run/staging tenant): (1) the support banner relies on an unmodified redirect URL surviving the trip through the operator's own hands — a server-recorded, authenticated-check signal would be more robust than a URL parameter alone; (2) no rate/anomaly alerting on repeated `generate_support_access` calls by one operator across many tenants; (3) email-as-PII in `broker_audit_log` still needs a Privacy/Compliance Advisor pass before a real paying customer, same open item as noted for `invite_tenant_admin`'s audit entries.
+
 ## 0.33.7 — 2026-07-13
 
 ### `verify_tenant_routing` can now re-verify already-active tenants

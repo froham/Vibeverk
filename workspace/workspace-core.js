@@ -644,7 +644,34 @@ window.Intranet = (function () {
     setTimeout(function() { root.querySelector("#sp-pass1").focus(); }, 50);
   }
 
+  // Architect design (2026-07-13): a Console-generated support-access magic
+  // link redirects here with ?support=1. There is no way to distinguish a
+  // support-access session from a genuine login at the Supabase Auth level
+  // (same real user, same real JWT) -- so this banner is the ONLY signal
+  // the customer ever gets that an operator is using their account for
+  // support right now. Deliberately persistent (not auto-dismissing) and
+  // rendered on <body>, not the #intranet root, so it survives Workspace's
+  // own hash-routing/buildShell() re-renders untouched.
+  function renderSupportBanner() {
+    if (document.getElementById("vw-support-banner")) return;
+    var el = document.createElement("div");
+    el.id = "vw-support-banner";
+    el.setAttribute("role", "status");
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#7c3aed;color:#fff;" +
+      "font:600 .82rem/1.4 sans-serif;text-align:center;padding:.5rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,.15)";
+    el.textContent = "Ein Vibeverk-supportøkt er aktiv på denne kontoen no.";
+    document.body.appendChild(el);
+  }
+
   function boot() {
+    // Architect design (2026-07-13): read+strip the support marker before
+    // anything else touches window.location, so it survives Supabase's own
+    // hash processing below.
+    var isSupportAccess = window.location.search.indexOf("support=1") !== -1;
+    if (isSupportAccess) {
+      history.replaceState(null, "", location.pathname + location.hash);
+    }
+
     // Invite/recovery-redirect: handsam FØR productMode-sjekk slik at web-only-kundar også kan setje passord.
     if (_sb) {
       var hashStr    = window.location.hash;
@@ -693,6 +720,7 @@ window.Intranet = (function () {
             context.displayName = (r.data && r.data.display_name) || session.user.email;
             context.role        = role;
             sessionStorage.setItem(NS + ":admin", role);
+            if (isSupportAccess) renderSupportBanner();
             App.ui.hydrateFromSupabase(init);
           });
         } else {
