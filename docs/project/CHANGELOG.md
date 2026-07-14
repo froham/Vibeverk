@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.7 — 2026-07-14
+
+### Console: renumbered onboarding checklist as one flat, linear sequence
+
+Found live while onboarding the Sunnvask demo: the old `1, 2, 3, 3b, 3c, 4, 4b, 5, 6` lettered-substep scheme was confusing to follow in practice, and two real gaps discovered live during that same onboarding had no card at all — deploying the customer's own Edge Functions (`manage-user`/`send-reply`, easy to miss since `db push` never deploys these) and setting up the customer's actual site/branding configuration (company name, colors, text, modules) before inviting the real admin.
+
+New flat sequence (1–11): register → create Supabase project → connection+keys (merged former 3/3b) → run migrations → verify schema → **deploy Edge Functions (new)** → set up SMTP → **set up customer configuration (new, points to the "Produkt"/"Web"/"Workspace"/"Modular"/"Analyse"/"Personvern" tabs)** → point hostname at Vercel + verify routing (merged) → invite admin → activate. All existing preconditions/gates are unchanged (schema verification is still required before routing verification and before the invite, exactly as before) — this is a display/ordering and content change only, not a change to any actual gate logic. Server-side error messages in `tenant-admin/index.ts` updated to reference the new step numbers.
+
+`docs/architecture/tenant-onboarding-runbook.md` rewritten to match the same 1–11 numbering exactly.
+
 ## 0.34.6 — 2026-07-14
 
 ### Console: auto-fetch project keys, client-side migration-command generator
