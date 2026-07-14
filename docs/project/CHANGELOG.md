@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.2 — 2026-07-14
+
+### `configure_tenant_smtp` fixes found during live testing
+
+Two real bugs found while testing 0.34.1 end-to-end against the `Test-vercel` dry-run tenant:
+
+1. **PATCH failed outright (HTTP 400)**: Supabase Management API's `config/auth` endpoint expects `smtp_port` as a **string** (`"587"`), not a number — the initial implementation sent a number and every call failed. Also improved the error path to capture and log the actual response body instead of just the HTTP status, since the generic status alone cost a manual `curl` round-trip to diagnose.
+2. **Invite email arrived but its link redirected to `localhost`**: a freshly provisioned tenant project defaults to `site_url: http://localhost:3000` and an empty `uri_allow_list`. GoTrue does not error when `redirectTo` (the tenant's real hostname, passed by `invite_tenant_admin`/`generate_support_access`) isn't in the allow-list — it silently substitutes `site_url` instead. `configure_tenant_smtp` now also sets `site_url` and `uri_allow_list` from the tenant's own `hostnames`, confirmed via the same follow-up GET pattern already used for the SMTP fields. This is exactly what the button's existing hint text already promised ("invitasjon/support-lenker faktisk kjem fram") — no Console copy change needed.
+
+Both fixed and verified directly against the Management API before redeploying `tenant-admin`.
+
+---
+
 ## 0.34.1 — 2026-07-13
 
 ### Automated shared-SMTP setup for tenant projects (`configure_tenant_smtp`)
