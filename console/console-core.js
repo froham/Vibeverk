@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.34.5";
+  var VIBEVERK_VERSION = "0.34.6";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1253,20 +1253,30 @@ window.VwConsole = (function () {
         '</div>' +
 
         '<div class="kd-card"><strong>3. Kopling</strong> ' + (hasConnection ? "✓" : "—") +
-          '<form id="kd-conn-form" style="margin-top:.6rem">' +
-            C.field({ id: "kd-url", label: "data_plane_url", value: tenant.data_plane_url || "", placeholder: "https://xxxx.supabase.co" }) +
-            C.field({ id: "kd-anon", label: "data_plane_anon_key", value: tenant.data_plane_anon_key || "", placeholder: "eyJ…" }) +
-            '<button type="submit" class="btn btn--ghost btn--sm">Lagre kopling</button>' +
-            '<p class="form__status" id="kd-conn-status" style="margin-top:.4rem"></p>' +
+          '<p class="field__hint">Lim inn berre prosjekt-URL-en og hent nøklane automatisk, ELLER lim inn alle tre sjølv under.</p>' +
+          '<form id="kd-autofetch-form" style="margin-top:.6rem">' +
+            C.field({ id: "kd-autofetch-url", label: "data_plane_url", value: tenant.data_plane_url || "", placeholder: "https://xxxx.supabase.co" }) +
+            '<button type="submit" class="btn btn--ghost btn--sm">Hent nøklar automatisk</button>' +
+            '<p class="form__status" id="kd-autofetch-status" style="margin-top:.4rem"></p>' +
           '</form>' +
+          '<details style="margin-top:.6rem">' +
+            '<summary style="cursor:pointer;font-size:.85rem;color:#2563eb">…eller lim inn nøklane manuelt</summary>' +
+            '<form id="kd-conn-form" style="margin-top:.6rem">' +
+              C.field({ id: "kd-url", label: "data_plane_url", value: tenant.data_plane_url || "", placeholder: "https://xxxx.supabase.co" }) +
+              C.field({ id: "kd-anon", label: "data_plane_anon_key", value: tenant.data_plane_anon_key || "", placeholder: "eyJ…" }) +
+              '<button type="submit" class="btn btn--ghost btn--sm">Lagre kopling</button>' +
+              '<p class="form__status" id="kd-conn-status" style="margin-top:.4rem"></p>' +
+            '</form>' +
+            '<form id="kd-key-form" style="margin-top:.6rem">' +
+              C.field({ id: "kd-srvkey", label: "service_role-nøkkel", type: "password", placeholder: "eyJ…" }) +
+              '<button type="submit" class="btn btn--ghost btn--sm">Lagre nøkkel</button>' +
+              '<p class="form__status" id="kd-key-status" style="margin-top:.4rem"></p>' +
+            '</form>' +
+          '</details>' +
         '</div>' +
 
-        '<div class="kd-card"><strong>3b. Service_role-nøkkel</strong> (lagra trygt via Vault, aldri vist att)' +
-          '<form id="kd-key-form" style="margin-top:.6rem">' +
-            C.field({ id: "kd-srvkey", label: "service_role-nøkkel", type: "password", placeholder: "eyJ…" }) +
-            '<button type="submit" class="btn btn--ghost btn--sm">Lagre nøkkel</button>' +
-            '<p class="form__status" id="kd-key-status" style="margin-top:.4rem"></p>' +
-          '</form>' +
+        '<div class="kd-card"><strong>3b. Service_role-nøkkel</strong> ' + (tenant.data_plane_service_role_secret_id ? "✓" : "—") +
+          '<p class="field__hint">Lagra trygt via Vault, aldri vist att. "Hent nøklar automatisk" i steg 3 set denne òg — bruk manuell-fana der berre om automatikken ikkje fungerer.</p>' +
         '</div>' +
 
         '<div class="kd-card"><strong>3c. Set opp e-post (SMTP)</strong> ' + (smtpOk ? "✓" : "—") +
@@ -1277,6 +1287,15 @@ window.VwConsole = (function () {
 
         '<div class="kd-card"><strong>4. Køyr og verifiser skjema</strong>' +
           '<p class="field__hint">Køyr migrasjonane manuelt mot det nye prosjektet (<code>npx supabase db push --db-url …</code>), deretter:</p>' +
+          '<details style="margin:.4rem 0">' +
+            '<summary style="cursor:pointer;font-size:.85rem;color:#2563eb">Generer kommandoen frå tilkoplingsstrengen</summary>' +
+            '<div style="margin-top:.5rem">' +
+              C.field({ id: "kd-migrate-connstr", label: "Lim inn tilkoplingsstrengen frå Supabase Dashboard (Session pooler, med passord)", type: "password", placeholder: "postgresql://postgres.xxxx:PASSORD@aws-0-region.pooler.supabase.com:5432/postgres" }) +
+              '<button type="button" class="btn btn--ghost btn--sm" id="kd-migrate-gen-btn">Generer kommando</button>' +
+              '<p class="field__hint" style="font-size:.75rem">Vert ALDRI sendt nokon stad — berre brukt lokalt i nettlesaren til å byggje kommandoen (URL-kodar passordet riktig for deg).</p>' +
+              '<pre id="kd-migrate-cmd" style="white-space:pre-wrap;word-break:break-all;background:#f1f5f9;padding:.6rem;border-radius:6px;font-size:.8rem;margin-top:.5rem;display:none"></pre>' +
+            '</div>' +
+          '</details>' +
           '<button type="button" class="btn btn--ghost btn--sm" id="kd-verify-btn">Verifiser skjema</button>' +
           '<p id="kd-verify-result" class="field__hint"></p>' +
         '</div>' +
@@ -1347,6 +1366,33 @@ window.VwConsole = (function () {
           if (r.error) { statusMsg(wrap.querySelector("#kd-hostnames-status"), r.error, false); return; }
           loadTenants(function () { renderKundar(_sc, fullWrap); });
         });
+      });
+    }
+
+    wrap.querySelector("#kd-autofetch-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var url = wrap.querySelector("#kd-autofetch-url").value.trim();
+      var out = wrap.querySelector("#kd-autofetch-status");
+      if (!url) { statusMsg(out, "data_plane_url er påkrevd", false); return; }
+      statusMsg(out, "Hentar…", true);
+      tenantAdminCall("fetch_tenant_project_keys", { tenant_id: tenant.id, data_plane_url: url }, function (r) {
+        statusMsg(out, r.error || "✓ Kopling og service_role-nøkkel henta og lagra", !r.error);
+        if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
+      });
+    });
+
+    var migrateGenBtn = wrap.querySelector("#kd-migrate-gen-btn");
+    if (migrateGenBtn) {
+      migrateGenBtn.addEventListener("click", function () {
+        var raw = wrap.querySelector("#kd-migrate-connstr").value.trim();
+        var out = wrap.querySelector("#kd-migrate-cmd");
+        var m = raw.match(/^(postgresql:\/\/[^:]+:)([^@]+)(@.+)$/);
+        out.style.display = "block";
+        if (!m) {
+          out.textContent = "Kjente ikkje igjen formatet — lim inn heile tilkoplingsstrengen Supabase viser deg (Session pooler).";
+          return;
+        }
+        out.textContent = 'npx supabase db push --db-url "' + m[1] + encodeURIComponent(m[2]) + m[3] + '"';
       });
     }
 

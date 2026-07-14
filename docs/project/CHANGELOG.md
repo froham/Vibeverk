@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.6 — 2026-07-14
+
+### Console: auto-fetch project keys, client-side migration-command generator
+
+Two quality-of-life additions to the onboarding checklist, discussed with the user as "how much of this could Console do for me" — scoped deliberately narrow (see below for what was explicitly rejected).
+
+- **New action `fetch_tenant_project_keys`**: merges "3. Kopling" + "3b. Service_role-nøkkel" into one step. The operator still creates the Supabase project and pastes in its URL by hand (unchanged — still deliberately not automated, see ADR-0010), but no longer has to separately copy the `anon` and `service_role` keys out of the Dashboard. Uses the same platform-level Management API token `configure_tenant_smtp` already holds — this doesn't expand that token's reach, it's still a read-only fetch of a project's own key set. Same `CONTROL_PLANE_PROJECT_REF` self-target guard as `configure_tenant_smtp`. Console's manual paste-in forms remain available (collapsed under "…eller lim inn nøklane manuelt") as a fallback.
+- **Migration-command generator**: a client-side-only helper under step "4" — paste the full connection string Supabase's own Dashboard shows (with the plain password in it), and it renders the exact, correctly URL-encoded `npx supabase db push --db-url "..."` command. Never sent anywhere — pure string transformation in the browser. Directly addresses real confusion hit this session (unencoded special characters in a password breaking the connection string, uncertainty about which parts were placeholders).
+
+**Explicitly not built, and why**: actually *running* the migrations from Console (via the Management API's SQL-execution endpoint) was considered and deliberately deferred — it would need to bundle migration SQL into the Edge Function itself (no repo access at runtime), replicate `supabase db push`'s own migration-history tracking, and introduces a qualitatively new capability (arbitrary SQL execution against any customer project via a platform-wide credential) that the rest of this file avoids. Automating Supabase project *creation* itself remains rejected per ADR-0010 (would need an org-wide, billing-capable token).
+
 ## 0.34.5 — 2026-07-14
 
 ### Fix: 0.34.4 broke every invite outright ("Berre admin kan endre rolle")

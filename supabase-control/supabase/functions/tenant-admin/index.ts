@@ -559,6 +559,98 @@ serve(async (req: Request) => {
     return json({ success: true });
   }
 
+  // ── fetch_tenant_project_keys ─────────────────────────────────────────────
+  // Merges update_tenant_connection + set_tenant_service_role_key into one
+  // step: the operator still has to create the Supabase project by hand and
+  // paste in its URL (that part is deliberately not automated, see the "2.
+  // Opprett Supabase-prosjekt" card and ADR-0010 -- would need an org-wide,
+  // project-create/delete/billing-capable token, a categorically bigger
+  // secret than anything else this file holds), but no longer has to
+  // separately copy the anon key and the service_role key out of the
+  // Dashboard by hand. Uses the SAME platform-level Management API token
+  // configure_tenant_smtp already uses -- this doesn't expand what that
+  // token can already reach, it's still read-only against a project's own
+  // key set, on a tenant this operator is already privileged to configure.
+  //
+  // Same CONTROL_PLANE_PROJECT_REF self-target guard as configure_tenant_smtp,
+  // for the same reason: this is the other action using the platform-wide
+  // token rather than a per-tenant Vault key.
+  if (action === "fetch_tenant_project_keys") {
+    if (tenant.status !== "provisioning") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er i status 'provisioning'" }, 403);
+    }
+    const { data_plane_url } = body;
+    if (!data_plane_url || !SUPABASE_PROJECT_URL_RE.test(data_plane_url)) {
+      return json({ error: "data_plane_url må vera ein ekte Supabase-prosjekt-URL (https://xxxx.supabase.co)" }, 400);
+    }
+    const mgmtToken = Deno.env.get("TENANT_MGMT_API_TOKEN");
+    if (!mgmtToken) {
+      await auditReject(tenant.id, action, "Management API-token manglar på server");
+      return json({ error: "Management API-token manglar på server (kontakt utviklar)" }, 500);
+    }
+    const ref = data_plane_url.replace(/^https:\/\//, "").split(".")[0];
+    const CONTROL_PLANE_PROJECT_REF = "jxoglthrnshabqmdmnui";
+    if (ref === CONTROL_PLANE_PROJECT_REF) {
+      await auditReject(tenant.id, action, "data_plane_url peikar på kontrollplanet sjølv");
+      return json({ error: "Ugyldig data_plane_url — peikar på kontrollplanet sjølv" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    let anonKey: string | undefined;
+    let serviceRoleKey: string | undefined;
+    try {
+      const keysResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/api-keys?reveal=true", {
+        headers: { "Authorization": "Bearer " + mgmtToken },
+      });
+      if (!keysResp.ok) {
+        const bodyText = await keysResp.text().catch(() => "");
+        await auditFinish(auditId, "error", "Management API GET HTTP " + keysResp.status + (bodyText ? ": " + bodyText : ""));
+        return json({ error: "Fann ikkje nøklane for dette prosjektet (HTTP " + keysResp.status + ") — er ref-en riktig?" }, 500);
+      }
+      const keys = await keysResp.json();
+      anonKey = (keys as Array<{ name: string; type: string; api_key: string }>)
+        .find((k) => k.name === "anon" && k.type === "legacy")?.api_key;
+      serviceRoleKey = (keys as Array<{ name: string; type: string; api_key: string }>)
+        .find((k) => k.name === "service_role" && k.type === "legacy")?.api_key;
+    } catch (e) {
+      await auditFinish(auditId, "error", e instanceof Error ? e.message : "nettverksfeil");
+      return json({ error: "Kunne ikkje nå Supabase Management API" }, 500);
+    }
+    if (!anonKey || !serviceRoleKey) {
+      await auditFinish(auditId, "error", "fann ikkje anon/service_role-nøkkel i svaret");
+      return json({ error: "Fann ikkje anon- eller service_role-nøkkel for dette prosjektet" }, 500);
+    }
+    // Never log/return serviceRoleKey itself -- same discipline as
+    // set_tenant_service_role_key, which this mirrors.
+    const { data: updated, error: connErr } = await controlSrvSb
+      .from("tenants")
+      .update({ data_plane_url, data_plane_anon_key: anonKey, updated_at: new Date().toISOString() })
+      .eq("id", tenant_id)
+      .eq("status", "provisioning")
+      .select("id");
+    if (connErr) {
+      await auditFinish(auditId, "error", connErr.message);
+      return json({ error: "Lagring av kopling feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
+      return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
+    }
+    const secretName = "tenant-" + tenant.slug + "-service-role-" + Date.now();
+    const { error: keyErr } = await controlSrvSb.rpc("store_tenant_service_role_key", {
+      p_tenant_id: tenant_id,
+      p_key: serviceRoleKey,
+      p_secret_name: secretName,
+    });
+    if (keyErr) {
+      await auditFinish(auditId, "error", "kopling lagra, men nøkkel-lagring feila: " + keyErr.message);
+      return json({ error: "Kopling vart lagra, men service_role-nøkkelen kunne ikkje lagrast — prøv igjen" }, 500);
+    }
+    await auditFinish(auditId, "success");
+    return json({ success: true });
+  }
+
   // ── configure_tenant_smtp ─────────────────────────────────────────────────
   // Step 3c (Architect design, 2026-07-13): closes the email-delivery gap
   // found while testing invite_tenant_admin -- a freshly provisioned tenant
