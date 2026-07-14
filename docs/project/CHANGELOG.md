@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.4 — 2026-07-14
+
+### Fix: invited admins landed as `role='member'` instead of `'admin'`
+
+Found while live-testing 0.34.3's fixed invite flow — a fresh invite's `auth.users.raw_user_meta_data.role` was correctly `"admin"`, but the resulting `public.users.role` was stored as `'member'`. Two real, pre-existing gaps in the baseline customer schema (`supabase/migrations/`), not introduced this session, just never surfaced until a fully-automated invite flow existed with nobody manually correcting roles afterward:
+
+1. **`handle_new_user()` timing bug**: the trigger fired `AFTER INSERT ON auth.users` and only trusted `raw_user_meta_data->>'role'` when `NEW.invited_at IS NOT NULL` (a deliberate anti-self-registration-to-admin guard). But GoTrue's `admin.inviteUserByEmail()` creates the row first and sets `invited_at` in a *separate* follow-up update — so at insert-time `invited_at` was still `NULL` even for a genuine invite, and role always fell through to `'member'`. Fixed by also firing the trigger `OR UPDATE OF invited_at` and updating role at that point instead — same security invariant (`invited_at` still never client-settable), just catching the right moment.
+2. **Missing `service_role` grant on `public.users`**: same class of gap as ADR-0009's `store` fix — `service_role` had only `REFERENCES`/`TRIGGER`/`TRUNCATE`, no `SELECT`/`INSERT`/`UPDATE`/`DELETE`. This silently broke `generate_support_access`'s existence check (`tenantSrvSb.from("users").select(...)`, using the tenant's own service_role key), making it indistinguishable from "no admin user exists" — always a misleading 404 even when a real admin was present.
+
+New migration: `supabase/migrations/20260714131500_fix_invited_role_timing_and_service_role_users_grant.sql`. Applied to both production (`clzczbyklgdtdhgjphup`) and staging (`syqnyfeponexmkdvnsga`) and verified directly (grant + trigger definition). Every future customer project picks this up automatically via the normal migration history.
+
+Also did a one-time data repair (trigger briefly disabled, then re-enabled and confirmed) for the one real user this bug affected in production: `frode@hammerseth.com`'s `role` corrected from `'member'` to `'admin'`, matching their genuine invite metadata.
+
 ## 0.34.3 — 2026-07-14
 
 ### Fix: invite link skipped straight to Workspace instead of "set your password"
