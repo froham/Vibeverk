@@ -673,8 +673,12 @@ window.Intranet = (function () {
     }
 
     // Invite/recovery-redirect: handsam FØR productMode-sjekk slik at web-only-kundar også kan setje passord.
+    // Les window.__vwAuthHash (fanga i index.html FØR core.js sin Supabase-klient
+    // las+tømde window.location.hash), ikkje den live hash-en direkte -- elles
+    // kan sjekken her kome for seint og gå rett til "har alt session"-greina,
+    // slik at brukaren aldri får sjå "Vel ditt passord".
     if (_sb) {
-      var hashStr    = window.location.hash;
+      var hashStr    = window.__vwAuthHash || window.location.hash;
       var isInvite   = hashStr.indexOf("type=invite")   !== -1;
       var isRecovery = hashStr.indexOf("type=recovery") !== -1;
       if (isInvite || isRecovery) {

@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.3 — 2026-07-14
+
+### Fix: invite link skipped straight to Workspace instead of "set your password"
+
+User-reported after 0.34.2's redirect fix landed: clicking the invite link now landed on the right domain, but went straight into Workspace with no chance to set a password — meaning the invited admin had a live session but no password, so they couldn't log in again later without another magic link.
+
+Root cause: `workspace-core.js`'s `boot()` detected an invite/recovery flow by checking `window.location.hash` for `type=invite`/`type=recovery`. But `core.js` constructs the Supabase client with the (default) `detectSessionInUrl: true`, which reads and clears `location.hash` itself as soon as the client is built — and `core.js` loads and runs *before* `workspace-core.js` in `workspace/index.html`. By the time `boot()` checked the hash, it was already gone, so the flow silently fell through to the plain "has a session → go straight in" branch.
+
+Fixed with a tiny inline script at the very top of `workspace/index.html`'s `<head>` (before the Supabase library and `core.js` even load) that captures the raw hash into `window.__vwAuthHash` if it looks like an invite/recovery redirect, untouched. `boot()` now reads that captured value instead of the live (possibly already-stripped) `location.hash`. `core.js`'s own session detection is unaffected — only our own "was this an invite?" check needed the earlier snapshot.
+
 ## 0.34.2 — 2026-07-14
 
 ### `configure_tenant_smtp` fixes found during live testing

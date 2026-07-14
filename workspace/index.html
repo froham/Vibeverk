@@ -569,13 +569,24 @@
        Alle Workspace-ruter bruker #/-prefiks slik at dei aldri matchar
        core.js sin route()-funksjon.
        ==================================================================== -->
+  <!-- Fanger invite/recovery-hashen FØR core.js under konstruerer Supabase-klienten
+       (default detectSessionInUrl: true) -- den klienten les og TØMMER
+       window.location.hash synkront-ish (microtask) med éin gong han vert oppretta,
+       så viss workspace-core.js sin boot() les window.location.hash direkte der,
+       kan han alt vera tom. Denne fangar rå-hashen fyrst, urørt, og let Supabase
+       sin eigen prosessering skje som vanleg etterpå. -->
+  <script>
+    if (location.hash.indexOf("type=invite") !== -1 || location.hash.indexOf("type=recovery") !== -1) {
+      window.__vwAuthHash = location.hash;
+    }
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="../config.js?v=8"></script>
   <script src="../components.js?v=12"></script>
   <script src="../core.js?v=45"></script>
 
   <!-- Workspace-motor og moduler -->
-  <script src="workspace-core.js?v=17"></script>
+  <script src="workspace-core.js?v=18"></script>
   <script src="module-announcements.js?v=8"></script>
   <script src="module-settings.js?v=7"></script>
   <script src="module-tasks.js?v=9"></script>
