@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.34.6";
+  var VIBEVERK_VERSION = "0.34.7";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1240,7 +1240,7 @@ window.VwConsole = (function () {
                 C.field({ id: "kd-hostnames-edit", label: "Domenenamn (kommaseparert)", value: (tenant.hostnames || []).join(", "), placeholder: "kunde.no, www.kunde.no" }) +
                 '<button type="submit" class="btn btn--ghost btn--sm">Lagre domenenamn</button>' +
                 '<p class="field__hint">' + (tenant.status === "provisioning"
-                  ? 'Endrar du domenenamn må steg 4 (skjema) og steg 5 (ruting) verifiserast på nytt før aktivering.'
+                  ? 'Endrar du domenenamn må steg 5 (skjema) og steg 9 (ruting) verifiserast på nytt før aktivering.'
                   : '⚠️ Kunden er aktiv — endring tek effekt UMIDDELBART på det livesida svarer på, utan ny verifisering. Sjekk at DNS/Vercel peikar rett FØR du lagrar.') + '</p>' +
                 '<p class="form__status" id="kd-hostnames-status" style="margin-top:.4rem"></p>' +
               '</form>'
@@ -1252,7 +1252,7 @@ window.VwConsole = (function () {
           '<p class="field__hint">Gjer dette manuelt via Supabase Dashboard/CLI (kan ikkje automatiserast trygt — sjå Fase 9-notatet). Kom tilbake hit når prosjektet finst.</p>' +
         '</div>' +
 
-        '<div class="kd-card"><strong>3. Kopling</strong> ' + (hasConnection ? "✓" : "—") +
+        '<div class="kd-card"><strong>3. Kopling og nøklar</strong> ' + (hasConnection && tenant.data_plane_service_role_secret_id ? "✓" : "—") +
           '<p class="field__hint">Lim inn berre prosjekt-URL-en og hent nøklane automatisk, ELLER lim inn alle tre sjølv under.</p>' +
           '<form id="kd-autofetch-form" style="margin-top:.6rem">' +
             C.field({ id: "kd-autofetch-url", label: "data_plane_url", value: tenant.data_plane_url || "", placeholder: "https://xxxx.supabase.co" }) +
@@ -1275,18 +1275,8 @@ window.VwConsole = (function () {
           '</details>' +
         '</div>' +
 
-        '<div class="kd-card"><strong>3b. Service_role-nøkkel</strong> ' + (tenant.data_plane_service_role_secret_id ? "✓" : "—") +
-          '<p class="field__hint">Lagra trygt via Vault, aldri vist att. "Hent nøklar automatisk" i steg 3 set denne òg — bruk manuell-fana der berre om automatikken ikkje fungerer.</p>' +
-        '</div>' +
-
-        '<div class="kd-card"><strong>3c. Set opp e-post (SMTP)</strong> ' + (smtpOk ? "✓" : "—") +
-          '<p class="field__hint">Set opp e-postsending for denne kunden (delt Vibeverk-avsendar) slik at invitasjon/support-lenker faktisk kjem fram — utan dette er kunden avgrensa til 2 e-postar i timen frå Supabase sin standard-sendar.</p>' +
-          '<button type="button" class="btn btn--ghost btn--sm" id="kd-smtp-btn">Set opp e-post</button>' +
-          '<p id="kd-smtp-result" class="field__hint"></p>' +
-        '</div>' +
-
-        '<div class="kd-card"><strong>4. Køyr og verifiser skjema</strong>' +
-          '<p class="field__hint">Køyr migrasjonane manuelt mot det nye prosjektet (<code>npx supabase db push --db-url …</code>), deretter:</p>' +
+        '<div class="kd-card"><strong>4. Køyr migrasjonar</strong>' +
+          '<p class="field__hint">Køyr migrasjonane manuelt mot det nye prosjektet (<code>npx supabase db push --db-url …</code>) — dette gir kunden heile databaseskjemaet (tabellar, RLS, funksjonar).</p>' +
           '<details style="margin:.4rem 0">' +
             '<summary style="cursor:pointer;font-size:.85rem;color:#2563eb">Generer kommandoen frå tilkoplingsstrengen</summary>' +
             '<div style="margin-top:.5rem">' +
@@ -1296,12 +1286,40 @@ window.VwConsole = (function () {
               '<pre id="kd-migrate-cmd" style="white-space:pre-wrap;word-break:break-all;background:#f1f5f9;padding:.6rem;border-radius:6px;font-size:.8rem;margin-top:.5rem;display:none"></pre>' +
             '</div>' +
           '</details>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>5. Verifiser skjema</strong> ' + (schemaOk ? "✓" : "—") +
+          '<p class="field__hint">Sjekk at migrasjonane i steg 4 faktisk gjekk gjennom (tabellar finst, RLS er på) — ikkje berre stol på at kommandoen ikkje viste feil.</p>' +
           '<button type="button" class="btn btn--ghost btn--sm" id="kd-verify-btn">Verifiser skjema</button>' +
           '<p id="kd-verify-result" class="field__hint"></p>' +
         '</div>' +
 
-        '<div class="kd-card"' + (schemaOk ? "" : ' style="opacity:.6"') + '><strong>4b. Inviter admin-brukar</strong> ' + (adminInvitedOk ? "✓" : "—") +
-          '<p class="field__hint">Sender ei ekte invitasjonslenke til kunden sin fyrste admin-brukar (dei set sjølv passord). Kan sendast fleire gongar (t.d. om e-posten ikkje kjem fram).</p>' +
+        '<div class="kd-card"><strong>6. Deploy Edge Functions</strong>' +
+          '<p class="field__hint">Lett å gløyme — <code>db push</code> (steg 4) gir berre databaseskjemaet, IKKJE Edge Functions. Utan dette feilar Workspace sin eigen brukaradmin (manage-user) og chat/kontaktskjema-svar (send-reply) med ei uklar CORS-feil, ikkje ei tydeleg "ikkje deploya"-melding.</p>' +
+          '<pre style="white-space:pre-wrap;word-break:break-all;background:#f1f5f9;padding:.6rem;border-radius:6px;font-size:.8rem">npx supabase functions deploy manage-user --project-ref &lt;ref&gt;\nnpx supabase functions deploy send-reply --project-ref &lt;ref&gt;</pre>' +
+          '<p class="field__hint">send-reply treng i tillegg sin eigen <code>RESEND_API_KEY</code>-hemmelegheit (<code>npx supabase secrets set RESEND_API_KEY=... --project-ref &lt;ref&gt;</code>) — berre naudsynt om kunden skal bruke chat/kontaktskjema-svar, ikkje for vanleg innlogging/brukaradmin.</p>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>7. Set opp e-post (SMTP)</strong> ' + (smtpOk ? "✓" : "—") +
+          '<p class="field__hint">Set opp e-postsending for denne kunden (delt Vibeverk-avsendar) slik at invitasjon/support-lenker faktisk kjem fram — utan dette er kunden avgrensa til 2 e-postar i timen frå Supabase sin standard-sendar.</p>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="kd-smtp-btn">Set opp e-post</button>' +
+          '<p id="kd-smtp-result" class="field__hint"></p>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>8. Set opp kundekonfigurasjon</strong>' +
+          '<p class="field__hint">Firmanamn, farger/fontar, tekst (hero/om/kontakt/nyhende/tenester), personvernerklæring, web-admin-passord, modul-val — gjer dette i dei andre Console-fanene ("Produkt", "Web", "Workspace", "Modular", "Analyse", "Personvern"), ikkje her. Gjer dette FØR steg 10 (invitasjon) slik at den ekte kunde-adminen ser eit ferdig oppsett med det same, ikkje standardverdiar.</p>' +
+        '</div>' +
+
+        '<div class="kd-card"' + (schemaOk && hasHostnames ? "" : ' style="opacity:.6"') + '><strong>9. Peik hostname mot Vercel og verifiser ruting</strong> ' + (routingOk ? "✓" : "—") +
+          '<p class="field__hint">Hostnames: ' + (hasHostnames ? C.esc(tenant.hostnames.join(", ")) : "ingen registrert") + '. Krev at DNS/Vercel-oppsettet for desse peikar hit FØR du trykkjer — sjekken gjer eit ekte HTTP-kall mot kvar hostname. Demo utan eige domene: legg til ein ledig <code>namn.vercel.app</code>-alias i Vercel-prosjektet. Ekte kunde med eige domene: dette er ein eigen, seinare, eksplisitt godkjend DNS-cutover — aldri bunta inn her.' +
+            (tenant.status === "active" ? " Kan òg køyrast etter at kunden er aktiv, t.d. etter at DNS er flytta til ny leverandør — sjekken les berre av og påverkar ikkje den ekte trafikken." : "") +
+          '</p>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="kd-routing-btn"' + (schemaOk && hasHostnames ? "" : " disabled") + '>Verifiser ruting</button>' +
+          '<p id="kd-routing-result" class="field__hint"></p>' +
+        '</div>' +
+
+        '<div class="kd-card"' + (schemaOk ? "" : ' style="opacity:.6"') + '><strong>10. Inviter admin-brukar</strong> ' + (adminInvitedOk ? "✓" : "—") +
+          '<p class="field__hint">Sender ei ekte invitasjonslenke til kunden sin fyrste admin-brukar (dei set sjølv passord). Kan sendast fleire gongar (t.d. om e-posten ikkje kjem fram). Gjer steg 7 (e-post) og 8 (kundekonfigurasjon) fyrst.</p>' +
           '<form id="kd-invite-form" style="margin-top:.6rem">' +
             C.field({ id: "kd-invite-email", label: "E-post til fyrste admin", placeholder: "post@kunden.no" }) +
             '<button type="submit" class="btn btn--ghost btn--sm"' + (schemaOk ? "" : " disabled") + '>Send invitasjon</button>' +
@@ -1309,16 +1327,8 @@ window.VwConsole = (function () {
           '</form>' +
         '</div>' +
 
-        '<div class="kd-card"' + (schemaOk && hasHostnames ? "" : ' style="opacity:.6"') + '><strong>5. Verifiser ruting</strong> ' + (routingOk ? "✓" : "—") +
-          '<p class="field__hint">Hostnames: ' + (hasHostnames ? C.esc(tenant.hostnames.join(", ")) : "ingen registrert") + '. Krev at DNS/Vercel-oppsettet for desse peikar hit FØR du trykkjer — sjekken gjer eit ekte HTTP-kall mot kvar hostname.' +
-            (tenant.status === "active" ? " Kan òg køyrast etter at kunden er aktiv, t.d. etter at DNS er flytta til ny leverandør — sjekken les berre av og påverkar ikkje den ekte trafikken." : "") +
-          '</p>' +
-          '<button type="button" class="btn btn--ghost btn--sm" id="kd-routing-btn"' + (schemaOk && hasHostnames ? "" : " disabled") + '>Verifiser ruting</button>' +
-          '<p id="kd-routing-result" class="field__hint"></p>' +
-        '</div>' +
-
         '<div class="kd-card">' +
-          '<strong>6. Set aktiv</strong> — ' + (tenant.status === "active" ? "kunden er alt aktiv" : ((routingOk && adminInvitedOk && smtpOk) ? "klar" : "sperra (" + [!routingOk && "ruting ikkje verifisert", !adminInvitedOk && "ingen admin-brukar invitert", !smtpOk && "e-post ikkje sett opp"].filter(Boolean).join(", ") + " enno)")) +
+          '<strong>11. Set aktiv</strong> — ' + (tenant.status === "active" ? "kunden er alt aktiv" : ((routingOk && adminInvitedOk && smtpOk) ? "klar" : "sperra (" + [!routingOk && "ruting ikkje verifisert", !adminInvitedOk && "ingen admin-brukar invitert", !smtpOk && "e-post ikkje sett opp"].filter(Boolean).join(", ") + " enno)")) +
           '<p class="field__hint">⚠️ Gjer kunden LIVE: nettsida/Workspace svarer no faktisk på domenenamna over, for alle besøkjande. Dette er det siste steget — dobbeltsjekk at alt over faktisk er korrekt fyrst.</p>' +
           '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + ((routingOk && adminInvitedOk && smtpOk) ? "" : " disabled") + '>Set aktiv</button></div>' +
           '<p id="kd-activate-result" class="field__hint"></p>' +

@@ -891,11 +891,11 @@ serve(async (req: Request) => {
     }
     if (!tenant.schema_verified_at) {
       await auditReject(tenant.id, action, "skjema er ikkje verifisert enno");
-      return json({ error: "Skjema må vera verifisert (steg 4) før admin-brukar kan inviterast" }, 403);
+      return json({ error: "Skjema må vera verifisert (steg 5) før admin-brukar kan inviterast" }, 403);
     }
     if (!tenant.data_plane_service_role_secret_id) {
       await auditReject(tenant.id, action, "service_role-nøkkel manglar");
-      return json({ error: "Service_role-nøkkel manglar (steg 3b)" }, 400);
+      return json({ error: "Service_role-nøkkel manglar (steg 3)" }, 400);
     }
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
@@ -958,7 +958,7 @@ serve(async (req: Request) => {
     }
     if (!tenant.data_plane_service_role_secret_id) {
       await auditReject(tenant.id, action, "service_role-nøkkel manglar");
-      return json({ error: "Service_role-nøkkel manglar (steg 3b)" }, 400);
+      return json({ error: "Service_role-nøkkel manglar (steg 3)" }, 400);
     }
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
@@ -981,7 +981,7 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (userLookupErr || !existingUser) {
       await auditFinish(auditId, "error", "ingen admin-brukar med denne e-posten finst (inviter admin_brukar først)");
-      return json({ error: "Ingen admin-brukar med denne e-posten finst enno — inviter admin-brukar først (steg 4b)" }, 404);
+      return json({ error: "Ingen admin-brukar med denne e-posten finst enno — inviter admin-brukar først (steg 10)" }, 404);
     }
     const hostnames = (tenant.hostnames as string[]) || [];
     const redirectTo = hostnames.length > 0 ? "https://" + hostnames[0] + "/workspace/?support=1" : undefined;
@@ -1039,7 +1039,7 @@ serve(async (req: Request) => {
     // direct API call.
     if (!tenant.schema_verified_at) {
       await auditReject(tenant.id, action, "skjema er ikkje verifisert enno");
-      return json({ error: "Skjema må vera verifisert (steg 4) før ruting kan verifiserast" }, 403);
+      return json({ error: "Skjema må vera verifisert (steg 5) før ruting kan verifiserast" }, 403);
     }
     const hostnames = (tenant.hostnames as string[]) || [];
     if (hostnames.length === 0) {
