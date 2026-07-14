@@ -30,6 +30,28 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.1 — 2026-07-13
+
+### Automated shared-SMTP setup for tenant projects (`configure_tenant_smtp`)
+
+Found immediately after shipping 0.34.0: every fresh tenant project defaults to Supabase Auth's built-in mailer (2 emails/hour, per `supabase/config.toml`'s `[auth.rate_limit]`), so `invite_tenant_admin`'s invite emails weren't reliably delivering. User asked whether this could be automated rather than requiring a manual per-tenant Supabase Dashboard step — confirmed yes, via Supabase's Management API (`PATCH /v1/projects/{ref}/config/auth`), documented specifically for the "one owner operating many customer sub-projects" case Vibeverk is in.
+
+Designed by the Architect, reviewed by a general-purpose agent standing in for Security Auditor (4 findings, all fixed before deploy — none were blocking-severe, but all were real):
+- Added an explicit guard rejecting `data_plane_url` pointing at `vibeverk-control`'s own project ref — this is the one action using a platform-wide credential rather than a per-tenant Vault key, so nothing else in the file would have stopped a mistaken/malicious tenant row from reconfiguring the control plane's own Auth SMTP.
+- Added the `status !== "archived"` guard this action was missing (present on every comparable sibling action).
+- Added `auditReject` calls on two precondition-failure paths that previously left no audit trail.
+- Made the final `smtp_configured_at` bookkeeping write check its own error before claiming unconditional success (the identical gap already exists in `invite_tenant_admin`, not fixed there — noted as a known, non-blocking follow-up).
+
+New action **`configure_tenant_smtp`** (Console step "3c", between the service_role key and schema verification — must run before `invite_tenant_admin`, or the invite "succeeds" without reliably delivering). Uses one shared, Vibeverk-branded sender (e.g. `noreply@vibeverk.no`) across every tenant for these operational emails (invite/reset/support-access) — deliberate: these go to the customer's own staff, not their customers, so there's no branding reason to require a per-tenant verified sending domain, which would reintroduce the exact onboarding friction this automates away. Always confirms the config actually landed via a follow-up GET, never trusts the PATCH response alone. `activate_tenant` gained a 5th precondition: `smtp_configured_at`.
+
+**New credential shape for this codebase**: unlike every other cross-project action (which use a per-tenant Vault-stored `service_role` key), this uses a single **platform-level** Supabase Management API token plus a shared Resend API key, both as Edge Function secrets on `vibeverk-control`. User explicitly chose, with the tradeoff explained, a plain Personal Access Token from their own admin account for now (full org access, not scoped to tenant projects only) rather than a separate restricted service-account member — a deliberate "fast now, tighten later" call, not an oversight.
+
+New migration: `supabase-control/supabase/migrations/20260713184846_add_smtp_configured_at.sql`.
+
+**Follow-ups, not yet done**: scope the Management API token down to tenant-projects-only via a dedicated restricted Supabase org member (deferred by explicit user choice); fix the same unchecked-bookkeeping-write pattern in `invite_tenant_admin`; the still-open Privacy/Compliance pass on `broker_audit_log` email-as-PII (noted in 0.34.0) now also covers this action's audit entries.
+
+**Deployed 2026-07-14**: migration applied to `vibeverk-control`, secrets stored, `tenant-admin` function deployed. One gotcha found while wiring secrets: `npx supabase secrets set` silently rejects (skips, no error) any env name starting with `SUPABASE_` — reserved for the platform's own injected vars. The Management API token secret is therefore `TENANT_MGMT_API_TOKEN`, not `SUPABASE_MANAGEMENT_API_TOKEN` as originally drafted; the code and this entry were updated to match.
+
 ## 0.34.0 — 2026-07-13
 
 ### Tenant admin-user bootstrap + operator support access
