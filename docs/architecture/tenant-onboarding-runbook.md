@@ -37,6 +37,19 @@ SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORD
 
 You should see the full set: `announcements, bookings, chat_conversations, chat_messages, crm_bedrifter, crm_comms, crm_customers, kb_articles, leads, links, notes, store, tasks, users`.
 
+## Step 2b — Deploy the customer's own Edge Functions
+
+**Easy to miss** (found live during a real onboarding — `db push` only applies database migrations, it does NOT deploy Edge Functions; those are a completely separate deploy step). Without this, Workspace's own "invite a new user" feature (`module-users.js`, used by an already-logged-in admin to invite additional staff — different from Console's own first-admin invite) fails with a CORS error that looks unrelated (`manage-user` simply doesn't exist yet on the project, so its OPTIONS preflight itself 404s).
+
+From the repo root:
+
+```
+npx supabase functions deploy manage-user --project-ref <ref>
+npx supabase functions deploy send-reply --project-ref <ref>
+```
+
+`manage-user` needs no extra configuration — it only uses the `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`/`SUPABASE_ANON_KEY` env vars every Supabase project auto-injects into its own Edge Functions. `send-reply` (chat/contact-form email replies) additionally needs its own `RESEND_API_KEY` secret set via `npx supabase secrets set RESEND_API_KEY=... --project-ref <ref>` before it'll actually send anything — not needed just to get Workspace login/user-management working, only relevant once you're testing chat/contact-form replies.
+
 ## Step 3 — Console: register the tenant
 
 Console → Kundar → "+ Ny kunde":
