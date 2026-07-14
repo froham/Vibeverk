@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.34.5 — 2026-07-14
+
+### Fix: 0.34.4 broke every invite outright ("Berre admin kan endre rolle")
+
+Regression introduced by 0.34.4's own fix, caught immediately during live re-testing: making `handle_new_user()` also fire `UPDATE public.users SET role=...` from inside a trigger meant that update now hit `prevent_self_role_escalation()` (the guard that stops a user from self-promoting their own role) — which unconditionally rejects any role change with no authenticated admin session, and GoTrue's internal update has no session at all. Every `inviteUserByEmail()` call started failing outright with HTTP 500 `{"code":"P0001","message":"Berre admin kan endre rolle"}` as soon as GoTrue tried to set `invited_at`, rolling back the whole transaction (surfaced in Console as the unhelpfully empty `Invitasjon feila: {}`).
+
+Fixed by letting the guard skip only when the update is nested inside another trigger (`pg_trigger_depth() > 1` at the point it fires) — a direct client update via PostgREST always fires this trigger at depth 1, so the original self-escalation protection stays fully intact; only the system-internal role-sync now gets through.
+
+New migration: `supabase/migrations/20260714133000_fix_role_escalation_guard_for_system_trigger.sql`. Applied to production and staging, verified end-to-end directly against production's real Auth API (fresh invite → HTTP 200 → `public.users.role` correctly `'admin'` with no manual patch needed) — test user cleaned up afterward.
+
 ## 0.34.4 — 2026-07-14
 
 ### Fix: invited admins landed as `role='member'` instead of `'admin'`
