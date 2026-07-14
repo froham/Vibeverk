@@ -626,24 +626,39 @@ serve(async (req: Request) => {
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const mgmtHeaders = { "Authorization": "Bearer " + mgmtToken, "Content-Type": "application/json" };
+    // Found live 2026-07-14: a fresh project's site_url defaults to
+    // http://localhost:3000 and its redirect allow-list is empty, so
+    // invite_tenant_admin's/generate_support_access's redirectTo (the
+    // tenant's real hostname) silently falls back to that localhost
+    // default instead -- GoTrue does not error on an unlisted redirectTo,
+    // it just ignores it. Set both here from the tenant's own hostnames so
+    // the links this same button's hint text already promises ("faktisk
+    // kjem fram") actually land on the right place, not localhost.
+    const hostnames = (tenant.hostnames as string[]) || [];
+    const authPatch: Record<string, unknown> = {
+      external_email_enabled: true,
+      smtp_host: "smtp.resend.com",
+      smtp_port: "587",
+      smtp_user: "resend",
+      smtp_pass: resendKey,
+      smtp_sender_name: senderName,
+      smtp_admin_email: senderEmail,
+    };
+    if (hostnames.length > 0) {
+      authPatch.site_url = "https://" + hostnames[0];
+      authPatch.uri_allow_list = hostnames.map((h) => "https://" + h + "/**").join(",");
+    }
     try {
       const patchResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
         method: "PATCH",
         headers: mgmtHeaders,
-        body: JSON.stringify({
-          external_email_enabled: true,
-          smtp_host: "smtp.resend.com",
-          smtp_port: 587,
-          smtp_user: "resend",
-          smtp_pass: resendKey,
-          smtp_sender_name: senderName,
-          smtp_admin_email: senderEmail,
-        }),
+        body: JSON.stringify(authPatch),
       });
       if (!patchResp.ok) {
-        const detail = "Management API PATCH HTTP " + patchResp.status;
+        const bodyText = await patchResp.text().catch(() => "");
+        const detail = "Management API PATCH HTTP " + patchResp.status + (bodyText ? ": " + bodyText : "");
         await auditFinish(auditId, "error", detail);
-        return json({ error: "Kunne ikkje setje SMTP-oppsett (" + detail + ")" }, 500);
+        return json({ error: "Kunne ikkje setje SMTP-oppsett (HTTP " + patchResp.status + ")" }, 500);
       }
       // Confirm it actually landed rather than trusting the PATCH alone.
       const getResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
@@ -655,7 +670,8 @@ serve(async (req: Request) => {
         return json({ error: "Klarte ikkje stadfeste SMTP-oppsettet etterpå" }, 500);
       }
       const confirmed = await getResp.json();
-      if (confirmed.smtp_host !== "smtp.resend.com" || confirmed.smtp_user !== "resend") {
+      const siteUrlOk = hostnames.length === 0 || confirmed.site_url === authPatch.site_url;
+      if (confirmed.smtp_host !== "smtp.resend.com" || confirmed.smtp_user !== "resend" || !siteUrlOk) {
         await auditFinish(auditId, "error", "stadfesting feila: verdiane matcha ikkje etter lagring");
         return json({ error: "SMTP-oppsettet vart ikkje lagra korrekt — prøv igjen" }, 500);
       }
