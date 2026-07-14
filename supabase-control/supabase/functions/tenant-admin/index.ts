@@ -346,7 +346,7 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at")
+    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
@@ -554,6 +554,128 @@ serve(async (req: Request) => {
         return json({ error: "Tenanten er ikkje lenger i status 'provisioning' — prøv igjen" }, 409);
       }
       return json({ error: "Lagring av nøkkel feila" }, 500);
+    }
+    await auditFinish(auditId, "success");
+    return json({ success: true });
+  }
+
+  // ── configure_tenant_smtp ─────────────────────────────────────────────────
+  // Step 3c (Architect design, 2026-07-13): closes the email-delivery gap
+  // found while testing invite_tenant_admin -- a freshly provisioned tenant
+  // defaults to Supabase Auth's built-in mailer (2 emails/hour, see
+  // supabase/config.toml's [auth.rate_limit] comment), which silently fails
+  // to reliably deliver invite/support-access email. Runs BEFORE
+  // invite_tenant_admin (4b) for exactly that reason -- an invite sent before
+  // this step "succeeds" (sets first_admin_invited_at) while the email may
+  // never actually arrive.
+  //
+  // Unlike every other action in this file, this one does NOT use the
+  // tenant's own Vault-stored service_role key -- it calls Supabase's
+  // platform Management API (a genuinely different, platform-level
+  // credential, not a per-tenant one) to set the SAME shared Resend SMTP
+  // credentials on every tenant project. One shared Vibeverk-branded sender
+  // (not a per-tenant domain) is used deliberately -- these are operational
+  // emails to the CUSTOMER'S OWN STAFF (invite/reset/support-access), not
+  // customer-facing correspondence, so there's no branding reason to require
+  // a per-tenant verified sending domain (which would reintroduce exactly
+  // the onboarding friction this automates away).
+  //
+  // Never trusts the PATCH response alone -- re-fetches the config
+  // afterward and confirms smtp_host/smtp_user actually match what was sent,
+  // per this repo's standing "a clean response isn't proof of the intended
+  // effect" rule (see CLAUDE.md's Supabase rules).
+  if (action === "configure_tenant_smtp") {
+    // Security Auditor findings (2026-07-13), all fixed here:
+    // - archived tenants were not rejected, unlike every sibling action
+    //   that can make a real cross-project write against a still-live
+    //   customer project after the relationship supposedly ended.
+    // - precondition failures below didn't call auditReject, leaving no
+    //   trace of an attempted-and-rejected call, unlike every sibling
+    //   action's precondition checks.
+    if (tenant.status === "archived") {
+      await auditReject(tenant.id, action, "tenant er arkivert");
+      return json({ error: "Kan ikkje setje opp SMTP for ein arkivert kunde" }, 403);
+    }
+    if (!tenant.data_plane_url) {
+      await auditReject(tenant.id, action, "kopling (steg 3) manglar");
+      return json({ error: "Kopling (steg 3) må vera sett opp først" }, 400);
+    }
+    const mgmtToken = Deno.env.get("TENANT_MGMT_API_TOKEN");
+    const resendKey = Deno.env.get("TENANT_SMTP_RESEND_API_KEY");
+    const senderEmail = Deno.env.get("TENANT_SMTP_SENDER_EMAIL");
+    const senderName = Deno.env.get("TENANT_SMTP_SENDER_NAME") || "Vibeverk";
+    if (!mgmtToken || !resendKey || !senderEmail) {
+      await auditReject(tenant.id, action, "delt SMTP-oppsett manglar på server");
+      return json({ error: "Delt SMTP-oppsett manglar på server (kontakt utviklar)" }, 500);
+    }
+    // data_plane_url is already validated (SUPABASE_PROJECT_URL_RE, see
+    // update_tenant_connection above) as https://<ref>.supabase.co --
+    // extracting the ref here is safe given that existing write-time guard.
+    const ref = tenant.data_plane_url.replace(/^https:\/\//, "").split(".")[0];
+    // Security Auditor finding (2026-07-13, MEDIUM): this is the one action
+    // in this file that uses a PLATFORM-wide Management API token rather
+    // than a per-tenant Vault-scoped key -- unlike every other cross-project
+    // action, nothing here would otherwise stop a mistaken or malicious
+    // data_plane_url pointing at vibeverk-control's own project ref from
+    // successfully reconfiguring the control plane's own Auth SMTP.
+    const CONTROL_PLANE_PROJECT_REF = "jxoglthrnshabqmdmnui";
+    if (ref === CONTROL_PLANE_PROJECT_REF) {
+      await auditReject(tenant.id, action, "data_plane_url peikar på kontrollplanet sjølv");
+      return json({ error: "Ugyldig data_plane_url — peikar på kontrollplanet sjølv" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const mgmtHeaders = { "Authorization": "Bearer " + mgmtToken, "Content-Type": "application/json" };
+    try {
+      const patchResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
+        method: "PATCH",
+        headers: mgmtHeaders,
+        body: JSON.stringify({
+          external_email_enabled: true,
+          smtp_host: "smtp.resend.com",
+          smtp_port: 587,
+          smtp_user: "resend",
+          smtp_pass: resendKey,
+          smtp_sender_name: senderName,
+          smtp_admin_email: senderEmail,
+        }),
+      });
+      if (!patchResp.ok) {
+        const detail = "Management API PATCH HTTP " + patchResp.status;
+        await auditFinish(auditId, "error", detail);
+        return json({ error: "Kunne ikkje setje SMTP-oppsett (" + detail + ")" }, 500);
+      }
+      // Confirm it actually landed rather than trusting the PATCH alone.
+      const getResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
+        method: "GET",
+        headers: mgmtHeaders,
+      });
+      if (!getResp.ok) {
+        await auditFinish(auditId, "error", "stadfesting feila: GET HTTP " + getResp.status);
+        return json({ error: "Klarte ikkje stadfeste SMTP-oppsettet etterpå" }, 500);
+      }
+      const confirmed = await getResp.json();
+      if (confirmed.smtp_host !== "smtp.resend.com" || confirmed.smtp_user !== "resend") {
+        await auditFinish(auditId, "error", "stadfesting feila: verdiane matcha ikkje etter lagring");
+        return json({ error: "SMTP-oppsettet vart ikkje lagra korrekt — prøv igjen" }, 500);
+      }
+    } catch (e) {
+      // Never include resendKey/mgmtToken in any error surfaced or logged.
+      await auditFinish(auditId, "error", e instanceof Error ? e.message : "nettverksfeil");
+      return json({ error: "Kunne ikkje nå Supabase Management API" }, 500);
+    }
+    // Security Auditor finding (2026-07-13, LOW): check this write's own
+    // error rather than claiming unconditional success -- the vendor-side
+    // config was genuinely applied and confirmed at this point, but if THIS
+    // write fails, smtp_configured_at stays null and Console's badge would
+    // misleadingly keep showing "not configured" despite the "✓" just shown.
+    const { error: bookkeepingErr } = await controlSrvSb
+      .from("tenants")
+      .update({ smtp_configured_at: new Date().toISOString() })
+      .eq("id", tenant_id);
+    if (bookkeepingErr) {
+      await auditFinish(auditId, "error", "SMTP sett opp hjå leverandøren, men kunne ikkje lagre stadfestinga: " + bookkeepingErr.message);
+      return json({ error: "SMTP vart sett opp, men kunne ikkje lagre stadfestinga — prøv å trykk igjen" }, 500);
     }
     await auditFinish(auditId, "success");
     return json({ success: true });
@@ -941,6 +1063,7 @@ serve(async (req: Request) => {
     // above), but that's enough to stop a customer going live with nobody
     // able to sign in.
     if (!tenant.first_admin_invited_at) missing.push("ingen admin-brukar er invitert enno (køyr invite_tenant_admin)");
+    if (!tenant.smtp_configured_at) missing.push("SMTP er ikkje sett opp enno (køyr configure_tenant_smtp)");
     if (missing.length > 0) {
       await auditReject(tenant.id, action, missing.join("; "));
       return json({ error: "Sperra: " + missing.join("; ") }, 403);

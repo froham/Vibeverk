@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.34.0";
+  var VIBEVERK_VERSION = "0.34.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -172,7 +172,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at")
       .order("slug").then(function (r) {
         _tenants = r.data || [];
         // Ikkje default til ein arkivert tenant -- sidan sidepanel-veljaren
@@ -1219,6 +1219,7 @@ window.VwConsole = (function () {
     var routingOk = !!tenant.routing_verified_at;
     var hasHostnames = !!(tenant.hostnames && tenant.hostnames.length);
     var adminInvitedOk = !!tenant.first_admin_invited_at;
+    var smtpOk = !!tenant.smtp_configured_at;
 
     wrap.innerHTML =
       '<div class="admin-group">' +
@@ -1268,6 +1269,12 @@ window.VwConsole = (function () {
           '</form>' +
         '</div>' +
 
+        '<div class="kd-card"><strong>3c. Set opp e-post (SMTP)</strong> ' + (smtpOk ? "✓" : "—") +
+          '<p class="field__hint">Set opp e-postsending for denne kunden (delt Vibeverk-avsendar) slik at invitasjon/support-lenker faktisk kjem fram — utan dette er kunden avgrensa til 2 e-postar i timen frå Supabase sin standard-sendar.</p>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="kd-smtp-btn">Set opp e-post</button>' +
+          '<p id="kd-smtp-result" class="field__hint"></p>' +
+        '</div>' +
+
         '<div class="kd-card"><strong>4. Køyr og verifiser skjema</strong>' +
           '<p class="field__hint">Køyr migrasjonane manuelt mot det nye prosjektet (<code>npx supabase db push --db-url …</code>), deretter:</p>' +
           '<button type="button" class="btn btn--ghost btn--sm" id="kd-verify-btn">Verifiser skjema</button>' +
@@ -1292,9 +1299,9 @@ window.VwConsole = (function () {
         '</div>' +
 
         '<div class="kd-card">' +
-          '<strong>6. Set aktiv</strong> — ' + (tenant.status === "active" ? "kunden er alt aktiv" : ((routingOk && adminInvitedOk) ? "klar" : "sperra (" + [!routingOk && "ruting ikkje verifisert", !adminInvitedOk && "ingen admin-brukar invitert"].filter(Boolean).join(", ") + " enno)")) +
+          '<strong>6. Set aktiv</strong> — ' + (tenant.status === "active" ? "kunden er alt aktiv" : ((routingOk && adminInvitedOk && smtpOk) ? "klar" : "sperra (" + [!routingOk && "ruting ikkje verifisert", !adminInvitedOk && "ingen admin-brukar invitert", !smtpOk && "e-post ikkje sett opp"].filter(Boolean).join(", ") + " enno)")) +
           '<p class="field__hint">⚠️ Gjer kunden LIVE: nettsida/Workspace svarer no faktisk på domenenamna over, for alle besøkjande. Dette er det siste steget — dobbeltsjekk at alt over faktisk er korrekt fyrst.</p>' +
-          '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + ((routingOk && adminInvitedOk) ? "" : " disabled") + '>Set aktiv</button></div>' +
+          '<div><button type="button" class="btn btn--primary btn--sm" id="kd-activate-btn"' + ((routingOk && adminInvitedOk && smtpOk) ? "" : " disabled") + '>Set aktiv</button></div>' +
           '<p id="kd-activate-result" class="field__hint"></p>' +
         '</div>' +
 
@@ -1380,6 +1387,15 @@ window.VwConsole = (function () {
         // Refresh so step 5's button unlocks immediately once schema_ok,
         // instead of requiring a manual reload to see the new state.
         loadTenants(function () { renderKundar(_sc, fullWrap); });
+      });
+    });
+
+    wrap.querySelector("#kd-smtp-btn").addEventListener("click", function () {
+      var out = wrap.querySelector("#kd-smtp-result");
+      out.textContent = "Set opp…";
+      tenantAdminCall("configure_tenant_smtp", { tenant_id: tenant.id }, function (r) {
+        statusMsg(out, r.error || "✓ E-post sett opp", !r.error);
+        if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
       });
     });
 
