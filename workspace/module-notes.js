@@ -476,7 +476,7 @@
         C.richTextField({ id: "nm-body", label: "", value: note ? note.content || "" : "" }) +
 
         '<input id="nm-summary" type="text" value="' + C.esc(note ? note.summary || "" : "") + '" ' +
-          'placeholder="Kort AI-sammendrag (valgfritt)…" ' +
+          'placeholder="Kort samandrag (valgfritt)…" ' +
           'style="font:inherit;font-size:.78rem;padding:.35rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-muted)">' +
 
         '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:.3rem;border-top:1px solid var(--color-border)">' +

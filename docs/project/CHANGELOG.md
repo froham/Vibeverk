@@ -30,6 +30,32 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.36.2 — 2026-07-15
+
+### Workspace: forklaringstekst-runden held fram (Punkt 0, vidareføring)
+
+Neste steg etter Web-admin (0.36.1) — Workspace, kartlagt av same Explore-agent-runde. Viktig strukturell skilnad frå Web-admin/Console: Workspace-modulane byggjer stort sett rå HTML for skjemafelt sjølv (lokale `field()`/`input()`/`select()`/`combo()`-hjelparar per modul), ikkje `C.field({hint,help})` frå components.js — så denne runden kravde å leggje til ein ny, valfri `hint`-parameter på dei lokale hjelparane i `module-orgdrift.js`, pluss ein ny delt `.i-hint`-CSS-klasse i `workspace/index.html`, før sjølve tekstane kunne leggjast til.
+
+- **`module-users.js`**: "Rolle"-feltet i inviter-skjemaet hadde ingen forklaring av kva Admin/Redaktør/Medlem faktisk kan gjere — ny hint stadfesta mot den faktiske rettigheitsmatrisa i `docs/architecture/roles-and-tenants.md`.
+- **`module-kb.js`**: **reelt feilaktig, ikkje berre uklart** — samandrag-feltet var merkt "(valgfritt · AI-kontekst)", men det finst ingen AI-funksjon i heile kodebasen (stadfesta i `docs/project/CURRENT_STATE.md` "Not implemented"). Samandraget er i røynda ei vanleg, synleg uthevd boks øvst i artikkelen OG del av søkjematchinga — retta label og lagt til ein hint som skildrar det faktiske, verifiserte biletet.
+- **`module-notes.js`**: same "AI-sammendrag"-påstand i eit notat-felt — men her er feltet stadfesta HEILT ubrukt (lagra, aldri vist, aldri del av søk noko stad i fila). Fjerna den feilaktige AI-påstanden frå placeholderen; feltet sjølv står urørt (ikkje fjerna denne runden, sidan det er ei separat avgjerd om ein ubrukt, lagra verdi skal fjernast heilt).
+- **`module-orgdrift.js`**: fire felt — "Backup" i Ansvar-editoren (kunne lesast som datasikkerhetskopi, betyr faktisk vikarperson), "Kritikalitet" (konsekvens usynleg frå feltet — brukast til Dashboard-teljing og søkjefilter), "Beløpsgrense" (uklart om handheva eller berre ei hugseregel — no eksplisitt sagt at han ikkje er handheva noko stad), "Integrert med" (brukast til søkjefilterchips, ikkje sagt før).
+
+Alle testar grøne (533 OK / 157 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-users.js?v=4→5`, `module-kb.js?v=6→7`, `module-notes.js?v=1→2`, `module-orgdrift.js?v=2→3`. `VIBEVERK_VERSION` 0.36.1 → 0.36.2, `console-core.js?v=105→106`.
+
+## 0.36.1 — 2026-07-15
+
+### Web-admin: forklaringstekst-runden held fram (Punkt 0, vidareføring)
+
+Starta neste steg i ROADMAP punkt 0 ("generelle tooltips overalt", opportunistisk modul for modul) — no Web-admin (redigeringspanelet), ikkje sjølve den offentlege nettsida. Kartla fyrst kva som faktisk manglar via ein Explore-agent på tvers av alle `module-*.js` og `core.js` sine admin-seksjonar, retta dei to reelt uklare felta som kom fram:
+
+- **`module-chat.js`**: chat-innstillingane sitt fargefelt "Bakgrunn (admin)" fortalde ikkje KVA UI-element det faktisk fargelegg (samtalevisinga i Web-admin sin eigen Chat-fane, `#vwca-msg-list`) — omdøypt til "Bakgrunn (samtale i admin)".
+- **`core.js`**: footer sitt "Copyright-tekst"-felt hadde "tomt = genereres automatisk" berre som placeholder-tekst, som forsvinn med det same nokon skriv eller ein verdi alt finst — flytta til ein varig `hint`, stadfesta mot faktisk fallback-logikk (`components.js:626`: tomt felt → «© [år] [firmanavn]»).
+
+Resten av Web-admin (booking/tilbud/referanser/faq/mediebank/crm) vart kartlagt og funne allereie tilstrekkeleg dekka frå tidlegare rundar. Workspace sine tilsvarande funn (brukarrolle-forklaring, KB/notat sine "AI-samandrag"-felt, orgdrift sine fleire uklare felt) står att som neste steg — Workspace bruker i stor grad EIGNE, enklare feltbyggjarar utan hint/help-støtte (ikkje `C.field()`), så den runden krev meir enn berre å leggje til ein parameter.
+
+Alle testar grøne (533 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-chat.js?v=16→17`, `core.js?v=49→50`. `VIBEVERK_VERSION` 0.36.0 → 0.36.1, `console-core.js?v=104→105`.
+
 ## 0.36.0 — 2026-07-15
 
 ### Fokuspunkt-editor: sekundær-førehandsvisingar for bilete brukt fleire stader (Aktuelt, Referanser)

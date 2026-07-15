@@ -1919,7 +1919,8 @@ window.App = (function () {
           ${C.field({ id: "f-ft-orgnr",    label: "Org.nr",            value: cf.orgNr || "",          placeholder: "Org.nr: 123 456 789" })}
           ${C.field({ id: "f-ft-invaddr",  label: "Fakturaadresse",    value: cf.invoiceAddress || "", placeholder: "Fakturaadresse: Storgata 1, 0001 Oslo" })}
           ${C.field({ id: "f-ft-invemail", label: "Faktura e-post",    value: cf.invoiceEmail || "",   placeholder: "faktura@nordpunkt.no", type: "email" })}
-          ${C.field({ id: "f-ft-copy",     label: "Copyright-tekst",   value: cf.copyright || "",      placeholder: "© 2026 Nordpunkt AS — tomt = genereres automatisk" })}
+          ${C.field({ id: "f-ft-copy",     label: "Copyright-tekst",   value: cf.copyright || "",      placeholder: "© 2026 Nordpunkt AS",
+                      hint: "Tomt felt genererer automatisk «© [år] [firmanavn]»." })}
           ${C.field({ id: "f-ft-extra",    label: "Ekstralinjer (én per linje)", multiline: true, rows: 3,
                       value: (cf.extraLines || []).join("\n"),
                       hint: "F.eks. «MVA-registrert» eller annen fast informasjon" })}
