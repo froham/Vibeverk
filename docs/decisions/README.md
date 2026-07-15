@@ -48,3 +48,8 @@ Link to a prior or replacement ADR, if applicable. Omit if not relevant.
 | [ADR-0005](ADR-0005-extend-auth-fallback-fix-to-intranet-login.md) | Extend the closed admin-auth fallback (ADR-0003) to the intranet login | Accepted |
 | [ADR-0006](ADR-0006-remove-owner-role-references.md) | Remove lingering "owner" role references; admin/editor/member is the complete role model | Accepted |
 | [ADR-0007](ADR-0007-multi-tenant-hosting-architecture.md) | Multi-tenant hosting architecture — reject fork-and-sync, migrate to edge-resolved config in phases | Accepted |
+| [ADR-0008](ADR-0008-control-plane-data-plane-split.md) | Control-plane/data-plane split — dedicated Supabase project for the tenant registry | Accepted |
+| [ADR-0009](ADR-0009-console-control-plane-auth-and-broker-actions.md) | Console authenticates against the control plane; first real broker actions | Accepted |
+| [ADR-0010](ADR-0010-phase9-semi-automated-onboarding.md) | Semi-automated onboarding v1 (Phase 9) — checklist bookkeeping, hard-gated from go-live | Accepted |
+| [ADR-0011](ADR-0011-backup-export-rpc-scope.md) | `export_backup_tables()` closes the admin-enforcement gap, not the underlying broad-read model | Accepted |
+| [ADR-0012](ADR-0012-single-focus-point-position.md) | Image focus-point stays a single stored position, with multi-context live previews instead of multiple stored positions | Accepted |
