@@ -1340,7 +1340,7 @@
               '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem">' +
                 cfgField("cfg-color", "Primærfarge", cur.color || "", "color") +
                 cfgField("cfg-btn-color", "Boble-farge", cur.btnColor || "", "color") +
-                cfgField("cfg-admin-bg", "Bakgrunn (admin)", cur.adminMsgsBg || "", "color") +
+                cfgField("cfg-admin-bg", "Bakgrunn (samtale i admin)", cur.adminMsgsBg || "", "color") +
               '</div>' +
               cfgArea("cfg-welcome", "Velkomstmelding", cur.welcomeMsg) +
               cfgArea("cfg-offline", "Offline-melding", cur.offlineMsg) +

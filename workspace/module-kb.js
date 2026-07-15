@@ -414,8 +414,9 @@
             '</div>' +
           '</div>' +
           '<div class="i-field">' +
-            '<label for="kb-summary">Samandrag (valgfritt · AI-kontekst)</label>' +
+            '<label for="kb-summary">Samandrag (valgfritt)</label>' +
             '<input id="kb-summary" type="text" value="' + C.esc(item && item.id ? (item.summary || "") : "") + '" placeholder="Kort beskriving av artikkelen…">' +
+            '<p class="i-hint">Vises som ei uthevd boks øvst i artikkelen, og blir med når nokon søkjer i kunnskapsbasen.</p>' +
           '</div>' +
           C.richTextField({ id: "kb-body", label: "Innhald", value: item && item.id ? (item.content || "") : "" }) +
           '<div class="i-field">' +

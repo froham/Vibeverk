@@ -86,6 +86,7 @@
           '<button id="u-invite-btn" class="btn btn--primary btn--sm" style="align-self:flex-end">Send invitasjon</button>' +
           '<span id="u-invite-status" style="font-size:.85rem;color:var(--color-muted)"></span>' +
         '</div>' +
+        '<p class="i-hint" style="margin-top:.5rem">Admin ser og kan endre alt, inkludert brukarar og innstillingar. Redaktør kan opprette og redigere innhald (oppgåver, kunngjeringar, kunnskapsbase), men ikkje administrere brukarar. Medlem kan opprette eigne oppgåver, men ikkje tildele oppgåver til andre eller endre innstillingar.</p>' +
       '</div>';
 
     var listHtml =

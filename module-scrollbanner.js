@@ -188,7 +188,7 @@
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-sb-del");
         var b  = getBanners().find(function (x) { return x.id === id; });
-        if (!b || !confirm('Slett "' + (b.label || "seksjon") + '"?')) return;
+        if (!b || !confirm('Slett banner-seksjonen «' + (b.label || "seksjon") + '»? Bildet, teksten og alle innstillingene for denne seksjonen fjernes. Dette kan ikke angres.')) return;
         setBanners(getBanners().filter(function (x) { return x.id !== id; }));
         delete registered[id];
         renderAdminRoot(root);

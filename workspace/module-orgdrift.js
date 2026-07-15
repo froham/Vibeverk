@@ -871,7 +871,7 @@
     if (type === "responsibilities") return form([
       input("area", "Ansvarsområde", item.area, true),
       input("category", "Kategori", item.category),
-      row(combo("owner", "Ansvarlig", item.owner, peopleOptions()), combo("backup", "Backup", item.backup, peopleOptions())),
+      row(combo("owner", "Ansvarlig", item.owner, peopleOptions()), combo("backup", "Backup", item.backup, peopleOptions(), "Hvem som kan steppe inn hvis den ansvarlige er borte — ikke en datasikkerhetskopi.")),
       area("description", "Beskrivelse", item.description)
     ]);
 
@@ -891,7 +891,8 @@
       select("category", "Kategori", item.category, ["IT-system", "Abonnement", "Domene/hosting", "Økonomi", "Markedsføring", "HR", "Annet"]),
       row(combo("vendor", "Leverandør", item.vendor, vendorOptions()), combo("owner", "Intern eier", item.owner, peopleOptions())),
       row(input("cost", "Kostnad", item.cost), input("cycle", "Periode", item.cycle || "Månedlig")),
-      select("criticality", "Kritikalitet", item.criticality, ["Lav", "Medium", "Høy"]),
+      select("criticality", "Kritikalitet", item.criticality, ["Lav", "Medium", "Høy"],
+        "Vises på Dashboard og brukes til søk — velg «Høy» for systemer virksomheten ikke kan fungere uten."),
       integrationPicker(item),
       area("dataFlow", "Dataflyt / hva går gjennom systemet?", item.dataFlow),
       row(input("renewal", "Fornyelsesdato", item.renewal), input("notice", "Oppsigelsesfrist", item.notice)),
@@ -902,7 +903,8 @@
     return form([
       input("item", "Hva skal kjøpes?", item.item, true),
       row(combo("vendor", "Leverandør", item.vendor, vendorOptions()), combo("approver", "Godkjenner", item.approver, peopleOptions())),
-      row(input("method", "Bestillingsmåte", item.method), input("limit", "Beløpsgrense", item.limit)),
+      row(input("method", "Bestillingsmåte", item.method),
+          input("limit", "Beløpsgrense", item.limit, false, "Kun en huskeregel her — beløpet håndheves ikke automatisk noe sted.")),
       area("instructions", "Instruks", item.instructions)
     ]);
   }
@@ -915,10 +917,17 @@
     return '<div class="od-row">' + a + b + '</div>';
   }
 
-  function input(name, label, value, required) {
+  // hint (valgfritt, siste parameter på kvar hjelpefunksjon): kort, alltid
+  // synleg forklaringstekst under feltet -- same idé som field({hint}) i
+  // components.js, men desse lokale skjema-hjelparane har ingen delt
+  // komponent å arve det frå.
+  function hintHtml(hint) {
+    return hint ? '<p class="i-hint" style="margin-top:.15rem">' + esc(hint) + '</p>' : "";
+  }
+  function input(name, label, value, required, hint) {
     return '<label>' + esc(label) +
       '<input name="' + esc(name) + '" value="' + esc(value || "") + '"' + (required ? " required" : "") + '>' +
-    '</label>';
+    '</label>' + hintHtml(hint);
   }
 
   function area(name, label, value) {
@@ -927,24 +936,24 @@
     '</label>';
   }
 
-  function select(name, label, value, options) {
+  function select(name, label, value, options, hint) {
     return '<label>' + esc(label) +
       '<select name="' + esc(name) + '">' +
         options.map(function (o) {
           return '<option value="' + esc(o) + '"' + (o === value ? " selected" : "") + '>' + esc(o) + '</option>';
         }).join("") +
       '</select>' +
-    '</label>';
+    '</label>' + hintHtml(hint);
   }
 
-  function combo(name, label, value, options) {
+  function combo(name, label, value, options, hint) {
     var listId = "od-list-" + name + "-" + Math.random().toString(36).slice(2, 7);
     return '<label>' + esc(label) +
       '<input name="' + esc(name) + '" list="' + esc(listId) + '" value="' + esc(value || "") + '">' +
       '<datalist id="' + esc(listId) + '">' + (options || []).map(function (o) {
         return '<option value="' + esc(o) + '"></option>';
       }).join("") + '</datalist>' +
-    '</label>';
+    '</label>' + hintHtml(hint);
   }
 
   function integrationPicker(item) {
@@ -965,7 +974,7 @@
         '<input name="integrationsExtra" placeholder="Andre integrasjoner, kommaseparert" value="' + esc(extraIntegrations(selected, systems)) + '">' +
         '<input type="hidden" name="integrations" value="' + esc(selected.join(", ")) + '">' +
       '</div>' +
-    '</label>';
+    '</label>' + hintHtml("Brukes til søk, f.eks. «Integrasjoner: ja».");
   }
 
   function extraIntegrations(selected, systems) {

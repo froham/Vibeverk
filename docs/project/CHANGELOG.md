@@ -30,6 +30,110 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.36.2 — 2026-07-15
+
+### Workspace: forklaringstekst-runden held fram (Punkt 0, vidareføring)
+
+Neste steg etter Web-admin (0.36.1) — Workspace, kartlagt av same Explore-agent-runde. Viktig strukturell skilnad frå Web-admin/Console: Workspace-modulane byggjer stort sett rå HTML for skjemafelt sjølv (lokale `field()`/`input()`/`select()`/`combo()`-hjelparar per modul), ikkje `C.field({hint,help})` frå components.js — så denne runden kravde å leggje til ein ny, valfri `hint`-parameter på dei lokale hjelparane i `module-orgdrift.js`, pluss ein ny delt `.i-hint`-CSS-klasse i `workspace/index.html`, før sjølve tekstane kunne leggjast til.
+
+- **`module-users.js`**: "Rolle"-feltet i inviter-skjemaet hadde ingen forklaring av kva Admin/Redaktør/Medlem faktisk kan gjere — ny hint stadfesta mot den faktiske rettigheitsmatrisa i `docs/architecture/roles-and-tenants.md`.
+- **`module-kb.js`**: **reelt feilaktig, ikkje berre uklart** — samandrag-feltet var merkt "(valgfritt · AI-kontekst)", men det finst ingen AI-funksjon i heile kodebasen (stadfesta i `docs/project/CURRENT_STATE.md` "Not implemented"). Samandraget er i røynda ei vanleg, synleg uthevd boks øvst i artikkelen OG del av søkjematchinga — retta label og lagt til ein hint som skildrar det faktiske, verifiserte biletet.
+- **`module-notes.js`**: same "AI-sammendrag"-påstand i eit notat-felt — men her er feltet stadfesta HEILT ubrukt (lagra, aldri vist, aldri del av søk noko stad i fila). Fjerna den feilaktige AI-påstanden frå placeholderen; feltet sjølv står urørt (ikkje fjerna denne runden, sidan det er ei separat avgjerd om ein ubrukt, lagra verdi skal fjernast heilt).
+- **`module-orgdrift.js`**: fire felt — "Backup" i Ansvar-editoren (kunne lesast som datasikkerhetskopi, betyr faktisk vikarperson), "Kritikalitet" (konsekvens usynleg frå feltet — brukast til Dashboard-teljing og søkjefilter), "Beløpsgrense" (uklart om handheva eller berre ei hugseregel — no eksplisitt sagt at han ikkje er handheva noko stad), "Integrert med" (brukast til søkjefilterchips, ikkje sagt før).
+
+Alle testar grøne (533 OK / 157 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-users.js?v=4→5`, `module-kb.js?v=6→7`, `module-notes.js?v=1→2`, `module-orgdrift.js?v=2→3`. `VIBEVERK_VERSION` 0.36.1 → 0.36.2, `console-core.js?v=105→106`.
+
+## 0.36.1 — 2026-07-15
+
+### Web-admin: forklaringstekst-runden held fram (Punkt 0, vidareføring)
+
+Starta neste steg i ROADMAP punkt 0 ("generelle tooltips overalt", opportunistisk modul for modul) — no Web-admin (redigeringspanelet), ikkje sjølve den offentlege nettsida. Kartla fyrst kva som faktisk manglar via ein Explore-agent på tvers av alle `module-*.js` og `core.js` sine admin-seksjonar, retta dei to reelt uklare felta som kom fram:
+
+- **`module-chat.js`**: chat-innstillingane sitt fargefelt "Bakgrunn (admin)" fortalde ikkje KVA UI-element det faktisk fargelegg (samtalevisinga i Web-admin sin eigen Chat-fane, `#vwca-msg-list`) — omdøypt til "Bakgrunn (samtale i admin)".
+- **`core.js`**: footer sitt "Copyright-tekst"-felt hadde "tomt = genereres automatisk" berre som placeholder-tekst, som forsvinn med det same nokon skriv eller ein verdi alt finst — flytta til ein varig `hint`, stadfesta mot faktisk fallback-logikk (`components.js:626`: tomt felt → «© [år] [firmanavn]»).
+
+Resten av Web-admin (booking/tilbud/referanser/faq/mediebank/crm) vart kartlagt og funne allereie tilstrekkeleg dekka frå tidlegare rundar. Workspace sine tilsvarande funn (brukarrolle-forklaring, KB/notat sine "AI-samandrag"-felt, orgdrift sine fleire uklare felt) står att som neste steg — Workspace bruker i stor grad EIGNE, enklare feltbyggjarar utan hint/help-støtte (ikkje `C.field()`), så den runden krev meir enn berre å leggje til ein parameter.
+
+Alle testar grøne (533 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-chat.js?v=16→17`, `core.js?v=49→50`. `VIBEVERK_VERSION` 0.36.0 → 0.36.1, `console-core.js?v=104→105`.
+
+## 0.36.0 — 2026-07-15
+
+### Fokuspunkt-editor: sekundær-førehandsvisingar for bilete brukt fleire stader (Aktuelt, Referanser)
+
+Løyser det opne "aspect-ratio-mismatch"-funnet frå same dags UX-review (sjå 0.35.0): redigeringsverktøyet for fokuspunkt lova før eitt fast forhold (16:9) som ikkje matcha nokon av dei verkelege visingane for to bilete som faktisk vert vist fleire stader med ulikt forhold.
+
+**Design, gjennomgått av Arkitekt-agenten**: behald éin lagra fokuspunkt-posisjon per bilete (ingen datamodell-endring) — men vis no BÅDE hovudboksen (drabar, det strengaste/tettaste forholdet) OG éin eller fleire ikkje-redigerbare sekundærboksar som speglar SAME posisjon live i den andre verkelege visinga, slik at admin ser konsekvensen for begge før dei lagrar. Reint additivt: `imageField()`/`imgField()` fekk to nye valfrie parameter (`aspectLabel`, `previews`) — alle 8 andre biletfelt på sida (hero, om oss, tjenester, booking, FAQ, scrollbanner, mediebank, kunngjeringar) er urørte, framleis éin boks, byte-identisk med før.
+
+- **Aktuelt-bilete**: hovudboks = forsidekort (220/180 ≈ 1,22), sekundær = artikkelside (16/7). Mobil-kortet sitt kontinuerleg flytande forhold er bevisst IKKJE med som ein eigen boks — eit "representativt" tal ville vore misvisande presist for noko som ikkje har éin fast verdi.
+- **Referanser-bilete**: hovudboks = rutenett-kort (210/140 = 1,5, basert på grid sin smalaste kolonnebreidde), sekundær = detaljside (16/9).
+- **Reell bug retta undervegs**: Referanser sin detaljside kalla `coverImg(img, "")` med TOM CSS-klasse, så fokuspunktet gjorde bokstaveleg tala ingenting der. Ny klasse `rf-detail__photo` følgjer same `has-credit`-samansettingsmønster som `nfc__photo`/`article__media` alt bruker.
+
+**UX/Mobile Reviewer-gjennomgang** av heile endringa: ingen blokkerande funn. Fire billige polish-fiksar gjort same runde: forklarande hint-tekst når sekundærboksar finst (elles kunne admin tru dei er eit ekstra bilete å laste opp, eller prøve å dra dei), `aria-label` på hovudboksen nemner no kva samanheng ho gjeld, border-radius retta til å matche hovudboksen (var 8px vs. 10px), og sekundærboksane viser no same "Ingen bilde"-melding som hovudboksen i tomt-tilstand i staden for ei uforklart tom ramme.
+
+Testar utvida (`test.js`): sekundærboks-wrapper + rett `data-aspect` for Aktuelt/Referanser, live object-position-synkronisering ved piltast-styring, regresjonsvakt for at eit vanleg biletfelt (hero) IKKJE får nokon ekstra wrapper, og at Referanser-detaljsida sitt bilete no faktisk har ein verkande CSS-klasse. Alle testar grøne (533 OK, dei to kjende, pre-eksisterande feila uendra).
+
+Cache-bust: `components.js?v=14→15`, `core.js?v=48→49`, `module-references.js?v=7→8`. `VIBEVERK_VERSION` 0.35.1 → 0.36.0, `console-core.js?v=103→104`.
+
+## 0.35.1 — 2026-07-15
+
+### RLS-gap lukka: full backup-eksport er no admin-gjerda i databasen, ikkje berre i UI
+
+Oppfølging av same dags Privacy/Compliance-funn (sjå 0.35.0-oppføringa og CURRENT_STATE.md): `buildBackupPayload()` i `core.js` var nåbar frå kva som helst innlogga rolle sin nettlesarkonsoll, sidan RLS SELECT på dei ni backup-tabellane med vilje er `USING(true)` for `authenticated` (naudsynt for vanleg CRM/oppgåve/kunngjerings-blaing — urørt). "Sikkerhetskopi"-fana er berre synleg for admin i UI-et, men ingenting i databasen handheva det for sjølve eksporten, i motsetnad til restore-sida som alt hadde eit `is_admin_or_owner()`-gjerde.
+
+**Avklart med brukar før bygging**: dette lukkar inkonsistensen (funksjonen *utgjev seg for* admin-only, no faktisk handheva), men kan IKKJE hindre ein teknisk kyndig member/editor frå å spørje kvar av dei ni tabellane direkte sjølv og setje saman same resultat for hand — det krev at RLS held fram med å vere ope for normal blaing, eit alt stadfesta rollevalg. Snevrare, men reelt scope.
+
+**Nytt**: `export_backup_tables()` (`supabase/migrations/20260715140000_export_backup_tables_rpc.sql`) — same `is_admin_or_owner()`-gjerde og REVOKE/GRANT-mønster som `restore_backup_tables`, `SECURITY DEFINER STABLE`. `core.js` sin `fetchAllRows()`/9-separate-kall-tilnærming bytt ut med éin `fetchAllTables()` som kallar RPC-en via `_sb.rpc("export_backup_tables")` når Supabase er konfigurert (uendra fallback til tomme tabellar elles, som i testmiljø).
+
+**Gjennomgått** av ein general-purpose-agent som stand-in for Security Auditor (same, alt kjende avgrensing som for `verify_tenant_routing`/`configure_tenant_smtp` — `.claude/agents/vibeverk-security-auditor.md` finst ikkje i Claude-harnesset) — ingen funn, godkjent for deploy. **Deploya til produksjon** (`npx supabase db push --linked`) og stadfesta direkte (ikkje berre "Success"-meldinga): `has_function_privilege('authenticated', ..., 'EXECUTE')` = true, same for `anon` = false, `SECURITY DEFINER` + `STABLE` bekrefta via `pg_proc`.
+
+Alle testar grøne (dei to kjende, pre-eksisterande feila uendra). `core.js?v=46→47` (alle fire flater).
+
+## 0.35.0 — 2026-07-15
+
+### Fiksar frå UX/Mobile Reviewer- og Privacy/Compliance-gjennomgangane (bildefokuspunkt + backup/restore)
+
+Handsama dei trygge, sjølvstendige funna frå dei to reviewa som vart køyrde tidlegare same dag. Dei to funna som treng ei eiga arkitektur-/tryggingsavgjerd (aspect-ratio-mismatch mellom editor og faktisk visning; RLS-gapet som lèt `member` lese heile backup-datasettet via konsoll) er **ikkje** rørt her — dei krev høvesvis ei layout-avgjerd og ei eigen migrasjon gjennom Security Auditor + eksplisitt godkjenning, og står att.
+
+**Bildefokuspunkt (`core.js`, `components.js`, `test.js`):**
+- **Inert akse nullstilte stille den lagra posisjonen.** Når utsnittvindauget alt fyller 100 % av breidda ELLER høgda (typisk breie 3:1/21:9-mål som FAQ/Booking mot eit vanleg liggjande foto), kunne den aksen ikkje flytte seg synleg — men både drag og piltastar skreiv likevel ein ny verdi til lagringa for den aksen (tvang han til midten, sjølv om eit tidlegare lagra, ikkje-sentrert punkt fanst). Retta til å behalde eksisterande verdi på ein inert akse i staden for å overskrive han. Piltastane hadde i tillegg ei anna åtferd enn draging (kunne endre lagra verdi der draging ikkje kunne) — no konsistente.
+- **`role="slider"` mangla `aria-valuenow`/`aria-valuemin`/`aria-valuemax`.** Kravd av WAI-ARIA for denne rolla; nokre skjermlesarar melder kontrollen som verdilaus utan han sjølv med `aria-valuetext` til stades. Lagt til (x-aksen som formell verdi, `aria-valuetext` ber framleis den fulle skildringa av begge aksane).
+- **Alt-tekst vart kasta bort i tre av fire kontekstar.** `App.media.resolveImage()` returnerer `.alt` frå biletfeltet sitt eige alt-tekst-felt, men `module-booking.js`, `module-faq.js` og `workspace/module-announcements.js` (to stader) hardkoda `alt=""` uansett. Skjermlesarbrukarar fekk difor ingen skildring av desse bileta trass i at admin hadde fylt ut alt-teksten. `components.js` sin eigen `coverImg()`-hjelpar (brukt av Referanser/Aktuelt) gjorde det alt riktig — retta dei fire manglande stadene til å matche.
+- **`.imgfield__preview` sin tomme-bilde-bakgrunn var ein hardkoda hex-verdi** (`#15171a`) i staden for `var(--color-alt)`, i strid med prosjektet sin eigen fargevariabel-konvensjon — retta i `index.html`, `admin/index.html` og `workspace/index.html`.
+- **Fjerna reelt daud kode**: `adminBackupCustomer()` (den "enklare" Sikkerhetskopi-fana for ikkje-admin-roller) var uoppnåeleg via noverande fane-/kategori-routing (`allowedCategoriesForRole()` gjev aldri kategorien "innstillinger" til editor/member, som var den einaste vegen inn til denne fana) — stadfesta ved å følgje heile kjeda, ikkje anteke. Sjølve funksjonen, fane-pushet og rute-oppslaget er fjerna.
+- Testar oppdaterte (`test.js`): éin eksisterande test kodifiserte den gamle, feilaktige åtferda (venta at ArrowDown endra lagra posisjon sjølv når vindauget var vertikalt inert) — retta til å vente den no korrekte, inerte åtferda, pluss ein ny test som stadfester det same for musedrag.
+
+**Backup/restore (`core.js`) — låg-risiko copy-tillegg, ikkje RLS-endringa:**
+- Info-teksten over "Last ned sikkerhetskopi" nemner no eksplisitt at fila inneheld personopplysningar i rein tekst, og bør oppbevarast trygt/slettast etter bruk.
+- Import-`confirm()`-teksten (full Sikkerhetskopi-fana) nemner no eksplisitt at gjenoppretting kan bringe attende data som seinare er sletta (t.d. etter ein GDPR-sletteførespurnad) — det var det einaste reelt manglande Tier B-punktet reviewen fann.
+
+**Console (`console-core.js`):** `VIBEVERK_VERSION` 0.34.9 → 0.35.0.
+
+Alle testar grøne (dei to kjende, pre-eksisterande feila uendra). Cache-bust: `core.js?v=45→46`, `components.js?v=12→13`, `module-booking.js?v=14→15`, `module-faq.js?v=7→8`, `module-scrollbanner.js?v=7→8`, `module-announcements.js?v=8→9`, `console-core.js?v=101→102`.
+
+## 0.34.9 — 2026-07-15
+
+### Tre brukarrapporterte fiksar: fleire fontpar, Tjenester-kortstorleik, eige sitatfelt i Referanser
+
+**1. Console: fleire fontkombinasjonar.** `FONT_PAIRS` i `console-core.js` utvida frå 5 til 11 par (nye: Bricolage Grotesque+Inter, DM Serif Display+DM Sans, Libre Baskerville+Lato, Archivo+Roboto, Outfit+Plus Jakarta Sans, Cormorant Garamond+Mulish) — brukt i både Web- og Workspace-fanen sine fontpar-snarvegar. Alle fontnamn lastast dynamisk via Google Fonts (ingen statisk fontliste å halde synkronisert), så nye par er trygt å leggje til.
+
+**2. Tjenester-kort var for små til å vise maks tillate tekst.** `SERVICE_CARD_TEXT_MAX = 200` (`core.js`, innført 2026-07-12 nettopp for at heile teksten alltid skal få plass synleg) var likevel for stor for `.card__text` sitt visuelle klipp (`index.html`) — 5 linjer/7.5em var for lite til å vise 200 teikn i dei smalaste kortbreiddene, som motsa heile poenget med tegngrensa. Dobla til 10 linjer/15em.
+
+**3. Referanser: sitatfunksjonen var éin-eller-anna, ikkje kombinerbar.** Gammal modell: éitt tekstfelt + eit «Vis som sitat»-avkryssingsboks som styrte HEILE visningsmodusen — kunne ikkje ha vanleg tekst OG eit sitat samstundes, og brukaren opplevde det som at sitatet «bare la «» over teksten». Ny modell (`module-references.js`): eige `quote`-felt (rik-tekst, som `text`) som vises i eiga sitatboks UNDER tekstboksen, kan brukast åleine eller saman med vanleg tekst. Navn/tittel-felta for den som uttaler seg er no alltid synlege (med hint om at dei berre vises saman med sitatet), i staden for skjult bak avkryssingsboksen. **Legacy-migrering**: gamle referansar med `isQuote:true` normaliserast ved lesing (`text` → `quote`, aldri skrive attende) slik at dei framleis viser korrekt utan at nokon må redigere dei på nytt.
+
+Testar oppdatert (`test.js`: `#rf-isquote` → `#rf-quote`-felt, assertion endra frå eit `isQuote`-flagg til faktisk sitat-innhald). Alle testar grøne (dei to kjende, pre-eksisterande feila uendra). `module-references.js?v=6→7` (index.html + admin/index.html), `console-core.js?v=100→101`.
+
+## 0.34.8 — 2026-07-15
+
+### Console: forklaringstekster for "Web" og "Analyse"-fanene (Punkt 0, vidareføring)
+
+Held fram opne-slutta gjennomgangen frå 0.33.4/ROADMAP "Next" punkt 0 — no dei to attverande Console-fanene (Web, Analyse) som mangla enkelte forklaringar. Bevisst lett handsama, ikkje ein full ny audit-runde: Console er superadmin-verktøy, ikkje kundevendt, så berre dei genuint sjargong-tunge felta fekk noko lagt til.
+
+- **Web-fana**: "Meta-beskrivelse", "Delingsbilde (OG-bilde)" og "Favicon-URL" fekk kvar ein `help`-ikon som forklarer kva feltet faktisk gjer (Google-søk-tekst, deling-på-sosiale-medium-bilde, nettlesar-fane-ikon) — desse tre var reint tekniske SEO-omgrep utan noka forklaring før.
+- **Analyse-fana**: ny intro-tekst i fieldsetet ("koblar kunden sitt nettsted til Plausible Analytics …") pluss `help` på domenenamn-feltet — før var det ingenting som forklarte kva "Plausible"-felta i det heile gjorde.
+- **Workspace-fana**: to `weights`-felt for font mangla dei same "For overskrifter"/"For brødtekst"-hint-teksta som allereie fanst på det tilsvarande Web-fana sitt par — retta for konsistens.
+
+Web-admin og Personvern-fana vart sjekka og funne allereie tilstrekkeleg forklarte frå tidlegare rundar — ikkje endra. Console sine andre attverande stykke (generelle Workspace/Web-admin-tooltips utover destruktive handlingar) er framleis opent, sjå ROADMAP.
+
 ## 0.34.7 — 2026-07-14
 
 ### Console: renumbered onboarding checklist as one flat, linear sequence

@@ -58,15 +58,45 @@ window.Components = (function () {
   // (hele bildet + et flyttbart utsnitt-vindu) som bygges av core.js.
   // value    = JSON av { src, pos }  | urlValue = tekst i URL-feltet
   // aspect   = forholdstall for utsnittet (matcher hvordan seksjonen viser bildet)
+  // previews (valgfritt): [{ aspect, label }, ...] -- for bilder som faktisk
+  // vises med ulikt forhold fleire stader (t.d. Aktuelt-kort vs. artikkelside).
+  // Same lagra fokuspunkt vert brukt overalt (éin posisjon, ikkje éin per
+  // visning -- eit medvite forenkla val, sjå ROADMAP/CHANGELOG 2026-07-15) --
+  // sekundærboksane er reine, ikkje-redigerbare "slik ser det faktisk ut her
+  // òg"-spegelbilete av den same posisjonen, ikkje eigne drabare vindauge.
+  // Når previews er tom (standard, dei aller fleste biletfelt) er utdataet
+  // BYTE-IDENTISK med før denne utvidinga -- ingen ekstra wrapper-div.
   function imageField(opts) {
     const o = opts || {};
     const id = esc(o.id);
     const aspect = o.aspect || (16 / 9);
     const ct = o.creditType || "";
+    const previews = Array.isArray(o.previews) ? o.previews : [];
+    const hasExtra = previews.length > 0 || !!o.aspectLabel;
+    // Merk kva samanheng hovudboksen faktisk gjeld i aria-label når fleire
+    // visingar finst -- utan dette høyrer ein skjermlesarbrukar berre ein
+    // generisk "flytt fokuspunktet"-etikett, ikkje at det finst ei relatert
+    // sekundær-førehandsvising rett under (UX-gjennomgang 2026-07-15).
+    const ariaLabel = "Fokuspunkt for utsnitt" + (o.aspectLabel ? " (" + o.aspectLabel + ")" : "") + " — bruk piltastene for å flytte";
+    const primaryPreview = `<div class="imgfield__preview" data-imgfield-preview data-aspect="${aspect}" tabindex="0" role="slider" aria-label="${esc(ariaLabel)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="Midten"></div>`;
+    const previewsBlock = !hasExtra ? primaryPreview : `
+        <div class="imgfield__previews" data-imgfield-previews>
+          <div class="imgfield__previewbox imgfield__previewbox--primary">
+            ${primaryPreview}
+            ${o.aspectLabel ? `<p class="imgfield__preview-label">${esc(o.aspectLabel)}</p>` : ""}
+          </div>
+          ${previews.map(function (p) {
+            return `
+          <div class="imgfield__previewbox imgfield__previewbox--secondary">
+            <div class="imgfield__secondary" data-imgfield-secondary data-aspect="${p.aspect}" aria-hidden="true"></div>
+            <p class="imgfield__preview-label">${esc(p.label || "")}</p>
+          </div>`;
+          }).join("")}
+        </div>`;
     return `
       <div class="field imgfield" data-imgfield>
         <label>${esc(o.label)}</label>
-        <div class="imgfield__preview" data-imgfield-preview data-aspect="${aspect}" tabindex="0" role="slider" aria-label="Fokuspunkt for utsnitt — bruk piltastene for å flytte" aria-valuetext="Midten"></div>
+        ${previewsBlock}
         <p class="imgfield__hint" data-imgfield-hint></p>
         <div class="imgfield__controls">
           <label class="btn btn--ghost imgfield__btn">
