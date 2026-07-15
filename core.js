@@ -1154,13 +1154,16 @@ window.App = (function () {
     if (window.VwChatAdmin && feat("chat") && OPT_CHAT.enabled !== false) {
       tabs.push({ id: "chat-admin", label: "Chat", category: "henvendelser" });
     }
-    // Admin ser full sikkerhetskopi (med per-modul-eksport)
-    // Andre roller ser forenkla versjon
+    // Sikkerhetskopi har kategori "innstillinger", som allowedCategoriesForRole()
+    // berre gjev til rolla admin (sjå ovanfor) -- difor berre relevant å leggje
+    // til fana i det heile for admin. Fjerna 2026-07-15 (UX-gjennomgang): den
+    // tidlegare else-greina la til ei "admin-backup"-fane for andre roller,
+    // men sidan dei rollene aldri får sjå kategorien "innstillinger", var fana
+    // -- og heile adminBackupCustomer()-funksjonen ho ruta til -- reelt sett
+    // uoppnåeleg, stadfesta ved å følgje heile fane-/kategorifilter-kjeda.
     const _backupRole = typeof getAuthRole === "function" ? (getAuthRole() || "member") : "member";
     if (_backupRole === "admin") {
       tabs.push({ id: "sikkerhetskopi", label: "Sikkerhetskopi", category: "innstillinger" });
-    } else {
-      tabs.push({ id: "admin-backup",   label: "Sikkerhetskopi", category: "innstillinger" });
     }
     if (_sb) {
       tabs.push({ id: "min-konto", label: "Min konto", category: "konto" });
@@ -1404,7 +1407,6 @@ window.App = (function () {
       return;
     }
     if (activeTab === "sikkerhetskopi") return adminBackup(body);
-    if (activeTab === "admin-backup")   return adminBackupCustomer(body);
     if (activeTab === "brukarar") {
       if (window.VwUsersAdmin) window.VwUsersAdmin.render(body);
       return;
@@ -1552,6 +1554,12 @@ window.App = (function () {
       // eit bilete som alt har eit ikkje-sentrert fokuspunkt lagra.
       function updateValueText() {
         const p = parsePos(state.pos);
+        // role="slider" krev aria-valuenow -- ein del skjermlesarar melder
+        // kontrollen som verdilaus/ugyldig utan han, sjølv med aria-valuetext
+        // til stades. Kontrollen er eigentleg 2-dimensjonal (x OG y); vel
+        // x-aksen som den formelle "verdien" og lèt aria-valuetext (under)
+        // bere den fulle skildringa av begge aksane.
+        preview.setAttribute("aria-valuenow", Math.round(p[0]));
         preview.setAttribute("aria-valuetext", Math.round(p[0]) + "% frå venstre, " + Math.round(p[1]) + "% frå toppen");
       }
 
@@ -1672,7 +1680,16 @@ window.App = (function () {
         const maxL = 100 - crop.ww, maxT = 100 - crop.wh;
         const nl = Math.max(0, Math.min(maxL, swl + (e.clientX - sx) / (r.width || 1) * 100));
         const nt = Math.max(0, Math.min(maxT, swt + (e.clientY - sy) / (r.height || 1) * 100));
-        state.pos = Math.round(maxL > 0 ? nl / maxL * 100 : 50) + "% " + Math.round(maxT > 0 ? nt / maxT * 100 : 50) + "%";
+        // Når utsnittvindauget alt fyller heile bredda/høgda (t.d. eit 21:9-
+        // banner med eit vanleg liggjande foto) er den aksen inert -- vindauget
+        // kan ikkje flytte seg, uansett kor mykje du drar. Behald den lagra
+        // posisjonen for den aksen i staden for å tvinge han til 50 (midten)
+        // ved kvar drag, som før stille overskreiv ein alt lagra, ikkje-sentrert
+        // verdi -- funne under UX-gjennomgang 2026-07-15.
+        const cur = parsePos(state.pos);
+        const nx = maxL > 0 ? Math.round(nl / maxL * 100) : cur[0];
+        const ny = maxT > 0 ? Math.round(nt / maxT * 100) : cur[1];
+        state.pos = nx + "% " + ny + "%";
         sync();
         const win = preview.querySelector("[data-crop-window]");
         if (win) { win.style.left = nl + "%"; win.style.top = nt + "%"; }
@@ -1684,8 +1701,13 @@ window.App = (function () {
       preview.addEventListener("keydown", function (e) {
         if (!state.src || !crop) return;
         var STEP = 5;
-        var dx = e.key === "ArrowLeft" ? -STEP : e.key === "ArrowRight" ? STEP : 0;
-        var dy = e.key === "ArrowUp"   ? -STEP : e.key === "ArrowDown"  ? STEP : 0;
+        // Same inert-akse-sperre som pointermove over -- utan denne kunne
+        // piltastane endre den lagra posisjonen på ein akse der det synlege
+        // vindauget likevel aldri flytta seg, eit misforhold mellom mus/
+        // tastatur som UX-gjennomgangen 2026-07-15 fann.
+        var maxL = 100 - crop.ww, maxT = 100 - crop.wh;
+        var dx = (maxL > 0 && e.key === "ArrowLeft") ? -STEP : (maxL > 0 && e.key === "ArrowRight") ? STEP : 0;
+        var dy = (maxT > 0 && e.key === "ArrowUp")   ? -STEP : (maxT > 0 && e.key === "ArrowDown")  ? STEP : 0;
         if (!dx && !dy) return;
         e.preventDefault();
         var p = parsePos(state.pos);
@@ -2774,24 +2796,26 @@ window.App = (function () {
     "tasks", "announcements", "kb_articles", "links"
   ];
 
-  // PostgREST avgrensar .select() til 1000 rader som standard -- side
-  // gjennom med .range() til ei kortare side kjem attende. Kastar (i staden
-  // for å logge og halde fram med det som alt er henta) viss ei side feilar
-  // -- ein stille avkorta eksport er nett den typen usynleg datatap denne
-  // heile fiksen skal rette, ikkje noko å gjenta ein gong til her.
-  function fetchAllRows(table) {
-    if (!_sb) return Promise.resolve([]);
-    const PAGE = 1000;
-    function page(offset, acc) {
-      return _sb.from(table).select("*").range(offset, offset + PAGE - 1).then(function (r) {
-        if (r.error) return Promise.reject(new Error("Henting av " + table + " feila: " + r.error.message));
-        const rows = r.data || [];
-        acc = acc.concat(rows);
-        if (rows.length < PAGE) return acc;
-        return page(offset + PAGE, acc);
-      });
+  // Admin-gjerda RPC (supabase/migrations/20260715140000_export_backup_tables_rpc.sql)
+  // -- IKKJE lenger ni separate per-tabell .select("*")-kall. Den gamle
+  // tilnærminga stolte berre på at Web-adminen sin "Sikkerhetskopi"-fane var
+  // skjult for ikkje-admin-roller i UI-et, men RLS SELECT på desse ni
+  // tabellane er ope for alle autentiserte roller (naudsynt for vanleg CRM/
+  // oppgåve-blaing) -- så INGENTING i databasen hindra ein innlogga member/
+  // editor frå å kalle window.App.buildBackupPayload() sjølv, og få heile
+  // datasettet. Funnet av Privacy/Compliance Advisor-gjennomgangen 2026-07-15
+  // (sjå CHANGELOG.md). RPC-en handhevar no det same is_admin_or_owner()-
+  // gjerdet restore_backup_tables alt hadde, for eksport-sida.
+  function fetchAllTables() {
+    if (!_sb) {
+      const empty = {};
+      BACKUP_TABLES.forEach(function (t) { empty[t] = []; });
+      return Promise.resolve(empty);
     }
-    return page(0, []);
+    return _sb.rpc("export_backup_tables").then(function (r) {
+      if (r.error) return Promise.reject(new Error("Henting av sikkerhetskopi-data feila: " + r.error.message));
+      return r.data || {};
+    });
   }
 
   function exportBackup() {
@@ -2807,9 +2831,7 @@ window.App = (function () {
     const keys = allStoreKeys();
     const data = {};
     keys.forEach(function (k) { data[k] = Store.get(k, null); });
-    return Promise.all(BACKUP_TABLES.map(fetchAllRows)).then(function (results) {
-      const tables = {};
-      BACKUP_TABLES.forEach(function (t, i) { tables[t] = results[i]; });
+    return fetchAllTables().then(function (tables) {
       data.tables = tables;
       return {
         vibeverk_backup: true,
@@ -2969,7 +2991,7 @@ window.App = (function () {
         <p class="prose prose--muted" style="margin:0 0 1.6rem">${levelText}</p>
 
         <h4 class="an-heading">Last ned sikkerhetskopi</h4>
-        <p class="prose prose--muted" style="margin:0 0 .8rem">Laster ned ALT innhold på denne siden — tekst, bilder, henvendelser, bookinger, kunder (inkl. kommunikasjonshistorikk), oppgaver, kunngjøringer, kunnskapsbase, lenker og innstillinger — som én fil. Bruk denne jevnlig, og alltid før du gjør store endringer.${window.VwChat ? " Merk: chat-samtaler er ikke med i denne fila — bruk «Chat (JSON)» under (dekker kun chat lagret lokalt i denne nettleseren, ikke chat på tvers av enheter)." : ""}</p>
+        <p class="prose prose--muted" style="margin:0 0 .8rem">Laster ned ALT innhold på denne siden — tekst, bilder, henvendelser, bookinger, kunder (inkl. kommunikasjonshistorikk), oppgaver, kunngjøringer, kunnskapsbase, lenker og innstillinger — som én fil. Bruk denne jevnlig, og alltid før du gjør store endringer.${window.VwChat ? " Merk: chat-samtaler er ikke med i denne fila — bruk «Chat (JSON)» under (dekker kun chat lagret lokalt i denne nettleseren, ikke chat på tvers av enheter)." : ""} Filen inneholder personopplysninger (navn, e-post, telefon, kommunikasjonshistorikk) i ren, ulåst tekst — oppbevar den trygt og slett den når du ikke lenger trenger den.</p>
         <ul class="backup-summary">
           ${rows.map(function (r) { return '<li><span>' + C.esc(r[0]) + '</span><strong>' + r[1] + '</strong></li>'; }).join("")}
         </ul>
@@ -3041,7 +3063,7 @@ window.App = (function () {
       const file = e.target.files[0];
       if (!file) return;
       const st = body.querySelector("[data-backup-status]");
-      if (!confirm("Dette overskriver ALT eksisterende innhold på denne siden med innholdet i «" + file.name + "» (unntatt chat og personlige notater, se merknad over). Dette kan ikke angres. Er du sikker?")) {
+      if (!confirm("Dette overskriver ALT eksisterende innhold på denne siden med innholdet i «" + file.name + "» (unntatt chat og personlige notater, se merknad over). Dette gjelder også data du har slettet etter at denne sikkerhetskopien ble tatt — for eksempel kunder eller henvendelser du senere har slettet etter en sletteforespørsel. Dette kan ikke angres. Er du sikker?")) {
         e.target.value = "";
         return;
       }
@@ -3055,76 +3077,6 @@ window.App = (function () {
           st.className = "form__status is-error";
           e.target.value = "";
         }
-      });
-    });
-  }
-
-  /* --- Sikkerhetskopi for kunde-admin (enklare versjon utan superconfig) ---
-     Tilgjengeleg under Admin → Innstillinger → Sikkerhetskopi.
-     Eksporterer og importerer all data under sidens navnerom.           */
-  function adminBackupCustomer(body) {
-    const usedBytes = storageUsageBytes();
-    const pct       = Math.min(100, Math.round((usedBytes / STORAGE_QUOTA_BYTES) * 100));
-    const usedMb    = (usedBytes / (1024 * 1024)).toFixed(1);
-    const level     = pct >= 90 ? "high" : pct >= 70 ? "mid" : "low";
-    const levelText = level === "high"
-      ? "Lagringen er nesten full. Slett gamle bilder eller rydd i henvendelser."
-      : level === "mid" ? "Lagringen begynner å fylles opp."
-      : "God plass igjen.";
-
-    const leads    = getLeads ? getLeads() : [];
-    const bookings = bookingBookings();
-    const customers= crmCustomers();
-
-    body.innerHTML = `
-      <div class="bk-wrap">
-        <h4 class="an-heading">Lagringsplass</h4>
-        <div class="storage-meter" data-storage-level="${level}">
-          <div class="storage-meter__bar"><div class="storage-meter__fill" style="width:${pct}%"></div></div>
-          <p class="storage-meter__label">${usedMb} MB av ~5 MB brukt (${pct} %)</p>
-        </div>
-        <p class="prose prose--muted" style="margin:0 0 1.6rem">${C.esc(levelText)}</p>
-
-        <h4 class="an-heading">Last ned sikkerhetskopi</h4>
-        <p class="prose prose--muted" style="margin:0 0 .5rem">Laster ned alt innhold på denne siden som én fil — inkludert kunder, henvendelser, bookinger, oppgaver, kunngjøringer, kunnskapsbase og lenker. Ta sikkerhetskopi jevnlig og alltid før store endringer.${window.VwChat ? " Merk: chat-samtaler er ikke med i denne fila." : ""}</p>
-        <ul class="backup-summary" style="margin-bottom:1rem">
-          <li><span>Kontakthenvendelser</span><strong>${leads.filter(function(l){return !isTilbud(l);}).length}</strong></li>
-          <li><span>Tilbud</span><strong>${leads.filter(isTilbud).length}</strong></li>
-          <li><span>Bookinger</span><strong>${bookings.length}</strong></li>
-          <li><span>Kunder</span><strong>${customers.length}</strong></li>
-        </ul>
-        ${C.button({ label:"Last ned sikkerhetskopi", icon:"download", variant:"primary", attrs:"data-cust-backup-export" })}
-
-        <h4 class="an-heading" style="margin-top:2rem">Importer sikkerhetskopi</h4>
-        <p class="prose prose--muted" style="margin:0 0 .8rem">${C.icon("alert-triangle")} <strong>OBS:</strong> Dette overskriver ALT eksisterende innhold med innholdet i fila (unntatt chat). Kan ikke angres.</p>
-        <label class="btn btn--ghost backup-filebtn">
-          ${C.icon("upload")} Velg fil
-          <input type="file" accept="application/json" hidden data-cust-backup-import>
-        </label>
-        <p class="form__status" data-cust-backup-status style="margin-top:.6rem" role="status" aria-live="polite"></p>
-      </div>`;
-
-    body.querySelector("[data-cust-backup-export]").addEventListener("click", function (e) {
-      const btn = e.currentTarget;
-      const st  = body.querySelector("[data-cust-backup-status]");
-      btn.disabled = true;
-      if (st) { st.textContent = "Henter data …"; st.className = "form__status"; }
-      exportBackup()
-        .then(function () { if (st) st.textContent = ""; })
-        .catch(function (err) {
-          console.error("[backup] eksport feila:", err);
-          if (st) { st.textContent = "Eksport feilet: " + ((err && err.message) || "ukjent feil."); st.className = "form__status is-error"; }
-        })
-        .then(function () { btn.disabled = false; });
-    });
-    body.querySelector("[data-cust-backup-import]").addEventListener("change", function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const st = body.querySelector("[data-cust-backup-status]");
-      if (!confirm("Dette overskriver ALT eksisterende innhold med «" + file.name + "» (unntatt chat, se merknad over). Er du sikker?")) { e.target.value = ""; return; }
-      importBackup(file, function (ok, msg) {
-        if (ok) { st.textContent = msg + " Laster på nytt…"; st.className = "form__status is-ok"; setTimeout(function () { location.reload(); }, 700); }
-        else    { st.textContent = msg; st.className = "form__status is-error"; e.target.value = ""; }
       });
     });
   }

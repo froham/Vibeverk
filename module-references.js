@@ -14,9 +14,11 @@
      - Bilde (valgfritt, 16:9 cover)
      - Kundenavn / prosjektnavn  (påkrevd)
      - Kategori/bransje          (valgfritt — brukes som filter)
-     - Tekst / sitat             (valgfritt)
-     - Sitat-modus               (valgfritt — kursiv + anførselstegn)
-     - Navn og tittel på den som uttaler seg (valgfritt, kun i sitat-modus)
+     - Tekst                     (valgfritt — vanlig beskrivelse)
+     - Sitat                     (valgfritt, egen boks — vises i kursiv med
+                                   anførselstegn, kan kombineres fritt med
+                                   teksten over eller stå alene)
+     - Navn og tittel på den som uttaler seg (valgfritt, vises kun med sitat)
      - Rekkefølge (order)        (tall, lavere = først)
 
    Admin: full CRUD under «Referanser»-fanen.
@@ -38,7 +40,19 @@
   /* =========================================================================
      LAGRING
      ====================================================================== */
-  function getItems() { return App.store.get(STORE_KEY, []) || []; }
+  // Legacy migrasjon (2026-07-15): gamle referansar lagra sitatet i `text`
+  // saman med eit isQuote-flagg som styrte HEILE visningsmodusen (anten vanleg
+  // tekst eller sitat, aldri begge). Nye referansar har eit eige `quote`-felt
+  // som kan kombinerast fritt med vanleg tekst. Normaliserer ved lesing --
+  // skriv ALDRI attende -- slik at gamle, ikkje-redigerte referansar framleis
+  // viser sitatet sitt korrekt.
+  function normalizeItem(item) {
+    if (item.isQuote && !item.quote && item.text) {
+      return Object.assign({}, item, { quote: item.text, text: "" });
+    }
+    return item;
+  }
+  function getItems() { return (App.store.get(STORE_KEY, []) || []).map(normalizeItem); }
   function setItems(v) { App.store.set(STORE_KEY, v); }
   function sorted(items) {
     return items.slice().sort(function (a, b) {
@@ -117,16 +131,11 @@
       : '<div class="rf-card__placeholder"><span>Bilde kommer</span></div>';
     var catHtml = item.category
       ? '<span class="rf-card__cat">' + esc(item.category) + '</span>' : "";
-    var textHtml = "";
-    var plainText = C.stripHtml(item.text);
-    if (item.text) {
-      if (item.isQuote) {
-        textHtml = '<p class="rf-card__quote">' + esc(plainText) + '</p>';
-      } else {
-        textHtml = '<p class="rf-card__text">' + esc(plainText) + '</p>';
-      }
-    }
-    var byHtml = (item.isQuote && item.byName)
+    var plainText  = C.stripHtml(item.text  || "");
+    var plainQuote = C.stripHtml(item.quote || "");
+    var textHtml  = plainText  ? '<p class="rf-card__text">'  + esc(plainText)  + '</p>' : "";
+    var quoteHtml = plainQuote ? '<p class="rf-card__quote">' + esc(plainQuote) + '</p>' : "";
+    var byHtml = (plainQuote && item.byName)
       ? '<p class="rf-card__by"><strong>' + esc(item.byName) + '</strong>' +
           (item.byTitle ? ' · ' + esc(item.byTitle) : '') + '</p>'
       : "";
@@ -136,8 +145,9 @@
         catHtml +
         '<h3 class="rf-card__name">' + esc(item.name) + '</h3>' +
         textHtml +
+        quoteHtml +
         byHtml +
-        (plainText.length > 80
+        ((plainText.length + plainQuote.length) > 80
           ? '<span class="rf-readmore">Les mer →</span>'
           : "") +
       '</div>' +
@@ -148,16 +158,13 @@
   function detailHtml(item) {
     var img = App.media.resolveImage(item.image);
     var imgHtml = img.src ? '<div class="rf-detail__img">' + C.coverImg(img, "") + '</div>' : "";
-    var textHtml = "";
-    if (item.text) {
-      if (item.isQuote) {
-        textHtml = '<p class="rf-detail__quote">' + C.sanitizeRichHtml(item.text) + '</p>';
-        if (item.byName) {
-          textHtml += '<p class="rf-detail__by"><strong>' + esc(item.byName) + '</strong>' +
-            (item.byTitle ? '<span style="color:var(--color-muted)"> · ' + esc(item.byTitle) + '</span>' : '') + '</p>';
-        }
-      } else {
-        textHtml = '<div class="rf-detail__text">' + C.sanitizeRichHtml(item.text) + '</div>';
+    var textHtml = item.text ? '<div class="rf-detail__text">' + C.sanitizeRichHtml(item.text) + '</div>' : "";
+    var quoteHtml = "";
+    if (item.quote) {
+      quoteHtml = '<p class="rf-detail__quote">' + C.sanitizeRichHtml(item.quote) + '</p>';
+      if (item.byName) {
+        quoteHtml += '<p class="rf-detail__by"><strong>' + esc(item.byName) + '</strong>' +
+          (item.byTitle ? '<span style="color:var(--color-muted)"> · ' + esc(item.byTitle) + '</span>' : '') + '</p>';
       }
     }
     return '<section id="referanser" class="section reveal"><div class="container">' +
@@ -169,6 +176,7 @@
         (item.category ? '<p class="rf-detail__cat">' + esc(item.category) + '</p>' : '') +
         '<h2 class="rf-detail__name">' + esc(item.name) + '</h2>' +
         textHtml +
+        quoteHtml +
       '</div>' +
     '</div></section>';
   }
@@ -293,11 +301,11 @@
   function adminRow(item) {
     var badge = item.category
       ? ' <span class="bk-badge bk-badge--public">' + esc(item.category) + '</span>' : "";
-    var mode = item.isQuote ? "sitat" : "tekst";
+    var snippet = C.stripHtml(item.text || item.quote || "");
     return '<li class="admin-row">' +
       '<div class="admin-row__main">' +
         '<strong>' + esc(item.name) + badge + '</strong>' +
-        '<span class="admin-row__meta">' + mode + (item.text ? ' · ' + esc(C.stripHtml(item.text).slice(0, 60)) + '…' : '') + '</span>' +
+        '<span class="admin-row__meta">' + (snippet ? esc(snippet.slice(0, 60)) + '…' : "Ingen tekst") + '</span>' +
       '</div>' +
       '<div class="admin-row__actions">' +
         C.button({ label: "Rediger", variant: "ghost", attrs: 'data-rf-edit="' + esc(item.id) + '"' }) +
@@ -317,15 +325,14 @@
         C.field({ id: "rf-cat",   label: "Kategori / bransje",       value: item ? (item.category || "") : "",
                   placeholder: "f.eks. Bygg, Interiør, IT …", hint: "Brukes som filter på referansesiden" }) +
         App.ui.imageField("rf-image", "Bilde (valgfritt)", item ? item.image : "", 16 / 9) +
-        C.richTextField({ id: "rf-text", label: "Tekst / sitat", value: item ? (item.text || "") : "" }) +
-        '<div class="field"><label class="imgfield__creditrow" style="font-size:.9rem">' +
-          '<input type="checkbox" id="rf-isquote" ' + (item && item.isQuote ? "checked" : "") + '> ' +
-          '<span>Vis som sitat (kursiv med anførselstegn)</span>' +
-        '</label></div>' +
-        '<div data-rf-byfields style="' + (item && item.isQuote ? "" : "display:none") + '">' +
-          C.field({ id: "rf-byname",  label: "Navn på den som uttaler seg", value: item ? (item.byName || "") : "" }) +
-          C.field({ id: "rf-bytitle", label: "Tittel / stilling",           value: item ? (item.byTitle || "") : "" }) +
-        '</div>' +
+        C.richTextField({ id: "rf-text", label: "Tekst", value: item ? (item.text || "") : "" }) +
+        C.richTextField({ id: "rf-quote", label: "Sitat (valgfritt)", value: item ? (item.quote || "") : "" }) +
+        '<p style="font-size:.78rem;color:var(--color-muted);margin:-.5rem 0 .6rem">' +
+          'Vises i egen boks under teksten, i kursiv med anførselstegn. Kan brukes alene eller sammen med teksten over.' +
+        '</p>' +
+        C.field({ id: "rf-byname",  label: "Navn på den som uttaler seg", value: item ? (item.byName || "") : "",
+                  hint: "Vises bare sammen med sitatet." }) +
+        C.field({ id: "rf-bytitle", label: "Tittel / stilling",           value: item ? (item.byTitle || "") : "" }) +
         C.field({ id: "rf-order", label: "Rekkefølge", type: "number", value: item ? (item.order || 0) : items.length,
                   hint: "Lavere tall vises først" }) +
         '<div class="admin-row__actions">' +
@@ -336,13 +343,6 @@
 
     App.ui.bindImageFields(ed);
     App.ui.bindRichTextFields(ed);
-
-    // Vis/skjul sitat-felt
-    var chk = ed.querySelector("#rf-isquote");
-    var byFields = ed.querySelector("[data-rf-byfields]");
-    chk.addEventListener("change", function () {
-      byFields.style.display = chk.checked ? "" : "none";
-    });
 
     ed.querySelector("[data-rf-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
     ed.querySelector("[data-rf-form]").addEventListener("submit", function (e) {
@@ -355,7 +355,7 @@
         category: ed.querySelector("#rf-cat").value.trim(),
         image:    App.ui.readImageField(ed, "rf-image"),
         text:     App.ui.readRichTextField(ed, "rf-text"),
-        isQuote:  ed.querySelector("#rf-isquote").checked,
+        quote:    App.ui.readRichTextField(ed, "rf-quote"),
         byName:   ed.querySelector("#rf-byname").value.trim(),
         byTitle:  ed.querySelector("#rf-bytitle").value.trim(),
         order:    parseInt(ed.querySelector("#rf-order").value, 10) || 0

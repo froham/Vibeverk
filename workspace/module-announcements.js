@@ -260,7 +260,7 @@
           '<i class="ti ti-speakerphone"></i> Viktig</span>'
         : '') +
       (img && img.src
-        ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;aspect-ratio:16/9;max-height:180px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;margin-bottom:.8rem;display:block">'
+        ? '<img src="' + C.esc(img.src) + '" alt="' + C.esc(img.alt || "") + '" style="width:100%;aspect-ratio:16/9;max-height:180px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;margin-bottom:.8rem;display:block">'
         : '') +
       '<strong style="font-size:1rem;display:block;margin-bottom:.2rem">' + C.esc(a.title) + '</strong>' +
       '<div style="font-size:.78rem;color:var(--color-muted);margin-bottom:.5rem">' + formatDate(a.created_at || a.published_at) + '</div>' +
@@ -329,7 +329,7 @@
       '</div>' +
       '<div style="padding:1.2rem 1.4rem">' +
         (img && img.src
-          ? '<img src="' + C.esc(img.src) + '" alt="" style="width:100%;aspect-ratio:16/9;max-height:320px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;margin-bottom:1.1rem;display:block">'
+          ? '<img src="' + C.esc(img.src) + '" alt="' + C.esc(img.alt || "") + '" style="width:100%;aspect-ratio:16/9;max-height:320px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;margin-bottom:1.1rem;display:block">'
           : '') +
         (item.content
           ? '<div style="font-size:.95rem;line-height:1.75;color:var(--color-text)">' + C.sanitizeRichHtml(item.content) + '</div>'

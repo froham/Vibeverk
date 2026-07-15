@@ -228,9 +228,23 @@ assert(heroPrev.getAttribute("tabindex") === "0" && heroPrev.getAttribute("role"
 heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
 const posAfterRight = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
 assert(posAfterRight === "80% 50%", "ArrowRight flytter fokuspunktet 5% mot høgre: " + posAfterRight);
+// Dette bildet sitt utsnittvindu fyller alt 100% av høgda (wh:100, sjå
+// layout()-kommentaren over — imgAspect 4 > outAspect 2.4) -- den vertikale
+// aksen er difor inert, akkurat som dei breie 3:1/21:9-utsnitta UX-
+// gjennomgangen 2026-07-15 fann. ArrowDown skal difor IKKJE lenger endre den
+// lagra posisjonen (før denne fiksen endra han stille, sjølv om vindauget
+// aldri synleg flytta seg vertikalt -- eit reelt inkonsistens-funn).
 heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
 const posAfterDown = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
-assert(posAfterDown === "80% 55%", "ArrowDown flytter fokuspunktet 5% nedover: " + posAfterDown);
+assert(posAfterDown === "80% 50%", "ArrowDown er inert på ein akse utan rom å flytte i: " + posAfterDown);
+// Same inert-akse-sperre gjeld draging (musepeikar), ikkje berre tastatur.
+const downV = new window.Event("pointerdown", { bubbles: true }); downV.clientX = 0; downV.clientY = 0; downV.pointerId = 2;
+heroPrev.dispatchEvent(downV);
+const moveV = new window.Event("pointermove", { bubbles: true }); moveV.clientX = 0; moveV.clientY = 20; // forsøk på vertikal drag
+heroPrev.dispatchEvent(moveV);
+window.dispatchEvent(new window.Event("pointerup", { bubbles: true }));
+const posAfterVDrag = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
+assert(posAfterVDrag === "80% 50%", "vertikal drag er også inert på ein akse utan rom å flytte i: " + posAfterVDrag);
 heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
 heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }));
 const posAfterReturn = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
@@ -964,21 +978,21 @@ const __asyncTests = (async () => {
 
   // Opprett tre referanser via admin
   clickAdminTab("mod-referanser");
-  function addRef(name, cat, text, isQuote) {
+  function addRef(name, cat, text, quote) {
     fire(doc.querySelector("[data-rf-new]"), "click");
     doc.querySelector("#rf-name").value = name;
     doc.querySelector("#rf-cat").value = cat || "";
     doc.querySelector("#rf-text").value = text || "";
-    if (isQuote) { doc.querySelector("#rf-isquote").checked = true; fire(doc.querySelector("#rf-isquote"), "change"); }
+    doc.querySelector("#rf-quote").value = quote || "";
     doc.querySelector("#rf-order").value = "0";
     fire(doc.querySelector("[data-rf-form]"), "submit");
   }
-  addRef("Kunde A", "Bygg", "Fantastisk arbeid!", true);
+  addRef("Kunde A", "Bygg", "", "Fantastisk arbeid!");
   addRef("Kunde B", "IT", "Solid leveranse.");
   addRef("Kunde C", "Bygg", "Anbefales.");
   const refs = JSON.parse(window.localStorage.getItem("nordpunkt:ref-items"));
   assert(refs.length === 3, "tre referanser lagret");
-  assert(refs[0].isQuote === true, "sitat-flagg lagret korrekt");
+  assert(refs[0].quote === "Fantastisk arbeid!", "sitat lagret i eige felt");
 
   // Analyse-fanen: referanser-kategorier vises no som chips
   clickAdminTab("analyse");

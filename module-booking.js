@@ -346,7 +346,7 @@
         '<div class="bk-asset__body">' +
           '<h3 class="bk-asset__title">' + esc(a.name) + '</h3>' +
           (a.description ? '<p class="bk-asset__desc">' + esc(a.description) + '</p>' : '') +
-          (img.src ? '<img src="' + esc(img.src) + '" alt="" class="bk-asset__img bk-asset__img--inline" style="object-position:' + esc(img.pos || "50% 50%") + '">' : '') +
+          (img.src ? '<img src="' + esc(img.src) + '" alt="' + esc(img.alt || "") + '" class="bk-asset__img bk-asset__img--inline" style="object-position:' + esc(img.pos || "50% 50%") + '">' : '') +
           picker +
           '<div class="bk-confirm" data-confirm></div>' +
           '<button type="button" class="btn btn--ghost bk-request" data-book="' + esc(a.id) + '">Forespør annet tidspunkt</button>' +

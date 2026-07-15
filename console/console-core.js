@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.34.7";
+  var VIBEVERK_VERSION = "0.35.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -308,11 +308,17 @@ window.VwConsole = (function () {
      KONSTANTER
      ====================================================================== */
   var FONT_PAIRS = [
-    { label: "Syne + Inter",                    display: "Syne",             body: "Inter" },
-    { label: "Playfair + Source Sans 3",         display: "Playfair Display", body: "Source Sans 3" },
-    { label: "Space Grotesk + Work Sans",        display: "Space Grotesk",    body: "Work Sans" },
-    { label: "Fraunces + Karla",                 display: "Fraunces",         body: "Karla" },
-    { label: "Poppins + Nunito Sans",            display: "Poppins",          body: "Nunito Sans" }
+    { label: "Syne + Inter",                    display: "Syne",               body: "Inter" },
+    { label: "Playfair + Source Sans 3",         display: "Playfair Display",   body: "Source Sans 3" },
+    { label: "Space Grotesk + Work Sans",        display: "Space Grotesk",      body: "Work Sans" },
+    { label: "Fraunces + Karla",                 display: "Fraunces",           body: "Karla" },
+    { label: "Poppins + Nunito Sans",            display: "Poppins",            body: "Nunito Sans" },
+    { label: "Bricolage Grotesque + Inter",      display: "Bricolage Grotesque",body: "Inter" },
+    { label: "DM Serif Display + DM Sans",       display: "DM Serif Display",   body: "DM Sans" },
+    { label: "Libre Baskerville + Lato",         display: "Libre Baskerville",  body: "Lato" },
+    { label: "Archivo + Roboto",                 display: "Archivo",            body: "Roboto" },
+    { label: "Outfit + Plus Jakarta Sans",       display: "Outfit",             body: "Plus Jakarta Sans" },
+    { label: "Cormorant Garamond + Mulish",      display: "Cormorant Garamond", body: "Mulish" }
   ];
   var FEAT_LABELS = {
     newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg",
@@ -650,9 +656,12 @@ window.VwConsole = (function () {
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>SEO og deling</legend>' +
           C.field({ id:"cs-metadesc", label:"Meta-beskrivelse", multiline:true, rows:2,
-            value: com.metaDescription || "", placeholder:"Kort beskrivelse, 1–2 setningar" }) +
-          C.field({ id:"cs-ogimage", label:"Delingsbilde (OG-bilde)", value: com.ogImage || "", placeholder:"https://… (1200×630px)" }) +
-          C.field({ id:"cs-favicon", label:"Favicon-URL", value: com.favicon || "", placeholder:"https://…" }) +
+            value: com.metaDescription || "", placeholder:"Kort beskrivelse, 1–2 setningar",
+            help:"Teksten som vises under tittelen i Google-søk. Kort og beskrivende, 1–2 setningar." }) +
+          C.field({ id:"cs-ogimage", label:"Delingsbilde (OG-bilde)", value: com.ogImage || "", placeholder:"https://… (1200×630px)",
+            help:"Bildet som vises når nokon deler lenka til sida på Facebook, LinkedIn eller andre sosiale medium." }) +
+          C.field({ id:"cs-favicon", label:"Favicon-URL", value: com.favicon || "", placeholder:"https://…",
+            help:"Det vesle ikonet som vises i nettlesar-fana og bokmerke." }) +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<div class="bk-2col">' +
@@ -804,11 +813,11 @@ window.VwConsole = (function () {
           '</div>' +
           '<div class="bk-2col">' +
             C.field({ id:"cs-wsp-dfont",    label:"Display-font",    value: wspFnt.display || "", placeholder:"Tomt = same som nettsida" }) +
-            C.field({ id:"cs-wsp-dweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.display ? wspFnt.weights.display.join(",") : "600,700,800") }) +
+            C.field({ id:"cs-wsp-dweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.display ? wspFnt.weights.display.join(",") : "600,700,800"), hint:"For overskrifter" }) +
           '</div>' +
           '<div class="bk-2col">' +
             C.field({ id:"cs-wsp-bfont",    label:"Brødtekst-font",  value: wspFnt.body || "", placeholder:"Tomt = same som nettsida" }) +
-            C.field({ id:"cs-wsp-bweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.body ? wspFnt.weights.body.join(",") : "400,500,600") }) +
+            C.field({ id:"cs-wsp-bweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.body ? wspFnt.weights.body.join(",") : "400,500,600"), hint:"For brødtekst" }) +
           '</div>' +
           '<div style="margin-top:.5rem">' +
             '<button type="button" class="btn btn--ghost btn--sm" id="cs-wsp-reset">↺ Nullstill fargar og fontar til standard</button>' +
@@ -933,7 +942,9 @@ window.VwConsole = (function () {
       wrap.innerHTML =
         '<form id="cs-form">' +
           '<fieldset class="admin-group"><legend>Analyse</legend>' +
-            C.field({ id:"cs-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"vibeverk.no" }) +
+            '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Koblar kunden sitt nettsted til Plausible Analytics, eit personvernvenleg verktøy for besøksstatistikk (ingen sporingscookies). Krev at kunden har ein eigen Plausible-konto.</p>' +
+            C.field({ id:"cs-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"vibeverk.no",
+              help:"Domenet slik det er registrert i Plausible, utan https://." }) +
             C.field({ id:"cs-an-plembed", label:"Plausible – delt dashboard-lenke", value: an.plausibleEmbed || "",
               placeholder:"https://plausible.io/share/…",
               hint:"Plausible → Site Settings → Visibility → Embed dashboard." }) +
