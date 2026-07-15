@@ -1499,14 +1499,21 @@ window.App = (function () {
   const DEFAULT_CREDIT_AI        = "Bildet er generert eller redigert av kunstig intelligens";
   const DEFAULT_CREDIT_COPYRIGHT = "© " + (CFG.company && CFG.company.name ? CFG.company.name + " " : "") + "— alle rettigheter forbeholdt";
 
-  function imgField(id, label, img, aspect) {
+  // aspect: eit tal (som før), ELLER { aspect, label } når kallaren også vil
+  // merke hovudboksen (berre meiningsfullt saman med previews).
+  // previews (valgfritt): [{ aspect, label }, ...] -- sjå notatet ved
+  // C.imageField() i components.js.
+  function imgField(id, label, img, aspect, previews) {
     const n = Media.norm(img);
     const isUrl = n.src && n.src.indexOf("media:") !== 0;
+    const a = (aspect && typeof aspect === "object") ? aspect : { aspect: aspect };
     return C.imageField({
       id: id, label: label,
       value: JSON.stringify(n),
       urlValue: isUrl ? n.src : "",
-      aspect: aspect || (16 / 9),
+      aspect: a.aspect || (16 / 9),
+      aspectLabel: a.label || "",
+      previews: previews || [],
       caption: n.caption,
       creditType: n.creditType,
       alt: n.alt,
@@ -1535,6 +1542,10 @@ window.App = (function () {
       const clear   = wrap.querySelector("[data-imgfield-clear]");
       const credRadios = wrap.querySelectorAll("[data-imgfield-credit-type]");
       const credTx  = wrap.querySelector("[data-imgfield-credit-text]");
+      // Sekundære, ikkje-redigerbare "slik ser det faktisk ut her òg"-bokser
+      // (t.d. Aktuelt-kort + artikkelside) -- tom liste for dei aller fleste
+      // biletfelt, som då gjer alle funksjonane under til reine no-op.
+      const secondaryBoxes = Array.prototype.slice.call(wrap.querySelectorAll("[data-imgfield-secondary]"));
       const altInput = wrap.querySelector("[data-imgfield-alt]");
       // Lesast på nytt kvar gong layout() køyrer (ikkje ein éin-gongs const) --
       // module-scrollbanner.js sin modus-veksling (statisk/parallax) endrar
@@ -1591,25 +1602,61 @@ window.App = (function () {
       // draging vart feil rett etter ein modusbyte: crop/outAspect var
       // fastfrosne frå bindetidspunktet og vart aldri oppdaterte, sjølv om
       // vindauget sin synlege storleik vart det).
+      // Sekundærboksane speglar KVA SOM HELST framhaldande "slik ser det
+      // faktisk ut her òg"-kontekst, med same lagra state.pos som hovudboksen
+      // -- reint object-position/CSS-basert (object-fit:cover gjer sjølve
+      // skjeringa), ingen eiga ww/wh-vindaugerekning slik hovudboksen har.
+      function renderSecondaries() {
+        if (!secondaryBoxes.length) return;
+        const src = Media.resolve(state.src);
+        secondaryBoxes.forEach(function (box) {
+          const asp = parseFloat(box.getAttribute("data-aspect")) || (16 / 9);
+          box.style.aspectRatio = String(asp);
+          // Same tomt-bilete-melding som hovudboksen (imgfield__empty) --
+          // elles vart sekundærboksen berre ein tom, uforklart ramme mens
+          // hovudboksen sa "Ingen bilde" rett attmed (UX-gjennomgang 2026-07-15).
+          box.innerHTML = src
+            ? '<img alt="" src="' + src + '" style="object-position:' + state.pos + '">'
+            : '<span class="imgfield__empty">' + C.icon("photo") + ' Ingen bilde</span>';
+        });
+      }
+      // Billeg per-drag-frame-oppdatering -- rører berre object-position, ingen
+      // ny reflow-tung geometri, så denne kan trygt kallast på kvart
+      // pointermove/piltast-steg utan ytingskostnad.
+      function updateSecondaryPositions() {
+        if (!secondaryBoxes.length) return;
+        secondaryBoxes.forEach(function (box) {
+          const img = box.querySelector("img");
+          if (img) img.style.objectPosition = state.pos;
+        });
+      }
       wrap.addEventListener("imgfield:relayout", function () {
         const img = preview.querySelector("img");
         if (img && img.naturalWidth) layout(img.naturalWidth, img.naturalHeight);
+        renderSecondaries();
       });
+      // Forklarer sekundærboksane -- utan denne teksten kan ein admin lett tru
+      // dei er eit ekstra bilete å laste opp, eller prøve å dra dei sjølv
+      // (dei svarar ikkje) -- UX-gjennomgang 2026-07-15.
+      const secondaryHintSuffix = secondaryBoxes.length
+        ? " De andre boksene viser hvordan det samme utsnittet ser ut de andre stedene bildet brukes — du styrer kun boksen øverst til venstre."
+        : "";
       function render() {
         const src = Media.resolve(state.src);
         if (!src) {
           preview.classList.remove("is-set");
           preview.style.aspectRatio = ""; preview.style.width = "100%";
           preview.innerHTML = '<span class="imgfield__empty">' + C.icon("photo") + ' Ingen bilde</span>';
-          if (hint) hint.textContent = "Last opp en fil eller lim inn en bilde-URL.";
-          crop = null; return;
+          if (hint) hint.textContent = "Last opp en fil eller lim inn en bilde-URL." + secondaryHintSuffix;
+          crop = null; renderSecondaries(); return;
         }
         preview.classList.add("is-set");
         preview.style.aspectRatio = ""; preview.style.width = "";
         preview.innerHTML = '<img class="cropper__img" draggable="false" alt="" src="' + src + '">' +
                             '<div class="cropper__window" data-crop-window></div>';
-        if (hint) hint.textContent = "Dra det lyse utsnittet for å velge hva som vises på siden, eller bruk piltastene når feltet er fokusert.";
+        if (hint) hint.textContent = "Dra det lyse utsnittet for å velge hva som vises på siden, eller bruk piltastene når feltet er fokusert." + secondaryHintSuffix;
         updateValueText();
+        renderSecondaries();
         const img = preview.querySelector("img");
         if (img.complete && img.naturalWidth) layout(img.naturalWidth, img.naturalHeight);
         else { img.onload = function () { layout(img.naturalWidth, img.naturalHeight); }; img.onerror = function () { layout(0, 0); }; }
@@ -1691,6 +1738,7 @@ window.App = (function () {
         const ny = maxT > 0 ? Math.round(nt / maxT * 100) : cur[1];
         state.pos = nx + "% " + ny + "%";
         sync();
+        updateSecondaryPositions();
         const win = preview.querySelector("[data-crop-window]");
         if (win) { win.style.left = nl + "%"; win.style.top = nt + "%"; }
       });
@@ -1717,6 +1765,7 @@ window.App = (function () {
         sync();
         placeWindow();
         updateValueText();
+        updateSecondaryPositions();
       });
 
       render();
@@ -1993,7 +2042,9 @@ window.App = (function () {
         ${C.field({ id: "p-title", label: "Tittel", required: true, value: editing ? editing.title : "" })}
         ${C.field({ id: "p-date", label: "Dato", type: "date", value: editing ? editing.date : today })}
         ${C.richTextField({ id: "p-text", label: "Tekst", value: editing ? editing.text : "" })}
-        ${imgField("p-image", "Bilde (valgfritt)", editing ? editing.image : "", 16/9)}
+        ${imgField("p-image", "Bilde (valgfritt)", editing ? editing.image : "",
+          { aspect: 220 / 180, label: "Kort (forside)" },
+          [{ aspect: 16 / 7, label: "Artikkelside" }])}
         ${feat("attachments") ? `
         <div class="field attach-field" data-attach>
           <label>Vedlegg (valgfritt)</label>

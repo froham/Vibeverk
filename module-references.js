@@ -105,6 +105,7 @@
       /* Detaljvisning */
       ".rf-detail{max-width:720px;margin:0 auto}",
       ".rf-detail__img{width:100%;border-radius:var(--radius);overflow:hidden;margin-bottom:1.4rem}",
+      ".rf-detail__photo{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}",
       ".rf-detail__cat{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary);margin-bottom:.3rem}",
       ".rf-detail__name{font-size:1.8rem;font-weight:800;margin:0 0 1rem}",
       ".rf-detail__quote{font-style:italic;font-size:1.15rem;line-height:1.7;color:var(--color-muted);margin:0 0 1rem}",
@@ -157,7 +158,12 @@
   /* --- Detaljvisning -------------------------------------------------------- */
   function detailHtml(item) {
     var img = App.media.resolveImage(item.image);
-    var imgHtml = img.src ? '<div class="rf-detail__img">' + C.coverImg(img, "") + '</div>' : "";
+    // Fann under UX-gjennomgangen 2026-07-15: coverImg() vart kalla med ein
+    // TOM klasse her, så verken object-fit eller storleiks-CSS nokon gong
+    // trefte biletet -- fokuspunktet gjorde bokstaveleg tala ingenting på
+    // denne sida. rf-detail__photo følgjer same has-credit-mønster som
+    // nfc__photo/article__media alt bruker (sjå .has-credit > img i index.html).
+    var imgHtml = img.src ? '<div class="rf-detail__img">' + C.coverImg(img, "rf-detail__photo") + '</div>' : "";
     var textHtml = item.text ? '<div class="rf-detail__text">' + C.sanitizeRichHtml(item.text) + '</div>' : "";
     var quoteHtml = "";
     if (item.quote) {
@@ -324,7 +330,9 @@
         C.field({ id: "rf-name",  label: "Kundenavn / prosjektnavn", required: true,  value: item ? item.name : "" }) +
         C.field({ id: "rf-cat",   label: "Kategori / bransje",       value: item ? (item.category || "") : "",
                   placeholder: "f.eks. Bygg, Interiør, IT …", hint: "Brukes som filter på referansesiden" }) +
-        App.ui.imageField("rf-image", "Bilde (valgfritt)", item ? item.image : "", 16 / 9) +
+        App.ui.imageField("rf-image", "Bilde (valgfritt)", item ? item.image : "",
+          { aspect: 210 / 140, label: "Referansekort" },
+          [{ aspect: 16 / 9, label: "Detaljside" }]) +
         C.richTextField({ id: "rf-text", label: "Tekst", value: item ? (item.text || "") : "" }) +
         C.richTextField({ id: "rf-quote", label: "Sitat (valgfritt)", value: item ? (item.quote || "") : "" }) +
         '<p style="font-size:.78rem;color:var(--color-muted);margin:-.5rem 0 .6rem">' +

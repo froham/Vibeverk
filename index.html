@@ -367,6 +367,18 @@
     .imgfield__preview.is-grabbing { cursor: grabbing; }
     .imgfield__preview:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
     .cropper__img { width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; -webkit-user-drag: none; touch-action: none; }
+    /* Bilder brukt fleire stader med ulikt forhold (t.d. Aktuelt-kort +
+       artikkelside) får ein ekstra, ikkje-redigerbar "slik ser det ut her
+       òg"-boks ved sida av hovudboksen -- flex-wrap stablar dei automatisk
+       på smale skjermar utan eiga media-query. */
+    .imgfield__previews { display: flex; flex-wrap: wrap; gap: .7rem; align-items: flex-start; }
+    .imgfield__previewbox { display: flex; flex-direction: column; gap: .3rem; }
+    .imgfield__previewbox--primary { flex: 1 1 220px; min-width: 160px; }
+    .imgfield__previewbox--secondary { flex: 0 1 130px; min-width: 96px; max-width: 150px; }
+    .imgfield__preview-label { margin: 0; font-size: .72rem; color: var(--color-muted); text-align: center; }
+    .imgfield__secondary { border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; background: var(--color-alt); display: grid; place-items: center; }
+    .imgfield__secondary .imgfield__empty { font-size: .68rem; text-align: center; padding: .3rem; }
+    .imgfield__secondary img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .cropper__window { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); border-radius: 2px; pointer-events: none; }
     .imgfield__empty { color: var(--color-muted); font-size: .9rem; display: inline-flex; align-items: center; gap: .4rem; }
     .imgfield__hint { margin: .4rem 0 0; font-size: .78rem; color: var(--color-muted); }
@@ -571,12 +583,12 @@
        ====================================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js?v=8"></script>
-  <script src="components.js?v=13"></script>
-  <script src="core.js?v=47"></script>
+  <script src="components.js?v=15"></script>
+  <script src="core.js?v=49"></script>
   <!-- Ekstra-moduler lastes her, etter core.js -->
   <script src="module-booking.js?v=15"></script>
   <script src="module-quote.js?v=11"></script>
-  <script src="module-references.js?v=7"></script>
+  <script src="module-references.js?v=8"></script>
   <script src="module-faq.js?v=8"></script>
   <script src="module-scrollbanner.js?v=8"></script>
   <script src="module-crm.js?v=22"></script>

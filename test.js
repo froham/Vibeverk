@@ -249,6 +249,9 @@ heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", b
 heroPrev.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }));
 const posAfterReturn = parseImg(heroWrap.querySelector("#f-hero-image").value).pos;
 assert(posAfterReturn === "75% 50%", "ArrowLeft/ArrowUp flytter tilbake (klemt til [0,100], konsistent steg): " + posAfterReturn);
+// Regresjonsvakt (2026-07-15): eit vanleg biletfelt utan `previews` skal
+// framleis rendrast BYTE-IDENTISK med før -- ingen ekstra wrapper-div.
+assert(!heroWrap.querySelector("[data-imgfield-previews]"), "eit vanleg biletfelt utan previews viser ingen ekstra førehandsvisings-wrapper");
 
 // 4) imgfield:relayout: bindImageFields() sin layout() skal lese data-aspect PÅ NYTT
 // kvar gong, ikkje ein fastfrosen verdi frå bindetidspunktet — regresjonstest for
@@ -357,6 +360,23 @@ const __asyncTests = (async () => {
   assert(/^media:/.test(ref), "opplasting gir media-referanse: " + ref);
   const stored = window.localStorage.getItem("nordpunkt:" + ref);
   assert(stored && stored.indexOf("data:image/jpeg") > -1, "nedskalert bilde lagret i localStorage");
+
+  // Aktuelt-biletet vises no fleire stader med ulikt forhold (forsidekort vs.
+  // artikkelside) -- sidan 2026-07-15 (sjå CHANGELOG) viser redigeringsverktøyet
+  // difor ei ekstra, ikkje-redigerbar "slik ser det ut her òg"-boks for
+  // artikkelsida, som speglar SAME lagra posisjon som hovudboksen live.
+  assert(!!pWrap.querySelector("[data-imgfield-previews]"), "Aktuelt-biletfeltet viser fleire førehandsvisingar (kort + artikkelside)");
+  const pSecondary = pWrap.querySelector("[data-imgfield-secondary]");
+  assert(pSecondary && Math.abs(parseFloat(pSecondary.getAttribute("data-aspect")) - 16 / 7) < 0.01, "sekundærboksen for Aktuelt har artikkelside-forholdet 16:7");
+  assert(!!pSecondary.querySelector("img"), "sekundærboksen viser sjølve biletet etter opplasting");
+  const pImgEl = pWrap.querySelector("[data-imgfield-preview] img");
+  Object.defineProperty(pImgEl, "naturalWidth", { value: 1000, configurable: true });
+  Object.defineProperty(pImgEl, "naturalHeight", { value: 800, configurable: true });
+  if (typeof pImgEl.onload === "function") pImgEl.onload();
+  pWrap.querySelector("[data-imgfield-preview]").dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+  const pPosAfter = parseImg(pWrap.querySelector("#p-image").value).pos;
+  const pSecondaryImg = pSecondary.querySelector("img");
+  assert(pSecondaryImg && pSecondaryImg.style.objectPosition === pPosAfter, "sekundærboksen oppdaterer object-position i takt med hovudboksen: " + pSecondaryImg.style.objectPosition + " vs. " + pPosAfter);
 
   doc.querySelector("[data-post]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
   const postImg = doc.querySelector(".post .post__media");
@@ -987,12 +1007,27 @@ const __asyncTests = (async () => {
     doc.querySelector("#rf-order").value = "0";
     fire(doc.querySelector("[data-rf-form]"), "submit");
   }
+  // Referanse-biletet vises no fleire stader med ulikt forhold (rutenett-kort
+  // vs. detaljside) -- stadfest at redigeringsverktøyet faktisk viser
+  // sekundærboksen FØR sjølve refs-testflyten under (som ikkje treng bilete).
+  fire(doc.querySelector("[data-rf-new]"), "click");
+  const rfImgWrap = [...doc.querySelectorAll("[data-imgfield]")].find(w => w.querySelector("#rf-image"));
+  assert(!!rfImgWrap.querySelector("[data-imgfield-previews]"), "Referanse-biletfeltet viser fleire førehandsvisingar (kort + detaljside)");
+  const rfSecondary = rfImgWrap.querySelector("[data-imgfield-secondary]");
+  assert(rfSecondary && Math.abs(parseFloat(rfSecondary.getAttribute("data-aspect")) - 16 / 9) < 0.01, "sekundærboksen for Referanser har detaljside-forholdet 16:9");
+  doc.querySelector("[data-rf-cancel]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
   addRef("Kunde A", "Bygg", "", "Fantastisk arbeid!");
   addRef("Kunde B", "IT", "Solid leveranse.");
   addRef("Kunde C", "Bygg", "Anbefales.");
   const refs = JSON.parse(window.localStorage.getItem("nordpunkt:ref-items"));
   assert(refs.length === 3, "tre referanser lagret");
   assert(refs[0].quote === "Fantastisk arbeid!", "sitat lagret i eige felt");
+  // Gjev Kunde A eit bilete direkte (same lagringsform som imageField skriv) --
+  // brukt lenger ned til å stadfeste coverImg()-bugfiksen på detaljsida
+  // (tom klasse → object-fit/storleiks-CSS traff aldri biletet i det heile).
+  refs[0].image = { src: "https://eksempel.no/referanse.jpg", pos: "30% 40%" };
+  window.localStorage.setItem("nordpunkt:ref-items", JSON.stringify(refs));
 
   // Analyse-fanen: referanser-kategorier vises no som chips
   clickAdminTab("analyse");
@@ -1044,6 +1079,10 @@ const __asyncTests = (async () => {
   assert(!!doc.querySelector(".rf-detail"), "detaljvisning vises ved #referanser/<id>");
   assert(!!doc.querySelector(".rf-back"), "tilbake-knapp vises i detaljvisning");
   assert(!!doc.querySelector(".rf-detail__name"), "kundenavn vises i detalj");
+  // Bugfiks 2026-07-15: coverImg() vart før kalla med ein TOM klasse her, så
+  // object-fit/storleiks-CSS traff aldri biletet -- fokuspunktet gjorde
+  // bokstaveleg tala ingenting på denne sida. Kunde A har eit bilete (sett over).
+  assert(!!doc.querySelector(".rf-detail__photo"), "detaljsida sitt bilete har no ein reell CSS-klasse (object-fit/aspect-ratio verkar)");
   // Tilbake til liste
   window.location.hash = "#referanser"; window.dispatchEvent(new window.Event("hashchange"));
   assert(!!doc.querySelector(".rf-grid"), "tilbake til liste fungerer");

@@ -30,6 +30,24 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.36.0 — 2026-07-15
+
+### Fokuspunkt-editor: sekundær-førehandsvisingar for bilete brukt fleire stader (Aktuelt, Referanser)
+
+Løyser det opne "aspect-ratio-mismatch"-funnet frå same dags UX-review (sjå 0.35.0): redigeringsverktøyet for fokuspunkt lova før eitt fast forhold (16:9) som ikkje matcha nokon av dei verkelege visingane for to bilete som faktisk vert vist fleire stader med ulikt forhold.
+
+**Design, gjennomgått av Arkitekt-agenten**: behald éin lagra fokuspunkt-posisjon per bilete (ingen datamodell-endring) — men vis no BÅDE hovudboksen (drabar, det strengaste/tettaste forholdet) OG éin eller fleire ikkje-redigerbare sekundærboksar som speglar SAME posisjon live i den andre verkelege visinga, slik at admin ser konsekvensen for begge før dei lagrar. Reint additivt: `imageField()`/`imgField()` fekk to nye valfrie parameter (`aspectLabel`, `previews`) — alle 8 andre biletfelt på sida (hero, om oss, tjenester, booking, FAQ, scrollbanner, mediebank, kunngjeringar) er urørte, framleis éin boks, byte-identisk med før.
+
+- **Aktuelt-bilete**: hovudboks = forsidekort (220/180 ≈ 1,22), sekundær = artikkelside (16/7). Mobil-kortet sitt kontinuerleg flytande forhold er bevisst IKKJE med som ein eigen boks — eit "representativt" tal ville vore misvisande presist for noko som ikkje har éin fast verdi.
+- **Referanser-bilete**: hovudboks = rutenett-kort (210/140 = 1,5, basert på grid sin smalaste kolonnebreidde), sekundær = detaljside (16/9).
+- **Reell bug retta undervegs**: Referanser sin detaljside kalla `coverImg(img, "")` med TOM CSS-klasse, så fokuspunktet gjorde bokstaveleg tala ingenting der. Ny klasse `rf-detail__photo` følgjer same `has-credit`-samansettingsmønster som `nfc__photo`/`article__media` alt bruker.
+
+**UX/Mobile Reviewer-gjennomgang** av heile endringa: ingen blokkerande funn. Fire billige polish-fiksar gjort same runde: forklarande hint-tekst når sekundærboksar finst (elles kunne admin tru dei er eit ekstra bilete å laste opp, eller prøve å dra dei), `aria-label` på hovudboksen nemner no kva samanheng ho gjeld, border-radius retta til å matche hovudboksen (var 8px vs. 10px), og sekundærboksane viser no same "Ingen bilde"-melding som hovudboksen i tomt-tilstand i staden for ei uforklart tom ramme.
+
+Testar utvida (`test.js`): sekundærboks-wrapper + rett `data-aspect` for Aktuelt/Referanser, live object-position-synkronisering ved piltast-styring, regresjonsvakt for at eit vanleg biletfelt (hero) IKKJE får nokon ekstra wrapper, og at Referanser-detaljsida sitt bilete no faktisk har ein verkande CSS-klasse. Alle testar grøne (533 OK, dei to kjende, pre-eksisterande feila uendra).
+
+Cache-bust: `components.js?v=14→15`, `core.js?v=48→49`, `module-references.js?v=7→8`. `VIBEVERK_VERSION` 0.35.1 → 0.36.0, `console-core.js?v=103→104`.
+
 ## 0.35.1 — 2026-07-15
 
 ### RLS-gap lukka: full backup-eksport er no admin-gjerda i databasen, ikkje berre i UI
