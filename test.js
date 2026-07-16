@@ -46,6 +46,8 @@ assert(primary === "#005cff", "primærfarge fra config satt: " + primary);
 // ikkje "#app-fonts" (som framleis brukast for andre, ikkje-lokale fontval).
 assert(!!doc.getElementById("app-fonts-local"), "lokal fontlenke injisert (Poppins/Nunito Sans er sjølv-hosta)");
 assert(!doc.getElementById("app-fonts"), "ingen Google Fonts-lenke for standardfontane (begge er sjølv-hosta)");
+assert(window.SITE_CONFIG && typeof window.SITE_CONFIG.customModules === "object" && Object.keys(window.SITE_CONFIG.customModules).length === 0,
+  "customModules er tomt objekt i standardkonfig");
 assert(doc.title.includes("Vibeverk"), "tittel fra config: " + doc.title);
 
 // 4) Tjenester: 4 kort

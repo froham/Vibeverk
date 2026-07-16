@@ -290,5 +290,13 @@ window.SITE_CONFIG = {
   workspace: {
     name:        "",   // Tomt = brukar company.name som arbeidsområdenamn
     accentColor: ""    // Tomt = brukar colors.primary frå nettside-temaet
+  },
+
+  /* --- Skreddarsydde modular (bein 3) ---------------------------------------- */
+  // Sjølvstendig tilleggsmodul bygd for éin kunde, sjå docs/STRATEGY.md.
+  // Nøkkel = modul-id (matchar filnamnet module-custom-<kunde>-<id>.js og
+  // modulet sitt eige CFG.customModules[id]-oppslag). La stå {} for ingen.
+  customModules: {
+    // "vaktplan": { label: "Vaktplan", enabled: true, params: {} }
   }
 };

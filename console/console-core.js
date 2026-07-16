@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.37.5";
+  var VIBEVERK_VERSION = "0.38.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -172,7 +172,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest")
       .order("slug").then(function (r) {
         _tenants = r.data || [];
         // Ikkje default til ein arkivert tenant -- sidan sidepanel-veljaren
@@ -989,6 +989,8 @@ window.VwConsole = (function () {
   function renderModular(sc, wrap) {
     var ft  = Object.assign(featureDefaults(FEAT_LABELS),  sc.features         || {});
     var ift = Object.assign(featureDefaults(IFEAT_LABELS), sc.intranettFeatures || {});
+    var customModules = (_activeTenant && _activeTenant.custom_modules_manifest) || {};
+    var customIds = Object.keys(customModules);
 
     wrap.innerHTML =
       '<form id="cs-form">' +
@@ -1000,7 +1002,18 @@ window.VwConsole = (function () {
           checkboxGrid(ift, IFEAT_LABELS, "cs-ifeat", IFEAT_HELP) +
         '</fieldset>' +
         saveBtn() +
-      '</form>';
+      '</form>' +
+      '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Skreddarsydde modular</legend>' +
+        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Spesialbygde tilleggsmodular for denne kunden (bein 3, sjå docs/STRATEGY.md). Redigering skjer enno ikkje her — ta kontakt med utviklar.</p>' +
+        (customIds.length === 0
+          ? '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Ingen skreddarsydde modular for denne kunden.</p>'
+          : '<ul style="margin:0;padding-left:1.2rem">' +
+              customIds.map(function (id) {
+                var m = customModules[id] || {};
+                return '<li>' + C.esc(m.label || id) + ' (' + C.esc(id) + ') — ' + (m.enabled ? "PÅ" : "AV") + '</li>';
+              }).join("") +
+            '</ul>') +
+      '</fieldset>';
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
