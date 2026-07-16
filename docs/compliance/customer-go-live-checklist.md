@@ -22,6 +22,7 @@ Mark each item as required (R) or recommended (Anbefalt/A) based on the column. 
 
 - [ ] **(R) If Tidio is enabled: a cookie notice and/or consent mechanism is in place.**
   - Tidio may set cookies. Norwegian/EEA rules (ePrivacy Directive) require consent for non-essential cookies. Verify Tidio's cookie behaviour and obtain legal guidance on consent requirements.
+  - **Note (2026-07-16 Privacy Advisor pass):** no Tidio integration exists in the codebase today (verified by full-repo search) — this item only applies if Tidio has actually been built in for this customer. Don't check this box based on this template alone.
 
 - [ ] **(R) If Plausible is enabled: assess whether cookie notice or consent is required.**
   - Plausible is designed to be cookieless. However, verify that no cookies are set and confirm with legal whether the analytics method requires notice or consent under Norwegian rules.
