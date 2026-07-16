@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.38.0 — 2026-07-16
+
+### Fase 10 (slice 1) — customModules-manifest: skjelett/lesing på plass
+
+Fyrste konkrete steg mot "bein 3" (skreddarsydde kundemodular, sjå `docs/STRATEGY.md`). Arkitekten konsultert (per CLAUDE.md sin standardregel for arkitektur-sensitive endringar) — designet stadfesta at `tenants.custom_modules_manifest` (jsonb-kolonne i `vibeverk-control`, oppretta alt i Fase 6-baseline-migrasjonen, aldri kopla til noko) er den einaste kjelda: ikkje del av superconfig/broker-laget (som styrer kunde-redigerbar `features`/`theme`), sidan dette er operatør-forfatta, ikkje kunde-redigerbart, innhald.
+
+Denne runda (slice 1, reint lese-nivå, ingen redigering enno):
+- `api/tenant-config.js`: `tenant.custom_modules_manifest` vert no vidareført inn i det genererte `window.SITE_CONFIG.customModules` (var stille droppa før).
+- `config.js`: ny `customModules: {}`-nøkkel lagt til (parallelt skjema for statisk/lokal config, kommentert med eksempel).
+- Console: `renderModular()` ("Modular"-fana) viser no ei tredje, lese-berre liste "Skreddarsydde modular" henta frå `_activeTenant.custom_modules_manifest` (`loadTenants()` sitt `select` utvida til å hente feltet) — viser "Ingen skreddarsydde modular for denne kunden" når tomt, elles `label (id) — PÅ/AV` per oppføring.
+- Kvart manifest-element sitt skjema: `{ label, enabled, params }` — `enabled` **default AV** når fråverande (medvite motsett av den delte `features`/`intranettFeatures`-katalogen sin "manglar flagg = på"-konvensjon, sidan dette er sjeldan, ad hoc, per-kunde-innhald der ein ufullstendig/foreldra manifest-oppføring aldri skal aktivere seg sjølv).
+
+**Ikkje bygd enno, med vilje (neste slice)**: redigering i Console (ny `tenant-admin`-action `set_custom_modules_manifest`), og sjølve det fyrste ekte `module-custom-<kunde>-<funksjon>.js`-fil-eksempelet — begge ventar til slice 1 er stadfesta og/eller ein reell kunde-førespurnad finst. Ny test lagt til i `test.js` (`SITE_CONFIG.customModules` er tomt objekt i standardkonfig). Testar grøne (535 OK / 1 kjend FEIL i test.js, 157/158 i test-workspace.js, uendra).
+
 ## 0.37.5 — 2026-07-16
 
 ### Console: ny "Læring"-fane viser docs/onboarding/*.md direkte i grensesnittet

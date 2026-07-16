@@ -83,6 +83,7 @@ export default async function handler(request) {
     productMode: tenant.product_mode || "web",
     features: enabledModules.features || {},
     intranettFeatures: enabledModules.intranettFeatures || {},
+    customModules: tenant.custom_modules_manifest || {},
     theme: tenant.theme || {},
   };
 
