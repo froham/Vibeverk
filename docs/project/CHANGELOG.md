@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.36.4 — 2026-07-16
+
+### Workspace: `module-settings.js` — fjerna intern fagsjargong sluttkunden ikkje kan forstå
+
+Brukar sjekka 0.36.3 sine hint-tekstar live og oppdaga eit anna, meir alvorleg funn same stad: to KORT lenger nede på Innstillinger-sida ("E-postsvar" og "Synkronisering") brukte internt tekniske namn ein sluttkunde-admin ikkje har nokon føresetnad for å forstå:
+
+- **"Synkronisering"-kortet**: nemnde "Supabase" (backend-databasen) direkte i både brødtekst og knappetekst — brotsverk mot `copy-style-guide.md` sin uttrykkelege "sync/synkronisere → oppdatere/hente på nytt"-regel. Omdøypt heile kortet til "Del data mellom enheter", brødteksten skildrar no verknaden ("blir synlig når dere logger inn fra en annen enhet") i staden for mekanismen, knappen heiter no berre "Last opp data".
+- **"E-postsvar"-kortet**: nemnde "(Vibeverk/Resend)" — ein tredjeparts e-post-API-leverandør sluttkunden aldri har høyrt om — og omtalte kunden i tredjeperson ("denne kunden") i staden for direkte tiltale ("dere"). Begge retta.
+- **Eige, sjølvfunne følgjefunn under fiksen**: 0.36.3 sin eigen nye hint for "Bedriftsnavn" nemnde "Console" — Vibeverk sitt interne superadmin-verktøy, som sluttkunden aldri har tilgang til eller kjennskap til. Same feilklasse, retta i same slag ("Kan bli overstyrt hvis Vibeverk har satt et eget arbeidsområdenavn for dere").
+
+Alle testar grøne (533 OK / 157 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-settings.js?v=8→9`. `VIBEVERK_VERSION` 0.36.3 → 0.36.4, `console-core.js?v=107→108`.
+
 ## 0.36.3 — 2026-07-16
 
 ### Workspace: forklaringstekst-runden held fram (Punkt 0, vidareføring) — `module-settings.js`

@@ -104,7 +104,7 @@
             '<p class="i-section-label">Workspace</p>' +
             '<form class="i-form" id="settings-form">' +
               field("settings-name",  "Bedriftsnavn", s.tenantName,   "text",  "Nordpunkt AS",
-                "Vises i sidepanelet for alle i Workspace. Overstyres av et arbeidsområdenavn satt i Console, hvis satt der.") +
+                "Vises i sidepanelet for alle i Workspace. Kan bli overstyrt hvis Vibeverk har satt et eget arbeidsområdenavn for dere.") +
               field("settings-email", "Kontakt-e-post", s.contactEmail, "email", "post@bedrift.no",
                 "Kun en lagret notat-e-post foreløpig — brukes ikke andre steder i løsningen ennå.") +
               '<div style="margin-top:.4rem">' +
@@ -118,14 +118,14 @@
       /* --- E-postkonfigurasjon (CRM) — berre admin -------------------------- */
       (isAdmin ? emailProviderCard() : "") +
 
-      /* --- Supabase-synkronisering — berre admin ---------------------------- */
+      /* --- Del data mellom enheter — berre admin ---------------------------- */
       (isAdmin && App.supabase
         ? '<div class="i-card" style="margin-bottom:1rem">' +
-            '<p class="i-section-label">Synkronisering</p>' +
+            '<p class="i-section-label">Del data mellom enheter</p>' +
             '<p style="font-size:.88rem;color:var(--color-muted);margin:.3rem 0 .9rem">' +
-              'Last opp alle lokale data til Supabase — nødvendig første gang, eller om data kun finnes på denne enheten.' +
+              'Laster opp alt som foreløpig kun er lagret i nettleseren på denne datamaskinen, slik at det blir synlig når dere logger inn fra en annen enhet. Trengs vanligvis bare første gang.' +
             '</p>' +
-            '<button class="btn btn--primary btn--sm" id="settings-sync-up">Last opp til Supabase</button>' +
+            '<button class="btn btn--primary btn--sm" id="settings-sync-up">Last opp data</button>' +
             ' <span class="form__status" id="settings-sync-status"></span>' +
           '</div>'
         : '') +
@@ -308,11 +308,11 @@
       '<p class="i-section-label" style="margin:0 0 .5rem">E-postsvar</p>' +
       '<p style="font-size:.85rem;line-height:1.5;margin:0 0 .5rem">' +
         (crmFull
-          ? '<i class="ti ti-circle-check" style="color:#16a34a"></i> Sending: aktivert (Vibeverk/Resend). Svar kan sendast direkte frå Kontakt, Booking og Tilbud.'
-          : '<i class="ti ti-mail-forward" style="color:var(--color-muted)"></i> Sending: Outlook (e-postklient). Direkte sending er ikkje aktivert for denne kunden.') +
+          ? '<i class="ti ti-circle-check" style="color:#16a34a"></i> Dere kan svare direkte fra Kontakt, Booking og Tilbud i systemet, uten å bytte til e-postprogrammet deres.'
+          : '<i class="ti ti-mail-forward" style="color:var(--color-muted)"></i> Svar må sendes fra e-postprogrammet deres (f.eks. Outlook) — direkte svar herfra i systemet er ikke satt opp for dere.') +
       '</p>' +
       '<p style="font-size:.78rem;color:var(--color-muted);margin:0">' +
-        '<i class="ti ti-info-circle"></i> Mottak av e-post er ikkje støtta enno.' +
+        '<i class="ti ti-info-circle"></i> Å motta e-post direkte inn i systemet er ikke støttet ennå — svar fra kunder kommer fortsatt som vanlig e-post i innboksen deres.' +
       '</p>' +
     '</div>';
   }
