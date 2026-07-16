@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.37.0 — 2026-07-16
+
+### Console: live fontforhandsvising i Fontar-seksjonane (Nettside + Workspace)
+
+Brukarønske: gjer det lettare å sjå for seg valt font FØR ein lagrar, i staden for å måtte hugse korleis han ser ut eller lagre og sjekke live-sida etterpå. Ny delt `bindFontPreview()`/`refreshFontPreview()`-infrastruktur i `console-core.js` — same Google Fonts CSS2-mønster som `core.js` sin eksisterande `injectGoogleFonts()` (ikkje delt kode, sidan Console aldri lastar `core.js`), men EIN delt `<link>`-node som byggjast på nytt frå alle aktive forhandsvisingar samstundes (nettside display/body + Workspace display/body kan alle vere synlege parallelt).
+
+Kvart Display-font/Brødtekst-font-felt i både "Nettside"- og "Workspace"-fanen fekk eit nytt `<p>`-forhandsvisingselement rett under, styrt av feltet sin faktiske verdi — oppdaterer live på tasting, og etter at fontpar-snarvegsknappane eller "Nullstill"-knappen set verdiar programmatisk (desse kallar ein rein oppdateringsfunksjon, ikkje bind-funksjonen, slik at gjentekne klikk ikkje stablar opp fleire hendingslyttarar på same felt). Ingen automatisert testdekning finst for Console frå før (kjend, dokumentert avgrensing) — verifisert med `node --check` + manuell kodegjennomgang, ikkje ein live nettlesarrunde (krev ekte superadmin-OTP-innlogging).
+
+Cache-bust: `console-core.js?v=110→111`. `VIBEVERK_VERSION` 0.36.6 → 0.37.0 (ny funksjonalitet, MINOR).
+
 ## 0.36.6 — 2026-07-16
 
 ### Workspace: fjerna "Del data mellom enheter"-knappen frå Innstillinger (reell overskrivingsrisiko, ikkje berre eit copy-problem)
