@@ -122,6 +122,8 @@ Complete only the rows for features that are enabled in this customer's deployme
 
 ### Live chat SaaS — Tidio (if enabled)
 
+> **Verify before filling in**: as of the 2026-07-16 Privacy Advisor pass, no Tidio integration exists anywhere in this codebase (no script tag, no feature flag, no wiring) — confirmed by a full-repo code search. Do not assume Tidio is "enabled or disabled"; confirm whether Tidio has actually been built into this customer's deployment before treating this row as applicable. See `data-map-vibeverk.md` section 8.
+
 | Field | Detail |
 |---|---|
 | Data collected | Visitor interactions, may set cookies, may collect visitor IP and device data |
