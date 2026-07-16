@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.37.2 — 2026-07-16
+
+### Google Fonts sjølv-hosta for Poppins/Nunito Sans — fjernar tredjeparts-overføring for Vibeverk sine eigne to fontar
+
+Følgje opp same dags Privacy/Compliance-gjennomgang (`docs/compliance/data-map-vibeverk.md` seksjon 8): dynamisk lasting av Google Fonts sender besøkjande sin IP-adresse til Google (USA) ved kvar sideopplasting — det einaste av dei fire tredjepartane der "ingen overføring i det heile tatt" faktisk var ei reell teknisk moglegheit, ikkje berre eit juridisk spørsmål om overføringsgrunnlag (i motsetnad til Vercel/Resend, som begge krev SCC uansett sidan dei alltid prosesserer i USA).
+
+Nye `fonts/self-hosted-fonts.css` + fire `.woff2`-filer (latin/latin-ext-delmengder — dekker norsk/nordisk/europeisk tekst, IKKJE cyrillisk/devanagari/vietnamesisk som sida uansett ikkje treng), lasta ned direkte frå Google sitt eige CSS2-API 2026-07-16. `core.js` sin `injectGoogleFonts()` og `workspace-core.js` sin `_loadWspFonts()` sjekkar no om kvart fontnamn er eitt av dei to lokalt sjølv-hosta ("Poppins"/"Nunito Sans") — då vert lokal stilark brukt, ELLERS fell mekanismen tilbake til Google sin CDN heilt uendra. **Andre kundar som vel eit anna Google Font-namn via Console er difor upåverka** — dette er reint eit unnatak for akkurat desse to fontnamna, ikkje ei generell arkitekturendring.
+
+Stadfesta empirisk (Playwright, lokal server): **null nettverksførespurnadar til `fonts.googleapis.com`/`fonts.gstatic.com`** for Vibeverk sin standardkonfigurasjon, korrekt berekna `font-family`, korrekt visuell rendering (skjermbilete samanlikna mot før — identisk utsjånad, ingen fallback-/tofu-visning). `test.js` sin eksisterande fontsjekk oppdatert til å reflektere det nye, korrekte resultatet (venta no `#app-fonts-local`, IKKJE `#app-fonts`, for standardkonfigurasjonen).
+
+Alle testar grøne (534 OK / 157 OK, den eine kjende, pre-eksisterande feilen uendra — talet auka med éin sidan éin gammal assert vart delt i to meir presise). Cache-bust: `core.js?v=50→51` (alle fire HTML-inngangspunkt), `workspace-core.js?v=19→20`, `console-core.js?v=112→113`. `VIBEVERK_VERSION` 0.37.1 → 0.37.2.
+
 ## 0.37.1 — 2026-07-16
 
 ### vibeverk.no DNS-cutover fullført + enkel utviklingsfase-passordsperre

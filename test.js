@@ -40,7 +40,12 @@ assert(JSON.stringify(navIds) === JSON.stringify(["hjem","om-oss","tjenester","r
 // 3) Tema-variabler satt fra config
 const primary = window.document.documentElement.style.getPropertyValue("--color-primary").trim();
 assert(primary === "#005cff", "primærfarge fra config satt: " + primary);
-assert(!!doc.getElementById("app-fonts"), "Google Fonts-link injisert");
+// Poppins/Nunito Sans (config.js sine standardfontar) er sjølv-hosta lokalt
+// sidan 2026-07-16 (docs/compliance/data-map-vibeverk.md seksjon 8) -- ingen
+// direkte nettlesar->Google-førespurnad for desse to, difor "-local"-lenka,
+// ikkje "#app-fonts" (som framleis brukast for andre, ikkje-lokale fontval).
+assert(!!doc.getElementById("app-fonts-local"), "lokal fontlenke injisert (Poppins/Nunito Sans er sjølv-hosta)");
+assert(!doc.getElementById("app-fonts"), "ingen Google Fonts-lenke for standardfontane (begge er sjølv-hosta)");
 assert(doc.title.includes("Vibeverk"), "tittel fra config: " + doc.title);
 
 // 4) Tjenester: 4 kort
