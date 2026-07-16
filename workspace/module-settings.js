@@ -103,8 +103,10 @@
         ? '<div class="i-card" style="margin-bottom:1rem">' +
             '<p class="i-section-label">Workspace</p>' +
             '<form class="i-form" id="settings-form">' +
-              field("settings-name",  "Bedriftsnavn", s.tenantName,   "text",  "Nordpunkt AS") +
-              field("settings-email", "Kontakt-e-post", s.contactEmail, "email", "post@bedrift.no") +
+              field("settings-name",  "Bedriftsnavn", s.tenantName,   "text",  "Nordpunkt AS",
+                "Vises i sidepanelet for alle i Workspace. Overstyres av et arbeidsområdenavn satt i Console, hvis satt der.") +
+              field("settings-email", "Kontakt-e-post", s.contactEmail, "email", "post@bedrift.no",
+                "Kun en lagret notat-e-post foreløpig — brukes ikke andre steder i løsningen ennå.") +
               '<div style="margin-top:.4rem">' +
                 '<button type="submit" class="btn btn--primary btn--sm">Lagre</button>' +
                 ' <span class="form__status" id="settings-status"></span>' +
@@ -318,12 +320,13 @@
   /* =========================================================================
      HJELPERE
      ====================================================================== */
-  function field(id, label, value, type, placeholder) {
+  function field(id, label, value, type, placeholder, hint) {
     return '<div class="i-field">' +
       '<label for="' + C.esc(id) + '">' + C.esc(label) + '</label>' +
       '<input id="' + C.esc(id) + '" type="' + C.esc(type || "text") + '"' +
         ' value="' + C.esc(value || "") + '"' +
         ' placeholder="' + C.esc(placeholder || "") + '">' +
+      (hint ? '<p class="i-hint">' + C.esc(hint) + '</p>' : '') +
     '</div>';
   }
 
