@@ -128,6 +128,18 @@ Brukar har stadfesta eit aktivt val om å bruke Plausible, grunngjeve med EU-lag
 
 **Oppsummert kritikalitet (brukar spurde eksplisitt om dette 2026-07-16):** **Resend er den mest kritiske av dei to attverande ikkje-EU-prosessorane**, sidan han faktisk handterer INNHALDET i personopplysningar (e-postadresser, meldingstekst i utgåande e-postar) — ikkje berre metadata. Vercel handterer til samanlikning berre `Host`-headeren (hostnamnet) ved ruting, aldri besøkjande sitt faktiske namn/e-post/meldingsinnhald — ein monaleg mindre eksponering, sjølv om begge er amerikanske selskap med SCC som overføringsgrunnlag. Supabase (all lagring) og Plausible (analyse) er begge stadfesta reint EU-baserte. Google Fonts er løyst for Vibeverk sjølv, framleis eit ope, men lite kritisk, punkt for andre kundar sitt frie fontval.
 
+### 4a. Er DPA-ane faktisk SIGNERTE (ikkje berre TILBODNE)? — stadfesta 2026-07-16
+
+Brukar spurde direkte om desse tre DPA-ane faktisk er signerte, ikkje berre teoretisk tilgjengelege. Sjekka kvar leverandør sin eigen dokumentasjon for KORLEIS ei DPA faktisk trer i kraft:
+
+| Leverandør | Korleis DPA-en faktisk trer i kraft | Status for Vibeverk |
+|---|---|---|
+| **Resend** | Automatisk innlemma for ALLE kundar, uansett plan-nivå — ingen eiga signering, gjeld berre ved å akseptere Resend sine standardvilkår (deira eigen DPA-tekst nemner ingen plan-avgrensing) | **Truleg alt i kraft** — ingen ytterlegare handling truleg naudsynt, sidan ein ikkje kan opprette konto utan å akseptere standardvilkåra |
+| **Supabase** | KREV ei aktiv handling: bestillast via dashbordet sin "Legal documents"-side, signerast via eit eige PandaDoc-dokument — IKKJE automatisk, uavhengig av plan | **[ÅPENT — kan ikkje stadfestast av eit repo-lesande/CLI-lesande pass, må sjekkast direkte i Supabase-dashbordet for organisasjonen "Hammerz"]** |
+| **Vercel** | Deira eigen DPA-side seier eksplisitt at automatisk innlemming berre gjeld "Enterprise and Pro plan customers" | **⚠️ REELT FUNN: Vibeverk sin Vercel-konto er stadfesta på Hobby-planen** (lese direkte frå eit gyldig `VERCEL_OIDC_TOKEN` sin JWT-payload, feltet `"plan":"hobby"` — IKKJE gjetting). Dette betyr DPA-en truleg IKKJE er automatisk i kraft slik kontoen står i dag. Krev anten (a) oppgradering til Pro, eller (b) direkte kontakt med Vercel support for å avklare/be om DPA-dekning på Hobby-plan. |
+
+**Viktig rolleavklaring (brukar spurde eksplisitt 2026-07-16): dette er Vibeverk sitt eige ansvar, IKKJE sluttkunden sitt.** Supabase/Vercel/Resend har Vibeverk (kontoeigar for Vercel-teamet "Vibeverk", Supabase-organisasjonen "Hammerz", og Resend-kontoen) som einaste avtalepart — INGEN sluttkunde (verken Sunnvask eller ein framtidig betalande kunde) har nokon eigen, direkte avtale med desse tre leverandørane. Dette er ein ANNAN, oppstraums DPA-relasjon enn den Vibeverk sjølv skal tilby KVAR ENKELT sluttkunde (der Vibeverk er databehandlar og kunden er behandlingsansvarleg, og der nettopp desse tre — pluss Google/Plausible — skal listast opp som Vibeverk sine eigne underleverandørar). Vibeverk må ha orden i eigne leverandøravtalar FØR dette kan lovast pålitileg vidare til nokon kunde.
+
 ---
 
 ## 5. Ny post — edge-/ruting-mekanismen (Vercel `middleware.js` + `vibeverk-control`)
