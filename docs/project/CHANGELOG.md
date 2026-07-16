@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.38.1 — 2026-07-16
+
+### Console Web-tema: logo-opplasting (SVG-sanering), hjørne-radius, WCAG-kontrastvalidator
+
+Fullfører dei tre attverande hola frå `docs/arkitekt-notat-steg2.md` sitt "Custom design-modul"-konsept (sjå same dags ROADMAP-retting), no som det stadfesta at Console sitt Web/Workspace-tema-panel alt dekkjer resten av konseptet.
+
+- **Logo-fil-opplasting** (`renderWeb()` i `console/console-core.js`): nytt filfelt ved sida av det eksisterande Logo-URL-feltet. Går via ein ny `upload_logo`-action i `supabase-control/supabase/functions/broker/index.ts`, same to-klient-mønster (control-plane-autentisering + Vault-dekryptert `service_role`-nøkkel inn i KUNDEN sitt eige `media`-Storage-bøtte) som `set_config`/`reset_config` alt brukar. SVG-filer vert sanert med ein allowlist-basert sanitizer (eigne funksjonar `sanitizeSvg*`/`isSafeHrefValue`/`looksLikeXml`) — berre trygge element/attributt (geometri/presentasjon) får bli med, `<script>`/`<foreignObject>`/`<style>`/SMIL-animasjonar er utelatt berre ved IKKJE å stå i lista, `href`/`xlink:href` avgrensa til interne fragment-referansar eller `data:image/...;base64`-URI-ar (aldri eksterne URL-ar).
+  - **Tryggingsgjennomgang gjennomført FØR merge** (per CLAUDE.md sin standardregel for fil-opplasting/lagring): to MEDIUM-funn retta same runde — (1) sanering var opphavleg gata på det klient-oppgjevne `content_type`-feltet åleine (ei SVG sendt med `content_type: "image/png"` hoppa over saneringa); no avgjer eit reelt bytesniff (`looksLikeXml()`) om ei fil vert handsama som SVG, uavhengig av kva klienten hevda. (2) Saneringa rensa berre `<svg>`-rota sitt undertre, ikkje sjølve dokumentet — ein syskje-processing-instruction FØR rot-elementet (t.d. ein ekstern `<?xml-stylesheet?>`) overlevde urørt; no strippa via ny `sanitizeSvgDocument()`. To LOW-funn retta i tillegg: 300KB-grensa handhevast no FØR base64-dekoding (ikkje berre etter), og ein sekundær DOCTYPE/ENTITY-reject-sjekk etter regex-strippinga (forsvar i djupn mot at regex-en ikkje kan provast fullstendig mot DTD-grammatikken). Sanitizer-logikken stadfesta med 13 handskrivne testcase (skript-injeksjon, `onload`/`onclick`, `foreignObject`-HTML, `javascript:`-href, ekstern biletreferanse, syskje-PI, innhaldssniff) via det tilsvarande npm-paketet lokalt — **den faktiske Deno/esm.sh-importoppløysinga av `@xmldom/xmldom` er IKKJE stadfesta i praksis** (ingen lokal Deno-runtime), krev ein reell smoke-test rett etter deploy.
+  - Gamal logo vert rydda opp (best-effort) ved ny opplasting via eit nytt `old_logo_url`-felt klienten sender med.
+- **Hjørne-radius**: ny `<select>` (skarpe/litt runde/standard/runde) skriv `sc.colors.radius` (heiltal px), lese av `core.js` sin `applyTheme()` inn i CSS-variabelen `--radius`.
+- **WCAG AA-kontrastvalidator**: reint klientside (ingen lagring) — viser live kontrastforhold tekst/bakgrunn (4.5:1-krav) og primærfarge/bakgrunn (3:1-krav for grensesnittelement) mens operatøren vel fargar.
+
+`docs/roadmap/ROADMAP.md` sitt "Custom design-modul"-punkt oppdatert til å seie desse tre hola no er lukka. Testar grøne (535 OK / 1 kjend FEIL i test.js, 157/158 i test-workspace.js, uendra — Console har som før ingen jsdom-dekning, ikkje automatisk testa der).
+
+**Krev deploy av `broker`-funksjonen til `vibeverk-control` (`--project-ref jxoglthrnshabqmdmnui`) før logo-opplasting fungerer i praksis** — ikkje deploya enno, krev eksplisitt godkjenning per CLAUDE.md sin deployment-safeguard.
+
 ## 0.38.0 — 2026-07-16
 
 ### Fase 10 (slice 1) — customModules-manifest: skjelett/lesing på plass
