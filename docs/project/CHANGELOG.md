@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.36.3 — 2026-07-16
+
+### Workspace: forklaringstekst-runden held fram (Punkt 0, vidareføring) — `module-settings.js`
+
+Neste steg etter 0.36.2 (som dekte module-users/kb/notes/orgdrift). Ein Explore-agent kartla dei resterande, ikkje-gjennomgåtte Workspace-modulane (workspaceship, tasks, contact, booking, links, quote, mediabank-internal, dashboard, settings, announcements) og fann to reelle hol, begge i `module-settings.js` sitt "Workspace"-kort — stadfesta mot faktisk kode før fiks:
+
+- **"Bedriftsnavn"**: hadde ingen forklaring av at verdien vert vist i sidepanelet for ALLE brukarar i Workspace (`workspace-core.js` sin `buildShell()`), og at han vert stille overstyrt av eit arbeidsområdenamn sett i Console dersom det finst — ein admin kunne endre feltet og ikkje forstå kvifor ingenting synleg skjedde.
+- **"Kontakt-e-post"**: same feilklasse som tidlegare funne "AI-samandrag"-felt — stadfesta via full repo-grep at `contactEmail` KUN vert lagra og aldri lese nokon annan stad i kodebasen (ikkje reply-malar, ikkje offentleg side, ikkje noka anna admin-vising). Feltet såg ut som ei fungerande innstilling, men gjorde reelt sett ingenting.
+
+Resten av dei kartlagde modulane vart funne allereie tilstrekkeleg forklarte (`module-mediabank-internal.js` har alt ei eiga "Om mediebanken"-forklaringsboks, `module-announcements.js` sitt "viktig"-flagg seier alt kva det gjer) eller har ingen skjemafelt med skjult konsekvens (workspaceship, tasks, contact, booking, links, quote, dashboard).
+
+`module-settings.js` sin lokale `field()`-hjelpar fekk same valfrie `hint`-parameter (attgjenbrukar `.i-hint`-CSS-klassen frå 0.36.2) som orgdrift-modulen fekk førre runde.
+
+Alle testar grøne (533 OK / 157 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-settings.js?v=7→8`. `VIBEVERK_VERSION` 0.36.2 → 0.36.3, `console-core.js?v=106→107`.
+
 ## 0.36.2 — 2026-07-15
 
 ### Workspace: forklaringstekst-runden held fram (Punkt 0, vidareføring)
