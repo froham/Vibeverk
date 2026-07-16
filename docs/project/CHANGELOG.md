@@ -42,6 +42,12 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 Cache-bust: `console-core.js?v=111→112`. `VIBEVERK_VERSION` 0.37.0 → 0.37.1.
 
+**Sluttstatus same dag, etter fullstendig live-verifisering av alt over** (hovudside, `/config.js`, `/console`, `/workspace`, alle fire videresendingane inkl. `workspace.vibeverk.no` — brukar oppdaterte sjølv denne til å peike direkte på `/workspace/` i staden for via `/intranet`-snubben — og passordsperra, på tvers av begge Vercel-prosjekt): **heile migreringa er stadfesta fullført og fungerande, ingenting attståande.**
+
+To punkt vart eksplisitt vurdert og medvite VALT å ikkje gjere noko med no, stadfesta av brukar — **ingen av dei to er eit tryggleiksavvik**:
+- `SITE_LOCK_PASSWORD` står framleis som placeholder-verdien `vibeverk2026`. Dette er ein bevisst, informert veke frå brukar (stadfesta "ekstremt usannsynleg at nokon skal besøkje sida" i dag) — ikkje ei gløymt oppgåve. Sjølve mekanismen er uansett eksplisitt designa som ei hindring, IKKJE ei sikkerheitsgrense (sjå over) — alle faktiske tilgangskontrollar (Supabase RLS, admin-/Workspace-passord, Console sin OTP) ligg urørt bak denne sperra uansett kva passordverdi som er sett her.
+- `CNAME`-fila i repoet er framleis urørt (rask GitHub Pages-rollback). Ho inneheld berre den offentlege domenestrengen `vibeverk.no` — ingen hemmelegheit, ingen tilgang, null risiko ved å liggje att i eit offentleg repo. Reint ein bevisst utsett oppryddingsdetalj, ikkje eit hol.
+
 ## 0.37.0 — 2026-07-16
 
 ### Console: live fontforhandsvising i Fontar-seksjonane (Nettside + Workspace)
