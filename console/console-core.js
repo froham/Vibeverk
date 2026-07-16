@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.37.4";
+  var VIBEVERK_VERSION = "0.37.5";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -447,6 +447,7 @@ window.VwConsole = (function () {
     { id: "modular",    icon: "puzzle",      label: "Modular" },
     { id: "analyse",    icon: "chart-bar",   label: "Analyse" },
     { id: "personvern", icon: "shield-lock", label: "Personvern" },
+    { id: "laring",     icon: "book",        label: "Læring" },
     { id: "system",     icon: "settings",    label: "System" }
   ];
 
@@ -1167,6 +1168,69 @@ window.VwConsole = (function () {
     });
   }
 
+  /* =========================================================================
+     LÆRING — viser docs/onboarding/*.md (+ tilgrensande dokument) direkte i
+     Console, i staden for at nokon må opne rå Markdown-filer i repoet.
+     Ikkje tenant-spesifikt -- same innhald uansett kva kunde er vald i
+     kundeveljaren, sidan dette er interne Vibeverk-dokument, ikkje
+     kundekonfigurasjon. Hentar rå .md-filer via fetch() (same opphav, sjølve
+     kjeldedokumenta er alt del av det statiske repoet som blir servert) og
+     konverterer til HTML med `marked` (lasta via CDN, sjå console/index.html).
+     ====================================================================== */
+  var LARING_DOCS = [
+    { id: "onboarding", label: "Læringsdokument",  path: "../docs/onboarding/new-team-member-onboarding.md" },
+    { id: "safe",       label: "Trygge endringar", path: "../docs/onboarding/safe-changes-guide.md" },
+    { id: "incident",   label: "Hendingsguide",    path: "../docs/security/incident-and-escalation-guide.md" },
+    { id: "delivery",   label: "Kundeleveranse",   path: "../docs/architecture/customer-delivery-checklist.md" }
+  ];
+  var _laringActive = LARING_DOCS[0].id;
+
+  function renderLaring(sc, wrap) {
+    wrap.innerHTML =
+      '<div class="cs-md-tabs">' +
+        LARING_DOCS.map(function (d) {
+          return '<button type="button" class="cs-md-tab' + (d.id === _laringActive ? " is-active" : "") + '" data-laring-doc="' + d.id + '">' + C.esc(d.label) + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div class="cs-md-body" id="cs-md-body"><p style="color:var(--color-muted)">Lastar…</p></div>';
+
+    wrap.querySelectorAll("[data-laring-doc]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        _laringActive = btn.getAttribute("data-laring-doc");
+        renderLaring(sc, wrap);
+      });
+    });
+
+    loadLaringDoc(_laringActive);
+  }
+
+  function loadLaringDoc(id) {
+    var doc = LARING_DOCS.filter(function (d) { return d.id === id; })[0];
+    var body = document.getElementById("cs-md-body");
+    if (!doc || !body) return;
+    fetch(doc.path).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }).then(function (md) {
+      if (!document.getElementById("cs-md-body")) return; // brukar navigerte vekk medan henting pågjekk
+      if (window.marked) {
+        document.getElementById("cs-md-body").innerHTML = window.marked.parse(md);
+      } else {
+        // marked lasta ikkje (t.d. CDN utilgjengeleg) -- vis rå tekst i staden
+        // for ei tom side.
+        var pre = document.createElement("pre");
+        pre.style.whiteSpace = "pre-wrap";
+        pre.textContent = md;
+        document.getElementById("cs-md-body").innerHTML = "";
+        document.getElementById("cs-md-body").appendChild(pre);
+      }
+    }).catch(function (e) {
+      if (!document.getElementById("cs-md-body")) return;
+      document.getElementById("cs-md-body").innerHTML =
+        '<p style="color:#c0392b">Kunne ikkje laste dokumentet (' + C.esc(e.message) + '). Sjå ' + C.esc(doc.path) + ' direkte i repoet.</p>';
+    });
+  }
+
   function renderSystem(sc, wrap) {
     var supaUrl     = (_activeTenant && _activeTenant.data_plane_url) || "—";
     var supaKey     = (_activeTenant && _activeTenant.data_plane_anon_key) || "";
@@ -1631,7 +1695,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   var TITLES = {
     kundar:"Kundar", produkt:"Produkt", web:"Web", workspace:"Workspace",
-    modular:"Modular", analyse:"Analyse", personvern:"Personvern", system:"System"
+    modular:"Modular", analyse:"Analyse", personvern:"Personvern", laring:"Læring", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
@@ -1641,6 +1705,7 @@ window.VwConsole = (function () {
     modular:    renderModular,
     analyse:    renderAnalyse,
     personvern: renderPersonvern,
+    laring:     renderLaring,
     system:     renderSystem
   };
 

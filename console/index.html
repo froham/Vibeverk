@@ -138,6 +138,37 @@
       padding: .85rem 1rem; display: grid; gap: .5rem;
     }
 
+    /* --- Læring: markdown-visning av docs/onboarding/*.md ------------------ */
+    .cs-md-tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.2rem; }
+    .cs-md-tab {
+      font: inherit; font-size: .85rem; padding: .5rem 1rem;
+      border-radius: 999px; border: 1.5px solid var(--color-border);
+      background: var(--color-surface); color: var(--color-text); cursor: pointer;
+    }
+    .cs-md-tab.is-active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .cs-md-body {
+      border: 1px solid var(--color-border); border-radius: 12px;
+      padding: 1.5rem 1.8rem; background: var(--color-surface);
+      max-width: 860px; line-height: 1.65;
+    }
+    .cs-md-body h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+    .cs-md-body h2 { font-size: 1.2rem; margin: 1.8rem 0 .7rem; }
+    .cs-md-body h3 { font-size: 1.02rem; margin: 1.4rem 0 .5rem; }
+    .cs-md-body p, .cs-md-body ul, .cs-md-body ol { margin: 0 0 .9rem; }
+    .cs-md-body ul, .cs-md-body ol { padding-left: 1.4rem; }
+    .cs-md-body blockquote {
+      margin: 0 0 1rem; padding: .6rem 1rem; border-left: 3px solid var(--color-primary);
+      background: var(--color-alt); color: var(--color-muted); font-size: .92rem;
+    }
+    .cs-md-body code { background: var(--color-alt); padding: .1rem .35rem; border-radius: 4px; font-size: .88em; }
+    .cs-md-body pre { background: var(--color-alt); padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; }
+    .cs-md-body pre code { background: none; padding: 0; }
+    .cs-md-body table { border-collapse: collapse; width: 100%; margin: 0 0 1.2rem; font-size: .88rem; }
+    .cs-md-body th, .cs-md-body td { border: 1px solid var(--color-border); padding: .5rem .7rem; text-align: left; vertical-align: top; }
+    .cs-md-body th { background: var(--color-alt); font-weight: 700; }
+    .cs-md-body a { color: var(--color-primary); }
+    .cs-md-body hr { border: none; border-top: 1px solid var(--color-border); margin: 1.5rem 0; }
+
     /* Fontpar-knappar */
     .fontpair-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .9rem; }
     .fontpair-btn {
@@ -273,9 +304,13 @@
        Modular er ikkje nødvendig sidan konsollen berre les/skriv config-data.
        console-core.js kjem sist og overrider CSS-vars + monterer UI-et. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <!-- marked: minimal markdown->HTML for the "Læring"-seksjonen sin visning av
+       docs/onboarding/*.md -- same CDN-avhengig-mønster som Tabler Icons over,
+       pinna til éin major versjon for stabilitet. -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="../config.js?v=8"></script>
   <script src="../components.js?v=15"></script>
   <script src="../core.js?v=51"></script>
-  <script src="console-core.js?v=115"></script>
+  <script src="console-core.js?v=116"></script>
 </body>
 </html>
