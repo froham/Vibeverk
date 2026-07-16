@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.37.5 — 2026-07-16
+
+### Console: ny "Læring"-fane viser docs/onboarding/*.md direkte i grensesnittet
+
+Følgje opp same dags nye onboarding-dokumentasjon (`docs/onboarding/new-team-member-onboarding.md` m.fl.) — i staden for at nokon må opne rå Markdown-filer i repoet, viser Console no innhaldet direkte, pent formatert. Ny "Læring"-fane i sidebaren (`NAV_ITEMS`), med fire faneknappar (Læringsdokument/Trygge endringar/Hendingsguide/Kundeleveranse) som hentar tilhøyrande `.md`-fil via `fetch()` (same opphav — dokumenta er alt del av det statiske repoet som blir servert) og konverterer til HTML med `marked` (nytt CDN-avhengig, pinna til major versjon `@12`, same mønster som Tabler Icons — `script-src` i CSP-en tillet alt `cdn.jsdelivr.net`, ingen CSP-endring naudsynt).
+
+Ikkje tenant-spesifikt — same innhald uansett kva kunde er vald i kundeveljaren, sidan dette er interne Vibeverk-dokument. Stadfesta empirisk (Playwright, isolert testside): `marked` lastar korrekt frå CDN, `fetch()` hentar dokumentet, HTML-et inneheld korrekt struktur (overskrifter, tre tabellar, lenker), ingen konsollfeil. Console sjølv har ingen jsdom-testdekning frå før (kjend, dokumentert avgrensing) — full grensesnitt-gjennomklikking (inkl. den faktiske OTP-innlogginga) er difor ikkje stadfesta, berre den underliggande hente-og-rendre-mekanismen.
+
+Lagt til ein tom `.nojekyll`-fil i repo-rota — ein billig, trygg sikring for at `fetch()`-mekanismen over også fungerer korrekt om GitHub Pages-rollback-vegen (jf. ADR-0007) nokon gong faktisk blir teken i bruk att; utan denne kunne Jekyll (GitHub Pages sin standard prosesseringsmotor, ikkje aktiv på det noverande Vercel-baserte hovudsporet) i teorien handsame `.md`-filer annleis enn ei rein statisk fil-tening. Påverkar ikkje Vercel i det heile.
+
+Alle testar grøne (534 OK / 157 OK, den eine kjende feilen uendra — ingen av desse dekker Console). Cache-bust: `console-core.js?v=115→116`. `VIBEVERK_VERSION` 0.37.4 → 0.37.5.
+
 ## 0.37.4 — 2026-07-16
 
 ### Ny `smoke-vibeverk`-skill — start på ROADMAP punkt 5 (automatisert livetest-agent)
