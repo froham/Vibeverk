@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.37.1 — 2026-07-16
+
+### vibeverk.no DNS-cutover fullført + enkel utviklingsfase-passordsperre
+
+**DNS-cutover**: `vibeverk.no` sin apex-A-post er endra frå GitHub Pages (4 IP-ar) til Vercel (`76.76.21.21`), stadfesta live (`Server: Vercel`-header, korrekt dynamisk `/config.js`, ekte hydrert produksjonsinnhald). Forarbeid (tenant-rad-verifisering + accept-path-smoke-test) gjort og stadfesta OK same dag, sjå `docs/roadmap/ROADMAP.md` punkt 2 for full detalj. `CNAME`-fila i repoet er urørt (rask GitHub Pages-rollback framleis mogleg).
+
+**Fire nye videresendingar** sett opp av brukar hos registraren (`console.vibeverk.no`, `staging.vibeverk.no`, `sunnvask.vibeverk.no`, `workspace.vibeverk.no`) — alle stadfesta fungerande via curl. `workspace.vibeverk.no` peikar førebels via den gamle `/intranet`-omdirigeringssnubben (fungerer, men éin unødvendig ekstra hopp — bør oppdaterast til å peike direkte på `/workspace/` hos registraren).
+
+**Ny enkel passordsperre** (`middleware.js`): sidan heile plattforma (inkl. Vibeverk sjølv) framleis er i utviklingsfase og ingenting er meint å vere reelt offentleg enno, er det lagt til ein HTTP Basic Auth-sjekk FØRST i middlewaren, styrt av `SITE_LOCK_PASSWORD`-miljøvariabelen (sett på begge Vercel-prosjekt — `vibeverk` og `vibeverk-j1yg` — Production+Preview). Gjeld samstundes alle fem domena/aliasa over, sidan dei deler same middleware-fil. IKKJE ei sikkerheitsgrense — reint ei hindring mot tilfeldige besøkjande, fail-open viss variabelen manglar. Kjem i TILLEGG til, ikkje i staden for, dei eksisterande admin-/Workspace-/Console-innloggingane. Verifisert live med curl (401 utan/med feil passord, 200 med rett passord) på tvers av alle domena.
+
+Cache-bust: `console-core.js?v=111→112`. `VIBEVERK_VERSION` 0.37.0 → 0.37.1.
+
 ## 0.37.0 — 2026-07-16
 
 ### Console: live fontforhandsvising i Fontar-seksjonane (Nettside + Workspace)
