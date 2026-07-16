@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.36.6";
+  var VIBEVERK_VERSION = "0.37.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -320,6 +320,81 @@ window.VwConsole = (function () {
     { label: "Outfit + Plus Jakarta Sans",       display: "Outfit",             body: "Plus Jakarta Sans" },
     { label: "Cormorant Garamond + Mulish",      display: "Cormorant Garamond", body: "Mulish" }
   ];
+
+  /* --- Live fontforhandsvisning (Fontar-seksjonane i Nettside/Workspace) -----
+     Ren admin-bekvemmelighet -- viser valgt font direkte i feltet sitt eige
+     forhandsvisningselement, henta frå Google Fonts sitt CSS2-API, same
+     mønster som core.js sin injectGoogleFonts() (ikkje delt kode, sidan
+     Console aldri lastar core.js). Delt <link>-element for alle aktive
+     forhandsvisingar samstundes (nettside display/body + Workspace
+     display/body), bygd på nytt kvar gong éin av dei endrar seg. */
+  var _fontPreviewState = {};
+
+  function rebuildPreviewFontLink() {
+    var families = [];
+    var seen = {};
+    Object.keys(_fontPreviewState).forEach(function (k) {
+      var f = _fontPreviewState[k];
+      var key = f.name + "|" + f.weights.join(",");
+      if (seen[key]) return;
+      seen[key] = true;
+      families.push("family=" + encodeURIComponent(f.name).replace(/%20/g, "+") + ":wght@" + f.weights.join(";"));
+    });
+    var linkEl = document.getElementById("cs-preview-fonts");
+    if (!families.length) return;
+    if (!linkEl) {
+      linkEl = document.createElement("link");
+      linkEl.id = "cs-preview-fonts";
+      linkEl.rel = "stylesheet";
+      document.head.appendChild(linkEl);
+    }
+    linkEl.href = "https://fonts.googleapis.com/css2?" + families.join("&") + "&display=swap";
+  }
+
+  function fontPreviewMarkup(id) {
+    return '<p id="' + id + '" style="margin:.4rem 0 0;padding:.55rem .75rem;' +
+      'border:1px solid var(--color-border);border-radius:8px;font-size:1.15rem;' +
+      'opacity:.45;transition:opacity .15s" aria-hidden="true">Aa Bb Cc — Eksempeltekst 123</p>';
+  }
+
+  // Oppdaterer eitt forhandsvisingselement no, ut frå feltet sin noverande
+  // verdi -- kallast både på 'input' og etter programmatiske verdi-endringar
+  // (fontpar-knappar, nullstill-knapp) som ikkje sjølv utløyser 'input'.
+  function refreshFontPreview(nameId, weightsId, previewId) {
+    var nameEl = document.getElementById(nameId);
+    var prevEl = document.getElementById(previewId);
+    if (!nameEl || !prevEl) return;
+    var name = nameEl.value.trim();
+    if (!name) {
+      prevEl.style.fontFamily = "inherit";
+      prevEl.style.opacity = ".45";
+      delete _fontPreviewState[previewId];
+      rebuildPreviewFontLink();
+      return;
+    }
+    prevEl.style.fontFamily = "'" + name.replace(/'/g, "") + "', sans-serif";
+    prevEl.style.opacity = "1";
+    var weightsEl = weightsId && document.getElementById(weightsId);
+    var weights = weightsEl
+      ? weightsEl.value.split(",").map(function (w) { return parseInt(w.trim(), 10); }).filter(Boolean)
+      : [];
+    if (!weights.length) weights = [400, 700];
+    _fontPreviewState[previewId] = { name: name, weights: weights };
+    rebuildPreviewFontLink();
+  }
+
+  // Kobler eit fontnamn-felt + valfritt weights-felt til sitt eige
+  // forhandsvisingselement -- legg til 'input'-lyttarar (kall EIN gong per
+  // felt-sett) pluss ein umiddelbar fyrste visning med dagens lagra verdi.
+  function bindFontPreview(nameId, weightsId, previewId) {
+    function refresh() { refreshFontPreview(nameId, weightsId, previewId); }
+    var nameEl = document.getElementById(nameId);
+    var weightsEl = weightsId && document.getElementById(weightsId);
+    if (nameEl) nameEl.addEventListener("input", refresh);
+    if (weightsEl) weightsEl.addEventListener("input", refresh);
+    refresh();
+  }
+
   var FEAT_LABELS = {
     newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg",
     social:"Sosiale lenker", contactForm:"Kontaktskjema", booking:"Booking", quote:"Tilbud",
@@ -684,16 +759,21 @@ window.VwConsole = (function () {
             C.field({ id:"cs-dfont",    label:"Display-font",    value: fnt.display || "", placeholder:"Syne" }) +
             C.field({ id:"cs-dweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.display ? fnt.weights.display.join(",") : "600,700,800"), hint:"For overskrifter" }) +
           '</div>' +
-          '<div class="bk-2col">' +
+          fontPreviewMarkup("cs-dfont-preview") +
+          '<div class="bk-2col" style="margin-top:.8rem">' +
             C.field({ id:"cs-bfont",    label:"Brødtekst-font",  value: fnt.body || "", placeholder:"Inter" }) +
             C.field({ id:"cs-bweights", label:"Weights (komma)", value: (fnt.weights && fnt.weights.body ? fnt.weights.body.join(",") : "400,500,600"), hint:"For brødtekst" }) +
           '</div>' +
+          fontPreviewMarkup("cs-bfont-preview") +
           '<div style="margin-top:.5rem">' +
             '<button type="button" class="btn btn--ghost btn--sm" id="cs-web-reset">↺ Nullstill fargar og fontar til standard</button>' +
           '</div>' +
         '</fieldset>' +
         saveBtn() +
       '</form>';
+
+    bindFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
+    bindFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
 
     wrap.querySelectorAll("[data-pair]").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -703,6 +783,8 @@ window.VwConsole = (function () {
         wrap.querySelector("#cs-bfont").value    = p.body;
         wrap.querySelector("#cs-dweights").value = "600,700,800";
         wrap.querySelector("#cs-bweights").value = "400,500,600";
+        refreshFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
+        refreshFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
       });
     });
 
@@ -720,6 +802,8 @@ window.VwConsole = (function () {
       wrap.querySelector("#cs-bfont").value     = "Nunito Sans";
       wrap.querySelector("#cs-dweights").value  = "600,700,800";
       wrap.querySelector("#cs-bweights").value  = "400,500,600";
+      refreshFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
+      refreshFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
     });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
@@ -815,10 +899,12 @@ window.VwConsole = (function () {
             C.field({ id:"cs-wsp-dfont",    label:"Display-font",    value: wspFnt.display || "", placeholder:"Tomt = same som nettsida" }) +
             C.field({ id:"cs-wsp-dweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.display ? wspFnt.weights.display.join(",") : "600,700,800"), hint:"For overskrifter" }) +
           '</div>' +
-          '<div class="bk-2col">' +
+          fontPreviewMarkup("cs-wsp-dfont-preview") +
+          '<div class="bk-2col" style="margin-top:.8rem">' +
             C.field({ id:"cs-wsp-bfont",    label:"Brødtekst-font",  value: wspFnt.body || "", placeholder:"Tomt = same som nettsida" }) +
             C.field({ id:"cs-wsp-bweights", label:"Weights (komma)", value: (wspFnt.weights && wspFnt.weights.body ? wspFnt.weights.body.join(",") : "400,500,600"), hint:"For brødtekst" }) +
           '</div>' +
+          fontPreviewMarkup("cs-wsp-bfont-preview") +
           '<div style="margin-top:.5rem">' +
             '<button type="button" class="btn btn--ghost btn--sm" id="cs-wsp-reset">↺ Nullstill fargar og fontar til standard</button>' +
           '</div>' +
@@ -830,6 +916,9 @@ window.VwConsole = (function () {
       wrap.querySelector("#cs-wsp-name-wrap").style.display = this.checked ? "" : "none";
     });
 
+    bindFontPreview("cs-wsp-dfont", "cs-wsp-dweights", "cs-wsp-dfont-preview");
+    bindFontPreview("cs-wsp-bfont", "cs-wsp-bweights", "cs-wsp-bfont-preview");
+
     wrap.querySelectorAll("[data-wsp-pair]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var p = FONT_PAIRS[parseInt(btn.getAttribute("data-wsp-pair"), 10)];
@@ -838,6 +927,8 @@ window.VwConsole = (function () {
         wrap.querySelector("#cs-wsp-bfont").value    = p.body;
         wrap.querySelector("#cs-wsp-dweights").value = "600,700,800";
         wrap.querySelector("#cs-wsp-bweights").value = "400,500,600";
+        refreshFontPreview("cs-wsp-dfont", "cs-wsp-dweights", "cs-wsp-dfont-preview");
+        refreshFontPreview("cs-wsp-bfont", "cs-wsp-bweights", "cs-wsp-bfont-preview");
       });
     });
 
@@ -852,6 +943,8 @@ window.VwConsole = (function () {
       wrap.querySelector("#cs-wsp-bfont").value     = "";
       wrap.querySelector("#cs-wsp-dweights").value  = "600,700,800";
       wrap.querySelector("#cs-wsp-bweights").value  = "400,500,600";
+      refreshFontPreview("cs-wsp-dfont", "cs-wsp-dweights", "cs-wsp-dfont-preview");
+      refreshFontPreview("cs-wsp-bfont", "cs-wsp-bweights", "cs-wsp-bfont-preview");
     });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
