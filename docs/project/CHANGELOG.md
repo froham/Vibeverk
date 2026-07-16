@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.37.3 — 2026-07-16
+
+### Tryggleiksfiks: `fetch_tenant_project_keys` manglar kryss-tenant-sjekk (HIGH)
+
+Sikkerheitsgjennomgang (general-purpose-agent, standing in for Security Auditor per den kjende harness-avgrensinga — sjå `docs/project/CURRENT_STATE.md`) av `fetch_tenant_project_keys` (0.34.6) og dei to onboarding-migrasjonane frå 0.34.4/0.34.5, aldri tidlegare uavhengig gjennomgått. Verdikt: CAUTION, eitt HIGH-funn, stadfesta sjølv (lese koden direkte) før fiks:
+
+`fetch_tenant_project_keys` sin einaste guard sjekka berre om `data_plane_url` peika på kontrollplanet sjølv (`CONTROL_PLANE_PROJECT_REF`) — ingenting stoppa eit kall frå å målrette ein ANNAN, alt-registrert tenant sin `data_plane_url` (ingen `UNIQUE`-constraint finst på denne kolonnen). Ein superadmin kunne difor (ved feil eller ondsinna) hente ein heilt annan kunde sin ekte `service_role`-nøkkel via Management API-et og lagre han på ein urelatert, provisjonerande tenant-rad. `supabase-control/supabase/functions/tenant-admin/index.ts` sin `fetch_tenant_project_keys`-handling sjekkar no eksplisitt om `data_plane_url` alt er i bruk av ein ANNAN tenant-rad FØR Management API-kallet, og avviser med 409 om så er tilfelle. Suksess-utfallet i `broker_audit_log` inkluderer no òg kva prosjekt-ref som faktisk vart henta (var før tomt på suksess, svekka sporbarheita nettopp for dette funnet).
+
+To mindre funn (MEDIUM/LOW) er dokumenterte, ikkje fiksa denne runda — vurdert trygt i dagens skjema, men verdt å hugse: sjølve `pg_trigger_depth()`-baserte unnataket i `prevent_self_role_escalation()` er ein generisk stack-djupn-sjekk, ikkje ein identitetssjekk (kan i teorien opnast av ein framtidig, urelatert trigger-kjede); `CONTROL_PLANE_PROJECT_REF` er dupliserte som ein magisk streng to stader.
+
+**Ikkje deploya enno** — treng redeploy av `tenant-admin`-Edge Function til `vibeverk-control` (eksplisitt godkjenning krevst per CLAUDE.md sin deployment-safeguard, same som all anna remote Supabase-handling).
+
+`VIBEVERK_VERSION` 0.37.2 → 0.37.3. Cache-bust: `console-core.js?v=113→114` (versjonsnummeret vises der).
+
 ## 0.37.2 — 2026-07-16
 
 ### Google Fonts sjølv-hosta for Poppins/Nunito Sans — fjernar tredjeparts-overføring for Vibeverk sine eigne to fontar

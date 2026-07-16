@@ -595,6 +595,26 @@ serve(async (req: Request) => {
       await auditReject(tenant.id, action, "data_plane_url peikar på kontrollplanet sjølv");
       return json({ error: "Ugyldig data_plane_url — peikar på kontrollplanet sjølv" }, 400);
     }
+    // Security Auditor finding (2026-07-16, read-only pass): the guard above
+    // only blocked targeting the control plane itself -- nothing stopped a
+    // (mistaken or malicious) call from targeting a DIFFERENT, already-live
+    // tenant's data_plane_url, fetching and storing THEIR real service_role
+    // key onto this unrelated provisioning tenant's row. No DB-level unique
+    // constraint exists on data_plane_url either, so this must be checked
+    // explicitly here, before ever calling the Management API.
+    const { data: conflictRows, error: conflictErr } = await controlSrvSb
+      .from("tenants")
+      .select("id")
+      .eq("data_plane_url", data_plane_url)
+      .neq("id", tenant_id);
+    if (conflictErr) {
+      await auditReject(tenant.id, action, "kunne ikkje sjekke om data_plane_url alt er i bruk: " + conflictErr.message);
+      return json({ error: "Kunne ikkje verifisere at data_plane_url er unik — prøv igjen" }, 500);
+    }
+    if (conflictRows && conflictRows.length > 0) {
+      await auditReject(tenant.id, action, "data_plane_url er alt registrert på ein annan tenant");
+      return json({ error: "Denne Supabase-prosjekt-URL-en er alt registrert på ein annan kunde" }, 409);
+    }
     const auditId = await auditStart(tenant.id, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     let anonKey: string | undefined;
@@ -647,7 +667,7 @@ serve(async (req: Request) => {
       await auditFinish(auditId, "error", "kopling lagra, men nøkkel-lagring feila: " + keyErr.message);
       return json({ error: "Kopling vart lagra, men service_role-nøkkelen kunne ikkje lagrast — prøv igjen" }, 500);
     }
-    await auditFinish(auditId, "success");
+    await auditFinish(auditId, "success", "henta nøklar for ref " + ref);
     return json({ success: true });
   }
 
