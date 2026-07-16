@@ -40,7 +40,7 @@ Sikkerheitsgjennomgang (general-purpose-agent, standing in for Security Auditor 
 
 To mindre funn (MEDIUM/LOW) er dokumenterte, ikkje fiksa denne runda — vurdert trygt i dagens skjema, men verdt å hugse: sjølve `pg_trigger_depth()`-baserte unnataket i `prevent_self_role_escalation()` er ein generisk stack-djupn-sjekk, ikkje ein identitetssjekk (kan i teorien opnast av ein framtidig, urelatert trigger-kjede); `CONTROL_PLANE_PROJECT_REF` er dupliserte som ein magisk streng to stader.
 
-**Ikkje deploya enno** — treng redeploy av `tenant-admin`-Edge Function til `vibeverk-control` (eksplisitt godkjenning krevst per CLAUDE.md sin deployment-safeguard, same som all anna remote Supabase-handling).
+**Deploya til `vibeverk-control` same dag** (`npx supabase functions deploy tenant-admin --project-ref jxoglthrnshabqmdmnui --workdir supabase-control`, eksplisitt godkjent av brukar). Stadfesta live at funksjonen svarer (401 på uautentisert kall, som forventa). **Ikkje stadfesta ende-til-ende** at sjølve kryss-tenant-avvisinga faktisk fungerer i praksis — det krev ein ekte superadmin-Console-økt, ikkje tilgjengeleg i denne sesjonen. Sjå Security Auditor sin "MANUAL TESTS REQUIRED"-seksjon for korleis dette bør testast (mot `vibeverk-staging`, aldri produksjon).
 
 `VIBEVERK_VERSION` 0.37.2 → 0.37.3. Cache-bust: `console-core.js?v=113→114` (versjonsnummeret vises der).
 
