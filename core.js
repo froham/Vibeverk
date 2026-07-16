@@ -733,21 +733,53 @@ window.App = (function () {
     }
   }
 
+  // Fontar som er sjølv-hosta lokalt (sjå fonts/self-hosted-fonts.css) --
+  // unngår ein direkte nettlesar->Google-førespurnad for Vibeverk sine eigne
+  // to fontar (sjå docs/compliance/data-map-vibeverk.md seksjon 8). Andre
+  // kundar som vel eit anna Google Font-namn via Console fell framleis
+  // tilbake til Google sin CDN under, heilt uendra.
+  const LOCAL_FONTS = { poppins: true, "nunito sans": true };
+  function isLocalFont(name) { return !!name && !!LOCAL_FONTS[name.toLowerCase()]; }
+
   function injectGoogleFonts(f) {
     if (!f || (!f.display && !f.body)) return;
-    const families = [];
     const weights = f.weights || {};
-    if (f.display) families.push(fontFamilyParam(f.display, weights.display || [400, 700]));
-    if (f.body && f.body !== f.display) families.push(fontFamilyParam(f.body, weights.body || [400, 600]));
-    const href = "https://fonts.googleapis.com/css2?" + families.join("&") + "&display=swap";
-    let link = document.getElementById("app-fonts");
-    if (!link) {
-      link = document.createElement("link");
-      link.id = "app-fonts";
-      link.rel = "stylesheet";
-      document.head.appendChild(link);
+    const remoteFamilies = [];
+    let needLocal = false;
+
+    if (f.display) {
+      if (isLocalFont(f.display)) needLocal = true;
+      else remoteFamilies.push(fontFamilyParam(f.display, weights.display || [400, 700]));
     }
-    link.href = href;
+    if (f.body && f.body !== f.display) {
+      if (isLocalFont(f.body)) needLocal = true;
+      else remoteFamilies.push(fontFamilyParam(f.body, weights.body || [400, 600]));
+    }
+
+    if (needLocal) {
+      let localLink = document.getElementById("app-fonts-local");
+      if (!localLink) {
+        localLink = document.createElement("link");
+        localLink.id = "app-fonts-local";
+        localLink.rel = "stylesheet";
+        localLink.href = "/fonts/self-hosted-fonts.css";
+        document.head.appendChild(localLink);
+      }
+    }
+
+    let link = document.getElementById("app-fonts");
+    if (remoteFamilies.length) {
+      const href = "https://fonts.googleapis.com/css2?" + remoteFamilies.join("&") + "&display=swap";
+      if (!link) {
+        link = document.createElement("link");
+        link.id = "app-fonts";
+        link.rel = "stylesheet";
+        document.head.appendChild(link);
+      }
+      link.href = href;
+    } else if (link) {
+      link.remove();
+    }
   }
   function fontFamilyParam(name, weights) {
     return "family=" + encodeURIComponent(name).replace(/%20/g, "+") +

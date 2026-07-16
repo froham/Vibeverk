@@ -93,22 +93,44 @@ window.Intranet = (function () {
     if (dFont || bFont) _loadWspFonts(fonts, dFont, bFont);
   }
 
+  // Same lokale-fontar-unnatak som core.js sin injectGoogleFonts() -- sjå
+  // notatet der. Held Workspace-tilsette sine nettlesarar unna Google når
+  // fonten er ein av Vibeverk sine eigne to (Poppins/Nunito Sans).
+  var _WSP_LOCAL_FONTS = { poppins: true, "nunito sans": true };
+  function _isWspLocalFont(name) { return !!name && !!_WSP_LOCAL_FONTS[name.toLowerCase()]; }
+
   function _loadWspFonts(fonts, dFont, bFont) {
     var dW = (fonts.weights && fonts.weights.display) || [600, 700, 800];
     var bW = (fonts.weights && fonts.weights.body)    || [400, 500, 600];
     var families = [];
-    if (dFont) families.push(encodeURIComponent(dFont) + ":wght@" + dW.join(";"));
-    if (bFont && bFont !== dFont) families.push(encodeURIComponent(bFont) + ":wght@" + bW.join(";"));
-    if (!families.length) return;
-    var href = "https://fonts.googleapis.com/css2?display=swap&" + families.map(function (f) { return "family=" + f; }).join("&");
-    var el = document.getElementById("wsp-gfonts");
-    if (!el) {
-      el = document.createElement("link");
-      el.id  = "wsp-gfonts";
-      el.rel = "stylesheet";
-      document.head.appendChild(el);
+    var needLocal = false;
+    if (dFont) { if (_isWspLocalFont(dFont)) needLocal = true; else families.push(encodeURIComponent(dFont) + ":wght@" + dW.join(";")); }
+    if (bFont && bFont !== dFont) { if (_isWspLocalFont(bFont)) needLocal = true; else families.push(encodeURIComponent(bFont) + ":wght@" + bW.join(";")); }
+
+    if (needLocal) {
+      var localEl = document.getElementById("wsp-gfonts-local");
+      if (!localEl) {
+        localEl = document.createElement("link");
+        localEl.id  = "wsp-gfonts-local";
+        localEl.rel = "stylesheet";
+        localEl.href = "/fonts/self-hosted-fonts.css";
+        document.head.appendChild(localEl);
+      }
     }
-    el.href = href;
+
+    var el = document.getElementById("wsp-gfonts");
+    if (families.length) {
+      var href = "https://fonts.googleapis.com/css2?display=swap&" + families.map(function (f) { return "family=" + f; }).join("&");
+      if (!el) {
+        el = document.createElement("link");
+        el.id  = "wsp-gfonts";
+        el.rel = "stylesheet";
+        document.head.appendChild(el);
+      }
+      el.href = href;
+    } else if (el) {
+      el.remove();
+    }
   }
 
   function getContext() {
