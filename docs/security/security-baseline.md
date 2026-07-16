@@ -79,13 +79,20 @@ Without this, PostgREST will continue serving the old function definition from i
 
 ## Console authentication
 
-The Vibeverk Console uses OTP-based authentication (not password). After OTP validation, the session is stored as a 48-hour expiry timestamp in `localStorage["nordpunkt:console-auth"]`. Access to the console requires:
-1. The email matching a hardcoded `SUPERADMIN_EMAILS` allowlist (checked *before* an OTP is even sent)
-2. A valid OTP code verified via Supabase
+**Superseded 2026-07-08 (Phase 8, `docs/decisions/ADR-0009-console-control-plane-auth-and-broker-actions.md`)** — corrected here 2026-07-16 after being found stale (this section still described the pre-Phase-8 model). Current model:
 
-As of 2026-07-01 (`docs/decisions/ADR-0004-console-access-decoupled-from-tenant-role.md`), there is no additional check against the customer's `users` table — the allowlist plus a valid OTP is the complete authorization. An earlier `role = 'owner'` check was removed after it blocked the legitimate Vibeverk operator account (which had `role = 'admin'` in the tenant's `users` table — `owner` is not a valid role value at all, see below).
+The Vibeverk Console uses OTP-based authentication against **`vibeverk-control`** (the control-plane Supabase project, ref `jxoglthrnshabqmdmnui`), not the customer's own project. Access requires:
+1. `signInWithOtp({ shouldCreateUser: false })` is called **unconditionally** — there is no longer a client-side email allowlist checked before the OTP is sent. That pre-check was itself an unauthenticated "does this email have access" oracle and was removed for that reason; the same "code sent" response is returned regardless of whether the email is a real operator.
+2. A valid OTP code, verified via Supabase against `vibeverk-control`.
+3. **Only after OTP verification succeeds**: `operators.status = 'active'` is checked in `vibeverk-control`. A failed check signs the session back out immediately.
 
-The console session is stored in localStorage, not in an httpOnly cookie. This is a known limitation — the session is accessible to JavaScript.
+There is still no check against any customer/tenant's own `users` table — Console access is entirely a control-plane concept, consistent with `docs/decisions/ADR-0004-console-access-decoupled-from-tenant-role.md`'s original reasoning (only its specific mechanism, the pre-OTP allowlist, has changed).
+
+The session is a real, live Supabase session against `vibeverk-control` (`_sbControl`, persistent with auto-refresh) — `isAuthed()` reflects this via `onAuthStateChange`, not a fixed-window timestamp. (A previously-documented bug — a 48-hour `localStorage` timestamp that could say "authenticated" long after the underlying session had actually expired — was fixed as part of this same Phase 8 change.)
+
+All config reads/writes for the operator's picked tenant go through a `broker` Edge Function in `vibeverk-control` (an anon-key client confirms active-operator status, then a service-role client acts on the target tenant's own project via a Vault-decrypted key never returned to the caller); every action is written to `broker_audit_log` before returning. See `docs/architecture/roles-and-tenants.md` for the full current model.
+
+This is still a browser-side JS session, not an httpOnly cookie — XSS on the console page would still expose it. **Not yet independently reviewed by a Security Auditor pass as of ADR-0009** (a named, acknowledged gap in that ADR) — see `docs/project/CURRENT_STATE.md`'s security-findings tracking for whether a later pass has since covered it.
 
 ## Web admin password
 
