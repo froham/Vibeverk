@@ -118,18 +118,6 @@
       /* --- E-postkonfigurasjon (CRM) — berre admin -------------------------- */
       (isAdmin ? emailProviderCard() : "") +
 
-      /* --- Del data mellom enheter — berre admin ---------------------------- */
-      (isAdmin && App.supabase
-        ? '<div class="i-card" style="margin-bottom:1rem">' +
-            '<p class="i-section-label">Del data mellom enheter</p>' +
-            '<p style="font-size:.88rem;color:var(--color-muted);margin:.3rem 0 .9rem">' +
-              'Laster opp alt som foreløpig kun er lagret i nettleseren på denne datamaskinen, slik at det blir synlig når dere logger inn fra en annen enhet. Trengs vanligvis bare første gang.' +
-            '</p>' +
-            '<button class="btn btn--primary btn--sm" id="settings-sync-up">Last opp data</button>' +
-            ' <span class="form__status" id="settings-sync-status"></span>' +
-          '</div>'
-        : '') +
-
       /* --- Endre passord ----------------------------------------------------- */
       (App.supabase
         ? '<div class="i-card" style="margin-bottom:1rem">' +
@@ -265,21 +253,6 @@
           renderStrength("");
           setTimeout(function() { if (st) st.textContent = ""; }, 3000);
         });
-      });
-    }
-
-    /* Bind synk-opp */
-    var syncUpBtn = root.querySelector("#settings-sync-up");
-    if (syncUpBtn) {
-      syncUpBtn.addEventListener("click", function () {
-        var st = root.querySelector("#settings-sync-status");
-        var keys = App.allStoreKeys ? App.allStoreKeys() : [];
-        keys.forEach(function (k) {
-          var val = App.store.get(k, null);
-          if (val !== null) { App.store.set(k, val); }
-        });
-        st.textContent = "Laster opp data…"; st.className = "form__status is-ok";
-        setTimeout(function () { if (st) st.textContent = "Ferdig — data er no tilgjengeleg på alle einingar."; }, 600);
       });
     }
 

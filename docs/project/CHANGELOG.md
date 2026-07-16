@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.36.6 — 2026-07-16
+
+### Workspace: fjerna "Del data mellom enheter"-knappen frå Innstillinger (reell overskrivingsrisiko, ikkje berre eit copy-problem)
+
+Brukar rapporterte at knappen (retta til plain-språk i 0.36.4) var forvirrande — trudde ho måtte klikkast — og spurde om ho kunne overskrive nyare data frå andre einingar. Stadfesta mot faktisk kode (`core.js`): svaret er JA, reell risiko, ikkje berre ei kjensle:
+
+- Normal drift skjer HEILT automatisk: kvar endring vert skriven til Supabase innan 300ms medan innlogga (`_flushSync`), og siste versjon vert henta frå Supabase ved kvar innlogging (`hydrateFromSupabase`). Ein vanleg admin treng ALDRI trykke denne knappen.
+- Knappen sjølv gjorde ingen samanlikning mot kva som faktisk ligg i Supabase no — ho tok berre det som alt låg i DENNE nettlesaren sitt lokale mellomlager og skreiv det rått over, ingen tidsstempel-sjekk, ingen `confirm()`-åtvaring. Om ei anna eining/admin hadde gjort endringar medan denne fana var open, ville eit klikk stille overskrive dei nyare endringane med den eldre, lokale kopien.
+- Det eine legitime bruksområdet (data strandar lokalt viss auth-sesjonen mista kontakt med Supabase midlertidig) er eit sjeldan, teknisk unntakstilstand ein vanleg admin uansett ikkje kan vite om dei er i — feil grensesnitt for sjølvbetjening uansett.
+
+**Avgjort av brukar: fjern heilt, ikkje berre legg til ei åtvaring.** Kortet, knappen og click-handler'en er fjerna frå `module-settings.js` (var berre nokre linjer — ingen andre modular/testar refererte elementa).
+
+Alle testar grøne (533 OK / 157 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-settings.js?v=10→11`. `VIBEVERK_VERSION` 0.36.5 → 0.36.6, `console-core.js?v=109→110`.
+
 ## 0.36.5 — 2026-07-16
 
 ### Workspace: breiare sveip etter intern fagsjargong + eit reelt modulnamn-avvik
