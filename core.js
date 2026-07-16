@@ -683,6 +683,12 @@ window.App = (function () {
     if (col.muted)   root.setProperty("--color-muted", col.muted);
     if (col.surface) root.setProperty("--color-surface", col.surface);
     if (col.border)  root.setProperty("--color-border", col.border);
+    // Hjørne-radius -- valfritt Console-felt (Fargar-fana), sjå
+    // docs/roadmap/ROADMAP.md "Later" (custom design-modul-punktet).
+    if (col.radius !== undefined && col.radius !== null && col.radius !== "") {
+      const r = parseInt(col.radius, 10);
+      if (!isNaN(r)) root.setProperty("--radius", r + "px");
+    }
 
     // ← Fonter fra config.fonts
     const f = CFG.fonts || {};

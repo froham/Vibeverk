@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.38.0";
+  var VIBEVERK_VERSION = "0.38.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -501,6 +501,50 @@ window.VwConsole = (function () {
     '</div>';
   }
 
+  // WCAG-kontrastrekning (relativ luminans -> kontrastforhold), reint
+  // klientside, ingen lagring -- berre ei live tilbakemelding til operatøren
+  // mens dei vel fargar. Sjå docs/roadmap/ROADMAP.md "Later" (custom
+  // design-modul-punktet, WCAG AA-kontrastvalidator).
+  function hexToRgb(hex) {
+    var h = (hex || "").replace("#", "");
+    if (h.length === 3) h = h.split("").map(function (c) { return c + c; }).join("");
+    var num = parseInt(h, 16) || 0;
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+  function relLuminance(hex) {
+    var rgb = hexToRgb(hex);
+    var chans = [rgb.r, rgb.g, rgb.b].map(function (c) {
+      var s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * chans[0] + 0.7152 * chans[1] + 0.0722 * chans[2];
+  }
+  function contrastRatio(hex1, hex2) {
+    var l1 = relLuminance(hex1), l2 = relLuminance(hex2);
+    var lighter = Math.max(l1, l2), darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+  function refreshContrastInfo(wrap) {
+    var el = wrap.querySelector("#cs-contrast-info");
+    if (!el) return;
+    var text = wrap.querySelector("#cs-text").value;
+    var bg = wrap.querySelector("#cs-bg").value;
+    var primary = wrap.querySelector("#cs-primary").value;
+    var textRatio = contrastRatio(text, bg);
+    var primaryRatio = contrastRatio(primary, bg);
+    var textOk = textRatio >= 4.5;
+    var primaryOk = primaryRatio >= 3;
+    el.innerHTML =
+      '<p style="margin:.4rem 0 0;font-size:.82rem">' +
+        (textOk ? "✓" : "⚠") + ' Tekst mot bakgrunn: ' + textRatio.toFixed(1) + ':1 ' +
+        (textOk ? "(oppfyller WCAG AA-krav på 4.5:1)" : "(under WCAG AA-krav på 4.5:1 for brødtekst)") +
+      '</p>' +
+      '<p style="margin:.2rem 0 0;font-size:.82rem">' +
+        (primaryOk ? "✓" : "⚠") + ' Primærfarge mot bakgrunn: ' + primaryRatio.toFixed(1) + ':1 ' +
+        (primaryOk ? "(oppfyller WCAG AA-krav på 3:1 for grensesnittelement)" : "(under WCAG AA-krav på 3:1 for grensesnittelement, t.d. knappekantar)") +
+      '</p>';
+  }
+
   function saveBtn() {
     return '<div style="display:flex;gap:.6rem;align-items:center;margin-top:1.4rem">' +
       '<button type="submit" class="btn btn--primary">Lagre og bruk</button>' +
@@ -728,7 +772,13 @@ window.VwConsole = (function () {
         '<fieldset class="admin-group"><legend>Firma</legend>' +
           C.field({ id:"cs-name",    label:"Firmanavn",  value: com.name    || "" }) +
           C.field({ id:"cs-tagline", label:"Tagline",    value: com.tagline || "" }) +
-          C.field({ id:"cs-logo",    label:"Logo-URL",   value: com.logoUrl || "", placeholder:"https://…" }) +
+          C.field({ id:"cs-logo",    label:"Logo-URL",   value: com.logoUrl || "", placeholder:"https://…",
+            help:"Lim inn ei lenke til ein logo som alt er hosta ein annan stad, ELLER last opp ei fil under." }) +
+          '<div class="field" style="margin-top:-.6rem">' +
+            '<label>Last opp logo (SVG, PNG, JPEG eller WebP, maks 300KB)</label>' +
+            '<input type="file" id="cs-logo-file" accept="image/svg+xml,image/png,image/jpeg,image/webp">' +
+            '<p class="field__hint" id="cs-logo-upload-status"></p>' +
+          '</div>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>SEO og deling</legend>' +
           C.field({ id:"cs-metadesc", label:"Meta-beskrivelse", multiline:true, rows:2,
@@ -748,6 +798,17 @@ window.VwConsole = (function () {
           '<div class="bk-2col">' +
             colorField("cs-text",    "Tekstfarge", col.text    || "#1B1B1F", "Hovudtekst og overskrifter") +
             colorField("cs-surface", "Overflate",  col.surface || "#ffffff", "Kort, modalar og paneler") +
+          '</div>' +
+          '<div id="cs-contrast-info"></div>' +
+          '<div class="field" style="margin-top:.8rem">' +
+            '<label>Hjørne-radius</label>' +
+            '<select id="cs-radius">' +
+              '<option value="0">Skarpe hjørner</option>' +
+              '<option value="8">Litt runde</option>' +
+              '<option value="14">Standard</option>' +
+              '<option value="24">Runde</option>' +
+            '</select>' +
+            '<p class="field__hint">Styrer avrundinga på knappar, kort og bilete i heile nettstaden.</p>' +
           '</div>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fontar</legend>' +
@@ -776,6 +837,53 @@ window.VwConsole = (function () {
     bindFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
     bindFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
 
+    wrap.querySelector("#cs-radius").value = String(col.radius != null ? col.radius : 14);
+
+    refreshContrastInfo(wrap);
+    ["cs-text", "cs-bg", "cs-primary"].forEach(function (id) {
+      wrap.querySelector("#" + id).addEventListener("input", function () { refreshContrastInfo(wrap); });
+    });
+
+    // Logo-filopplasting -- går via broker sin upload_logo-handling (kryssar
+    // inn i KUNDEN sitt eige Storage-prosjekt via service_role, same mønster
+    // som set_config). Klientsjekkane under er berre rask UX-tilbakemelding;
+    // den faktiske handhevinga (filtype/storleik/SVG-sanering) skjer i
+    // broker-funksjonen sjølv, sjå supabase-control/supabase/functions/broker.
+    (function () {
+      var fileInput = wrap.querySelector("#cs-logo-file");
+      var statusEl  = wrap.querySelector("#cs-logo-upload-status");
+      var ALLOWED_TYPES = { "image/svg+xml": 1, "image/png": 1, "image/jpeg": 1, "image/webp": 1 };
+      var MAX_BYTES = 300 * 1024;
+      fileInput.addEventListener("change", function () {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (!ALLOWED_TYPES[file.type]) {
+          statusEl.textContent = "Filtypen er ikkje støtta. Bruk SVG, PNG, JPEG eller WebP.";
+          fileInput.value = "";
+          return;
+        }
+        if (file.size > MAX_BYTES) {
+          statusEl.textContent = "Fila er for stor (maks 300KB).";
+          fileInput.value = "";
+          return;
+        }
+        statusEl.textContent = "Lastar opp …";
+        var reader = new FileReader();
+        reader.onerror = function () { statusEl.textContent = "Kunne ikkje lese fila."; };
+        reader.onload = function () {
+          var base64 = String(reader.result).split(",")[1] || "";
+          var oldLogoUrl = wrap.querySelector("#cs-logo").value.trim();
+          brokerCall("upload_logo", { file_base64: base64, content_type: file.type, old_logo_url: oldLogoUrl }, function (r) {
+            if (r.error) { statusEl.textContent = "Opplasting feila: " + r.error; return; }
+            wrap.querySelector("#cs-logo").value = r.url;
+            statusEl.textContent = "✓ Lasta opp! Hugs å trykkje «Lagre og bruk» for å ta han i bruk.";
+            fileInput.value = "";
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    })();
+
     wrap.querySelectorAll("[data-pair]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var p = FONT_PAIRS[parseInt(btn.getAttribute("data-pair"), 10)];
@@ -799,12 +907,14 @@ window.VwConsole = (function () {
       wrap.querySelector("#cs-bg").value        = "#f7fbff";
       wrap.querySelector("#cs-text").value      = "#142033";
       wrap.querySelector("#cs-surface").value   = "#ffffff";
+      wrap.querySelector("#cs-radius").value    = "14";
       wrap.querySelector("#cs-dfont").value     = "Poppins";
       wrap.querySelector("#cs-bfont").value     = "Nunito Sans";
       wrap.querySelector("#cs-dweights").value  = "600,700,800";
       wrap.querySelector("#cs-bweights").value  = "400,500,600";
       refreshFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
       refreshFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
+      refreshContrastInfo(wrap);
     });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
@@ -824,7 +934,8 @@ window.VwConsole = (function () {
           secondary:  wrap.querySelector("#cs-secondary").value,
           background: wrap.querySelector("#cs-bg").value,
           text:       wrap.querySelector("#cs-text").value,
-          surface:    wrap.querySelector("#cs-surface").value
+          surface:    wrap.querySelector("#cs-surface").value,
+          radius:     parseInt(wrap.querySelector("#cs-radius").value, 10)
         };
         sc2.fonts = {
           display: wrap.querySelector("#cs-dfont").value.trim(),
