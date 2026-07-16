@@ -32,8 +32,9 @@ When documentation and something else disagree, resolve in this order:
 | [`decisions/`](decisions/README.md) | ADRs — deliberate, long-lived decisions, with context and consequences |
 | [`project/`](project/CURRENT_STATE.md) | `CURRENT_STATE.md` (verified status) and `CHANGELOG.md` (dated log of meaningful changes) |
 | [`roadmap/`](roadmap/ROADMAP.md) | Planning material only — Current focus / Next / Later / Ideas |
-| [`security/`](security/security-baseline.md) | Verified security posture, known risks, and a pre-release checklist |
+| [`security/`](security/security-baseline.md) | Verified security posture, known risks, a pre-release checklist, and an incident/escalation guide |
 | [`compliance/`](compliance/README.md) | GDPR/privacy workflow templates — not legal advice, not a substitute for qualified legal review |
+| [`onboarding/`](onboarding/new-team-member-onboarding.md) | Plain-language explanation of Vibeverk for non-developer staff — what it is, what's safe to change, what always needs escalation. Fulfills `docs/roadmap/ROADMAP.md` "Next" item 4 |
 | [`archive/`](archive/README.md) | Superseded/migrated documents — never authoritative |
 
 ## Documentation migration summary
