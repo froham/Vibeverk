@@ -139,7 +139,8 @@ Complete only the rows for features that are enabled in this customer's deployme
 | Google LLC | Font delivery (Google Fonts) | Visitor IP address (incidental, font request) | Yes — USA | [MUST BE CONFIRMED — likely under Google's standard terms] |
 | Tidio (if enabled) | Live chat SaaS | Visitor interaction data, may include PII | [MUST BE CONFIRMED] | [MUST BE CONFIRMED] |
 | Plausible Analytics (if enabled) | Web analytics | Aggregated page view data | [MUST BE CONFIRMED — Plausible is EU-based as of knowledge cutoff] | [MUST BE CONFIRMED] |
-| GitHub Pages | Static file hosting | No personal data in served files (only HTML/JS/CSS) | USA (Microsoft/GitHub) | [MUST BE CONFIRMED] |
+| Vercel Inc. | Static file hosting + request-time hostname→tenant routing (`middleware.js`, since the 2026-07-16 `vibeverk.no` DNS cutover — see `docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md`) | No personal data in served static files; the routing function sees the visitor's `Host` header and IP incidentally, same class of exposure as any request-time edge function | [MUST BE CONFIRMED — depends on Vercel region/plan] | [MUST BE CONFIRMED] |
+| GitHub Pages | Static file hosting — retained as a fast-rollback path only (repo `CNAME` file untouched), not serving live traffic for `vibeverk.no` since the 2026-07-16 cutover above | No personal data in served files (only HTML/JS/CSS) | USA (Microsoft/GitHub) | [MUST BE CONFIRMED] |
 
 ---
 

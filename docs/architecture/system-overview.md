@@ -7,7 +7,7 @@ Vibeverk is a single-tenant white-label website and Workspace platform for Norwe
 ## Three delivery surfaces
 
 ### 1. Public website (`/`)
-Customer-facing marketing and tools site. Served via GitHub Pages. Contains the customer's public content, booking form, FAQ, references, chat widget, and related modules. All visitors are unauthenticated (anon). The web admin panel (`/#admin`) overlays this surface.
+Customer-facing marketing and tools site. Contains the customer's public content, booking form, FAQ, references, chat widget, and related modules. All visitors are unauthenticated (anon). The web admin panel (`/#admin`) overlays this surface. **Hosting, as of the 2026-07-16 `vibeverk.no` DNS cutover**: Vercel, with `middleware.js` resolving the request's hostname to a tenant via the control plane (see "Hosting" in the Stack table below and `docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md`'s 2026-07-16 addendum) — not a per-repo static deploy. GitHub Pages is retained (the repo's `CNAME` file is untouched) as a fast-rollback path only, not receiving live traffic today.
 
 ### 2. Workspace (`/workspace/`, renamed 2026-07-07 from `/intranet/`)
 Authenticated employee workspace. A separate single-page application with its own bootstrap (`workspace-core.js`, renamed from `intranet-core.js`). Contains dashboard, tasks, notes, announcements, knowledge base, CRM, bookings, links, org drift, settings, and user management.
@@ -22,7 +22,7 @@ Internal superadmin surface for Vibeverk operators. Used to manage customer conf
 | Frontend | Vanilla JavaScript (ES5 patterns: IIFE, `var`, named functions) |
 | Bundler | None |
 | Framework | None |
-| Hosting | GitHub Pages (push to `main` → auto-deploy) |
+| Hosting | Vercel (push to `main` → auto-deploy), with `middleware.js` (Vercel Routing Middleware) resolving each request's hostname to a tenant via the `vibeverk-control` control plane and generating `/config.js` per-request. GitHub Pages retained only as a rollback path (repo `CNAME` file untouched) — see ADR-0007's Phase 6 and 2026-07-16 addenda. |
 | Backend | Supabase (PostgreSQL + PostgREST + Auth + Realtime) |
 | Fonts | Google Fonts (loaded dynamically from config.js) |
 | Analytics | Plausible (optional, feature flag) |
@@ -30,7 +30,7 @@ Internal superadmin surface for Vibeverk operators. Used to manage customer conf
 
 ## Deployment
 
-**Frontend:** `git push main` triggers GitHub Pages to deploy. No build step. Files are served as-is.
+**Frontend:** `git push main` triggers Vercel to auto-deploy (both the `vibeverk` production project and the `vibeverk-j1yg` canary/staging project, which auto-build from the same GitHub repo). No build step. Files are served as-is, except `/config.js`, which `middleware.js` unconditionally rewrites to `/api/tenant-config` (a Vercel Function that generates a per-tenant config from the control plane's tenant registry at request time — see ADR-0007). GitHub Pages still auto-deploys from the same push (unchanged historical mechanism, `CNAME` file present) but is not the live path for `vibeverk.no` since the 2026-07-16 DNS cutover — kept only as a fast-rollback option.
 
 **Supabase CLI / Edge Functions:** Supabase CLI is installed locally as a development dependency and invoked with `npx supabase`. The working copy can be linked to the customer project and deploy version-controlled Edge Functions from `supabase/functions/`, but every remote deploy still requires explicit user approval.
 
