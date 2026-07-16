@@ -509,7 +509,7 @@ window.Intranet = (function () {
             context.role        = role;
             sessionStorage.setItem(NS + ":admin", role);
             err.style.color = "var(--color-muted)";
-            err.textContent = "Synkroniserer data…";
+            err.textContent = "Henter dataene dine…";
             App.ui.hydrateFromSupabase(init);
           });
         });

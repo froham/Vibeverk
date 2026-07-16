@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.36.5 — 2026-07-16
+
+### Workspace: breiare sveip etter intern fagsjargong + eit reelt modulnamn-avvik
+
+Brukar ba om eit breiare sveip etter interne produktnamn (Supabase/Resend/Console/o.l.) i brukarvend tekst på tvers av alle tre flatene, etter 0.36.4-funnet. Ein Explore-agent søkte gjennom alle `module-*.js`, `core.js`, `components.js`, `workspace/*` og `console/*` — stadfesta at Console/Web-admin sine offentlege sider er reine (ingen treff utanom kodekommentarar og interne variabelnamn), og at Console sjølv sitt Supabase/RLS/broker-språk er OK sidan målgruppa der er Vibeverk-operatørar, ikkje sluttkundar.
+
+To reelle attverande jargong-treff, begge stadfesta og retta:
+- `module-settings.js` sin "Del data mellom enheter"-knapp viste framleis "Synkroniserer N nøklar…" ved klikk (0.36.4 retta berre den alltid-synlege hint-teksten, ikkje denne klikk-tidsstatusen) — forenkla til "Laster opp data…", fjerna den no-ubrukte nøkkel-teljinga.
+- `workspace-core.js` sin innloggingsflyt viste "Synkroniserer data…" medan data vart henta frå Supabase etter innlogging — endra til "Henter dataene dine…".
+
+**Eige funn frå brukar sitt spørsmål 2 (er "E-postsvar"-kortet gøymt om modulen er av?)**: kortet sjølv forsvinn ALDRI (viser alltid for admin, uavhengig av `crmFull`), men var stadfesta å ha eit ekte innhaldsavvik — teksten sa alltid "Kontakt, Booking og Tilbud" sjølv om `intranettFeatures.booking`/`.quote` er av som standard (kun `.contact` er på som standard) for den einskilde kunden. `emailProviderCard()` bygger no lista dynamisk frå faktisk aktiverte `intranettFeatures`-flagg i staden for å hardkode alle tre modulnamna.
+
+Alle testar grøne (533 OK / 157 OK, dei to kjende, pre-eksisterande feila uendra). Cache-bust: `module-settings.js?v=9→10`, `workspace-core.js?v=18→19`. `VIBEVERK_VERSION` 0.36.4 → 0.36.5, `console-core.js?v=108→109`.
+
 ## 0.36.4 — 2026-07-16
 
 ### Workspace: `module-settings.js` — fjerna intern fagsjargong sluttkunden ikkje kan forstå

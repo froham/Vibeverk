@@ -274,12 +274,11 @@
       syncUpBtn.addEventListener("click", function () {
         var st = root.querySelector("#settings-sync-status");
         var keys = App.allStoreKeys ? App.allStoreKeys() : [];
-        var count = 0;
         keys.forEach(function (k) {
           var val = App.store.get(k, null);
-          if (val !== null) { App.store.set(k, val); count++; }
+          if (val !== null) { App.store.set(k, val); }
         });
-        st.textContent = "Synkroniserer " + count + " nøklar…"; st.className = "form__status is-ok";
+        st.textContent = "Laster opp data…"; st.className = "form__status is-ok";
         setTimeout(function () { if (st) st.textContent = "Ferdig — data er no tilgjengeleg på alle einingar."; }, 600);
       });
     }
@@ -303,12 +302,20 @@
   function emailProviderCard() {
     var CFG = window.SITE_CONFIG || {};
     var crmFull = !!(CFG.features && CFG.features.crm && CFG.features.crmFull);
+    var IFEAT = CFG.intranettFeatures || {};
+    var replyModules = [];
+    if (IFEAT.contact) replyModules.push("Kontakt");
+    if (IFEAT.booking) replyModules.push("Booking");
+    if (IFEAT.quote)   replyModules.push("Tilbud");
+    var replyModulesText = replyModules.length === 0 ? "" :
+      replyModules.length === 1 ? " fra " + replyModules[0] :
+      " fra " + replyModules.slice(0, -1).join(", ") + " og " + replyModules[replyModules.length - 1];
 
     return '<div class="i-card" style="margin-bottom:1rem">' +
       '<p class="i-section-label" style="margin:0 0 .5rem">E-postsvar</p>' +
       '<p style="font-size:.85rem;line-height:1.5;margin:0 0 .5rem">' +
         (crmFull
-          ? '<i class="ti ti-circle-check" style="color:#16a34a"></i> Dere kan svare direkte fra Kontakt, Booking og Tilbud i systemet, uten å bytte til e-postprogrammet deres.'
+          ? '<i class="ti ti-circle-check" style="color:#16a34a"></i> Dere kan svare direkte' + C.esc(replyModulesText) + ' i systemet, uten å bytte til e-postprogrammet deres.'
           : '<i class="ti ti-mail-forward" style="color:var(--color-muted)"></i> Svar må sendes fra e-postprogrammet deres (f.eks. Outlook) — direkte svar herfra i systemet er ikke satt opp for dere.') +
       '</p>' +
       '<p style="font-size:.78rem;color:var(--color-muted);margin:0">' +
