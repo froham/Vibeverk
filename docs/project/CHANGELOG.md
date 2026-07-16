@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.37.4 — 2026-07-16
+
+### Ny `smoke-vibeverk`-skill — start på ROADMAP punkt 5 (automatisert livetest-agent)
+
+Design gjennomgått av QA-agenten FØR koding (per ROADMAP sitt eige krav for dette arbeidsstykket): tilrådde `vibeverk-staging` (ref `syqnyfeponexmkdvnsga`) som mål via ein lokal `config.js`-ombytting (aldri ein Vercel-nåbar staging-vert eller ein ny `vibeverk-control`-tenant-rad — verken Workspace eller Web-admin løyser tenant via hostnamn lokalt, kun Console gjer det, og Console sin onboarding-sjekkliste er difor sist i byggerekkefølgja). Stadfesta sjølv mot faktisk kode: same mønster som ein alt-dokumentert manuell test 2026-07-13 (`docs/project/CURRENT_STATE.md`).
+
+Ny, **separat** skill `smoke-vibeverk` (bevisst ikkje ein utviding av `run-vibeverk`, som er hardkoda mot produksjon — blanda saman kunne du enda opp med å køyre eit skrivande flow mot feil miljø). Inneheld ein `config.js`-ombyttingsmekanisme med ein hard tryggingssperre (les attende fila etter skriving, stadfesta bort frå produksjonsref FØR nokon flyt køyrer, gjenopprettar alltid original-fila i ein `finally`-blokk).
+
+Første flyt bygd og kodeverifisert (selektorar stadfesta direkte mot `module-dashboard.js`/`module-kb.js`/`module-announcements.js`, to feil retta undervegs — venta gjetta selektorar var feil): **`dashboard-shortcuts`**, regresjonsdekning for ein reell, tidlegare send bug (0.32.x) der "Ny kunngjøring"/"Ny artikkel"-snarvegane på dashbordet kunne kappløpe mot ein asynkron listelasting.
+
+**Ikkje verifisert live enno** — krev ein ekte admin-testkonto på `vibeverk-staging` (ikkje stadfesta å finnast, sidan den siste kjende staging-testbrukaren vart bevisst oppretta-og-sletta som del av ein tidlegare eingongstest) og staging sin faktiske anon-nøkkel, som denne økta ikkje henta (fanga av harnesset sin eigen legitimasjons-eksponeringsgrense — krev eksplisitt brukarhandling, ikkje ein agent som hentar det sjølv). Sjå `.claude/skills/smoke-vibeverk/SKILL.md` for konkrete neste steg.
+
+**Ikkje bygd enno** (neste i QA sin tilrådde rekkjefølgje): `user-deletion` (høgast regresjonsverdi), `backup-restore` (snapshot-restore-self-mønster), full innloggingsmatrise, og Console sin onboarding-sjekkliste (sist, krev eiga engangs-kontrollplan-tenant-rad + ein måte å omgå ekte OTP-e-post på).
+
+`VIBEVERK_VERSION` 0.37.3 → 0.37.4. Cache-bust: `console-core.js?v=114→115`.
+
 ## 0.37.3 — 2026-07-16
 
 ### Tryggleiksfiks: `fetch_tenant_project_keys` manglar kryss-tenant-sjekk (HIGH)
