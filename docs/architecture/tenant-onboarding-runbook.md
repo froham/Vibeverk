@@ -10,6 +10,7 @@ Before starting, read the last few `docs/project/CHANGELOG.md` entries — this 
 - Access to Console, logged in as an operator with `role = 'superadmin'` in `vibeverk-control`.
 - The Supabase CLI available via `npx supabase` from the repo root.
 - If this customer has their own real domain: access to that domain's DNS provider (not needed for an internal demo — see step 9).
+- **Before onboarding the first REAL (non-demo) paying customer: upgrade Vercel's "vibeverk" team to Pro.** Decided/deferred deliberately 2026-07-16 (see `docs/compliance/data-map-vibeverk.md` section 4a) — the account is on the free Hobby plan today, which is fine for Vibeverk's own site + internal demos, but Vercel's own DPA only auto-applies to Pro/Enterprise customers. A real customer's end-user personal data routing through Vercel without that in place is a genuine, not-just-theoretical compliance gap. Self-serve, $20/month per developer seat (not per end-customer), no sales call needed — see the same doc section for the full reasoning. Not needed for Sunnvask or any other internal demo tenant.
 
 ## Step 1 — Console: register the tenant
 

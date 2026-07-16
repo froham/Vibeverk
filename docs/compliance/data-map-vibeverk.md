@@ -140,6 +140,8 @@ Brukar spurde direkte om desse tre DPA-ane faktisk er signerte, ikkje berre teor
 
 **Viktig rolleavklaring (brukar spurde eksplisitt 2026-07-16): dette er Vibeverk sitt eige ansvar, IKKJE sluttkunden sitt.** Supabase/Vercel/Resend har Vibeverk (kontoeigar for Vercel-teamet "Vibeverk", Supabase-organisasjonen "Hammerz", og Resend-kontoen) som einaste avtalepart — INGEN sluttkunde (verken Sunnvask eller ein framtidig betalande kunde) har nokon eigen, direkte avtale med desse tre leverandørane. Dette er ein ANNAN, oppstraums DPA-relasjon enn den Vibeverk sjølv skal tilby KVAR ENKELT sluttkunde (der Vibeverk er databehandlar og kunden er behandlingsansvarleg, og der nettopp desse tre — pluss Google/Plausible — skal listast opp som Vibeverk sine eigne underleverandørar). Vibeverk må ha orden i eigne leverandøravtalar FØR dette kan lovast pålitileg vidare til nokon kunde.
 
+**Avgjort av brukar 2026-07-16: Vercel Pro-oppgraderinga vert MEDVITE UTSETT, ikkje gjort no.** Vurdert og godteke som proporsjonalt for dagens småskala (Vibeverk sjølv + interne demoar, ingen ekte betalande kundar enno) — $20/månad (per utviklarplass, IKKJE per sluttkunde/tenant, stadfesta 2026-07-16) og ein sjølvbetjent, augeblikkeleg oppgradering gjer dette til ei rask handling å ta seinare, ikkje noko som krev framskunda planlegging. **Lagt inn som eksplisitt føresetnad i `docs/architecture/tenant-onboarding-runbook.md` sin "Prerequisites"-seksjon** — må gjerast FØR den fyrste ekte (ikkje-demo) betalande kunden vert onboarda, slik at avgjerda faktisk vert fanga opp operasjonelt i staden for å gløymast fram til det hastar. Ikkje naudsynt for Sunnvask eller andre interne demo-tenantar.
+
 ---
 
 ## 5. Ny post — edge-/ruting-mekanismen (Vercel `middleware.js` + `vibeverk-control`)
