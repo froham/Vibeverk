@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.39.0";
+  var VIBEVERK_VERSION = "0.40.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -581,6 +581,24 @@ window.VwConsole = (function () {
     return hex;
   }
 
+  // Set saman eit HEILT, samanhengande fargeforslag (ikkje berre éin farge om
+  // gongen som suggestAccessibleColor() over) -- ønska av brukar 2026-07-17
+  // som ei utviding av "Generer forslag"-knappane. Vel ein tilfeldig
+  // basis-fargetone og byggjer primær/sekundær/bakgrunn/tekst/overflate
+  // rundt han, og bruker so suggestAccessibleColor() som eit sikringsnett på
+  // kvart resultat -- garanterer at forslaget faktisk oppfyller WCAG AA FØR
+  // det vert vist, ikkje berre "sannsynlegvis OK".
+  function generateThemePalette() {
+    var hue = Math.floor(Math.random() * 360);
+    var secondaryHue = (hue + 150 + Math.floor(Math.random() * 60)) % 360;
+    var background = hslToHex(hue, 12, 97);
+    var surface = "#ffffff";
+    var text      = suggestAccessibleColor(hslToHex(hue, 15, 15), background, 4.5);
+    var primary   = suggestAccessibleColor(hslToHex(hue, 70, 45), background, 3);
+    var secondary = suggestAccessibleColor(hslToHex(secondaryHue, 65, 48), background, 3);
+    return { primary: primary, secondary: secondary, background: background, text: text, surface: surface };
+  }
+
   function refreshContrastInfo(wrap) {
     var el = wrap.querySelector("#cs-contrast-info");
     if (!el) return;
@@ -849,6 +867,10 @@ window.VwConsole = (function () {
             help:"Det vesle ikonet som vises i nettlesar-fana og bokmerke." }) +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
+          '<div style="margin:0 0 .9rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-palette-generate">🎨 Generer fargepalett</button>' +
+            '<p class="field__hint">Set saman eit heilt fargeforslag (primær, sekundær, bakgrunn, tekst, overflate) som oppfyller WCAG AA-kontrastkrava. Klikk gjerne fleire gongar for ulike forslag. Ingenting vert lagra før du trykkjer «Lagre og bruk».</p>' +
+          '</div>' +
           '<div class="bk-2col">' +
             colorField("cs-primary",   "Primærfarge",   col.primary   || "#1a7a6e", "Knappar, lenker og aktive element") +
             colorField("cs-secondary", "Sekundærfarge", col.secondary || "#c17f3e", "CTA-knappar og uthevingar") +
@@ -908,6 +930,15 @@ window.VwConsole = (function () {
     refreshContrastInfo(wrap);
     ["cs-text", "cs-bg", "cs-primary"].forEach(function (id) {
       wrap.querySelector("#" + id).addEventListener("input", function () { refreshContrastInfo(wrap); });
+    });
+    wrap.querySelector("#cs-palette-generate").addEventListener("click", function () {
+      var palette = generateThemePalette();
+      wrap.querySelector("#cs-primary").value   = palette.primary;
+      wrap.querySelector("#cs-secondary").value = palette.secondary;
+      wrap.querySelector("#cs-bg").value        = palette.background;
+      wrap.querySelector("#cs-text").value      = palette.text;
+      wrap.querySelector("#cs-surface").value   = palette.surface;
+      refreshContrastInfo(wrap);
     });
     // Delegert lyttar -- overlever at refreshContrastInfo() byggjer #cs-contrast-info
     // sitt innhald (inkl. "Generer forslag"-knappane) på nytt kvar gong.

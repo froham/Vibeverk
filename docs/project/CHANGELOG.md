@@ -30,6 +30,12 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.40.0 — 2026-07-17
+
+### Console «Fargar»: heil fargepalett-generator
+
+Oppfølging same dag av tilbakemelding på 0.39.0 sin «Generer forslag»-knapp: brukar ønska ein variant som set saman eit HEILT tema, ikkje berre rettar éin feilande farge om gongen. Ny knapp «🎨 Generer fargepalett» øvst i Fargar-fieldset (Web-fana): vel ein tilfeldig basis-fargetone, byggjer primær/sekundær/bakgrunn/tekst/overflate rundt han (`generateThemePalette()`), og bruker den eksisterande `suggestAccessibleColor()`-funksjonen som sikringsnett på kvart resultat — garanterer at forslaget faktisk oppfyller WCAG AA (4.5:1 tekst, 3:1 primær/sekundær) FØR det vert vist, ikkje berre eit visuelt gjett. Kan klikkast fleire gongar for nye forslag; ingenting vert lagra før «Lagre og bruk». Verifisert mot 24 faste fargetonar (kvar 15°) + 5 tilfeldige køyringar i Node — alle bestod AA-kravet.
+
 ## 0.39.0 — 2026-07-17
 
 ### Live-test-oppfølging: Workspace-tema, References-kort, Læring, Personvern-forslag, Trafikk-tekst, WCAG-forslag, logo-autokomprimering
