@@ -43,6 +43,54 @@
   var crmSubView = "kontaktar"; // "kontaktar" | "bedrifter"
   var _pendingCrmOpen = null; // sett frå chat-modul via window.CrmAdmin
 
+  // Bakgrunnspolling (Arkitekt-konsultasjon 2026-07-17, del av inbound-e-post-
+  // arbeidet): _customers/_comms vart tidlegare berre lasta ÉIN gong ved
+  // mount — verken leads/crm-tabellane er i supabase_realtime-publikasjonen
+  // (i motsetnad til chat), så ein rad ein Edge Function (inbound-email)
+  // skriv medan CRM-panelet er ope ville ALDRI dukke opp før reload. Held
+  // seg til MERGE-ved-id (aldri erstatt heile arrayet, jf. same prinsipp som
+  // annan skriving i denne fila) og tvinger berre eit re-render av ei ALT
+  // open KUNDEKORT-side (dialogar er separate <dialog>-element, uråka), for
+  // å unngå å nullstille søkjetekst/scroll i listevisninga.
+  var _pollTimer = null;
+  var _pollGen = 0; // aukar for kvar mount() — stoppar ein gamal poll trygt sjølv om
+                     // outlet-elementet ALDRI vert fjerna frå DOM-en ved fanebyte
+                     // (same permanent-outlet-fella som vart funnen og retta for
+                     // Workspaceship denne økta — document.body.contains(root)
+                     // åleine kan ikkje stolast på for verken Web-admin eller
+                     // Workspace sine faneskift-mekanismar)
+  var _activeDetail = null; // {id, root, refresh} — sett av renderCustomer(), nullstilt av renderAdmin()
+  function mergeById(arr, rows, idKey) {
+    var byId = {}; arr.forEach(function (x) { byId[x.id] = x; });
+    rows.forEach(function (row) {
+      var ex = byId[row.id];
+      if (ex) Object.assign(ex, row); else arr.unshift(row);
+    });
+  }
+  function pollRefresh() {
+    if (!_sb) return;
+    var before = _activeDetail ? getCommsFor(_activeDetail.id).length : 0;
+    var pending = 3, done = function () {
+      if (--pending > 0) return;
+      if (_activeDetail && document.body.contains(_activeDetail.root)) {
+        var after = getCommsFor(_activeDetail.id).length;
+        if (after !== before) _activeDetail.refresh();
+      }
+    };
+    _sb.from("crm_customers").select("*").then(function (r) { mergeById(_customers, (r.data||[]).map(dbCustomerToJs)); done(); });
+    _sb.from("crm_comms").select("*").order("created_at",{ascending:false}).then(function (r) { mergeById(_comms, (r.data||[]).map(dbCommToJs)); done(); });
+    if (App.refreshLeads) App.refreshLeads(done); else done();
+  }
+  function startCrmPoll(root) {
+    stopCrmPoll();
+    var gen = ++_pollGen;
+    _pollTimer = setInterval(function () {
+      if (gen !== _pollGen || !document.body.contains(root)) { stopCrmPoll(); return; }
+      pollRefresh();
+    }, 8000);
+  }
+  function stopCrmPoll() { if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; } }
+
   // Member har full CRM-tilgang (opprette/redigere kundar, bedrifter, malar,
   // snippets, signaturar) — unntaka er CSV-eksport av heile kundelista og
   // sletting av kundar/bedrifter/kommunikasjon (server-sida krev
@@ -233,6 +281,19 @@
     else App.store.set(CUST_KEY, _customers);
   }
   function customerEmails(c) { return [c.email].concat(c.altEmails || []).filter(Boolean); }
+
+  // Bulk-sikringsventil (Privacy/Compliance Advisor-tilråding 2026-07-17,
+  // sjå ROADMAP.md punkt 6) — skil frå merge_crm_customers() (som er for
+  // EKTE duplikatar). Ein kunde reknast "uverifisert" berre viss ALT me har
+  // om han kjem frå auto-oppretta innkomande e-post OG ingen menneske alt
+  // har fylt ut telefon/merknad (ein enkel, medvite konservativ proxy for
+  // "aldri rørt av eit menneske" — akkurat éin ekte kontakthandling gjer
+  // kunden IKKJE lenger uverifisert).
+  function isUnverifiedCustomer(c) {
+    var comms = getCommsFor(c.id);
+    if (!comms.length) return false;
+    return comms.every(function (cm) { return cm.autoCreated === true; }) && !c.phone && !c.note;
+  }
 
   /* =========================================================================
      BEDRIFTER
@@ -495,8 +556,18 @@
     var legacyChatIds = {};
     legacy.forEach(function (l) { if (l.chatId) legacyChatIds[l.chatId] = true; });
     var chatItems = getChatHistory(emails).filter(function (ci) { return !legacyChatIds[ci.chatId]; });
-    var items = legacy.concat(chatItems);
-    getCommsFor(cid).forEach(function (c) { items.push(Object.assign({},c,{source:"comm"})); });
+    var comms = getCommsFor(cid).map(function (c) { return Object.assign({},c,{source:"comm"}); });
+    // Same dedup-prinsipp som chat over, men omvendt retning: ein umatcha
+    // innkomande e-post (process_inbound_email()-RPC-en) lagar BÅDE ein
+    // Kontakt-lead (Henvendelser-arbeidsflyten sitt inngangspunkt) OG ein
+    // email_received crm_comms-rad for SAME hending (data.leadId koplar dei).
+    // Her vinn comm-versjonen (rikare vising, alt via openEmailDialog),
+    // legacy-versjonen supprimerast frå SJØLVE tidslinja — leaden si
+    // ny/lest/løst-status lever framleis i den separate Henvendelser-fana.
+    var commLeadIds = {};
+    comms.forEach(function (c) { if (c.leadId) commLeadIds[c.leadId] = true; });
+    var legacyFiltered = legacy.filter(function (l) { return !commLeadIds[l.id]; });
+    var items = legacyFiltered.concat(chatItems).concat(comms);
     return items.sort(function (a,b) { return new Date(b.created)-new Date(a.created); });
   }
 
@@ -521,6 +592,10 @@
     }).forEach(function(c){ deleteComm(c.id); });
     if (window.VwChat&&window.VwChat.deleteConv&&window.VwChat.getConvs)
       window.VwChat.getConvs().filter(function(cv){return es.indexOf((cv.email||"").toLowerCase())>-1;}).forEach(function(cv){window.VwChat.deleteConv(cv.id);});
+    // inbound_emails ber avsendar-e-post/emne/rå-headera for innkomande post
+    // (sjå supabase/functions/inbound-email) — same PII-grunngjeving som
+    // leads/comms over, må slettast same veg (Privacy-gjennomgang 2026-07-17).
+    if (_sb) es.forEach(function(e){ _sb.from("inbound_emails").delete().ilike("from_email", e).then(function(){}).catch(function(err){logWriteError("slette innkomande e-post",err);}); });
   }
 
   /* =========================================================================
@@ -569,6 +644,7 @@
      RENDER — ADMIN ROOT (med sub-faner)
      ====================================================================== */
   function renderAdmin(body) {
+    _activeDetail = null;
     autoImport();
     var customers = getCustomers(), bedrifter = getBedrifter();
     var canExport = !isWorkspaceMember();
@@ -626,18 +702,25 @@
   /* =========================================================================
      KONTAKTLISTE
      ====================================================================== */
+  var _showUnverifiedOnly = false;
   function renderKontaktList(container, body) {
+    var unverifiedCount = getCustomers().filter(isUnverifiedCustomer).length;
+    var list = _showUnverifiedOnly ? getCustomers().filter(isUnverifiedCustomer) : getCustomers();
     container.innerHTML =
       '<div style="position:relative;margin-bottom:.9rem">' +
         '<i class="ti ti-search" style="position:absolute;left:.65rem;top:50%;transform:translateY(-50%);color:var(--color-muted,#9ca3af);font-size:.9rem"></i>' +
         '<input data-crm-search type="search" placeholder="Søk namn, e-post, bedrift…" style="width:100%;padding:.55rem .7rem .55rem 2rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font:inherit;font-size:.88rem;background:var(--color-bg,#fff);color:var(--color-text)">' +
       '</div>' +
-      '<div data-crm-merge-bar style="display:none;align-items:center;gap:.6rem;margin-bottom:.7rem">' +
+      (unverifiedCount>0?'<div style="margin-bottom:.7rem">'+subTabBtn("__unverified","Uverifiserte ("+unverifiedCount+")",_showUnverifiedOnly).replace("data-crm-sub=","data-crm-unverified-toggle=")+'</div>':'') +
+      '<div data-crm-merge-bar style="display:none;align-items:center;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap">' +
         C.button({label:"Slå sammen valgte",icon:"git-merge",variant:"primary",attrs:'data-crm-merge-btn style="font-size:.82rem"'}) +
+        (_showUnverifiedOnly?C.button({label:"Slett valgte",icon:"trash",variant:"ghost",attrs:'data-crm-bulkdel-btn style="font-size:.82rem;border-color:#c0392b;color:#c0392b"'}):'') +
       '</div>' +
-      (getCustomers().length
-        ? '<ul class="admin-list" style="display:grid;gap:.45rem;list-style:none;padding:0;margin:0">'+getCustomers().map(custRow).join("")+'</ul>'
-        : '<p style="color:var(--color-muted);font-size:.88rem;text-align:center;padding:2rem 0">Ingen kunder ennå. Klikk Importer for å hente fra skjema.</p>');
+      (list.length
+        ? '<ul class="admin-list" style="display:grid;gap:.45rem;list-style:none;padding:0;margin:0">'+list.map(custRow).join("")+'</ul>'
+        : (_showUnverifiedOnly
+            ? '<p style="color:var(--color-muted);font-size:.88rem;text-align:center;padding:2rem 0">Ingen uverifiserte kontakter.</p>'
+            : '<p style="color:var(--color-muted);font-size:.88rem;text-align:center;padding:2rem 0">Ingen kunder ennå. Klikk Importer for å hente fra skjema.</p>'));
     bindKontaktList(container, body);
   }
 
@@ -656,6 +739,7 @@
         '<div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-bottom:.1rem">' +
           '<strong style="font-size:.9rem">'+esc(c.name||"(ukjent)")+'</strong>' +
           (bed?'<span style="font-size:.72rem;color:var(--color-primary);font-weight:600">'+esc(bed.name)+'</span>':'') +
+          (isUnverifiedCustomer(c)?'<span title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno" style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#E8833A 14%,transparent);color:#E8833A"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</span>':'') +
           (pills.length?pills.join('<span style="opacity:.3;margin:0 .1rem">·</span>'):'') +
         '</div>' +
         '<div style="font-size:.78rem;color:var(--color-muted)">'+esc(c.email||"")+(c.phone?" · "+esc(c.phone):"")+(total?" · "+total+" aktivitet":"")+'</div>' +
@@ -669,6 +753,8 @@
   }
 
   function bindKontaktList(container, body) {
+    var toggle = container.querySelector("[data-crm-unverified-toggle]");
+    if (toggle) toggle.addEventListener("click",function(){ _showUnverifiedOnly=!_showUnverifiedOnly; renderKontaktList(container, body); });
     var search = container.querySelector("[data-crm-search]");
     if (search) search.addEventListener("input",function(){
       var q = search.value.toLowerCase();
@@ -704,8 +790,25 @@
         btn.style.background=active?"transparent":"color-mix(in srgb,var(--color-primary,#2980B9) 10%,transparent)";
         btn.style.color=active?"var(--color-muted)":"var(--color-primary,#2980B9)";
         var n=container.querySelectorAll(".crm-merge-check[data-active='1']").length;
-        var bar=body.querySelector("[data-crm-merge-bar]"); if(bar) bar.style.display=n>=2?"flex":"none";
+        var bar=body.querySelector("[data-crm-merge-bar]"); if(bar) bar.style.display=(n>=2||(_showUnverifiedOnly&&n>=1))?"flex":"none";
       });
+    });
+    var bdb=container.querySelector("[data-crm-bulkdel-btn]");
+    if (bdb) bdb.addEventListener("click",function(){
+      var ids=[].slice.call(container.querySelectorAll(".crm-merge-check[data-active='1']")).map(function(btn){return btn.getAttribute("data-merge-id");});
+      if (!ids.length) return;
+      // Re-sjekk isUnverifiedCustomer() HER, ikkje berre stole på kva som var
+      // sant då lista sist vart rendra — bakgrunnspollinga (pollRefresh(),
+      // kvart 8. sekund) eller ei samstundes endring frå ein annan admin kan
+      // ha gjort ein kunde "verifisert" (t.d. fylt inn telefon) i mellomtida
+      // (Security-gjennomgang 2026-07-17). Sikringsventilen skal ALDRI slette
+      // ein kunde som ikkje er uverifisert i det faktiske augeblikket han vert
+      // sletta, ikkje berre i det augeblikket han vart merka av.
+      var toDel=getCustomers().filter(function(c){return ids.indexOf(c.id)>-1 && isUnverifiedCustomer(c);});
+      if (!toDel.length) { renderAdmin(body); return; }
+      if (!confirm("Slett "+toDel.length+" uverifiserte kontakt(er) og all tilhøyrande historikk? Dette kan ikkje angrast.")) return;
+      toDel.forEach(function(c){ deleteAllForEmail(customerEmails(c)); deleteCustomer(c.id); });
+      renderAdmin(body);
     });
     var mb=container.querySelector("[data-crm-merge-btn]");
     if (mb) mb.addEventListener("click",function(){
@@ -929,6 +1032,7 @@
     if (!c) { renderAdmin(body); return; }
     var bed=bedriftFor(c), emails=customerEmails(c), tl=getTimeline(id,emails), col=avatarColor(c.name||c.email), ini=initials(c.name||c.email);
     function refresh() { renderCustomer(body,id,opts); }
+    _activeDetail = { id: id, root: body, refresh: refresh };
 
     body.innerHTML =
       '<button data-crm-back style="display:inline-flex;align-items:center;gap:.4rem;background:none;border:0;cursor:pointer;font:inherit;font-size:.85rem;color:var(--color-muted);padding:.2rem 0;margin-bottom:.75rem"><i class="ti ti-arrow-left"></i> '+(opts.fromBedrift?"Tilbake til "+(bed?esc(bed.name):"bedrift"):"Alle kunder")+'</button>' +
@@ -1270,6 +1374,12 @@
     if (item.type==="task"&&item.done) tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#27AE60 12%,transparent);color:#27AE60">Ferdig ✓</span>';
     if (threadCount>1) tagBadge+=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#2980B9 12%,transparent);color:#2980B9">'+threadCount+' i tråd</span>';
     if (item.source==="legacy"&&item.status) tagBadge+=' <span class="stat-badge stat-badge--'+esc(item.status)+'">'+({"ny":"Ny","lest":"Lest","løst":"Løst"}[item.status]||esc(item.status))+'</span>';
+    // «Ikkje verifisert»-flagg (Privacy/Compliance Advisor-tilrådd lettvekts-
+    // tryggingsventil 2026-07-17) — sett av process_inbound_email()-RPC-en
+    // (sjå supabase/migrations/20260717120000_inbound_email.sql) berre for
+    // ein heilt ukjend/uverifisert e-postavsendar som ALDRI hadde nokon
+    // sjølvvalt kontakt med kunden sitt system frå før.
+    if (item.autoCreated) tagBadge+=' <span title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno" style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#E8833A 14%,transparent);color:#E8833A"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</span>';
     return '<div data-tl-item="'+esc(item.id)+'" class="crm-tl-row" tabindex="0" role="button" style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb);cursor:pointer">' +
       '<div style="flex-shrink:0;margin-top:.1rem"><div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,'+conf.color+' 13%,white);border:1.5px solid color-mix(in srgb,'+conf.color+' 28%,transparent)"><i class="ti ti-'+conf.icon+'" style="font-size:.78rem;color:'+conf.color+'"></i></div></div>' +
       '<div style="flex:1;min-width:0">' +
@@ -1564,7 +1674,14 @@
           customerId: c.id, type: "email_sent",
           title: payload.subject, subject: payload.subject,
           body: (payload.plain || "").slice(0, 200), html: payload.html || "",
-          to: payload.to_email, threadId: threadId
+          to: payload.to_email, threadId: threadId,
+          // resendMessageId er den ekte RFC5322 Message-ID-headeren mottakaren
+          // sin klient ser — inbound-email-webhooken matchar eit seinare svar
+          // sin In-Reply-To/References mot nettopp dette feltet (sjå
+          // supabase/functions/inbound-email og migrasjonen 20260717120000).
+          // Kan vere null viss send-reply sitt oppfølgingskall til Resend
+          // feila — då er berre tråd-matching for DENNE e-posten upåverka.
+          resendMessageId: payload.resendMessageId || null
         });
         refresh();
       }
@@ -1747,6 +1864,7 @@
             renderCustomer(root, pid);
           }
         });
+        startCrmPoll(root);
       }
     }
   });
@@ -1780,6 +1898,7 @@
             renderCustomer(root, sub);
           }
         });
+        startCrmPoll(root);
       }
     });
   }

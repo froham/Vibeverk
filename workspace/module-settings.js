@@ -292,7 +292,9 @@
           : '<i class="ti ti-mail-forward" style="color:var(--color-muted)"></i> Svar må sendes fra e-postprogrammet deres (f.eks. Outlook) — direkte svar herfra i systemet er ikke satt opp for dere.') +
       '</p>' +
       '<p style="font-size:.78rem;color:var(--color-muted);margin:0">' +
-        '<i class="ti ti-info-circle"></i> Å motta e-post direkte inn i systemet er ikke støttet ennå — svar fra kunder kommer fortsatt som vanlig e-post i innboksen deres.' +
+        (crmFull
+          ? '<i class="ti ti-info-circle"></i> Svar fra kunder på en e-post sendt herfra dukker automatisk opp i historikken til riktig kunde under «Kunder».'
+          : '<i class="ti ti-info-circle"></i> Å motta e-post direkte inn i systemet er ikke støttet ennå — svar fra kunder kommer fortsatt som vanlig e-post i innboksen deres.') +
       '</p>' +
     '</div>';
   }
