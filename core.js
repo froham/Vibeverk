@@ -533,6 +533,28 @@ window.App = (function () {
     return _leads;
   }
 
+  // Bakgrunns-refresh (Arkitekt-konsultasjon 2026-07-17, del av inbound-e-post-
+  // arbeidet) — _leads vert elles berre lasta ÉIN gong ved innlogging/mount,
+  // aldri på nytt, sidan leads ikkje er i supabase_realtime-publikasjonen
+  // (i motsetnad til chat). Ein rad ein Edge Function (t.d. den nye
+  // inbound-email-webhooken) skriv medan eit admin-panel er ope ville elles
+  // ALDRI dukke opp før reload. MERGE-ved-id (aldri erstatt _leads heilt) for
+  // å ikkje overskrive ein admin sin eigen, nyleg optimistiske endring —
+  // slettingar server-side vert ikkje fanga opp her (sjeldan, uskadeleg,
+  // neste fulle innlogging/reload rettar opp), berre nye/endra rader.
+  function refreshLeadsFromSupabase(cb) {
+    if (!_sb || !_isAuthed) { cb && cb(); return; }
+    _sb.from("leads").select("*").order("created_at", { ascending: false }).then(function (r) {
+      var rows = (r.data || []).map(dbLeadToJs);
+      var byId = {}; _leads.forEach(function (l) { byId[l.id] = l; });
+      rows.forEach(function (row) {
+        var ex = byId[row.id];
+        if (ex) Object.assign(ex, row); else _leads.unshift(row);
+      });
+      cb && cb();
+    });
+  }
+
   // Skil Tilbud-førespurnadar frå vanlege Kontakt-leads. Det ekte `kind`-
   // feltet (lagt til 2026-07-03) er kjelda når det finst; fell tilbake til
   // den gamle tekst-sniffinga på meldinga for eldre data som endå ikkje har
@@ -3812,7 +3834,7 @@ window.App = (function () {
           var result = await resp.json();
           if (result.error) throw new Error(result.error);
           st.innerHTML = '<span style="color:#16a34a"><i class="ti ti-circle-check"></i> E-post sendt!</span>';
-          if (opts.onSent) opts.onSent({ subject: subject, plain: plain, html: html, to_email: opts.email, to_name: opts.name || "" });
+          if (opts.onSent) opts.onSent({ subject: subject, plain: plain, html: html, to_email: opts.email, to_name: opts.name || "", resendMessageId: result.message_id || null });
           setTimeout(function () { root.remove(); }, 2000);
         } catch (e) {
           sendNowBtn.disabled = false;
@@ -4146,6 +4168,7 @@ window.App = (function () {
     feature: feat,                     // les feature-flagg
     getContent: function () { return content; },
     getLeads: getLeads,
+    refreshLeads: refreshLeadsFromSupabase, // bakgrunns-merge-ved-id-refresh, sjå kommentar ved definisjonen
     addLead: addLead,                  // lagre en henvendelse (lead)
     updateLead: updateLead,            // oppdater felt på eksisterande lead
     deleteLead: deleteLead,            // slett ein lead (t.d. GDPR-sletting)

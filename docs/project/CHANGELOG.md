@@ -30,6 +30,31 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.43.0 — 2026-07-17
+
+### Motta e-post (inbound) — fyrste implementasjon (steg 6f, ROADMAP.md punkt 6)
+
+Bygd etter tre les-berre gjennomgangar tidlegare same dag (Arkitekt, Security Auditor, Privacy/Compliance Advisor — sjå ROADMAP.md punkt 6 for full grunngjeving) og brukar sitt eksplisitte "Bygg no, inkl. lettvekts-tryggingsventilen"-val.
+
+- **Design, retta av ein fjerde Arkitekt-konsultasjon rett før koding**: i staden for ein ny, parallell `outbound_emails`/`lead_messages`-tabellpar, gjenbruker løysinga `crm_comms` sitt ALT fungerande utgåande e-post-mønster (`type:"email_sent"`, klient-generert `threadId`) direkte — `send-reply` (`supabase/functions/send-reply/index.ts`) gjer no eit oppfølgingskall til Resend sin `GET /emails/{id}` for å hente den EKTE RFC5322 Message-ID-headeren (sendekallet sjølv gjev berre ein ugjennomsiktig Resend-id, stadfesta via dokumentasjon 2026-07-17), lagra som `data.resendMessageId` på `email_sent`-raden.
+- **Ny migrasjon** `supabase/migrations/20260717120000_inbound_email.sql`: `inbound_emails`-tabell (idempotens + revisjonsspor, EIGE tryggingslogg-formål skilt frå CRM-historikk, admin/editor-only SELECT/DELETE), `find_or_create_crm_customer_by_email()` (serialisert via `pg_advisory_xact_lock`, retta Arkitekten sin funne dedup-race), `process_inbound_email()` (service_role-only, VOLATILE — matchar In-Reply-To/References mot `crm_comms.data.resendMessageId`, krev SPF+DKIM-pass for BÅDE matcha tråd og ny-oppretting, umatcha avsendarar lagar ny Kontakt-lead + CRM-kunde merkt `data.autoCreated=true`).
+- **Ny Edge Function** `supabase/functions/inbound-email/index.ts`: fail-closed webhook-handsamar — svix-signaturverifisering (offisielt `svix`-bibliotek) FØRST, før noko som helst anna (inkl. Resend-hentekallet). SPF/DKIM parsast frå den rå `authentication-results`-e-postheaderen (Resend dokumenterer ikkje eit eige felt for dette) — eit fråverande headerfelt tel IKKJE som pass.
+- **CRM-UI** (`module-crm.js`): «Ikkje verifisert»-badge på auto-oppretta e-post-hendingar/kontaktar (Privacy-tilrådd lettvekts-tryggingsventil), ein «Uverifiserte»-filterknapp + bulk-slett-handling i kontaktlista (skilt frå `merge_crm_customers()`), og bakgrunnspolling (`startCrmPoll`/`pollRefresh`, 8s-intervall, merge-ved-id) som rettar Arkitekten sitt funne admin-cache-staleness-problem (leads/CRM-kundar mangla Realtime-abonnement, i motsetnad til chat — ein rad ein Edge Function skreiv medan panelet var ope synte seg aldri før reload).
+- `deleteAllForEmail()` (GDPR §17-sletteflyten) utvida til å også slette matchande `inbound_emails`-rader.
+- `workspace/module-settings.js` sin e-post-statuskort oppdatert til å reflektere at inbound no er støtta for `crmFull`-kundar (var eksplisitt "ikkje støtta enno").
+
+**Kode-nivå Privacy Advisor-gjennomgang (2026-07-17) fann og retta to data-minimeringshol før merge**: `inbound_emails.headers` lagra fyrst HEILE det rå Resend-headerobjektet uendra (Received-kjeder med IP-ar til mellomliggande e-postserverar, m.m.) — no avgrensa til ei eksplisitt allow-list (message-id/from/to/subject/date/authentication-results/in-reply-to/references) i Edge Function-en FØR RPC-kallet. `crm_comms.data.html` var IKKJE trunkert (i motsetnad til `body`, som alt var avgrensa til 5000 teikn) — no trunkert likt, i begge greiner (matcha og uverifisert).
+
+**Kode-nivå Security Auditor-gjennomgang (2026-07-17) fann éin CRITICAL og fleire lågare funn, alle retta før merge unntatt éin disclosa restrisiko**:
+- **CRITICAL, retta**: den matcha-tråd-greina i `process_inbound_email()` godtok eit In-Reply-To/References-treff UTAN å stadfeste at DENNE avsendaren faktisk er kunden tråden høyrer til. SPF+DKIM stadfestar berre at avsendaren eig sitt eige domene — ikkje kven dei er. Utan denne sjekken kunne kven som helst med gyldig SPF/DKIM og ein tidlegare observert Message-ID (synleg for cc/bcc-mottakarar, vidaresendarar) forfalske eit svar inn i EIN ANNAN kunde sin CRM-tidslinje. Retta: krev no at avsendaren si e-postadresse faktisk høyrer til den matcha kunden (email/alt_emails) FØR treffet vert godteke — elles fell det heilt igjennom til umatcha-greina.
+- **MEDIUM, retta**: bulk-slett-sikringsventilen re-sjekka ikkje `isUnverifiedCustomer()` i augeblikket knappen vart klikka — berre kva som var sant då lista sist vart rendra. Bakgrunnspollinga (8s) eller ei samstundes endring kunne i teorien la ein no-verifisert kunde bli sletta. Retta: re-filtrerer utvalet mot `isUnverifiedCustomer()` rett før sjølve slettinga.
+- **LOW, retta**: `from_name` lagra heile den rå "Namn <adresse>"-headeren, ikkje berre visingsnamnet (datakvalitet, ikkje ein trygleikssårbarheit — verdien var alltid `esc()`-a ved vising). Ny `parseDisplayName()`-hjelpar i webhooken.
+- **HIGH, IKKJE løyst — disclosa restrisiko**: `Authentication-Results`-headeren vert stola på som Resend sitt eige SPF/DKIM-verdikt, men ingenting stadfestar at Resend faktisk strippar/overskriv ein FORFALSKA versjon av same header sendt av avsendaren sjølv (RFC 8601 krev at mottakande MTA gjer dette, men Resend sin faktiske åtferd er ikkje stadfesta via dokumentasjon). Krev ein ekte test med ein bevisst forfalska Authentication-Results-header sendt til ei ekte Resend-inbound-adresse FØR dette kan stolast på i produksjon — same kategori disclosa-men-ikkje-verifisert risiko som svix-Deno-lastinga.
+
+**Kjende, opne restrisikoar** (disclosa, ikkje løyste — sjå ROADMAP.md punkt 6 for full detalj): (1) svix@1.97.0-Deno-lasting, (2) Authentication-Results-tillitsgrensa over, (3) ingen automatisk retensjon/opprydding for `inbound_emails` enno. **Ikkje deploya enno** — krev eksplisitt brukargodkjenning per den vanlege deployment-sperra.
+
+Testa: `node test.js` (535/536, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra) — ingen nye regresjonar. Cache-bust: `core.js?v=54`, `module-crm.js?v=25`, `module-settings.js?v=12`, `console-core.js?v=132`. `VIBEVERK_VERSION` 0.42.2 → 0.43.0 (ny funksjonalitet, MINOR).
+
 ## 0.42.2 — 2026-07-17
 
 ### Retta: status-badgen (Ny/Lest/Løst) synte seg urestylt i Workspace sin CRM-tidslinje

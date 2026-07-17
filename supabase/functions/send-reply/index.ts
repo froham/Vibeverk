@@ -101,7 +101,25 @@ serve(async (req) => {
       return json({ error: resendData.message || "Resend returnerte feil" }, 502);
     }
 
-    return json({ success: true, id: resendData.id });
+    // Sendekallet sitt eige svar gjev berre ein ugjennomsiktig Resend-id, IKKJE
+    // den faktiske RFC5322 Message-ID-headeren mottakaren sin e-postklient ser
+    // (og som eit svar sin In-Reply-To/References vil referere til) —
+    // stadfesta via Resend sin eigen dokumentasjon 2026-07-17. Eit oppfølgings-
+    // kall til GET /emails/{id} gjev den ekte message_id-verdien. Feilar dette
+    // kallet, sender me framleis vellykka tilbake (e-posten ER sendt) — berre
+    // utan tråd-matching-evne for eit seinare svar, ikkje ein brukarsynleg feil.
+    let messageId: string | null = null;
+    try {
+      const mResp = await fetch("https://api.resend.com/emails/" + resendData.id, {
+        headers: { "Authorization": `Bearer ${apiKey}` },
+      });
+      if (mResp.ok) {
+        const mData = await mResp.json();
+        messageId = mData.message_id || null;
+      }
+    } catch (_e) { /* sjå kommentar over — ikkje-kritisk */ }
+
+    return json({ success: true, id: resendData.id, message_id: messageId });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
