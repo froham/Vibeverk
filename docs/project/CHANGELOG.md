@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.40.1 — 2026-07-17
+
+### Dokumentasjonsopprydding + smoke-test: user-deletion-flyt bygd
+
+- **Brukar stadfesta**: logo-autokomprimeringa (0.39.0) er no testa ende-til-ende med ein ekte, for stor logofil via ein ekte operatørøkt — den einaste attverande usikre biten frå den runda er no lukka.
+- **`docs/roadmap/ROADMAP.md` retta**: linje som feilaktig framleis sa "krev deploy av broker" for logo-arbeidet (deploya to gongar sidan) er oppdatert, og v0.38.2–v0.40.0 sine funksjonar (knapp-radius-fiks, autokomprimering, kontrast-forslag, fargepalett-generator) er no nemnde der dei høyrer heime.
+- **ROADMAP "Next" punkt 5 (smoke-test-automatisering)**: ny `user-deletion`-flyt bygd i `.claude/skills/smoke-vibeverk/runner.js` — regresjonsdekning for `20260712203346_fix_user_delete_fk_restrict.sql` (brukarsletting feila før med "Feil: {}" for alle som hadde forfatta noko). Driv den ekte inviter-/fjern-UI-en i `module-users.js`; bruker eit nytt `runStagingSql()`-hjelpefunksjon (skal til `npx supabase db query --file --output-format json`) berre for å gje den nyinviterte, aldri-innlogga medlemmen ei forfatta oppgåve å teste sletting mot — noko ingen UI-flyt dekkjer i denne test-pakken. Krev éin ny legitimasjon, `VW_STAGING_DB_URL` (staging sin pooler-tilkoplingsstreng), utover dei fire skill-en alt lista.
+
+  **Køyrd live mot ekte `vibeverk-staging` same dag** (brukar sette opp SMTP, admin-testkonto og delte legitimasjon). Fyrste ekte køyring avdekte og retta fleire reelle hol i sjølve test-verktøyet (ikkje i produktkoden):
+  - **Staging var ikkje fullt oppdatert**: 11 av 12 migreringar var applikerte, `20260715140000_export_backup_tables_rpc.sql` mangla. Pusha (`npx supabase db push --db-url ...`), stadfesta etterpå.
+  - **`runStagingSql()` sin JSON-parsing var reelt sett aldri testa** — CLI-en returnerer eit pretty-printa (fleire linjer) JSON-objekt forma `{ boundary, rows, warning }`, ikkje éin JSON-blob per linje som den opphavlege (gjetta) koden føresette. Retta til å skjere frå fyrste `{` til siste `}` i heile output.
+  - **`dashboard-shortcuts` sin KB-halvdel feila** fordi `config.js` sin standard har `intranettFeatures.kb: false` — konfig-ombyttinga tvingar no dette flagget `true` berre for testkøyringa (einaste unntaket frå "alle andre felt urørte"-prinsippet), retta og verifisert til **PASS**.
+  - **Manglande opprydding-sikringsnett**: ein tidlegare feila køyring (før SQL-arrangeringssteget vart retta) etterlot eit ekte, urydda testmedlem i staging-databasen. Rydda manuelt, og lagt til eit automatisk sikringsnett i `finally`-blokka som fjernar eit slikt medlem direkte om den ekte UI-fjerninga aldri fullførte.
+  - **`user-deletion` sjølv trefte ein ekte ekstern grense, ikkje ein kodefeil**: Supabase sin eigen auth-e-post-rate-limit ("email rate limit exceeded") etter nokre få invitasjonar på kort tid — ei prosjektinnstilling (Dashboard → Authentication → Rate Limits), heilt uavhengig av SMTP-leverandør. Feilteksten vart før berre ein uinformativ timeout; retta til å lese og kaste den faktiske statusteksten med ein gong. `dashboard-shortcuts` er no stadfesta **PASS** live; `user-deletion` står klar til å køyrast på nytt når rate-limiten er heva eller nok tid har gått.
+  - `.gitignore` mangla ei oppføring for `.claude/skills/smoke-vibeverk/screenshots/` (hadde det alt for `run-vibeverk`) — retta.
+
 ## 0.40.0 — 2026-07-17
 
 ### Console «Fargar»: heil fargepalett-generator
