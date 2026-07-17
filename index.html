@@ -59,6 +59,7 @@
 
       --maxw: 1080px;
       --radius: 14px;
+      --btn-radius: 999px;
       --gap: clamp(1rem, 2vw, 1.5rem);
       --section-y: clamp(3.5rem, 8vw, 7rem);
       --ease: cubic-bezier(.2, .7, .2, 1);
@@ -84,7 +85,7 @@
     .btn {
       display: inline-flex; align-items: center; gap: .5rem;
       font: inherit; font-weight: 600; cursor: pointer;
-      padding: .8rem 1.4rem; border-radius: 999px; border: 1.5px solid transparent;
+      padding: .8rem 1.4rem; border-radius: var(--btn-radius); border: 1.5px solid transparent;
       transition: transform .15s var(--ease), background .2s, box-shadow .2s, opacity .2s;
       text-decoration: none; line-height: 1;
     }
@@ -584,11 +585,11 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js?v=9"></script>
   <script src="components.js?v=15"></script>
-  <script src="core.js?v=52"></script>
+  <script src="core.js?v=53"></script>
   <!-- Ekstra-moduler lastes her, etter core.js -->
   <script src="module-booking.js?v=15"></script>
   <script src="module-quote.js?v=11"></script>
-  <script src="module-references.js?v=8"></script>
+  <script src="module-references.js?v=9"></script>
   <script src="module-faq.js?v=8"></script>
   <script src="module-scrollbanner.js?v=8"></script>
   <script src="module-crm.js?v=22"></script>

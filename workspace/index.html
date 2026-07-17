@@ -48,6 +48,7 @@
       --color-alt:       color-mix(in srgb, var(--color-primary) 5%, var(--color-bg));
       --color-tint:      color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
       --radius:          14px;
+      --btn-radius:      999px;
       --gap:             clamp(1rem, 2vw, 1.5rem);
       --sidebar-w:       220px;
     }
@@ -189,7 +190,7 @@
     .btn {
       display: inline-flex; align-items: center; gap: .5rem;
       font: inherit; font-weight: 600; cursor: pointer;
-      padding: .7rem 1.2rem; border-radius: 999px; border: 1.5px solid transparent;
+      padding: .7rem 1.2rem; border-radius: var(--btn-radius); border: 1.5px solid transparent;
       transition: transform .15s, background .2s, box-shadow .2s, opacity .2s;
       text-decoration: none; line-height: 1; font-size: .9rem;
     }
@@ -592,7 +593,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="../config.js?v=9"></script>
   <script src="../components.js?v=15"></script>
-  <script src="../core.js?v=52"></script>
+  <script src="../core.js?v=53"></script>
 
   <!-- Workspace-motor og moduler -->
   <script src="workspace-core.js?v=20"></script>

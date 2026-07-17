@@ -27,6 +27,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DOMParser, XMLSerializer } from "https://esm.sh/@xmldom/xmldom@0.8.10?target=deno";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -159,6 +160,97 @@ function looksLikeXml(bytes: Uint8Array): boolean {
   let text = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 200));
   text = text.replace(/^﻿/, "").trimStart();
   return text.indexOf("<") === 0;
+}
+
+// Automatisk komprimering av for store PNG/JPEG-opplastingar (ønska av
+// brukar under live-test 2026-07-17 av logo-opplastinga, som før berre
+// avviste alt over 300KB). Prøver stigande grad av nedskalering, og for JPEG
+// også søkkande kvalitet, frå det ORIGINALE (udekomprimerte) biletet kvar
+// gong -- ikkje frå føregåande forsøk -- slik kvalitetstap ikkje hopar seg
+// opp. Gjev opp og returnerer null viss ingen kombinasjon kjem under
+// målstorleiken, då må brukaren sjølv redusere biletet.
+//
+// WebP er MEDVITE utelate: imagescript sin Image.decode() støttar berre
+// PNG/JPEG/TIFF-dekoding (ikkje WebP), så ei WebP-fil kan ikkje opnast for
+// å skalerast/komprimerast om att her -- WebP-opplastingar over 300KB vert
+// difor avviste med det vanlege "for stor"-svaret same stad som før,
+// uendra åtferd for den filtypen.
+
+// Les berre BREIDD/HØGD frå PNG-/JPEG-headeren -- utan å dekode heile
+// biletet -- slik at compressRasterImage() kan avvise mistenkjeleg store
+// pikseldimensjonar FØR Image.decode() nokon gong køyrer. Security Auditor
+// pre-merge review (2026-07-17), HIGH-funn: 6MB-taket på RÅ (koda) filstorleik
+// avgrensar ikkje kor mange PIKSLAR ei PNG kan dekodast til -- ei vesle,
+// låg-entropi PNG kan koda t.d. 30000×30000 piksel på under 300KB, som
+// dekodert som RGBA er ~3.6GB minnebruk i éin einaste Edge Function-kalling.
+// PNG: signatur (8 byte) + IHDR-lengd (4) + "IHDR" (4) + breidd (4) + høgd
+// (4), begge big-endian uint32, alltid på faste byte-posisjonar. JPEG: skann
+// segmenta etter ein SOF-marker (0xC0–0xCF, unnateke 0xC4/0xC8/0xCC som
+// ikkje er SOF-marker) og les breidd/høgd derifrå.
+function readImageDimensions(bytes: Uint8Array, ext: string): { width: number; height: number } | null {
+  try {
+    if (ext === "png") {
+      if (bytes.length < 24) return null;
+      if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) return null;
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      return { width: view.getUint32(16, false), height: view.getUint32(20, false) };
+    }
+    if (ext === "jpg") {
+      if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+      let i = 2;
+      while (i + 8 < bytes.length) {
+        if (bytes[i] !== 0xff) { i++; continue; }
+        const marker = bytes[i + 1];
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; }
+        if (marker === 0xd9) break; // EOI
+        const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
+        const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+        if (isSof) {
+          return {
+            height: (bytes[i + 5] << 8) | bytes[i + 6],
+            width:  (bytes[i + 7] << 8) | bytes[i + 8],
+          };
+        }
+        i += 2 + segLen;
+      }
+      return null;
+    }
+    return null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: number): Promise<Uint8Array | null> {
+  // Avvis mistenkjeleg store pikseldimensjonar FØR dekoding -- sjølve OOM-
+  // risikoen oppstår INNI Image.decode(), så ein sjekk ETTERPÅ er for seint.
+  const MAX_PIXELS = 25_000_000; // ~25 megapiksel -- rikeleg for ein logo
+  const MAX_DIMENSION = 10000;
+  const dims = readImageDimensions(bytes, ext);
+  if (!dims || dims.width <= 0 || dims.height <= 0 ||
+      dims.width > MAX_DIMENSION || dims.height > MAX_DIMENSION ||
+      dims.width * dims.height > MAX_PIXELS) {
+    return null;
+  }
+  let img;
+  try {
+    img = await Image.decode(bytes);
+  } catch (_e) {
+    return null;
+  }
+  const isJpeg = ext === "jpg";
+  const qualities = isJpeg ? [85, 70, 55, 40, 25] : [null];
+  const scales = [1, 0.85, 0.7, 0.55, 0.4];
+  for (const scale of scales) {
+    const w = Math.max(64, Math.round(img.width * scale));
+    const h = Math.max(64, Math.round(img.height * scale));
+    const scaled = scale === 1 ? img : img.clone().resize(w, h);
+    for (const q of qualities) {
+      const encoded = isJpeg ? await scaled.encodeJPEG(q as number) : await scaled.encode();
+      if (encoded.length <= targetBytes) return encoded;
+    }
+  }
+  return null;
 }
 
 serve(async (req: Request) => {
@@ -357,13 +449,21 @@ serve(async (req: Request) => {
       await audit(tenant.id, action, "error", "manglar fildata");
       return json({ error: "Manglar fildata" }, 400);
     }
-    const MAX_BYTES = 300 * 1024; // logo, ikkje eit generelt medie-vedlegg
+    const MAX_BYTES = 300 * 1024; // endeleg lagra storleik -- uendra
+    // PNG/JPEG kan komprimerast automatisk ned mot MAX_BYTES (sjå
+    // compressRasterImage() over), difor kan den RÅ opplastinga vere større
+    // enn 300KB for desse to filtypane. SVG og WebP kan IKKJE komprimerast
+    // her (SVG er alt tekst/sanering, WebP kan ikkje dekodast av
+    // imagescript) og held difor fram med MAX_BYTES som absolutt tak, som før.
+    const isCompressible = ext === "png" || ext === "jpg";
+    const RAW_MAX_BYTES = 6 * 1024 * 1024;
+    const rawCeiling = isCompressible ? RAW_MAX_BYTES : MAX_BYTES;
     // Security Auditor pre-merge review (2026-07-16): avvis grovt overstore
     // nyttelastar FØR base64-dekoding, ikkje berre etter -- ei rå
     // base64-lengd på fleire MB skal aldri nå dekodingssteget i det heile.
-    if (file_base64.length > Math.ceil((MAX_BYTES * 4) / 3) + 1024) {
+    if (file_base64.length > Math.ceil((rawCeiling * 4) / 3) + 1024) {
       await audit(tenant.id, action, "error", "base64-nyttelast for stor: " + file_base64.length + " teikn");
-      return json({ error: "Fila er for stor (maks 300KB)" }, 400);
+      return json({ error: "Fila er for stor (maks " + Math.round(rawCeiling / 1024) + "KB)" }, 400);
     }
     let bytes: Uint8Array;
     try {
@@ -372,9 +472,9 @@ serve(async (req: Request) => {
       await audit(tenant.id, action, "error", "ugyldig base64-data");
       return json({ error: "Ugyldig fildata" }, 400);
     }
-    if (bytes.length > MAX_BYTES) {
+    if (bytes.length > rawCeiling) {
       await audit(tenant.id, action, "error", "fil for stor: " + bytes.length + " bytes");
-      return json({ error: "Fila er for stor (maks 300KB)" }, 400);
+      return json({ error: "Fila er for stor (maks " + Math.round(rawCeiling / 1024) + "KB)" }, 400);
     }
     // Security Auditor pre-merge review (2026-07-16), MEDIUM finding: sanering
     // var tidlegare gata på det klient-oppgjevne content_type-feltet åleine --
@@ -403,6 +503,14 @@ serve(async (req: Request) => {
       }
       uploadBytes = new TextEncoder().encode(sanitized);
       uploadContentType = "image/svg+xml";
+    } else if (isCompressible && bytes.length > MAX_BYTES) {
+      const compressed = await compressRasterImage(bytes, ext, MAX_BYTES);
+      if (compressed === null) {
+        await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under 300KB");
+        return json({ error: "Biletet er for stort og kunne ikkje komprimerast nok automatisk. Prøv eit mindre bilete, eller last opp som JPEG." }, 400);
+      }
+      uploadBytes = compressed;
+      // uploadContentType/ext uendra -- komprimering endrar berre storleik/kvalitet, ikkje filformat.
     }
     const path = "logos/" + tenant.id + "-" + Date.now() + "." + ext;
     const auditId = await auditStart(tenant.id, action);

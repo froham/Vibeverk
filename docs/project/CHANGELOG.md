@@ -30,6 +30,32 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.39.0 — 2026-07-17
+
+### Live-test-oppfølging: Workspace-tema, References-kort, Læring, Personvern-forslag, Trafikk-tekst, WCAG-forslag, logo-autokomprimering
+
+Direkte oppfølging av live-test-tilbakemelding på v0.38.1/0.38.2:
+
+- **Console «Workspace»-fana**: ny «⇄ Speil nettside»-knapp i Fargar-fieldset — kopierer dei lagra fargane/fontane frå «Web»-fana inn i Workspace-felta (ingenting lagra før eige «Lagre»-klikk). Fontpar-knappane (både Web og Workspace) markerer no visuelt (`.is-active`, blå kant/bakgrunn) kva par som faktisk matchar dei noverande display-/body-verdiane, i staden for ei rad identiske, blanke knappar.
+- **Referansar** (`module-references.js`): kort som har BÅDE vanleg tekst OG sitat viste tidlegare begge, uavhengig 4-lines-kutta av CSS åleine — kunne kutte midt i ei setning/eit ord utan synleg «…». Retta: sitatet vert no prioritert og vist ÅLEINE på sjølve kortet når det finst (full tekst framleis tilgjengeleg på detaljsida), og all kort-tekst/sitat vert no eksplisitt kutta med «…» ved ordgrense (`truncateForCard()`) i staden for å stole åleine på CSS sin `-webkit-line-clamp`.
+- **Læring**: `docs/architecture/customer-delivery-checklist.md` omsett frå engelsk til norsk (nynorsk, matchar dei andre onboarding-dokumenta) — same struktur/lenker, berre språket endra.
+- **Personvern**: knappen «Hent Vibeverk sin standardtekst» omdøypt til «Bygg basert på gjeldande modular» — funksjonen (`computeTenantPrivacyDefault()`) var alt modul-medviten (kontaktskjema/tilbod/booking/Plausible) sidan tidlegare, berre namnet var missvisande. Hjelpeteksten utvida med eksplisitt fråskriving: dette er eit utgangspunkt frå oss, kunden må sjølv leggje til tekst for andre tredjepartsløysingar, og kunden er juridisk ansvarleg for at teksten stemmer.
+- **Trafikk (Web-admin)**: tom-tilstand-teksten når ingen analyse er sett opp endra frå ei generisk oppmoding til å kontakte "din leverandør" til ei konkret tilvising til Plausible.io og Vibeverk sin eigen hjelp med oppsett.
+- **WCAG-kontrastvalidator**: ny «Generer forslag»-knapp per feila kontrastsjekk (tekst/bakgrunn, primærfarge/bakgrunn) — justerer automatisk lysstyrken (HSL) på den feilande fargen til AA-terskelen er nådd, behelder fargetone/metning. Verifisert mot 5 handskrivne testcase (låg-kontrast grå/gul, allereie-OK primærfarge, nesten-kvit-på-nesten-svart, raud-på-mørkraud) lokalt i Node før innlemming.
+- **Console «System»-fana**: fjerna «Nettside-admin (for kunden)»-boksen (redigering av `superconfig-private.adminPassword`) — brukar stadfesta at han ikkje har nokon praktisk funksjon for nokon ekte, Supabase-konfigurert kunde (verkar berre for eit reint lokalt/ikkje-konfigurert testoppsett, sjå ADR-0003). Fjerna berre Console sitt redigerings-UI og dei no ubrukte `getSCPrivate()`/`saveSCPrivate()`-hjelpefunksjonane i `console-core.js` — broker sine `get_private_config`/`set_config`-actions og RLS-oppsettet server-side er urørt, og core.js sin eigen fallback-passordlogikk (ein heilt annan kodesti) er òg urørt.
+- **Logo-opplasting: automatisk komprimering** (`upload_logo` i `supabase-control/supabase/functions/broker/index.ts`): PNG/JPEG-opplastingar over 300KB vert no automatisk skalerte ned og (for JPEG) kvalitetsjusterte via `imagescript` (`https://deno.land/x/imagescript@1.3.0/mod.ts`) heilt til dei er under 300KB, i staden for å berre verte avvist. Rå klient-/server-tak heva til 6MB for desse to filtypane. SVG (tekst/sanering, uendra) og WebP (imagescript kan IKKJE dekode WebP, berre kode det) er MEDVITE utelatne frå komprimering og held fram med 300KB som absolutt tak. API-signaturane (`Image.decode`/`.clone()`/`.resize()`/`.encode()`/`.encodeJPEG()`) er stadfesta via imagescript sin publiserte `.d.ts` (ikkje gjetta), og importstien er stadfesta til faktisk å løyse seg (henta direkte, ikkje berre dokumentasjon som hevdar det) — MEN, same kategori atterhald som `@xmldom/xmldom` tidlegare: **ingen lokal Deno-runtime finst for å køyre denne koden i praksis før deploy**, og broker-funksjonen er **ikkje deploya enno** for denne endringa (krev eiga, eksplisitt godkjenning, same som sist).
+  - **Tryggingsgjennomgang gjennomført FØR merge**: eitt HIGH-funn — det nye 6MB-taket på rå (koda) filstorleik avgrensar IKKJE kor mange PIKSLAR ei PNG kan dekodast til; ei vesle, låg-entropi 30000×30000-PNG kan koda på under 300KB, men dekodert som RGBA er det ~3.6GB minnebruk i éin einaste Edge Function-kalling ("dekomprimeringsbombe"). Retta med ein ny `readImageDimensions()` som les BREIDD/HØGD direkte frå PNG-IHDR/JPEG-SOF-headeren UTAN å dekode heile biletet, og avviser (returnerer `null` frå `compressRasterImage()`, same som eit anna komprimeringsfeil) alt over ~25 megapiksel eller 10000px i éin dimensjon FØR `Image.decode()` nokon gong køyrer. Dimensjonsparsaren er verifisert mot 6 handskrivne testcase (normalstorleik PNG/JPEG, den faktiske 30000×30000-bomba, ugyldige byte, JPEG med eit APP0-segment før SOF0) lokalt i Node før innlemming.
+
+Testa: `node test.js` (535/536, same kjende feil) og `node test-workspace.js` (157/158, same kjende feil) — ingen nye regresjonar.
+
+## 0.38.2 — 2026-07-17
+
+### Hjørne-radius: knappar var ikkje påverka (funne av brukar under live-test av v0.38.1)
+
+Live-test av v0.38.1 sitt hjørne-radius-val avdekte at knappar (`.btn` i `index.html`/`admin/index.html`/`workspace/index.html`) heldt fram med hardkoda `border-radius: 999px` (pill-form) uavhengig av valet — dei var aldri kopla til `--radius`-variabelen, berre kort/bilete/modalar var det.
+
+Retta med ein eigen `--btn-radius`-CSS-variabel (default `999px`, uendra standardutsjånad): `core.js` sin `applyTheme()` set no `--btn-radius` til den faktiske radius-verdien når han er **under** 14px (Skarpe hjørner/Litt runde), men held han på `999px` (pill) på Standard/Runde — brukar valde denne varianten uttrykkeleg for å unngå at standard-utsjånaden endra seg synleg for eksisterande kundar. Console sin eigen hint-tekst for feltet oppdatert til å skildre dette presist (var før feilaktig og sa at valet styrte knappar fullt ut). Console sin eigen UI-chrome (ikkje kundens tema) er urørt.
+
 ## 0.38.1 — 2026-07-16
 
 ### Console Web-tema: logo-opplasting (SVG-sanering), hjørne-radius, WCAG-kontrastvalidator

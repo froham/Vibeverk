@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.38.1";
+  var VIBEVERK_VERSION = "0.39.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -276,33 +276,15 @@ window.VwConsole = (function () {
     });
   }
 
-  /* =========================================================================
-     SUPERCONFIG-PRIVATE I/O (2026-07-07, ruta om via broker i Fase 8)
-     -----------------------------------------------------------------------
-     Held hemmeleg per-kunde-config (i dag berre adminPassword-overstyringa)
-     ATSKILT frå 'superconfig' — den er framleis med vilje anon-lesbar (naudsynt
-     for at tema/feature-flagg skal fungere for ein ikkje-innlogga besøkande),
-     så eit passord kan ALDRI liggje der i klartekst. RLS krev
-     is_platform_operator() for BÅDE lesing og skriving av denne nøkkelen —
-     no berre nåbar via broker Edge Function-en (get_private_config/set_config),
-     aldri direkte frå klienten mot kundens eige prosjekt.
-     ====================================================================== */
-  var SUPER_PRIVATE_KEY = "superconfig-private";
-
-  function getSCPrivate(cb) {
-    brokerCall("get_private_config", {}, function (r) {
-      if (r.error) { console.error("[console] superconfig-private-lesing feila:", r.error); cb({}); return; }
-      cb(r.value || {});
-    });
-  }
-
-  function saveSCPrivate(priv, tenantId) {
-    var payload = { key: SUPER_PRIVATE_KEY, value: priv };
-    if (tenantId) payload.tenant_id = tenantId;
-    brokerCall("set_config", payload, function (r) {
-      if (r.error) console.error("[console] superconfig-private-skriving feila:", r.error);
-    });
-  }
+  // Merk: Console sin klientside-tilgang til 'superconfig-private' (via
+  // broker sine get_private_config/set_config-actions) vart fjerna herifrå
+  // 2026-07-17 saman med "Nettside-admin (for kunden)"-boksen i renderSystem()
+  // -- det var det einaste bruksområdet. Broker-actionen og RLS-oppsettet
+  // (is_platform_operator()) er urørt server-side, og core.js sin eigen
+  // lesing av adminPassword-fallbacken (ADR-0003) er ei heilt anna, urørt
+  // kodesti (går direkte mot kundens eige Supabase-prosjekt, ikkje via denne
+  // fila). Om eit nytt privat per-kunde-felt treng redigering frå Console
+  // seinare, kan get_private_config/set_config-kalla gjenreisast då.
 
   /* =========================================================================
      KONSTANTER
@@ -393,6 +375,23 @@ window.VwConsole = (function () {
     if (nameEl) nameEl.addEventListener("input", refresh);
     if (weightsEl) weightsEl.addEventListener("input", refresh);
     refresh();
+  }
+
+  // Markerer kva for eit av dei fastdefinerte fontparknappane (om nokon) som
+  // matchar dei noverande display/body-verdiane, slik brukaren ser kva par
+  // som faktisk er i bruk -- ikkje berre ein rad blanke knappar. Kallast på
+  // fyrste rendering og kvar gong felta endrar seg (klikk på eit par,
+  // nullstill, "speil nettside", eller fritekst-redigering).
+  function refreshFontPairActive(wrap, dfontId, bfontId, attr) {
+    var dEl = wrap.querySelector("#" + dfontId);
+    var bEl = wrap.querySelector("#" + bfontId);
+    var d = (dEl ? dEl.value : "").trim().toLowerCase();
+    var b = (bEl ? bEl.value : "").trim().toLowerCase();
+    wrap.querySelectorAll("[" + attr + "]").forEach(function (btn) {
+      var p = FONT_PAIRS[parseInt(btn.getAttribute(attr), 10)];
+      var isMatch = !!p && p.display.toLowerCase() === d && p.body.toLowerCase() === b;
+      btn.classList.toggle("is-active", isMatch);
+    });
   }
 
   var FEAT_LABELS = {
@@ -524,6 +523,64 @@ window.VwConsole = (function () {
     var lighter = Math.max(l1, l2), darker = Math.min(l1, l2);
     return (lighter + 0.05) / (darker + 0.05);
   }
+
+  // Fargeforslag ved WCAG-brot ("generer forslag", ønska av brukar under
+  // live-test 2026-07-17 av kontrastvalidatoren over): flyttar lysstyrken
+  // (HSL-lightness) til føregrunnsfargen mot svart ELLER kvitt -- kva retning
+  // som faktisk aukar kontrasten mot bakgrunnen -- til terskelen er nådd.
+  // Behelder same fargetone/metning, berre lysstyrken justerast.
+  function hexToHsl(hex) {
+    var rgb = hexToRgb(hex);
+    var r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; }
+    else {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+  }
+  function hslToHex(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    var r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      var hue2rgb = function (p, q, t) {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      var p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1 / 3);
+    }
+    function toHex(x) { var v = Math.round(x * 255).toString(16); return v.length === 1 ? "0" + v : v; }
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+  }
+  function suggestAccessibleColor(fgHex, bgHex, targetRatio) {
+    var hsl = hexToHsl(fgHex);
+    var darker  = hslToHex(hsl.h, hsl.s, Math.max(0, hsl.l - 10));
+    var lighter = hslToHex(hsl.h, hsl.s, Math.min(100, hsl.l + 10));
+    var goDarker = contrastRatio(darker, bgHex) >= contrastRatio(lighter, bgHex);
+    var l = hsl.l, hex = fgHex;
+    for (var i = 0; i < 40 && contrastRatio(hex, bgHex) < targetRatio; i++) {
+      l = goDarker ? Math.max(0, l - 2.5) : Math.min(100, l + 2.5);
+      hex = hslToHex(hsl.h, hsl.s, l);
+      if (l <= 0 || l >= 100) break;
+    }
+    return hex;
+  }
+
   function refreshContrastInfo(wrap) {
     var el = wrap.querySelector("#cs-contrast-info");
     if (!el) return;
@@ -538,10 +595,12 @@ window.VwConsole = (function () {
       '<p style="margin:.4rem 0 0;font-size:.82rem">' +
         (textOk ? "✓" : "⚠") + ' Tekst mot bakgrunn: ' + textRatio.toFixed(1) + ':1 ' +
         (textOk ? "(oppfyller WCAG AA-krav på 4.5:1)" : "(under WCAG AA-krav på 4.5:1 for brødtekst)") +
+        (textOk ? "" : ' <button type="button" class="btn btn--ghost btn--sm" data-suggest="cs-text" data-suggest-target="4.5" style="padding:.15rem .5rem;font-size:.76rem">Generer forslag</button>') +
       '</p>' +
       '<p style="margin:.2rem 0 0;font-size:.82rem">' +
         (primaryOk ? "✓" : "⚠") + ' Primærfarge mot bakgrunn: ' + primaryRatio.toFixed(1) + ':1 ' +
         (primaryOk ? "(oppfyller WCAG AA-krav på 3:1 for grensesnittelement)" : "(under WCAG AA-krav på 3:1 for grensesnittelement, t.d. knappekantar)") +
+        (primaryOk ? "" : ' <button type="button" class="btn btn--ghost btn--sm" data-suggest="cs-primary" data-suggest-target="3" style="padding:.15rem .5rem;font-size:.76rem">Generer forslag</button>') +
       '</p>';
   }
 
@@ -775,7 +834,7 @@ window.VwConsole = (function () {
           C.field({ id:"cs-logo",    label:"Logo-URL",   value: com.logoUrl || "", placeholder:"https://…",
             help:"Lim inn ei lenke til ein logo som alt er hosta ein annan stad, ELLER last opp ei fil under." }) +
           '<div class="field" style="margin-top:-.6rem">' +
-            '<label>Last opp logo (SVG, PNG, JPEG eller WebP, maks 300KB)</label>' +
+            '<label>Last opp logo (SVG eller WebP maks 300KB — PNG/JPEG maks 6MB, komprimerast automatisk ned mot 300KB)</label>' +
             '<input type="file" id="cs-logo-file" accept="image/svg+xml,image/png,image/jpeg,image/webp">' +
             '<p class="field__hint" id="cs-logo-upload-status"></p>' +
           '</div>' +
@@ -808,7 +867,7 @@ window.VwConsole = (function () {
               '<option value="14">Standard</option>' +
               '<option value="24">Runde</option>' +
             '</select>' +
-            '<p class="field__hint">Styrer avrundinga på knappar, kort og bilete i heile nettstaden.</p>' +
+            '<p class="field__hint">Styrer avrundinga på kort og bilete i heile nettstaden. Knappar er runde (pill-form) på Standard og Runde, og vert litt firkanta på Skarpe hjørner og Litt runde.</p>' +
           '</div>' +
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fontar</legend>' +
@@ -837,11 +896,30 @@ window.VwConsole = (function () {
     bindFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
     bindFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
 
+    refreshFontPairActive(wrap, "cs-dfont", "cs-bfont", "data-pair");
+    ["cs-dfont", "cs-bfont"].forEach(function (id) {
+      wrap.querySelector("#" + id).addEventListener("input", function () {
+        refreshFontPairActive(wrap, "cs-dfont", "cs-bfont", "data-pair");
+      });
+    });
+
     wrap.querySelector("#cs-radius").value = String(col.radius != null ? col.radius : 14);
 
     refreshContrastInfo(wrap);
     ["cs-text", "cs-bg", "cs-primary"].forEach(function (id) {
       wrap.querySelector("#" + id).addEventListener("input", function () { refreshContrastInfo(wrap); });
+    });
+    // Delegert lyttar -- overlever at refreshContrastInfo() byggjer #cs-contrast-info
+    // sitt innhald (inkl. "Generer forslag"-knappane) på nytt kvar gong.
+    wrap.querySelector("#cs-contrast-info").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-suggest]");
+      if (!btn) return;
+      var fieldId = btn.getAttribute("data-suggest");
+      var target  = parseFloat(btn.getAttribute("data-suggest-target"));
+      var bg = wrap.querySelector("#cs-bg").value;
+      var fg = wrap.querySelector("#" + fieldId).value;
+      wrap.querySelector("#" + fieldId).value = suggestAccessibleColor(fg, bg, target);
+      refreshContrastInfo(wrap);
     });
 
     // Logo-filopplasting -- går via broker sin upload_logo-handling (kryssar
@@ -853,7 +931,14 @@ window.VwConsole = (function () {
       var fileInput = wrap.querySelector("#cs-logo-file");
       var statusEl  = wrap.querySelector("#cs-logo-upload-status");
       var ALLOWED_TYPES = { "image/svg+xml": 1, "image/png": 1, "image/jpeg": 1, "image/webp": 1 };
+      // PNG/JPEG vert automatisk komprimert av broker-funksjonen ned mot
+      // 300KB om dei er større -- difor kan klienten tillate ei mykje større
+      // rå fil for desse to. SVG (tekst, ingen komprimering) og WebP (kan
+      // ikkje dekodast/komprimerast av biletbiblioteket broker brukar) held
+      // fram med 300KB som absolutt tak, uendra.
+      var COMPRESSIBLE_TYPES = { "image/png": 1, "image/jpeg": 1 };
       var MAX_BYTES = 300 * 1024;
+      var RAW_MAX_BYTES = 6 * 1024 * 1024;
       fileInput.addEventListener("change", function () {
         var file = fileInput.files && fileInput.files[0];
         if (!file) return;
@@ -862,12 +947,13 @@ window.VwConsole = (function () {
           fileInput.value = "";
           return;
         }
-        if (file.size > MAX_BYTES) {
-          statusEl.textContent = "Fila er for stor (maks 300KB).";
+        var ceiling = COMPRESSIBLE_TYPES[file.type] ? RAW_MAX_BYTES : MAX_BYTES;
+        if (file.size > ceiling) {
+          statusEl.textContent = "Fila er for stor (maks " + Math.round(ceiling / 1024) + "KB).";
           fileInput.value = "";
           return;
         }
-        statusEl.textContent = "Lastar opp …";
+        statusEl.textContent = file.size > MAX_BYTES ? "Lastar opp og komprimerer …" : "Lastar opp …";
         var reader = new FileReader();
         reader.onerror = function () { statusEl.textContent = "Kunne ikkje lese fila."; };
         reader.onload = function () {
@@ -894,6 +980,7 @@ window.VwConsole = (function () {
         wrap.querySelector("#cs-bweights").value = "400,500,600";
         refreshFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
         refreshFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
+        refreshFontPairActive(wrap, "cs-dfont", "cs-bfont", "data-pair");
       });
     });
 
@@ -914,6 +1001,7 @@ window.VwConsole = (function () {
       wrap.querySelector("#cs-bweights").value  = "400,500,600";
       refreshFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
       refreshFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
+      refreshFontPairActive(wrap, "cs-dfont", "cs-bfont", "data-pair");
       refreshContrastInfo(wrap);
     });
 
@@ -989,6 +1077,10 @@ window.VwConsole = (function () {
         '</fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse fargane gjeld berre Workspace — uavhengig av nettside-tema.</p>' +
+          '<div style="margin:0 0 .8rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-wsp-mirror-web">⇄ Speil nettside</button>' +
+            '<p class="field__hint">Kopierer fargane og fontane som er lagra på Web-fana inn i felta under. Kan endrast fritt etterpå — ingenting vert lagra før du trykkjer «Lagre».</p>' +
+          '</div>' +
           '<div class="bk-2col">' +
             colorField("cs-wsp-primary",   "Primærfarge",   pri,                      "Knappar, lenker og aktive element") +
             colorField("cs-wsp-secondary", "Sekundærfarge", wspCol.secondary || "#7c3aed", "CTA-knappar og uthevingar") +
@@ -1031,6 +1123,13 @@ window.VwConsole = (function () {
     bindFontPreview("cs-wsp-dfont", "cs-wsp-dweights", "cs-wsp-dfont-preview");
     bindFontPreview("cs-wsp-bfont", "cs-wsp-bweights", "cs-wsp-bfont-preview");
 
+    refreshFontPairActive(wrap, "cs-wsp-dfont", "cs-wsp-bfont", "data-wsp-pair");
+    ["cs-wsp-dfont", "cs-wsp-bfont"].forEach(function (id) {
+      wrap.querySelector("#" + id).addEventListener("input", function () {
+        refreshFontPairActive(wrap, "cs-wsp-dfont", "cs-wsp-bfont", "data-wsp-pair");
+      });
+    });
+
     wrap.querySelectorAll("[data-wsp-pair]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var p = FONT_PAIRS[parseInt(btn.getAttribute("data-wsp-pair"), 10)];
@@ -1041,7 +1140,29 @@ window.VwConsole = (function () {
         wrap.querySelector("#cs-wsp-bweights").value = "400,500,600";
         refreshFontPreview("cs-wsp-dfont", "cs-wsp-dweights", "cs-wsp-dfont-preview");
         refreshFontPreview("cs-wsp-bfont", "cs-wsp-bweights", "cs-wsp-bfont-preview");
+        refreshFontPairActive(wrap, "cs-wsp-dfont", "cs-wsp-bfont", "data-wsp-pair");
       });
+    });
+
+    wrap.querySelector("#cs-wsp-mirror-web").addEventListener("click", function () {
+      var webCol = sc.colors || {};
+      var webFnt = sc.fonts  || {};
+      if (!webCol.primary && !webFnt.display) {
+        alert("Nettsida har ikkje lagra fargar/fontar enno — gå til Web-fana og lagre først.");
+        return;
+      }
+      wrap.querySelector("#cs-wsp-primary").value   = webCol.primary    || "#2563eb";
+      wrap.querySelector("#cs-wsp-secondary").value = webCol.secondary  || "#7c3aed";
+      wrap.querySelector("#cs-wsp-bg").value        = webCol.background || "#f1f5f9";
+      wrap.querySelector("#cs-wsp-text").value      = webCol.text      || "#0f172a";
+      wrap.querySelector("#cs-wsp-surface").value   = webCol.surface   || "#ffffff";
+      wrap.querySelector("#cs-wsp-dfont").value     = webFnt.display   || "";
+      wrap.querySelector("#cs-wsp-bfont").value     = webFnt.body      || "";
+      wrap.querySelector("#cs-wsp-dweights").value  = (webFnt.weights && webFnt.weights.display ? webFnt.weights.display.join(",") : "600,700,800");
+      wrap.querySelector("#cs-wsp-bweights").value  = (webFnt.weights && webFnt.weights.body    ? webFnt.weights.body.join(",")    : "400,500,600");
+      refreshFontPreview("cs-wsp-dfont", "cs-wsp-dweights", "cs-wsp-dfont-preview");
+      refreshFontPreview("cs-wsp-bfont", "cs-wsp-bweights", "cs-wsp-bfont-preview");
+      refreshFontPairActive(wrap, "cs-wsp-dfont", "cs-wsp-bfont", "data-wsp-pair");
     });
 
     wrap.querySelector("#cs-wsp-reset").addEventListener("click", function () {
@@ -1057,6 +1178,7 @@ window.VwConsole = (function () {
       wrap.querySelector("#cs-wsp-bweights").value  = "400,500,600";
       refreshFontPreview("cs-wsp-dfont", "cs-wsp-dweights", "cs-wsp-dfont-preview");
       refreshFontPreview("cs-wsp-bfont", "cs-wsp-bweights", "cs-wsp-bfont-preview");
+      refreshFontPairActive(wrap, "cs-wsp-dfont", "cs-wsp-bfont", "data-wsp-pair");
     });
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
@@ -1255,8 +1377,8 @@ window.VwConsole = (function () {
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, og via «Personvern»-lenka i footer.</p>' +
           C.field({ id:"cs-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
           '<div style="margin:-.3rem 0 .6rem">' +
-            '<button type="button" class="btn btn--ghost btn--sm" id="cs-priv-fetch">↺ Hent Vibeverk sin standardtekst</button>' +
-            '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Set inn same GDPR-standardtekst som gjeld overalt før noko er tilpassa — modul-tilpassa til kva som faktisk er aktivert for denne kunden (kontaktskjema/tilbud/booking/analyse). Kan redigerast fritt etterpå.</p>' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-priv-fetch">↺ Bygg basert på gjeldande modular</button>' +
+            '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Set inn eit forslag til personvernerklæring, tilpassa til kva som faktisk er aktivert for denne kunden (kontaktskjema/tilbod/booking/Plausible-tilkopling). <strong>Dette er berre eit utgangspunkt frå oss</strong> — dersom kunden nyttar andre tredjepartsløysingar (t.d. anna analyseverktøy, betalingsløysing, ekstern CRM), må dei sjølve leggje til tekst om det. Kunden er juridisk ansvarleg for at teksten faktisk stemmer. Kan redigerast fritt etterpå.</p>' +
           '</div>' +
           C.richTextField({ id:"cs-priv-text", label:"Tekst", value: textHtml }) +
         '</fieldset>' +
@@ -1362,44 +1484,30 @@ window.VwConsole = (function () {
     var expiresAtSec = _session && _session.expires_at;
     var expiryStr   = expiresAtSec ? new Date(expiresAtSec * 1000).toLocaleString("nb-NO") : "—";
 
+    // "Nettside-admin (for kunden)"-boksen (redigering av det lokale
+    // #admin-fallback-passordet, superconfig-private.adminPassword) vart
+    // fjerna herifrå 2026-07-17 -- brukar stadfesta at han ikkje har nokon
+    // praktisk funksjon for ekte kundar (verkar berre når Supabase IKKJE er
+    // konfigurert i det heile, sjå ADR-0003, noko som aldri er tilfellet for
+    // ein kunde styrt via Console). Sjølve fallback-mekanismen i core.js er
+    // urørt -- berre redigerings-UI-et her er fjerna.
     wrap.innerHTML =
-      '<form id="cs-form">' +
-        '<fieldset class="admin-group"><legend>Innlogging</legend>' +
-          '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .4rem">Console brukar OTP via e-post mot vibeverk-control (Fase 8) — ingen passord å handtere her.</p>' +
-          '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Innlogga tenant: <strong>' + C.esc((_activeTenant && _activeTenant.slug) || "—") + '</strong></p>' +
-          '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Økta oppdaterast automatisk; gjeldande token utløper: <strong>' + C.esc(expiryStr) + '</strong></p>' +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Nettside-admin (for kunden)</legend>' +
-          C.field({ id:"cs-apass", label:"Passord for #admin-inngang", value:"", placeholder:"Laster…" }) +
-          '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Verkar berre viss Supabase IKKJE er konfigurert for kunden (reint lokalt/test-miljø). For alle ekte, konfigurerte kundar krevst innlogging med e-post + passord via Supabase — dette feltet har då ingen effekt (sjå ADR-0003). Lagra åtskilt frå anna konfig og aldri anon-lesbart (sjå ADR-en for control-plane-splitten).</p>' +
-        '</fieldset>' +
-        '<fieldset class="admin-group"><legend>Supabase-prosjekt</legend>' +
-          '<div style="font-size:.87rem;color:var(--color-muted);display:grid;gap:.4rem">' +
-            '<div><strong>URL:</strong> ' + C.esc(supaUrl) + '</div>' +
-            '<div><strong>Anon-nøkkel:</strong> <code style="font-size:.76rem;word-break:break-all">' + C.esc(supaKeyShrt) + '</code></div>' +
-          '</div>' +
-        '</fieldset>' +
-        '<fieldset class="admin-group cs-danger-zone"><legend>Faresone</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Nullstiller ALLE tilpassa innstillingar for denne kunden (farger, fontar, tekstar, aktiverte funksjonar, personvernstekst osv.) tilbake til dei nøytrale standardverdiane. Dette skjer umiddelbart og er synleg for besøkjande på kunden sitt nettside/Workspace med ein gong. Kan ikkje angrast.</p>' +
-          '<button type="button" class="btn btn--ghost" id="cs-reset-btn" style="border-color:#c0392b;color:#c0392b">Nullstill all konfig</button>' +
-        '</fieldset>' +
-        '<div style="display:flex;gap:.6rem;align-items:center;margin-top:1.4rem">' +
-          '<button type="submit" class="btn btn--primary">Lagre admin-passord</button>' +
+      '<fieldset class="admin-group"><legend>Innlogging</legend>' +
+        '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .4rem">Console brukar OTP via e-post mot vibeverk-control (Fase 8) — ingen passord å handtere her.</p>' +
+        '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Innlogga tenant: <strong>' + C.esc((_activeTenant && _activeTenant.slug) || "—") + '</strong></p>' +
+        '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Økta oppdaterast automatisk; gjeldande token utløper: <strong>' + C.esc(expiryStr) + '</strong></p>' +
+      '</fieldset>' +
+      '<fieldset class="admin-group"><legend>Supabase-prosjekt</legend>' +
+        '<div style="font-size:.87rem;color:var(--color-muted);display:grid;gap:.4rem">' +
+          '<div><strong>URL:</strong> ' + C.esc(supaUrl) + '</div>' +
+          '<div><strong>Anon-nøkkel:</strong> <code style="font-size:.76rem;word-break:break-all">' + C.esc(supaKeyShrt) + '</code></div>' +
         '</div>' +
-        '<p class="form__status" id="cs-status" style="margin-top:.6rem"></p>' +
-      '</form>';
+      '</fieldset>' +
+      '<fieldset class="admin-group cs-danger-zone"><legend>Faresone</legend>' +
+        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Nullstiller ALLE tilpassa innstillingar for denne kunden (farger, fontar, tekstar, aktiverte funksjonar, personvernstekst osv.) tilbake til dei nøytrale standardverdiane. Dette skjer umiddelbart og er synleg for besøkjande på kunden sitt nettside/Workspace med ein gong. Kan ikkje angrast.</p>' +
+        '<button type="button" class="btn btn--ghost" id="cs-reset-btn" style="border-color:#c0392b;color:#c0392b">Nullstill all konfig</button>' +
+      '</fieldset>';
 
-    var apassInp = wrap.querySelector("#cs-apass");
-    getSCPrivate(function (priv) {
-      if (apassInp) { apassInp.value = priv.adminPassword || ""; apassInp.placeholder = ""; }
-    });
-
-    wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
-      e.preventDefault();
-      var savingTenantId = _activeTenant && _activeTenant.id;
-      saveSCPrivate({ adminPassword: apassInp.value }, savingTenantId);
-      statusMsg(wrap.querySelector("#cs-status"), "✓ Passord lagra!", true);
-    });
     wrap.querySelector("#cs-reset-btn").addEventListener("click", resetSC);
   }
 
