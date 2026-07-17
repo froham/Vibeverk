@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.43.1 — 2026-07-17
+
+### Oppfølging etter fyrste live-test av inbound e-post: verifiser-knapp, chat-kategorisering, duplikat-fiks
+
+Brukar live-testa 0.43.0 (ekte testepost via Resend, produksjon) og fann tre ting å rette same runde:
+
+- **«Ikkje verifisert»-badgen vart klikkbar**: opna verken tidlegare eit tydeleg «Vil du verifisere denne avsendaren?»-val — no ein knapp (`data-verify-comm` i `module-crm.js`) som viser ei Ja/Nei-stadfesting og set `data.autoCreated=false` på den spesifikke comm-en ved Ja. Merk: dette er PER MELDING, ikkje ei automatisk statusendring — badgen forsvinn ikkje berre av å svare/løyse ei henvending, sidan han skildrar KORLEIS akkurat den meldinga kom inn, ikkje ein live kunde-status.
+- **Chat-element synte som «Kontakt» i tidslinja sitt filter**: ein lukka chat vert alt konvertert til ein «Kontakt»-lead (`saveConvAsLead()`), men `tlCategoryId()` kategoriserte etter rå `type`, ikkje opphav — retta til å sjekke `item.chatId` FØRST (både opne OG lukka/konverterte chatar hamnar no under «Chat»-filteret, ikkje blanda med ekte kontaktskjema-innsendingar). Filterknappane sine TELJINGAR brukte tidlegare ei duplisert, ukonsistent sjekk — retta til å bruke same `tlCategoryId()`.
+- **Ekte, stadfesta duplikat-bug i produksjon**: ein chat lukka BÅDE av admin OG av den besøkjande sjølv (kunden sin eigen "lukk chatvindauge"-hending) kunne lage TO separate `leads`-rader for SAME `chat_id`. Rotårsak: den besøkjande sin klientside-dedup-sjekk (`getLeadByChatId()`) kan ALDRI sjå ein lead ein admin alt oppretta (RLS gjev anon null lesetilgang til `leads`), så `insert_anon_lead()` (einaste anon-vegen inn) gjorde alltid ein blind INSERT. Ny migrasjon `20260717140000_dedup_anon_lead_chat_id.sql`: ryddar opp det stadfesta EKSISTERANDE duplikatet i produksjonsdata (behald nyaste per `chat_id`), legg til ein partiell unik indeks (`chat_id IS NOT NULL`), og gjer `insert_anon_lead()` om til `INSERT ... ON CONFLICT (chat_id) ... DO UPDATE` i staden for ein rein INSERT. Tryggingsgjennomgått før merge (anon-facing SECURITY DEFINER-endring).
+
+Testa: `node test.js` (535/536), `node test-workspace.js` (162/163) — begge kjende, pre-eksisterande feil uendra. Cache-bust: `module-crm.js?v=26`, `console-core.js?v=133`. `VIBEVERK_VERSION` 0.43.0 → 0.43.1.
+
 ## 0.43.0 — 2026-07-17
 
 ### Motta e-post (inbound) — fyrste implementasjon (steg 6f, ROADMAP.md punkt 6)

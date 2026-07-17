@@ -402,6 +402,13 @@
     { id: "chat",          label: "Chat",          types: ["chat"] }
   ];
   function tlCategoryId(item) {
+    // Kategoriser etter OPPHAV (chatId), ikkje rå type -- ein lukka chat vert
+    // alt konvertert til ein "Kontakt"-lead (type:"contact", sjå
+    // saveConvAsLead() i module-chat.js), men skal framleis filtrerast/visast
+    // som Chat, ikkje blandast saman med ekte kontaktskjema-innsendingar.
+    // Brukar fann dette 2026-07-17 (skjermbilete: lukka chatar synte som
+    // "Kontakt" i tidslinja sitt filter).
+    if (item.chatId) return "chat";
     var cat = TL_CATEGORIES.find(function (c) { return c.types.indexOf(item.type) > -1; });
     return cat ? cat.id : "other";
   }
@@ -1151,6 +1158,12 @@
     scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(isWorkspaceMember())return;if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
     scope.querySelectorAll("[data-task-toggle]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();updateComm(btn.getAttribute("data-task-toggle"),{done:true});refresh();});});
     scope.querySelectorAll("[data-reply-email]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();var orig=getComms().find(function(x){return x.id===btn.getAttribute("data-reply-email");});openEmailDialog(c,refresh,orig);});});
+    scope.querySelectorAll("[data-verify-comm]").forEach(function(btn){btn.addEventListener("click",function(e){
+      e.stopPropagation();
+      if (!confirm("Vil du verifisere denne avsendaren? Dette fjernar «Ikkje verifisert»-merkinga.")) return;
+      updateComm(btn.getAttribute("data-verify-comm"), { autoCreated: false });
+      refresh();
+    });});
     scope.querySelectorAll("[data-tl-item]").forEach(function(row){
       function openRow(){
         var item=tl.find(function(x){return x.id===row.getAttribute("data-tl-item");});
@@ -1329,7 +1342,7 @@
   // ville vorte nullstilt kvar gong refresh() køyrer renderCustomer() på nytt.
   function renderTlWrap(wrap, body, c, tl, refresh) {
     var presentCats = TL_CATEGORIES.map(function (cat) {
-      var count = tl.filter(function (it) { return cat.types.indexOf(it.type) > -1; }).length;
+      var count = tl.filter(function (it) { return tlCategoryId(it) === cat.id; }).length;
       return { id: cat.id, label: cat.label, count: count };
     }).filter(function (cat) { return cat.count > 0; });
     var allIds = presentCats.map(function (cat) { return cat.id; });
@@ -1379,7 +1392,11 @@
     // (sjå supabase/migrations/20260717120000_inbound_email.sql) berre for
     // ein heilt ukjend/uverifisert e-postavsendar som ALDRI hadde nokon
     // sjølvvalt kontakt med kunden sitt system frå før.
-    if (item.autoCreated) tagBadge+=' <span title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno" style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#E8833A 14%,transparent);color:#E8833A"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</span>';
+    // Klikkbar (ikkje berre visuell) — brukar bad 2026-07-17 om ei eksplisitt
+    // «Vil du verifisere denne avsendaren?»-stadfesting, sidan ein rein
+    // informasjonsbadge kan verke forvirrande/statisk for ikkje-tekniske
+    // brukarar. data-verify-comm bind i bindTimelineActions().
+    if (item.autoCreated) tagBadge+=' <button type="button" data-verify-comm="'+esc(item.id)+'" title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno. Klikk for å verifisere." style="font:inherit;font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#E8833A 14%,transparent);color:#E8833A;border:0;cursor:pointer"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</button>';
     return '<div data-tl-item="'+esc(item.id)+'" class="crm-tl-row" tabindex="0" role="button" style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb);cursor:pointer">' +
       '<div style="flex-shrink:0;margin-top:.1rem"><div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,'+conf.color+' 13%,white);border:1.5px solid color-mix(in srgb,'+conf.color+' 28%,transparent)"><i class="ti ti-'+conf.icon+'" style="font-size:.78rem;color:'+conf.color+'"></i></div></div>' +
       '<div style="flex:1;min-width:0">' +

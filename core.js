@@ -620,7 +620,11 @@ window.App = (function () {
       _sb.rpc("insert_anon_lead", {
         p_id: newLead.id, p_kind: newLead.kind, p_name: newLead.name, p_email: newLead.email,
         p_message: newLead.message, p_reference_number: newLead.referenceNumber,
-        p_source: newLead.source, p_chat_id: newLead.chatId, p_attachments: newLead.attachments
+        p_source: newLead.source, p_chat_id: newLead.chatId, p_attachments: newLead.attachments,
+        // Eigarskaps-token for chat-opphavne leads (sjå
+        // supabase/migrations/20260717140000_dedup_anon_lead_chat_id.sql) --
+        // null for vanlege Kontakt/Tilbud-leads utan chatId, uendra åtferd.
+        p_visitor_id: lead.visitorId || null
       }).then(function (r) { if (r.error) logWriteError("opprette anonym henvendelse", r.error); });
       return newLead;
     }

@@ -403,7 +403,15 @@
         email:   conv.email || "",
         message: transcript,
         source:  "chat",
-        chatId:  convId
+        chatId:  convId,
+        // Naudsynt for insert_anon_lead() sin eigarskaps-sjekk (sjå
+        // supabase/migrations/20260717140000_dedup_anon_lead_chat_id.sql) --
+        // berre brukt av den ANONYME grenen i addLead() (core.js), autentisert
+        // admin-innsetjing bryr seg ikkje om dette feltet. Same Chat.getVid()-
+        // token som chat_conversations.visitor_id vart sett med då samtalen
+        // starta, så eigarskaps-sjekket matchar korrekt for den ekte
+        // besøkjande som faktisk lukka sin eigen chat.
+        visitorId: Chat.getVid()
       });
       Chat.updateConv(convId, { leadSaved: true });
     }
