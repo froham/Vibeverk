@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.43.2 — 2026-07-17
+
+### Fullskjerm-variant for `openDialog()`/`openReplyModal()` (grunnlag for framtidig kundeadmin-design-verktøy)
+
+Bygd som fyrste konkrete steg for ROADMAP.md sitt "Custom design-modul (kundeadmin-sida)"-punkt — brukar valde ein utvida fullskjerm-modal-variant framfor ein full SPA-refaktorering av Web-admin (vurdert som eit for stort, fleire-økter-arbeid for akkurat dette behovet).
+
+- `module-crm.js` sin `openDialog()` og `core.js` sin `openReplyModal()` godtek no eit `opts.fullscreen`-flagg — reint additivt/opt-in, INGEN eksisterande kallar er endra til å bruke det enno. Fullskjerm-varianten bruker flex-kolonne-layout (header/footer faste, innhaldsområdet fyller/skrollar resten) i staden for ein hardkoda vh-verdi.
+- **Ikkje visuelt verifisert enno** — ingen kallar bruker `fullscreen:true` enno, sidan sjølve design-verktøyet som skal konsumere dette ikkje er bygd/scopa enno. Bør UX-gjennomgåast når ein ekte forbrukar av flagget finst, ikkje no (inert kode inntil då).
+
+Testa: `node test.js` (535/536), `node test-workspace.js` (162/163) — begge kjende, pre-eksisterande feil uendra (ingen eksisterande dialog-åtferd er endra). Cache-bust: `core.js?v=55`, `module-crm.js?v=27`, `console-core.js?v=134`. `VIBEVERK_VERSION` 0.43.1 → 0.43.2.
+
 ## 0.43.1 — 2026-07-17
 
 ### Oppfølging etter fyrste live-test av inbound e-post: verifiser-knapp, chat-kategorisering, duplikat-fiks

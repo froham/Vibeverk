@@ -616,14 +616,22 @@
   function openDialog(opts) {
     var dl = document.createElement("dialog");
     dl.className = "crm-dlg";
-    dl.style.cssText = "border:0;border-radius:14px;padding:0;max-width:"+(opts.wide?"700px":"540px")+";width:calc(100vw - 2rem);box-shadow:0 20px 60px rgba(0,0,0,.25);background:var(--color-surface,#fff)";
+    // opts.fullscreen: valfri fullskjerm-variant (ROADMAP.md "Custom design-
+    // modul (kundeadmin-sida)", bygd 2026-07-17) -- reint additivt/opt-in,
+    // ingen eksisterande kallar av openDialog() er endra til å bruke han enno.
+    // Flex-kolonne held header/footer faste og let sjølve innhaldet fylle/
+    // skrolle resten, i staden for ein hardkoda vh-verdi som ikkje ville
+    // passa når dialogen fyller heile skjermen.
+    dl.style.cssText = opts.fullscreen
+      ? "border:0;border-radius:0;padding:0;margin:0;max-width:none;width:100vw;height:100vh;max-height:100vh;box-shadow:none;background:var(--color-surface,#fff);display:flex;flex-direction:column"
+      : "border:0;border-radius:14px;padding:0;max-width:"+(opts.wide?"700px":"540px")+";width:calc(100vw - 2rem);box-shadow:0 20px 60px rgba(0,0,0,.25);background:var(--color-surface,#fff)";
     dl.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.2rem .8rem;border-bottom:1px solid var(--color-border,#e5e7eb)">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.2rem .8rem;border-bottom:1px solid var(--color-border,#e5e7eb)'+(opts.fullscreen?';flex-shrink:0':'')+'">' +
         '<strong style="font-size:1rem">'+esc(opts.title||"")+'</strong>' +
         '<button class="crm-dlg-close" aria-label="Lukk" style="background:none;border:0;cursor:pointer;font-size:1.3rem;color:var(--color-muted,#6b7280);padding:.2rem;line-height:1">&times;</button>' +
       '</div>' +
-      '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;max-height:75vh;overflow-y:auto">'+(opts.bodyHtml||"")+'</div>' +
-      (opts.footHtml?'<div style="padding:.8rem 1.2rem 1rem;display:flex;gap:.5rem;border-top:1px solid var(--color-border,#e5e7eb)">'+opts.footHtml+'</div>':"");
+      '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;'+(opts.fullscreen?'flex:1;overflow-y:auto':'max-height:75vh;overflow-y:auto')+'">'+(opts.bodyHtml||"")+'</div>' +
+      (opts.footHtml?'<div style="padding:.8rem 1.2rem 1rem;display:flex;gap:.5rem;border-top:1px solid var(--color-border,#e5e7eb)'+(opts.fullscreen?';flex-shrink:0':'')+'">'+opts.footHtml+'</div>':"");
     document.body.appendChild(dl);
     try { dl.showModal(); } catch(e) { dl.setAttribute("open",""); }
     function closeDl() { try { dl.close(); } catch(e) {} if (dl.parentNode) dl.remove(); }
