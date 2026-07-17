@@ -24,7 +24,7 @@ const html = fs.readFileSync("workspace/index.html", "utf8")
   .replace(/src="module-dashboard\.js"/g, 'src="workspace/module-dashboard.js"')
   .replace(/src="module-orgdrift\.js"/g,  'src="workspace/module-orgdrift.js"')
   .replace(/src="module-links\.js"/g,     'src="workspace/module-links.js"')
-  .replace(/src="module-workspaceship\.js"/g, 'src="workspace/module-workspaceship.js"')
+  .replace(/src="module-workspaceship\.js[^"]*"/g, 'src="workspace/module-workspaceship.js"')
   .replace(/src="module-users\.js[^"]*"/g,   'src="workspace/module-users.js"');
 
 const dom = new JSDOM(html, {

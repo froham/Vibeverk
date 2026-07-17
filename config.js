@@ -298,5 +298,9 @@ window.SITE_CONFIG = {
   // modulet sitt eige CFG.customModules[id]-oppslag). La stå {} for ingen.
   customModules: {
     // "vaktplan": { label: "Vaktplan", enabled: true, params: {} }
+    // "spaceship": { label: "Spaceship (easter egg)", enabled: true, params: {} }
+    //   -- ekte, fungerande testcase (workspace/module-workspaceship.js),
+    //   sjå docs/roadmap/ROADMAP.md Fase 10. Absent = uendra åtferd (framleis
+    //   eit skjult easter egg), enabled: false slår han av per kunde.
   }
 };
