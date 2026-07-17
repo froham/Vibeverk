@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.42.2 — 2026-07-17
+
+### Retta: status-badgen (Ny/Lest/Løst) synte seg urestylt i Workspace sin CRM-tidslinje
+
+Brukar spurde kvifor "Løst"-taggen ikkje såg ut som ei pille i skjermbiletet frå førre retting. Rotårsak: `.stat-badge`/`.stat-badge--ny/--lest/--løst`-CSS-en (`module-crm.js` sin `tlItem()` set klassen `stat-badge stat-badge--<status>`) fanst alt i `index.html` og `admin/index.html`, men var ALDRI lagt til i `workspace/index.html` — sjølve HTML-strukturen var korrekt heile tida, berre stilarket for denne eine klassen mangla i den eine av dei tre flatene som deler `module-crm.js`. Lagt til, ordrett kopiert frå dei to andre shell-a.
+
+Testa: `node test-workspace.js` (162/163), same kjende feil, ingen nye regresjonar.
+
 ## 0.42.1 — 2026-07-17
 
 ### Retta CRM-tidslinja: chat/lead-duplikat + auto-"løst" på berre-vising

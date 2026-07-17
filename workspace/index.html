@@ -235,6 +235,15 @@
     .crm-tl-row { position: relative; }
     .crm-tl-row:hover { background: var(--color-tint); }
     .crm-tl-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    /* Status-system (Ny/Lest/Løst) -- brukt av CRM-tidslinja sin tagBadge
+       (module-crm.js sin tlItem()). Fanst alt i index.html/admin/index.html,
+       men vart aldri lagt til her -- difor synte badgen seg som urestylt rein
+       tekst i Workspace (funne av brukar 2026-07-17), ikkje ein farga pille
+       som i Web-admin. Same reglar, kopiert ordrett derifrå. */
+    .stat-badge { display: inline-flex; align-items: center; font-size: .72rem; font-weight: 700; padding: .15rem .55rem; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
+    .stat-badge--ny   { background: #fde8d7; color: #b5651d; }
+    .stat-badge--lest { background: var(--color-tint); color: var(--color-primary); }
+    .stat-badge--løst { background: #e3f3e8; color: #1e8449; }
     .btn--danger    { background: transparent; color: #c0392b; border-color: #c0392b; }
     .btn--danger:hover { background: #fff0ef; }
     .btn--sm { padding: .45rem .85rem; font-size: .82rem; }
