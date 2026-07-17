@@ -30,6 +30,12 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.40.2 — 2026-07-17
+
+### Smoke-test: user-deletion stadfesta PASS live
+
+Brukar heva Supabase sin auth-e-post-rate-limit til 100 (Dashboard → Authentication → Rate Limits) — den einaste attverande blokkeringa frå 0.40.1. `user-deletion`-flyten køyrde deretter reint mot ekte `vibeverk-staging`: inviterte eit testmedlem, gav dei ei forfatta oppgåve, fjerna dei via den ekte "Fjern brukar"-UI-en, stadfesta at oppgåva overlevde med `created_by` nulla ut. Ingen attverande testdata i staging-databasen etterpå, `config.js` uendra. Begge dei to bygde smoke-test-flytene (`dashboard-shortcuts`, `user-deletion`) er no stadfesta PASS live.
+
 ## 0.40.1 — 2026-07-17
 
 ### Dokumentasjonsopprydding + smoke-test: user-deletion-flyt bygd
