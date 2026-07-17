@@ -125,6 +125,7 @@ assert(navIds.includes("tasks"),         "b3: tasks i nav");
 assert(navIds.includes("announcements"), "b4: announcements i nav");
 assert(!navIds.includes("workspaceship"),"b5: workspaceship skjult");
 assert(navIds.includes("users"),         "b6: users i nav for admin");
+assert(!navIds.includes("spaceship"),    "b7: spaceship-modulen skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
 
 /* --- C) INGEN OFFENTLEG INNHALD ------------------------------------------ */
 assert(!doc.querySelector(".site-header"), "c1: ingen site-header");
@@ -632,6 +633,69 @@ nav("#/notes"); nav("#/dashboard");
     "z5: direkte navigering til #/kb krasjar ikkje sjølv om modulen aldri registrerte seg");
   assert(doc2.getElementById("intranet-main").textContent.indexOf("Modul ikke funnet") > -1,
     "z6: #/kb fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
+})();
+
+/* --- AA) SPACESHIP SOM CUSTOMMODULES-EKSEMPEL (bein 3, Fase 10) -----------
+   Motsett av Z-seksjonen over: her PATCHAR vi config.js sin customModules
+   for å stadfeste PÅ-stien -- at ei eksplisitt { enabled: true }-oppføring
+   faktisk får modulen til å registrere seg i navigasjonen og rendere når
+   nokon navigerer dit, og at det eksisterande trippel-klikk-easter-egget
+   (urørt av denne endringa) framleis fungerer parallelt. Eigen, separat DOM
+   av same grunn som Z-seksjonen: App.ready() sin gate vert avgjort éin gong
+   ved skriptlasting. --------------------------------------------------- */
+(function () {
+  const patchedHtml = html; // same script-lasting som hovud-dom-en
+  const dom3 = new JSDOM(patchedHtml, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window3 = dom3.window;
+  window3.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window3.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window3.scrollTo = () => {};
+  window3.HTMLElement.prototype.scrollIntoView = () => {};
+  window3.URL.createObjectURL = window3.URL.createObjectURL || (() => "blob:mock");
+  window3.URL.revokeObjectURL = window3.URL.revokeObjectURL || (() => {});
+  window3.confirm = () => true;
+
+  [
+    "config.js", "components.js", "core.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js",
+    "workspace/module-workspaceship.js"
+  ].forEach(f => {
+    let src = fs.readFileSync(f, "utf8");
+    if (f === "config.js") {
+      src = src.replace(/customModules:\s*\{/, 'customModules: { spaceship: { label: "Spaceship", enabled: true, params: {} },');
+    }
+    window3.eval(src);
+  });
+
+  const _NS3 = window3.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window3.eval(`sessionStorage.setItem("${_NS3}:admin","admin")`);
+  window3.document.dispatchEvent(new window3.Event("DOMContentLoaded", { bubbles: true }));
+  const doc3 = window3.document;
+
+  function nav3(hash) {
+    window3.location.hash = hash;
+    window3.dispatchEvent(new window3.Event("hashchange"));
+  }
+
+  const navIds3 = [...doc3.querySelectorAll(".i-nav__link")].map(a => a.getAttribute("data-inav"));
+  assert(navIds3.includes("spaceship"),
+    "aa1: spaceship-modulen VISES i navigasjonen når customModules.spaceship.enabled er true");
+  nav3("#/spaceship");
+  assert(!!doc3.querySelector("#workspaceship-root"),
+    "aa2: navigering til #/spaceship rendrar spelet inline i innhaldsområdet");
+  assert(typeof window3.WorkspaceshipEasterEgg === "object" && typeof window3.WorkspaceshipEasterEgg.launch === "function",
+    "aa3: det eksisterande trippel-klikk-easter-egget er urørt og framleis tilgjengeleg parallelt");
+  nav3("#/dashboard");
+  assert(!doc3.getElementById("intranet-main").contains(doc3.getElementById("workspaceship-root")),
+    "aa4: workspaceship-root vert fjerna frå DOM-et når brukaren navigerer vekk (naudsynt for at MutationObserver-oppryddinga faktisk skal utløysast)");
 })();
 
 /* --- RESULTAT ------------------------------------------------------------- */
