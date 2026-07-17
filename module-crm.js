@@ -1093,12 +1093,94 @@
       refresh();
       return;
     }
-    if (item.source === "chat") {
-      var CAdmin = window.VwChatAdmin;
-      if (CAdmin && CAdmin.openConv) CAdmin.openConv(item.chatId);
-      if (document.getElementById("intranet") && window.Intranet) window.Intranet.navigate("chat");
-      else { var tab2=document.querySelector("[data-tab='chat-admin']"); if (tab2) tab2.click(); }
-      return;
+    if (item.source === "chat") return openChatHistoryDialog(item, c, refresh);
+  }
+
+  // Les-berre historikk for éin chat-samtale, opna frå Kunder-tidslinja i
+  // staden for å navigere heilt vekk til Chat-fana (ønska av brukar
+  // 2026-07-17: kunden skreiv noko i chatten, forlot han, og admin tek opp
+  // tråden via e-post — dei har alltid e-posten sidan chat krev registrering
+  // med e-post for å starte). "Svar via e-post" gjenbruker den eksisterande
+  // openEmailDialog()-mekanismen uendra (same mønster som e-post-comm-svar),
+  // IKKJE ein ny e-post-veg. "Opne i Chat" er framleis tilgjengeleg for ein
+  // samtale som enno er open og treng eit ekte, live svar der og då.
+  function chatMsgTimestamp(at) {
+    var d = new Date(at || 0);
+    return isNaN(d.getTime()) ? "" : d.toLocaleString("nb-NO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function chatMsgsHtml(msgs) {
+    return msgs.length
+      ? msgs.filter(function (m) { return m.sender !== "system"; }).map(function (m) {
+          var isOp = m.sender === "operator";
+          return '<div style="display:flex;' + (isOp ? "justify-content:flex-end" : "justify-content:flex-start") + '">' +
+            '<div style="max-width:75%;padding:.55rem .75rem;border-radius:12px;font-size:.85rem;line-height:1.4;' +
+              (isOp
+                ? "background:var(--color-primary,#2980B9);color:#fff;border-bottom-right-radius:3px"
+                : "background:var(--color-alt,#f3f4f6);color:var(--color-text);border-bottom-left-radius:3px") +
+            '">' + esc(m.text || "") +
+              '<div style="font-size:.68rem;opacity:.7;margin-top:.2rem">' + esc(chatMsgTimestamp(m.at)) + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join("")
+      : '<p style="text-align:center;font-size:.85rem;color:var(--color-muted);padding:1.5rem 0;margin:0">Ingen meldinger i denne samtalen.</p>';
+  }
+
+  function openChatHistoryDialog(item, c, refresh) {
+    var Chat = window.VwChat;
+    var conv = Chat && Chat.getConv ? Chat.getConv(item.chatId) : null;
+    var msgs = Chat && Chat.getMsgs ? Chat.getMsgs(item.chatId) : [];
+    var isClosed = !conv || conv.status === "closed";
+    function statusText() {
+      return isClosed
+        ? "Samtalen er lukket — kunden er ikke lenger til stede. Bruk «Svar via e-post» for å følge opp."
+        : "Samtalen er fortsatt åpen.";
+    }
+    var dl = openDialog({
+      title: "Chat-samtale" + (conv && conv.name ? " med " + conv.name : ""),
+      wide: true,
+      bodyHtml:
+        '<p class="crm-chat-status" style="font-size:.78rem;color:var(--color-muted);margin:0">' + esc(statusText()) + '</p>' +
+        '<div class="crm-chat-msgs" style="display:grid;gap:.5rem">' + chatMsgsHtml(msgs) + '</div>',
+      footHtml:
+        C.button({ label: "Svar via e-post", variant: "primary", attrs: 'id="dlg-chat-email"' }) +
+        (conv ? C.button({ label: "Åpne i Chat", variant: "ghost", attrs: 'id="dlg-chat-open"' }) : ""),
+      onMount: function (dialogEl) {
+        dialogEl.querySelector("#dlg-chat-email").addEventListener("click", function () {
+          closeDialog(dialogEl);
+          var lastVisitorMsg = msgs.filter(function (m) { return m.sender === "visitor"; }).slice(-1)[0];
+          openEmailDialog(c, refresh, {
+            subject: "Chat-samtale" + (conv && conv.name ? " med " + conv.name : ""),
+            html: lastVisitorMsg ? '<div class="admin-lead-msg">' + esc(lastVisitorMsg.text || "") + '</div>' : ""
+          });
+        });
+        var openBtn = dialogEl.querySelector("#dlg-chat-open");
+        if (openBtn) openBtn.addEventListener("click", function () {
+          closeDialog(dialogEl);
+          var CAdmin = window.VwChatAdmin;
+          if (CAdmin && CAdmin.openConv) CAdmin.openConv(item.chatId);
+          if (document.getElementById("intranet") && window.Intranet) window.Intranet.navigate("chat");
+          else { var tab2 = document.querySelector("[data-tab='chat-admin']"); if (tab2) tab2.click(); }
+        });
+      }
+    });
+
+    // Lokal cache kan vere forelda/tom viss admin opnar CRM utan å ha vore
+    // innom Chat-fana denne økta (det er det som elles utløyser fyrste
+    // hydrering, sjå module-chat.js sin _adminHydrated-gate). Hent på nytt i
+    // bakgrunnen og oppdater dialogen i staden for å stole blindt på det som
+    // alt måtte liggje i localStorage -- UX-gjennomgang 2026-07-17.
+    if (Chat && Chat.hydrateFromSupabase) {
+      Chat.hydrateFromSupabase(function () {
+        if (!dl.parentNode) return; // brukar lukka dialogen før hydreringa vart ferdig
+        conv = Chat.getConv ? Chat.getConv(item.chatId) : conv;
+        msgs = Chat.getMsgs ? Chat.getMsgs(item.chatId) : msgs;
+        isClosed = !conv || conv.status === "closed";
+        var statusEl = dl.querySelector(".crm-chat-status");
+        var msgsEl = dl.querySelector(".crm-chat-msgs");
+        if (statusEl) statusEl.textContent = statusText();
+        if (msgsEl) msgsEl.innerHTML = chatMsgsHtml(msgs);
+      });
     }
   }
 
