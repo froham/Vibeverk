@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.42.1 — 2026-07-17
+
+### Retta CRM-tidslinja: chat/lead-duplikat + auto-"løst" på berre-vising
+
+Brukar fann live (skjermbilete av eigen «Kunder»-tidslinje): to av dei nyaste hendingane såg ut som chat, men synte seg vere «Kontaktmelding»-oppføringar med heile chat-transkriptet limt inn som tekst, og fleire nyleg viste oppføringar var alt merkt «Løst» sjølv om ingen faktisk hadde svart på dei.
+
+- **Rotårsak, IKKJE noko nytt denne runda**: å lukke ein chat-samtale konverterer han alt (pre-eksisterande, sjå `saveConvAsLead()`/`setLeadResolved()` i `module-chat.js`) til ein "Kontakt"-lead med heile samtalen flata ut som `message`, automatisk sett "Løst". `getTimeline()` i `module-crm.js` viste denne lead-en OG den rå chat-samtalen som to separate hendingar for same interaksjon — alltid slik, men lite synleg før chat fekk sin eigen rike historikk-modal (v0.42.0) og gjorde duplikatet openbert.
+- **Retta**: `getTimeline()` dedupar no — ein lead med `chatId` (chat-opphav) skjuler den tilsvarande rå chat-oppføringa. Den attverande lead-oppføringa (som ber ny/lest/løst-statusen Henvendelser-arbeidsflyten treng) opnar no den rike chat-historikk-modalen (transkript + Svar via e-post med sitert kontekst) i staden for den generiske e-post-svar-modalen sin enkle "Svar i chat"-snarveg. Framleis-opne samtalar (ingen lead enno) er heilt uendra.
+- **Retta, stadfesta av brukar**: å opne/vise ei henvending i CRM-tidslinja sette før ALLTID status til "Løst", same om admin faktisk svara eller berre kika. No: berre "ny" → "lest" ved vising (same mønster som core.js sin eigen, allereie-korrekte Web-admin-leadsliste sitt "vis detaljar"-steg), aldri automatisk "løst" lenger frå denne tidslinja. Manuell "løst"-markering skjer framleis via Web-admin sin eigen leads-status-nedtrekksmeny (delt `leads`-tabell, uendra).
+
+Testa: `node test.js` (535/536) og `node test-workspace.js` (162/163), same kjende feil, ingen nye regresjonar.
+
 ## 0.42.0 — 2026-07-17
 
 ### CRM: chat-historikk-modal + «Svar via e-post», Workspace: minimerbar sidemeny
