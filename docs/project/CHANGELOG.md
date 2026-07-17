@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.41.0 — 2026-07-17
+
+### Fase 10 slice 2: Console-redigering av customModules-manifest
+
+Utvidar Fase 10 (`customModules`-manifest, bein 3) sitt slice 1 (v0.38.0, les-berre) til faktisk redigering i Console, per Arkitekt-konsultasjon 2026-07-17 (les-berre design-runde, sjå kommentarane i koden for fullt resonnement).
+
+- **Ny action `set_custom_modules_manifest`** i `supabase-control/supabase/functions/tenant-admin/index.ts` — same mønster som `update_tenant_hostnames` (heile-blob-erstatning, ikkje per-nøkkel samanslåing). Streng strukturvalidering (modul-id-format, at kvar oppføring er nøyaktig `{label, enabled, params}`), men `params` sitt INNHALD er med vilje ikkje validert (kan ikkje vite kva eit ikkje-bygd spesialmodul treng). 100KB storleikstak (målt i faktiske UTF-8-byte, ikkje UTF-16-lengd). Audit-logg skriv berre ei kompakt teljing, aldri rå `params`-innhald.
+- **Console «Modular»-fana**: «Skreddarsydde modular» gjekk frå rein visning til fullt redigerbare kort — namn (tekstfelt), aktivert (avkryssingsboks), innstillingar (fritt JSON-tekstfelt, sidan kvart framtidig spesialmodul har sin eigen, ukjende form). Eige "Legg til ny modul"-skjema. Fjerning av ei oppføring har eigen `confirm()`-dialog (Tier B, utvida med ei eiga åtvaring når kunden er aktiv OG modulen er PÅ — fjerning har då same synlege konsekvens som å slå han av). Vanleg lagring/aktivering-endring viser i staden ei Tier B-inline-åtvaring når kunden er aktiv, ingen `confirm()` (matchar det etablerte mønsteret frå kundesjekklista sitt domene-felt).
+- **Tryggingsgjennomgang** (ny API-handling til delt control-plane-tabell, per CLAUDE.md sin standardregel): eitt MEDIUM-funn (inkonsekvent HTML-attributt-escaping av modul-id i tre stader i Console-koden — retta, alle no via `C.esc()`) og eitt LOW-funn verdt å rette (storleikstaket målte UTF-16-lengd, ikkje faktiske byte — retta til `TextEncoder`). Prototype-pollution vurdert og funne IKKJE mogleg (modul-id-regexen tillèt ikkje understrek, så `__proto__` kan aldri bli ein modul-id).
+- **UX-gjennomgang**: retta manglande `label for=`-kopling på JSON-tekstfeltet (skjermlesar-/klikkbarheit-regresjon mot `C.field()` sitt eige mønster), inkonsekvent `alert()` på feil ved fjerning (no `statusMsg()` som resten av skjemaet), lagt til «Lagrar…/Fjernar…/Legg til…»-mellomtilstand før nettverkskall, og retta valideringsrekkefølgja (namn sjekkast før JSON, så begge feil ikkje krev to forsøk å oppdage).
+- **Ikkje bygd enno, med vilje**: sjølve det fyrste ekte `module-custom-<kunde>-<funksjon>.js`-eksempelet — ventar framleis på ein reell kundeførespurnad, per ROADMAP.
+
+Testa: `node test.js` (535/536) og `node test-workspace.js` (157/158), same kjende feil — merk at Console sjølv ikkje har automatisert testdekning (stadfesta av Arkitekten), så manuell gjennomgang/QA er den faktiske test-planen her.
+
 ## 0.40.2 — 2026-07-17
 
 ### Smoke-test: user-deletion stadfesta PASS live

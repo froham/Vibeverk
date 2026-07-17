@@ -475,6 +475,96 @@ serve(async (req: Request) => {
     return json({ success: true });
   }
 
+  // ── set_custom_modules_manifest ──────────────────────────────────────────
+  // Console "Modular"-fana sin redigering av tenants.custom_modules_manifest
+  // (Fase 10 slice 2, sjå docs/roadmap/ROADMAP.md "Later"). Deliberately NOT
+  // routed through broker/set_config -- dette er operatør-forfatta innhald
+  // (kva skreddarsydde tilleggsmodular finst for denne kunden), ikkje
+  // kunde-redigerbar config, per Arkitekt-avgjerda frå slice 1 (2026-07-16).
+  // Erstattar HEILE kolonna, same "heile-blob"-semantikk som
+  // update_tenant_hostnames over -- ikkje ei per-nøkkel samanslåing.
+  //
+  // Arkitekt-konsultasjon 2026-07-17 (les-berre, før implementasjon):
+  // - Validering: streng struktur der funksjonen faktisk KAN vurdere
+  //   (modul-id-format, at kvar oppføring er nøyaktig {label,enabled,params}),
+  //   men params sitt INNHALD er med vilje IKKJE validert -- funksjonen kan
+  //   ikkje vite kva eit ikkje-bygd spesialmodul faktisk treng.
+  // - Storleikstak lagt til (CUSTOM_MODULES_MAX_BYTES): dette er den fyrste
+  //   genuint ubundne blob-en ein superadmin kan lime inn i dette filet --
+  //   alt anna (slug/hostname/e-post) er alt avgrensa i lengd av eige format.
+  // - Statusport: same to tillatne status som update_tenant_hostnames
+  //   (provisioning/active), avvis archived.
+  // - Audit-logg: KOMPAKT strukturell oppsummering, ALDRI rå params-innhald
+  //   -- eit HMS-sjekkliste-modul sine params kunne t.d. innehalde sensitiv
+  //   tekst, same prinsipp som verify_tenant_schema sin logging av
+  //   tabellnamn, ikkje radinnhald.
+  const CUSTOM_MODULE_ID_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+  const CUSTOM_MODULES_MAX_BYTES = 100 * 1024;
+  if (action === "set_custom_modules_manifest") {
+    if (tenant.status !== "provisioning" && tenant.status !== "active") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' eller 'active' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er 'provisioning' eller 'active'" }, 403);
+    }
+    const { manifest } = body;
+    if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) {
+      return json({ error: "Ugyldig format -- manifestet må vere eit objekt" }, 400);
+    }
+    const manifestObj = manifest as Record<string, unknown>;
+    const ids = Object.keys(manifestObj);
+    const ALLOWED_ENTRY_KEYS = ["label", "enabled", "params"];
+    for (const id of ids) {
+      if (!CUSTOM_MODULE_ID_RE.test(id)) {
+        return json({ error: "Ugyldig modul-id: «" + id + "» (berre små bokstavar, tal og bindestrek)" }, 400);
+      }
+      const entry = manifestObj[id];
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        return json({ error: "Ugyldig oppføring for «" + id + "» -- må vere eit objekt" }, 400);
+      }
+      const e = entry as Record<string, unknown>;
+      const entryKeys = Object.keys(e);
+      const unknownKey = entryKeys.find((k) => !ALLOWED_ENTRY_KEYS.includes(k));
+      if (unknownKey || entryKeys.length !== ALLOWED_ENTRY_KEYS.length) {
+        return json({ error: "Ugyldig oppføring for «" + id + "» -- forventa nøyaktig label/enabled/params" }, 400);
+      }
+      if (typeof e.label !== "string" || !e.label.trim()) {
+        return json({ error: "«" + id + "» manglar ein gyldig label" }, 400);
+      }
+      if (typeof e.enabled !== "boolean") {
+        return json({ error: "«" + id + "» sin enabled må vere true/false" }, 400);
+      }
+      if (e.params === null || typeof e.params !== "object" || Array.isArray(e.params)) {
+        return json({ error: "«" + id + "» sin params må vere eit objekt" }, 400);
+      }
+    }
+    const serialized = JSON.stringify(manifestObj);
+    // Security Auditor review (2026-07-17): .length counts UTF-16 code units,
+    // not the actual UTF-8 bytes stored in the jsonb column -- diacritics/
+    // CJK content could pass this check while the real stored payload runs
+    // 2-3x larger. Measure actual encoded bytes instead.
+    if (new TextEncoder().encode(serialized).length > CUSTOM_MODULES_MAX_BYTES) {
+      return json({ error: "Manifestet er for stort (maks " + Math.round(CUSTOM_MODULES_MAX_BYTES / 1024) + "KB)" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: updated, error } = await controlSrvSb
+      .from("tenants")
+      .update({ custom_modules_manifest: manifestObj, updated_at: new Date().toISOString() })
+      .eq("id", tenant_id)
+      .eq("status", tenant.status)
+      .select("id");
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
+      return json({ error: "Tenanten sin status endra seg — prøv igjen" }, 409);
+    }
+    const enabledCount = ids.filter((id) => (manifestObj[id] as Record<string, unknown>).enabled === true).length;
+    await auditFinish(auditId, "success", ids.length + " modular (" + enabledCount + " PÅ, " + (ids.length - enabledCount) + " AV)");
+    return json({ success: true });
+  }
+
   // ── update_tenant_connection ─────────────────────────────────────────────
   // Step 2/3 of the checklist: paste in the newly created project's URL +
   // anon key (both non-secret, safe to store as plain columns).
