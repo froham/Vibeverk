@@ -228,6 +228,9 @@ window.Intranet = (function () {
 
     root.innerHTML =
       '<aside class="i-sidebar" id="intranet-sidebar">' +
+        '<button class="i-sidebar__collapse-btn" id="intranet-sidebar-collapse" title="Minimer sidemeny" aria-label="Minimer sidemeny">' +
+          '<i class="ti ti-chevron-left"></i>' +
+        '</button>' +
         '<div class="i-sidebar__brand" data-workspaceship-trigger>' +
           '<span class="i-sidebar__name">' + C.esc(tenantName) + '</span>' +
         '</div>' +
@@ -269,6 +272,28 @@ window.Intranet = (function () {
     }
     if (hamburger) hamburger.addEventListener("click", openSidebar);
     if (overlay)   overlay.addEventListener("click", closeSidebar);
+
+    // Minimer sidemeny -- reint visuelt/plasssparande (skil seg frå mobil sin
+    // hamburger-open/lukk-mekanisme over, som handterer HEILT skjult vs. synleg
+    // på smale skjermar). Persistert per nettlesar via App.store, ikkje
+    // tenant-/brukar-spesifikt -- same enkle mønster som andre reine UI-preferansar.
+    var COLLAPSE_KEY = "wsp-sidebar-collapsed";
+    var collapseBtn = document.getElementById("intranet-sidebar-collapse");
+    function applyCollapsed(collapsed) {
+      if (!sidebar) return;
+      sidebar.classList.toggle("is-collapsed", collapsed);
+      if (collapseBtn) {
+        collapseBtn.querySelector("i").className = collapsed ? "ti ti-chevron-right" : "ti ti-chevron-left";
+        collapseBtn.title = collapsed ? "Vis sidemeny" : "Minimer sidemeny";
+        collapseBtn.setAttribute("aria-label", collapseBtn.title);
+      }
+    }
+    applyCollapsed(!!App.store.get(COLLAPSE_KEY, false));
+    if (collapseBtn) collapseBtn.addEventListener("click", function () {
+      var next = !sidebar.classList.contains("is-collapsed");
+      applyCollapsed(next);
+      App.store.set(COLLAPSE_KEY, next);
+    });
 
     // Lukk sidebar ved navigasjon på mobil
     document.querySelectorAll(".i-nav__link").forEach(function(a) {
@@ -335,8 +360,9 @@ window.Intranet = (function () {
         ? '<span style="margin-left:auto;background:var(--color-primary);color:#fff;border-radius:999px;' +
           'font-size:.68rem;font-weight:700;padding:.1rem .42rem;min-width:18px;text-align:center">' + badge + '</span>'
         : "";
-      return '<a class="i-nav__link' + active + '" data-inav="' + C.esc(m.id) + '" href="#/' + C.esc(m.id) + '">' +
-        icon + '<span style="flex:1">' + C.esc(m.navLabel || m.id) + '</span>' + badgeHtml +
+      var label = m.navLabel || m.id;
+      return '<a class="i-nav__link' + active + '" data-inav="' + C.esc(m.id) + '" href="#/' + C.esc(m.id) + '" title="' + C.esc(label) + '" aria-label="' + C.esc(label) + '">' +
+        icon + '<span class="i-nav__link-label" style="flex:1">' + C.esc(label) + '</span>' + badgeHtml +
       '</a>';
     }
 

@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.42.0 — 2026-07-17
+
+### CRM: chat-historikk-modal + «Svar via e-post», Workspace: minimerbar sidemeny
+
+To brukarønska, uavhengige mindre funksjonar, bygde og UX-gjennomgått same runde.
+
+- **CRM-tidslinja sitt chat-punkt** opnar no ein les-berre historikk-modal (gjenbruker den eksisterande `openDialog()`-mekanismen, same mønster som telefon-/notat-dialogane) i staden for å navigere heilt vekk til Chat-fana. Motivasjon (stadfesta av brukar): kunden skreiv noko i chatten, forlot han, og admin vil ta opp tråden via e-post — chat krev registrering med e-post for å starte, så den finst alltid. Modalen har «Svar via e-post» (opnar det eksisterande e-post-svar-vindauget, `openEmailDialog()`, uendra mekanisme — men no med emne OG siste kunde-melding sitert med, ikkje ein tom komponist) og «Opne i Chat» (den gamle åtferda, framleis tilgjengeleg for ei samtale som enno er open).
+- **Merk**: `getChatHistory()`/`getTimeline()` i `module-crm.js` synte seg alt å kombinere chat inn i tidslinja saman med e-post/notat/oppgåve/dokument-typane — denne økta sin tidlegare påstand om at "chat berre er ein hopp-til-snarveg" var feil, retta undervegs.
+- **UX-gjennomgang gjennomført FØR merge**: fann og retta 4 HIGH-funn — (1) «Svar via e-post» opna før ein heilt tom komponist, mista konteksten admin nettopp hadde lese, no sitert med emne + siste kundemelding; (2) chat-transkriptet vart lese frå ein lokal cache som kunne vere forelda/tom om admin opna CRM utan å ha vore innom Chat-fana denne økta — no hentar dialogen på nytt i bakgrunnen (`Chat.hydrateFromSupabase()`) og oppdaterer innhaldet in-place; (3) tidsstempel per melding brukte relativ "for X sidan"-tid, upraktisk inni éin samtale — retta til absolutt klokkeslett; (4) sjå Workspace-punktet under for det fjerde funnet (CSS-arv).
+- **Workspace-sidemenyen** kan no minimerast til ein rein ikon-rad via ei lita «←»-pil øvst til høgre i sidemenyen (roterer til «→» når minimert). Persistert per nettlesar. Skjult på mobil (der hamburger-meny-mønsteret alt handterer heilt av/på). UX-gjennomgang fann og retta 2 HIGH-funn: CSS-en for å skjule nav-tekstlabelen trefte for breitt og skjulte varsel-tal-merka (nye henvendelser) i tillegg — no skilt til ein eigen `.i-nav__link-label`-klasse som ikkje rører merka; av/på-knappen overlappa det fyrste nav-ikonet når sidemenyen vart minimert (brand-blokka som normalt gav rom for knappen forsvann) — retta med topp-avstand på navigasjonslista i minimert tilstand. Pluss eit mindre tilgjengelegheit-funn: nav-lenker mangla `title`/`aria-label` (viktig når berre ikonet er synleg, minimert) — lagt til.
+
+Testa: `node test.js` (535/536) og `node test-workspace.js` (162/163), same kjende feil, ingen nye regresjonar.
+
 ## 0.41.2 — 2026-07-17
 
 ### Retta 0.41.1: Spaceship som ein EIGEN modul i Workspace-menyen (ikkje av/på-styring av easter-egget)
