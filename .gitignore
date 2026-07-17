@@ -6,5 +6,6 @@ node_modules/
 Thumbs.db
 supabase/.temp/
 .claude/skills/run-vibeverk/screenshots/
+.claude/skills/smoke-vibeverk/screenshots/
 .vercel
 .env*

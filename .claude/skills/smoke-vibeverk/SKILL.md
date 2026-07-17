@@ -25,6 +25,7 @@ ROADMAP.md "Next" item 5. Design reviewed by the QA agent 2026-07-16 before any 
   VW_STAGING_ADMIN_EMAIL=...
   VW_STAGING_ADMIN_PASSWORD=...
   ```
+- **`user-deletion` flow only**: one more env var, `VW_STAGING_DB_URL` (the staging **pooler connection string**, not the anon key — Dashboard → Settings → Database → Connection pooling, or ask whoever set up `vibeverk-staging`). This flow drives the real invite/remove UI for the code path actually under test, but uses a direct SQL arrange/assert step for the one thing no UI exposes: pre-authoring a task as the throwaway member (this suite never completes a real login for an invited member — no password/magic-link step exists here). `runStagingSql()` in `runner.js` shells out to `npx supabase db query --file <tmp>.sql --output-format json` — **verified live 2026-07-17** against real `vibeverk-staging`: the CLI prints a "Connecting to remote database..." line then a pretty-printed (multi-line) JSON object shaped `{ boundary, rows: [...], warning }`. Parsing slices from the first `{` to the last `}` in stdout (an earlier, untested version assumed one-JSON-object-per-line, which would never have matched real multi-line output).
 
 ## How the config-swap works
 
@@ -53,8 +54,8 @@ node .claude/skills/smoke-vibeverk/runner.js dashboard-shortcuts
 
 | flow | status | what it proves |
 |---|---|---|
-| `dashboard-shortcuts` | **implemented** | Dashboard's "Ny kunngjøring"/"Ny artikkel" shortcuts open the editor immediately on navigation (the `_annOpenNew()`/`_kbOpenNew()` flag pattern), not just eventually — this was a real, previously-shipped race-condition bug (see `docs/project/CHANGELOG.md` 0.32.x) |
-| `user-deletion` | not yet built | Next in the QA-recommended build order — create a throwaway member via Admin API, assign them a task as the admin driver account, delete them via the real Workspace UI, assert authored content survives (author reference nulled, not the row dropped) |
+| `dashboard-shortcuts` | **implemented, verified live 2026-07-17 (PASS)** | Dashboard's "Ny kunngjøring"/"Ny artikkel" shortcuts open the editor immediately on navigation (the `_annOpenNew()`/`_kbOpenNew()` flag pattern), not just eventually — this was a real, previously-shipped race-condition bug (see `docs/project/CHANGELOG.md` 0.32.x). Requires `config.js`'s `intranettFeatures.kb` to be on — the swap forces this temporarily since the repo default is `false` (see "How the config-swap works"). |
+| `user-deletion` | **implemented, blocked on a real external constraint (not a code bug)** | Regression coverage for `20260712203346_fix_user_delete_fk_restrict.sql` (removing a user who'd authored a task/announcement/KB article used to fail with an opaque "Feil: {}"). Invites a throwaway member via the real UI, gives them an authored task via `runStagingSql()` (no login path exists in this suite for an invited member), removes them via the real UI, asserts the task survives with `created_by` nulled. **First live attempts (2026-07-17) hit Supabase's own Auth "email rate limit exceeded"** after a few invites in quick succession — a project-level setting (Dashboard → Authentication → Rate Limits → email), separate from SMTP provider config, not something this flow's code controls. Retry once that limit is raised or enough time has passed. |
 | `backup-restore` | not yet built | Snapshot-restore-self pattern: `export_backup_tables()` at start, mutate, `restore_backup_tables()` with the original snapshot at the end — self-healing, never leaves staging in a different state than it started |
 
 Exit code is non-zero on any flow failure (unlike `run-vibeverk`'s driver, which always exits 0) — this is deliberate, so a future cron/`schedule` wrapper can detect failure without a redesign.
