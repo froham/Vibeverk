@@ -44,6 +44,8 @@ Utvidar Fase 10 (`customModules`-manifest, bein 3) sitt slice 1 (v0.38.0, les-be
 
 Testa: `node test.js` (535/536) og `node test-workspace.js` (157/158), same kjende feil — merk at Console sjølv ikkje har automatisert testdekning (stadfesta av Arkitekten), så manuell gjennomgang/QA er den faktiske test-planen her.
 
+**Deploya til `vibeverk-control` 2026-07-17** (same dag, etter merge): `npx supabase functions deploy tenant-admin --project-ref jxoglthrnshabqmdmnui --workdir supabase-control`. Boot-verifisert (eit `set_custom_modules_manifest`-kall med gyldig-formatert men ikkje-operatør JWT gav reint funksjonsnivå-svar, ikkje ein boot-feil) — lågare risiko enn broker-deployen tidlegare same dag sidan denne endringa ikkje la til nokon ny ekstern Deno-importavhengigheit. Ikkje enno stadfesta med ein ekte operatørøkt i Console sjølv.
+
 ## 0.40.2 — 2026-07-17
 
 ### Smoke-test: user-deletion stadfesta PASS live
