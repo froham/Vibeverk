@@ -456,7 +456,8 @@
       items.push({ id:l.id, type:isQ?"quote":"contact", source:"legacy",
         created:new Date(l.time||0).toISOString(),
         title:(isQ?"Tilbudsforespørsel":"Kontaktmelding")+(l.name?" fra "+l.name:""),
-        body:(l.message||"").replace(/<[^>]+>/g,"").slice(0,120), status:l.status||"ny" });
+        body:(l.message||"").replace(/<[^>]+>/g,"").slice(0,120), status:l.status||"ny",
+        chatId: l.chatId || null });
     });
     bookingBookings().forEach(function (b) {
       if (es.indexOf((b.email||"").toLowerCase())===-1) return;
@@ -483,7 +484,18 @@
     return items;
   }
   function getTimeline(cid, emails) {
-    var items = getLegacyHistory(emails).concat(getChatHistory(emails));
+    // Dedupe: å lukke ein chat konverterer han alt til ein "Kontakt"-lead
+    // (sjå saveConvAsLead() i module-chat.js, chatId-feltet koplar dei) --
+    // utan denne sjekken viste tidslinja BÅDE den rå samtalen OG den lukka
+    // lead-versjonen som to separate hendingar for same interaksjon (fann av
+    // brukar 2026-07-17). Lead-oppføringa vinn (ho ber statusen ny/lest/løst
+    // som Henvendelser-arbeidsflyten treng), den rå chat-oppføringa vert
+    // berre vist for samtalar som ENNO IKKJE er lukka/konvertert.
+    var legacy = getLegacyHistory(emails);
+    var legacyChatIds = {};
+    legacy.forEach(function (l) { if (l.chatId) legacyChatIds[l.chatId] = true; });
+    var chatItems = getChatHistory(emails).filter(function (ci) { return !legacyChatIds[ci.chatId]; });
+    var items = legacy.concat(chatItems);
     getCommsFor(cid).forEach(function (c) { items.push(Object.assign({},c,{source:"comm"})); });
     return items.sort(function (a,b) { return new Date(b.created)-new Date(a.created); });
   }
@@ -1076,9 +1088,23 @@
         return;
       }
       var lead = App.getLeads ? App.getLeads().find(function (l) { return l.id===item.id; }) : null;
-      if (!lead || !App.openReplyModal) return;
+      if (!lead) return;
+      // Berre "ny" -> "lest" ved opning/vising -- IKKJE lenger automatisk
+      // "løst" berre av å sjå på henvendinga (retta 2026-07-17, brukar sitt
+      // eksplisitte val). Same mønster som core.js sin EIGEN Web-admin-leads-
+      // liste alt bruker for "vis detaljar" (core.js ~line 2786) -- denne
+      // tidslinja mangla det skiljet mellom "vis"/"svar" til no.
+      if ((lead.status||"ny") === "ny" && App.setLeadStatus) App.setLeadStatus(item.id, "lest");
+      refresh();
+      // Ein lead fødd frå ein lukka chat (sjå saveConvAsLead() i
+      // module-chat.js, chatId koplar dei) opnar no den rikare chat-
+      // historikk-modalen (les-berre transkript + Svar via e-post med sitert
+      // kontekst) i staden for den generiske e-post-svar-modalen sin reine
+      // "Svar i chat"-snarveg -- same runde som tidslinje-dedupen i
+      // getTimeline() over.
+      if (lead.chatId) return openChatHistoryDialog({ chatId: lead.chatId }, c, refresh);
+      if (!App.openReplyModal) return;
       var isQ = item.type === "quote";
-      App.setLeadStatus(item.id, "løst");
       var dato = lead.time ? new Date(lead.time).toLocaleString("nb-NO",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
       App.openReplyModal({
         name: lead.name, email: lead.email,
@@ -1088,9 +1114,8 @@
         signatureOptions: App.buildSignatureOptions(),
         vars: { navn: lead.name||"", epost: lead.email||"", dato: dato, melding: lead.message||"", referanse: lead.referenceNumber||"" },
         previewHtml: '<div class="admin-lead-msg">'+esc(lead.message||"").replace(/\n/g,"<br>")+'</div>',
-        chatId: (lead.source==="chat"&&lead.chatId) ? lead.chatId : null
+        chatId: null
       });
-      refresh();
       return;
     }
     if (item.source === "chat") return openChatHistoryDialog(item, c, refresh);
