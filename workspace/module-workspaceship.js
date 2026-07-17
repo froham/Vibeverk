@@ -872,27 +872,50 @@
     close: close
   };
 
-  // Brukt som fyrste faktiske testcase for customModules-manifestet (bein 3,
-  // Fase 10 slice 1+2, sjå docs/roadmap/ROADMAP.md) -- IKKJE eit ekte
-  // forretningsbehov, berre for å stadfeste at heile vegen frå Console sitt
-  // "Skreddarsydde modular"-skjema til ein faktisk modul-fil fungerer i
-  // praksis. Held fram som eit skjult easter egg for alle som i dag (ingen
-  // manifest-oppføring = uendra åtferd) -- ei EKSPLISITT oppføring med
-  // enabled: false slår han av for berre den kunden, via Console.
-  function customModulesEntry() {
-    var cfg = window.SITE_CONFIG || {};
-    var customModules = cfg.customModules || {};
-    return customModules.spaceship;
-  }
-
   function autoAttach() {
     var config = window.WORKSPACESHIP_EASTER_EGG_CONFIG || {};
     if (config.autoAttach === false) return;
-    var manifestEntry = customModulesEntry();
-    if (manifestEntry && manifestEntry.enabled === false) return;
     attach(config.logoSelector || "[data-workspaceship-trigger]");
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", autoAttach);
   else autoAttach();
+
+  // ── customModules-testcase (bein 3, Fase 10, sjå docs/roadmap/ROADMAP.md) ──
+  // Brukar bad eksplisitt om at Spaceship skal visast som ein EIGEN modul i
+  // Workspace-menyen -- ikkje berre av/på-styring av det eksisterande
+  // trippel-klikk-easter-egget over (urørt, framleis alltid aktivt akkurat
+  // som før denne endringa). Same STANDARD customModules-konvensjon som
+  // slice 1 (Console sitt Modular-panel) alt etablerte: ABSENT
+  // manifest-oppføring = IKKJE synleg i menyen (motsett av easter-egget sin
+  // eigen "framleis på som før"-konvensjon over) -- berre ei eksplisitt
+  // { enabled: true } får menypunktet til å dukke opp for den kunden.
+  var Intranet = window.Intranet;
+  if (Intranet && App.ready) {
+    App.ready(function (CFG) {
+      var customModules = CFG.customModules || {};
+      var moduleEntry = customModules.spaceship;
+      if (!moduleEntry || moduleEntry.enabled !== true) return;
+      Intranet.registerModule({
+        id: "spaceship",
+        navLabel: moduleEntry.label || "Spaceship",
+        icon: "rocket",
+        roles: ["admin", "editor", "member"],
+        // Ekte barne-element (ikkje outlet sjølv) -- outlet
+        // ("#intranet-main") er EIN persistent container workspace-core.js
+        // aldri fjernar frå DOM-et, berre tømmer innhaldet i ved kvar
+        // ruteskifte. mountGame() sin eksisterande MutationObserver-baserte
+        // opprydding (avbryt animasjonsløkke, fjern globale lyttarar) sjekkar
+        // om ROTA framleis er i DOM-et -- viss root === outlet ville han
+        // ALDRI trigge, og animasjonsløkka ville køyrt i det uendelege i
+        // bakgrunnen etter at brukaren har navigert vekk. Dette barne-elementet
+        // vert korrekt fjerna når outlet.innerHTML vert bytt ut ved neste
+        // ruteskifte, akkurat som launch() sin eigen modal-versjon over.
+        mount: function (el) {
+          el.innerHTML = '<div id="workspaceship-root" class="wsp-root"></div>';
+          mountGame(el, function () { location.hash = "#/dashboard"; });
+        }
+      });
+    });
+  }
 })();

@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.41.2 — 2026-07-17
+
+### Retta 0.41.1: Spaceship som ein EIGEN modul i Workspace-menyen (ikkje av/på-styring av easter-egget)
+
+Brukar presiserte at 0.41.1 sin tilnærming (customModules styrer om det eksisterande trippel-klikk-easter-egget er aktivt) IKKJE var det som vart ønska — poenget var å faktisk SJÅ Spaceship dukke opp som eit eige, klikkbart menypunkt i Workspace, slik ein ekte kunde-spesifikk modul ville gjort.
+
+- **Reverta** 0.41.1 sin gating av det eksisterande trippel-klikk-easter-egget (`autoAttach()`) — det er no urørt og alltid aktivt, akkurat som det var før heile denne øvinga.
+- **Lagt til**: ei ny, separat `Intranet.registerModule()`-registrering i same fil (`workspace/module-workspaceship.js`), gata bak `App.ready(CFG)` og standard customModules-konvensjonen (ABSENT manifest-oppføring = IKKJE synleg i menyen — motsett konvensjon enn easter-egget sin eigen "framleis på"-standard, men konsistent med resten av customModules-systemet). Ei eksplisitt `{ enabled: true }`-oppføring i Console får «Spaceship» til å dukke opp som eit vanleg menypunkt, med spelet rendra INLINE i innhaldsområdet (gjenbruker det eksisterande `mountGame()`).
+- **Reell teknisk fallgruve unngått undervegs**: Workspace sin ruter bruker EIN persistent `#intranet-main`-container som aldri vert fjerna frå DOM-et, berre tømt for innhald ved kvar navigering. Spelet sin eksisterande opprydding (avbryt animasjonsløkke, fjern globale tastatur-/vindaugelyttarar) er ein `MutationObserver` som sjekkar om ROTA framleis er i DOM-et — viss modulet sitt `mount()` hadde gjeve spelet `#intranet-main` sjølv som rot, ville denne sjekken ALDRI blitt sann, og animasjonsløkka ville køyrt i det uendelege i bakgrunnen etter kvar navigering vekk frå sida. Løyst ved å eksplisitt opprette eit ekte barne-element (`#workspaceship-root`) inni containeren FØR spelet vert montert, akkurat slik den eksisterande modal-varianten (`launch()`) alt gjorde det riktig.
+- **Testdekning lagt til i `test-workspace.js`** (ny "AA"-seksjon, eigen separat DOM per den etablerte Z-seksjon-mønsteret sidan `App.ready()`-gata vert avgjort éin gong ved skriptlasting): stadfestar at modulen er skjult utan manifest-oppføring (b7), synleg og rendrar korrekt med `enabled:true` (aa1-aa2), at easter-egget framleis fungerer parallelt og urørt (aa3), og at opprydding-elementet faktisk vert fjerna frå DOM-et ved bortnavigering (aa4) — 5 nye, grøne testar.
+
+Testa: `node test.js` (535/536) og `node test-workspace.js` (162/163, alle 5 nye grøne), same eine kjende feil som før.
+
 ## 0.41.1 — 2026-07-17
 
 ### customModules i praksis: Spaceship som fyrste, ekte testcase
