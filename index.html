@@ -478,15 +478,16 @@
        elles ville lagt att ein synleg kant rundt eit "fullskjerm"-panel. */
     .modal.is-fullscreen { padding: 0; }
     .modal.is-fullscreen .modal__panel--admin { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
-    /* UX-gjennomgang 2026-07-18: skjema-forma innhald (Innhold-fana, modular
-       sine admin-skjema, Sikkerhetskopi-fana) ser feil ut strekt til heile
-       viewport-breidda i fullskjerm — enkeltkolonne width:100%-felt vert
-       urimeleg breie. Lister/kort (Henvendelser sine .admin-row/.admin-list,
-       ikkje ramma inn her) har derimot ALT ingen slik breidde-regel og
-       treng difor ingen endring. */
-    .modal.is-fullscreen .admin-form,
-    .modal.is-fullscreen .admin-group,
-    .modal.is-fullscreen .bk-wrap { max-width: 760px; margin-left: auto; margin-right: auto; }
+    /* MERK 2026-07-18: eit forsøk her på å sentrere skjema-forma innhald
+       (.admin-form/.admin-group/.bk-wrap) med max-width:760px i fullskjerm
+       vart reverta same dag — brukar stadfesta live at det gav ei feil,
+       kaskaderande innsnevring (kvar fieldset vart smalare/meir innrykt enn
+       den førre), IKKJE det tilsikta resultatet. Brukar sitt eksplisitte
+       ønske: hald fram VENSTRESTILT med FULL BREIDDE som standard (som
+       Henvendelser alt fungerer), IKKJE tving inn ei fast, sentrert
+       breidde-avgrensing. Ei eventuell smalare/dynamisk løysing for
+       spesifikke enkeltsider (t.d. Brukarar) er eit medvite framtidig,
+       separat steg — ikkje noko å gjenta som ein generell CSS-klasse-regel. */
     .modal__fullscreen-toggle { background: none; border: 0; font-size: 1.05rem; cursor: pointer; color: var(--color-muted); line-height: 1; margin-right: .6rem; padding: .2rem; }
     .modal__fullscreen-toggle:hover { color: var(--color-text); }
     /* Admin: formatert meldingsvisning */

@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.43.5 — 2026-07-18
+
+### Reverterte 0.43.4 sin sentrerte skjema-CSS — kaskaderande innsnevringsbug
+
+Brukar live-testa 0.43.4 same dag og fann ein reell visuell bug: `max-width:760px;margin:auto` på `.admin-form`/`.admin-group` gav IKKJE ei fin, sentrert side — kvar `<fieldset class="admin-group">` (Tjenester-seksjon, Aktuelt-seksjon, Kontaktinfo, Sosiale medier, Footer, alle SIBLINGS i det ekte markupet, stadfesta ved lesing av `adminContent()` i core.js) synte seg gradvis SMALARE og meir innrykt enn den førre — det stikk motsette av kva som var tilsikta. Eit isolert reproduksjonsforsøk synte IKKJE denne kaskaderande åtferda (alle tre testfelta vart likt sentrerte), så den eksakte rendringsmekanismen i det ekte, brede vindauget er ikkje fullt forklart — men brukar sitt ønske var uansett klart og vart følgt direkte: **reverter til venstrestilt, full breidde som standard** (identisk med korleis "Henvendelser" alt fungerer), IKKJE tving inn ei fast sentrert breidde-avgrensing.
+
+- Fjerna `.modal.is-fullscreen .admin-form/.admin-group/.bk-wrap { max-width:760px; margin:auto }` heilt frå både `index.html` og `admin/index.html`.
+- Ei eventuell smalare/dynamisk løysing for spesifikke enkeltsider (brukar nemnte "Brukarar" som mogleg eksempel) er eit medvite utsett, separat framtidig steg — IKKJE noko å byggje som ein generell CSS-klasse-regel utan grundigare vurdering, gitt at dette er andre gongen ei rask breidde-endring i fullskjerm-modus har gått feil.
+- Stadfesta samstundes at resize-handtaket (0.43.4) FUNGERER godt og alt gjeld gjennomgåande for vanlege `<textarea>`-felt òg (`.field textarea` har hatt `resize:vertical` frå før) — berre dei rike tekstfelta (`.rtfield__editor`) mangla det, no retta.
+
+Testa: `node test.js` (534/535, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra). `VIBEVERK_VERSION` 0.43.4 → 0.43.5.
+
 ## 0.43.4 — 2026-07-18
 
 ### Fullskjerm-adminpanel: sentrert skjemainnhald + rulle-handtak på rike tekstfelt
