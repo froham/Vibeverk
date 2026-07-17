@@ -3483,9 +3483,16 @@ window.App = (function () {
 
     const root = document.createElement("div");
     root.id = "reply-modal-root";
+    // opts.fullscreen: valfri fullskjerm-variant (ROADMAP.md "Custom design-
+    // modul (kundeadmin-sida)" -- bygd som eit reint additivt, opt-in steg,
+    // ingen eksisterande kallar er endra til å bruke han enno). Same
+    // overlegg-mønster som elles, berre utan breidde-/høgde-avgrensinga.
+    var replyBoxStyle = opts.fullscreen
+      ? "background:var(--color-bg);border-radius:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;overflow-y:auto;box-shadow:none"
+      : "background:var(--color-bg);border-radius:var(--radius);width:min(640px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)";
     root.innerHTML =
-      '<div style="position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem" data-reply-back>' +
-        '<div style="background:var(--color-bg);border-radius:var(--radius);width:min(640px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">' +
+      '<div style="position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;'+(opts.fullscreen?'padding:0':'padding:1rem')+'" data-reply-back>' +
+        '<div style="'+replyBoxStyle+'">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.3rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
             '<strong style="font-size:1rem">Svar til ' + C.esc(opts.name || opts.email) + '</strong>' +
             '<button data-reply-close style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
