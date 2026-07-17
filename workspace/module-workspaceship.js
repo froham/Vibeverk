@@ -872,9 +872,24 @@
     close: close
   };
 
+  // Brukt som fyrste faktiske testcase for customModules-manifestet (bein 3,
+  // Fase 10 slice 1+2, sjå docs/roadmap/ROADMAP.md) -- IKKJE eit ekte
+  // forretningsbehov, berre for å stadfeste at heile vegen frå Console sitt
+  // "Skreddarsydde modular"-skjema til ein faktisk modul-fil fungerer i
+  // praksis. Held fram som eit skjult easter egg for alle som i dag (ingen
+  // manifest-oppføring = uendra åtferd) -- ei EKSPLISITT oppføring med
+  // enabled: false slår han av for berre den kunden, via Console.
+  function customModulesEntry() {
+    var cfg = window.SITE_CONFIG || {};
+    var customModules = cfg.customModules || {};
+    return customModules.spaceship;
+  }
+
   function autoAttach() {
     var config = window.WORKSPACESHIP_EASTER_EGG_CONFIG || {};
     if (config.autoAttach === false) return;
+    var manifestEntry = customModulesEntry();
+    if (manifestEntry && manifestEntry.enabled === false) return;
     attach(config.logoSelector || "[data-workspaceship-trigger]");
   }
 

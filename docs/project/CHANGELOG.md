@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.41.1 — 2026-07-17
+
+### customModules i praksis: Spaceship som fyrste, ekte testcase
+
+Brukar ønska å faktisk SJÅ heile customModules-pipelinen (Console → tenant-config → ein ekte modul-fil) fungere, utan å finne opp ein ny, spekulativ forretningsmodul (ROADMAP sitt eige punkt om at det fyrste ekte spesialmodulet skal vente på ein reell kunde). Løysing: gjenbrukte det alt-eksisterande `workspace/module-workspaceship.js` (Spaceship, eit skjult trippel-klikk-easter-egg på Workspace-logoen) som testcase — det er allereie ein sjølvstendig, isolert, harmlaus modul-fil, berre aldri kopla til nokon av/på-brytar før no.
+
+- `autoAttach()` sjekkar no `window.SITE_CONFIG.customModules.spaceship.enabled` før han bind trippel-klikk-lyttaren. **Stadfesta åtferd (brukar sitt val)**: absent manifest-oppføring = heilt uendra åtferd (framleis eit skjult easter egg for alle, som i dag) — berre ei EKSPLISITT oppføring med `enabled: false` slår han av, per kunde, via Console sin no-fungerande Modular-fane.
+- Verifisert med eit standalone jsdom-script (3 case: tomt manifest → opnar framleis, `enabled:false` → sperra, `enabled:true` → opnar) — alle PASS.
+- Fann og retta ein reell, urelatert liten gap medan fila likevel vart endra: `module-workspaceship.js` hadde ALDRI hatt eit `?v=N`-cache-bust-nummer i det heile (no `?v=1`), og `test-workspace.js` sin sti-omskrivings-regex for same fil kravde eksakt `.js"` (ingen suffiks) — retta til same `[^"]*`-mønster som `module-users.js` alt brukte, elles ville testen ha brote stille frå no av.
+
+Testa: `node test.js` (535/536) og `node test-workspace.js` (157/158), same kjende feil — pluss den nye jsdom-standalone-verifiseringa av gatinga, som ikkje er ein del av dei to hovudtestpakkane (reint eingongsverktøy for denne endringa).
+
 ## 0.41.0 — 2026-07-17
 
 ### Fase 10 slice 2: Console-redigering av customModules-manifest
