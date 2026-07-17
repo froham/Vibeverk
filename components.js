@@ -690,15 +690,26 @@ window.Components = (function () {
   /* --- Admin: generiske byggeklosser --------------------------------------- */
   // Selve sammensetningen og logikken ligger i core.js. Her er kun markup.
 
+  // o.fullscreenToggle: valfri fullskjerm-knapp i modal__head (brukt av
+  // adminpanelet, sjå core.js sin renderAdminPanel() -- IKKJE av dei to
+  // innloggingsmodalane som deler same modal()-funksjon, sidan dei ikkje
+  // treng/sender dette flagget). o.isFullscreen styrer kva ikon/tittel
+  // knappen syner (staten sjølv held til i core.js, ikkje her).
   function modal(opts) {
     const o = opts || {};
+    const fsBtn = o.fullscreenToggle
+      ? `<button class="modal__fullscreen-toggle" data-modal-fullscreen-toggle aria-label="${o.isFullscreen ? "Gå ut av fullskjerm" : "Vis i fullskjerm"}" title="${o.isFullscreen ? "Gå ut av fullskjerm" : "Vis i fullskjerm"}">${icon(o.isFullscreen ? "arrows-minimize" : "arrows-maximize")}</button>`
+      : "";
     return `
-      <div class="modal" data-modal role="dialog" aria-modal="true" aria-label="${esc(o.label || "Dialog")}">
+      <div class="modal${o.isFullscreen ? " is-fullscreen" : ""}" data-modal role="dialog" aria-modal="true" aria-label="${esc(o.label || "Dialog")}">
         <div class="modal__backdrop" data-modal-close></div>
         <div class="modal__panel modal__panel--admin">
           <div class="modal__head">
             <h2 class="modal__title">${esc(o.title)}</h2>
-            <button class="modal__close" data-modal-close aria-label="Lukk">${icon("x")}</button>
+            <div style="display:flex;align-items:center">
+              ${fsBtn}
+              <button class="modal__close" data-modal-close aria-label="Lukk">${icon("x")}</button>
+            </div>
           </div>
           <div class="modal__body" data-modal-body>${o.body || ""}</div>
         </div>
