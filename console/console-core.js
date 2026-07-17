@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.40.2";
+  var VIBEVERK_VERSION = "0.41.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1250,6 +1250,40 @@ window.VwConsole = (function () {
     return d;
   }
 
+  // Modul-id-format for skreddarsydde modular -- same mønster som slug/
+  // hostname andre stader i denne fila, og same regex som server-sida
+  // (set_custom_modules_manifest i tenant-admin) handhevar, sidan desse
+  // id-ane er meint å til slutt matche module-custom-<kunde>-<id>.js-namn.
+  var CUSTOM_MODULE_ID_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+  function customModuleCardHtml(id, m) {
+    m = m || { label: "", enabled: false, params: {} };
+    var paramsJson = JSON.stringify(m.params || {}, null, 2);
+    return '<div class="admin-group" style="margin-bottom:.8rem">' +
+      '<form class="cs-cm-form" data-cm-id="' + C.esc(id) + '">' +
+        '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 .5rem">Modul-id: <code>' + C.esc(id) + '</code></p>' +
+        C.field({ id: "cm-label-" + id, label: "Namn", value: m.label || "" }) +
+        '<label class="cs-checkbox-label" style="display:block;margin:.5rem 0">' +
+          '<input type="checkbox" id="cm-enabled-' + C.esc(id) + '"' + (m.enabled ? " checked" : "") + '> Aktivert' +
+        '</label>' +
+        '<div class="field"><label for="cm-params-' + C.esc(id) + '">Innstillingar (JSON)</label>' +
+          '<textarea id="cm-params-' + C.esc(id) + '" rows="5" style="width:100%;font-family:monospace;font-size:.82rem;padding:.5rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text)">' +
+            C.esc(paramsJson) +
+          '</textarea>' +
+          '<p class="field__hint">Fritt JSON-format -- kvart skreddarsydd modul har sin eigen form her. Lat stå <code>{}</code> om modulet ikkje treng innstillingar enno.</p>' +
+        '</div>' +
+        (_activeTenant && _activeTenant.status === "active"
+          ? '<p style="font-size:.78rem;color:#c0392b;margin:.4rem 0">⚠️ Kunden er aktiv — dette kan slå PÅ/AV innhald synleg for besøkjande UMIDDELBART når du lagrar. Sjekk at det er tilsikta før du lagrar.</p>'
+          : '<p class="field__hint">Kunden er ikkje aktiv enno -- endringar her har ingen synleg effekt før aktivering.</p>') +
+        '<div style="display:flex;gap:.6rem;align-items:center;margin-top:.4rem">' +
+          '<button type="submit" class="btn btn--ghost btn--sm">Lagre</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm cs-cm-remove" data-cm-id="' + C.esc(id) + '" style="color:#c0392b;border-color:#c0392b;margin-left:auto">Fjern</button>' +
+        '</div>' +
+        '<p class="form__status" id="cm-status-' + C.esc(id) + '" style="margin-top:.4rem"></p>' +
+      '</form>' +
+    '</div>';
+  }
+
   function renderModular(sc, wrap) {
     var ft  = Object.assign(featureDefaults(FEAT_LABELS),  sc.features         || {});
     var ift = Object.assign(featureDefaults(IFEAT_LABELS), sc.intranettFeatures || {});
@@ -1268,15 +1302,19 @@ window.VwConsole = (function () {
         saveBtn() +
       '</form>' +
       '<fieldset class="admin-group" style="margin-top:.8rem"><legend>Skreddarsydde modular</legend>' +
-        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Spesialbygde tilleggsmodular for denne kunden (bein 3, sjå docs/STRATEGY.md). Redigering skjer enno ikkje her — ta kontakt med utviklar.</p>' +
+        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Spesialbygde tilleggsmodular for denne kunden (bein 3, sjå docs/STRATEGY.md).</p>' +
         (customIds.length === 0
-          ? '<p style="font-size:.85rem;color:var(--color-muted);margin:0">Ingen skreddarsydde modular for denne kunden.</p>'
-          : '<ul style="margin:0;padding-left:1.2rem">' +
-              customIds.map(function (id) {
-                var m = customModules[id] || {};
-                return '<li>' + C.esc(m.label || id) + ' (' + C.esc(id) + ') — ' + (m.enabled ? "PÅ" : "AV") + '</li>';
-              }).join("") +
-            '</ul>') +
+          ? '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .8rem">Ingen skreddarsydde modular for denne kunden enno.</p>'
+          : customIds.map(function (id) { return customModuleCardHtml(id, customModules[id]); }).join("")) +
+        '<div class="admin-group" style="border-style:dashed">' +
+          '<strong style="font-size:.85rem">Legg til ny modul</strong>' +
+          '<form id="cs-cm-add-form" style="margin-top:.6rem">' +
+            C.field({ id: "cm-new-id", label: "Modul-id", placeholder: "t.d. vaktplan (berre små bokstavar, tal og bindestrek)" }) +
+            C.field({ id: "cm-new-label", label: "Namn", placeholder: "t.d. Vaktplan" }) +
+            '<button type="submit" class="btn btn--ghost btn--sm">Legg til</button>' +
+            '<p class="form__status" id="cm-add-status" style="margin-top:.4rem"></p>' +
+          '</form>' +
+        '</div>' +
       '</fieldset>';
 
     wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
@@ -1290,6 +1328,86 @@ window.VwConsole = (function () {
         sc2.intranettFeatures = ifeats;
         saveSC(sc2, savingTenantId);
         statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+      });
+    });
+
+    // Skreddarsydde modular -- kvart kort lagrar/fjernar seg sjølv via
+    // set_custom_modules_manifest (heile-blob-erstatning, sjå Arkitekt-notatet
+    // i tenant-admin/index.ts). Oppdaterer _activeTenant.custom_modules_manifest
+    // direkte i minnet på suksess i staden for å kalle loadTenants() -- den
+    // funksjonen nullstiller _activeTenant til den fyrste veljelege tenanten
+    // i lista, noko som ville bytt Console sin heile "gjeldande kunde" utan
+    // varsel om kalla herifrå.
+    wrap.querySelectorAll(".cs-cm-form").forEach(function (form) {
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var id = form.getAttribute("data-cm-id");
+        var statusEl = wrap.querySelector("#cm-status-" + id);
+        var label = wrap.querySelector("#cm-label-" + id).value.trim();
+        var enabled = wrap.querySelector("#cm-enabled-" + id).checked;
+        var paramsRaw = wrap.querySelector("#cm-params-" + id).value;
+        if (!label) { statusMsg(statusEl, "Namn er påkravd.", false); return; }
+        var params;
+        try {
+          params = JSON.parse(paramsRaw);
+        } catch (parseErr) {
+          statusMsg(statusEl, "Innstillingane er ikkje gyldig JSON-format — sjekk for manglande komma eller anførselsteikn.", false);
+          return;
+        }
+        if (params === null || typeof params !== "object" || Array.isArray(params)) {
+          statusMsg(statusEl, "Innstillingane må vere eit JSON-objekt, t.d. {}", false);
+          return;
+        }
+        statusMsg(statusEl, "Lagrar…", true);
+        var newManifest = Object.assign({}, _activeTenant.custom_modules_manifest || {});
+        newManifest[id] = { label: label, enabled: enabled, params: params };
+        tenantAdminCall("set_custom_modules_manifest", { tenant_id: _activeTenant.id, manifest: newManifest }, function (r) {
+          if (r.error) { statusMsg(statusEl, r.error, false); return; }
+          _activeTenant.custom_modules_manifest = newManifest;
+          statusMsg(statusEl, "✓ Lagra!", true);
+        });
+      });
+    });
+
+    wrap.querySelectorAll(".cs-cm-remove").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-cm-id");
+        var statusEl = wrap.querySelector("#cm-status-" + id);
+        var m = (_activeTenant.custom_modules_manifest || {})[id] || {};
+        var liveWarning = (_activeTenant.status === "active" && m.enabled)
+          ? " Denne modulen er PÅ og synleg for besøkjande no — han forsvinn frå nettsida med det same du fjernar han her."
+          : "";
+        if (!confirm('Fjerne modulen «' + (m.label || id) + '» heilt? Alt innhald i han (innstillingane) går tapt og må skrivast inn på nytt om han skal leggjast til igjen.' + liveWarning + ' Dette påverkar ikkje andre modular eller resten av kunden sitt oppsett. Kan ikkje angrast. Er du sikker?')) return;
+        statusMsg(statusEl, "Fjernar…", true);
+        var newManifest = Object.assign({}, _activeTenant.custom_modules_manifest || {});
+        delete newManifest[id];
+        tenantAdminCall("set_custom_modules_manifest", { tenant_id: _activeTenant.id, manifest: newManifest }, function (r) {
+          if (r.error) { statusMsg(statusEl, "Feil: " + r.error, false); return; }
+          _activeTenant.custom_modules_manifest = newManifest;
+          renderModular(sc, wrap);
+        });
+      });
+    });
+
+    wrap.querySelector("#cs-cm-add-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var statusEl = wrap.querySelector("#cm-add-status");
+      var id = wrap.querySelector("#cm-new-id").value.trim().toLowerCase();
+      var label = wrap.querySelector("#cm-new-label").value.trim();
+      if (!label) { statusMsg(statusEl, "Namn er påkravd.", false); return; }
+      if (!CUSTOM_MODULE_ID_RE.test(id)) {
+        statusMsg(statusEl, "Ugyldig modul-id (berre små bokstavar, tal og bindestrek).", false);
+        return;
+      }
+      var existing = _activeTenant.custom_modules_manifest || {};
+      if (existing[id]) { statusMsg(statusEl, "Ein modul med denne id-en finst alt.", false); return; }
+      statusMsg(statusEl, "Legg til…", true);
+      var newManifest = Object.assign({}, existing);
+      newManifest[id] = { label: label, enabled: false, params: {} };
+      tenantAdminCall("set_custom_modules_manifest", { tenant_id: _activeTenant.id, manifest: newManifest }, function (r) {
+        if (r.error) { statusMsg(statusEl, r.error, false); return; }
+        _activeTenant.custom_modules_manifest = newManifest;
+        renderModular(sc, wrap);
       });
     });
   }
