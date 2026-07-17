@@ -685,9 +685,16 @@ window.App = (function () {
     if (col.border)  root.setProperty("--color-border", col.border);
     // Hjørne-radius -- valfritt Console-felt (Fargar-fana), sjå
     // docs/roadmap/ROADMAP.md "Later" (custom design-modul-punktet).
+    // Knappar held seg pill-forma (--btn-radius) på Standard/Runde (>=14px),
+    // slik dagens standardutsjånad ikkje endrar seg -- men får synleg mindre
+    // avrunding på Skarpe hjørner/Litt runde (<14px), etter tilbakemelding
+    // om at knappar elles ikkje vart påverka av valet i det heile.
     if (col.radius !== undefined && col.radius !== null && col.radius !== "") {
       const r = parseInt(col.radius, 10);
-      if (!isNaN(r)) root.setProperty("--radius", r + "px");
+      if (!isNaN(r)) {
+        root.setProperty("--radius", r + "px");
+        root.setProperty("--btn-radius", r < 14 ? r + "px" : "999px");
+      }
     }
 
     // ← Fonter fra config.fonts
@@ -2585,7 +2592,7 @@ window.App = (function () {
       bits.push(`<p style="font-size:.78rem;color:var(--color-muted);margin-top:.5rem">Drevet av <a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a></p>`);
     }
     if (plVal && !embedVal) bits.push(plLink);
-    const trafficHtml = bits.length ? bits.join("") : `<p class="an-hint">Ingen analyse er satt opp ennå. Ta kontakt med din leverandør for oppsett.</p>`;
+    const trafficHtml = bits.length ? bits.join("") : `<p class="an-hint">Ingen analyse er satt opp ennå. Vibeverk anbefaler Plausible.io for en enkel, sikker og cookie-free løsning. Ta kontakt med oss, så hjelper vi å sette dette opp.</p>`;
 
     body.innerHTML = `
       <div class="an-wrap">

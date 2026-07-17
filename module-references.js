@@ -125,6 +125,18 @@
   /* =========================================================================
      KORT-HTML  (delt mellom inline + fullside)
      ====================================================================== */
+  // Kutter ved næraste ordgrense og legg til «…» -- i staden for å stole på
+  // at CSS sin -webkit-line-clamp alltid syner ellipsis sjølv (fann av brukar
+  // under live-test 2026-07-17: teksten vart kutta midt i eit ord/ei setning
+  // utan noko teikn på at det faktisk var meir å lese).
+  function truncateForCard(text, maxLen) {
+    if (text.length <= maxLen) return text;
+    var cut = text.slice(0, maxLen);
+    var lastSpace = cut.lastIndexOf(" ");
+    if (lastSpace > maxLen * 0.6) cut = cut.slice(0, lastSpace);
+    return cut.replace(/[.,;:!?…]*$/, "") + "…";
+  }
+
   function cardHtml(item) {
     var img = App.media.resolveImage(item.image);
     var imgHtml = img.src
@@ -134,12 +146,24 @@
       ? '<span class="rf-card__cat">' + esc(item.category) + '</span>' : "";
     var plainText  = C.stripHtml(item.text  || "");
     var plainQuote = C.stripHtml(item.quote || "");
-    var textHtml  = plainText  ? '<p class="rf-card__text">'  + esc(plainText)  + '</p>' : "";
-    var quoteHtml = plainQuote ? '<p class="rf-card__quote">' + esc(plainQuote) + '</p>' : "";
+    var CARD_MAXLEN = 200;
+    // Sitatet vert prioritert framfor vanleg tekst på sjølve kortet -- unngår
+    // at to uavhengige tekstblokker begge kuttar midt i ei setning på same
+    // kort. Full tekst OG sitat er alltid tilgjengeleg på detaljsida
+    // (detailHtml()), så ingenting går tapt, berre kva som vert vist FØRST.
+    var showQuoteOnly = !!plainQuote;
+    var textHtml = (!showQuoteOnly && plainText)
+      ? '<p class="rf-card__text">' + esc(truncateForCard(plainText, CARD_MAXLEN)) + '</p>'
+      : "";
+    var quoteHtml = plainQuote
+      ? '<p class="rf-card__quote">' + esc(truncateForCard(plainQuote, CARD_MAXLEN)) + '</p>'
+      : "";
     var byHtml = (plainQuote && item.byName)
       ? '<p class="rf-card__by"><strong>' + esc(item.byName) + '</strong>' +
           (item.byTitle ? ' · ' + esc(item.byTitle) : '') + '</p>'
       : "";
+    var hasMoreContent = (showQuoteOnly && !!plainText) ||
+      plainText.length > CARD_MAXLEN || plainQuote.length > CARD_MAXLEN;
     return '<article class="rf-card" data-rf-open="' + esc(item.id) + '">' +
       imgHtml +
       '<div class="rf-card__body">' +
@@ -148,7 +172,7 @@
         textHtml +
         quoteHtml +
         byHtml +
-        ((plainText.length + plainQuote.length) > 80
+        (hasMoreContent
           ? '<span class="rf-readmore">Les mer →</span>'
           : "") +
       '</div>' +
