@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.43.4 — 2026-07-18
+
+### Fullskjerm-adminpanel: sentrert skjemainnhald + rulle-handtak på rike tekstfelt
+
+Brukar sitt eige live-testfunn av 0.43.3, same dag: skjema-forma innhald ("Innhold"-fana, modulane sine admin-skjema, "Sikkerhetskopi") strakk seg urimeleg breitt i fullskjerm sidan enkeltkolonne `width:100%`-felt ikkje hadde nokon breidde-avgrensing. Lister/kort ("Henvendelser") var alt fine, sidan dei ikkje har den same breiddereglen.
+
+- **UX/Mobile Reviewer-gjennomgang gjennomført**, stadfesta brukar sin observasjon i kode: `.admin-form`/`.admin-group` (Innhold + alle modulane sine admin-skjema) og `.bk-wrap` (Sikkerhetskopi spesifikt, ikkje Analyse/Navigasjon som alt var greie) manglar ei breidde-avgrensing. Retta med `.modal.is-fullscreen .admin-form/.admin-group/.bk-wrap { max-width:760px; margin:auto }` i BÅDE `index.html` og `admin/index.html` (dei to filene som faktisk rendrar adminpanelet — Console/Workspace bruker det aldri).
+- **Ny rulle-funksjon på rike tekstfelt** (`.rtfield__editor`): `resize:vertical; overflow:auto` lagt til i alle fire HTML-filer (fann og retta ein tredje pre-eksisterande drift: Workspace sin kopi hadde eigne fargar/storleikar, no også med resize). Brukaren kan no dra i eit standard nettlesar-handtak nede til høgre for å gjere tekstboksen høgare — særleg nyttig no som fullskjerm gjev meir plass. UX-gjennomgangen fann ingen konflikt med verktøylinja over eller teiknteljaren under.
+- **Visuelt stadfesta** via ein isolert nettlesar-test (same metode som 0.43.3): skjemafelt sentrerer seg korrekt ved 760px i fullskjerm, medan ei simulert Henvendelser-liste framleis bruker full bredde uendra.
+
+Testa: `node test.js` (534/535, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra). `VIBEVERK_VERSION` 0.43.3 → 0.43.4, `console-core.js?v=136`.
+
 ## 0.43.3 — 2026-07-18
 
 ### Fullskjerm-knapp faktisk synleg i adminpanelet (rettar misforståing frå 0.43.2)
