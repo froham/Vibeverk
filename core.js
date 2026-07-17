@@ -1247,6 +1247,13 @@ window.App = (function () {
 
   let activeTab = "innhold";
   let activeCategory = "innhold";
+  // Persistert på tvers av sesjonar (same mønster som Workspace sin
+  // sidemeny-kollaps, sjå "wsp-sidebar-collapsed") -- adminpanelet
+  // re-rendrar seg sjølv (root.innerHTML = C.modal(...)) på nesten kvart
+  // faneskift, så denne må vere ein modul-variabel, ikkje ein lokal
+  // closure-verdi inni renderAdminPanel() sjølv, elles ville han nullstilt
+  // seg ved neste faneklikk.
+  let adminFullscreen = Store.get("admin-panel-fullscreen", false);
 
   function openAdmin() {
     closeAdmin(); // unngå dobbel
@@ -1418,6 +1425,8 @@ window.App = (function () {
       title: "Adminpanel — " + CFG.company.name,   // ← config.company.name
       label: "Adminpanel",
       wide: true,
+      fullscreenToggle: true,
+      isFullscreen: adminFullscreen,
       body: catBarHtml +
             (function () {
               var hasWs = activeCategory === "henvendelser" && CFG.intranettFeatures && Object.keys(CFG.intranettFeatures).length > 0;
@@ -1438,6 +1447,12 @@ window.App = (function () {
              </div>`
     });
     bindModalClose(root);
+    var fsToggle = root.querySelector("[data-modal-fullscreen-toggle]");
+    if (fsToggle) fsToggle.addEventListener("click", function () {
+      adminFullscreen = !adminFullscreen;
+      Store.set("admin-panel-fullscreen", adminFullscreen);
+      renderAdminPanel(root);
+    });
 
     // Kategoriveksling — hopper til første fane i kategorien
     root.querySelectorAll("[data-admin-cat]").forEach(function (btn) {

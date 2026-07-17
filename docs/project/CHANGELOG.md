@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.43.3 — 2026-07-18
+
+### Fullskjerm-knapp faktisk synleg i adminpanelet (rettar misforståing frå 0.43.2)
+
+Brukar peika ut at 0.43.2 berre bygde eit ubrukt `opts.fullscreen`-primitiv — ingen faktisk knapp synte seg nokon stad i det ekte adminpanelet. Retta: adminpanelet sin eigen `C.modal()`-basert modal (`renderAdminPanel()` i core.js, delt `modal()`-komponent i components.js) har no ein faktisk fullskjerm-knapp i `modal__head` (ved sida av lukk-knappen), synleg med det same admin loggar inn.
+
+- `components.js` sin `modal()` godtek no `opts.fullscreenToggle`/`opts.isFullscreen` og rendrar knappen (Tabler-ikon `arrows-maximize`/`arrows-minimize`, byter ikon etter tilstand). `modal()` vert BERRE brukt av dei tre admin-relaterte modalane i core.js (innloggingsskjerma to av dei, hovudpanelet den tredje) — dei to innloggingsmodalane sender ikkje flagget, uendra åtferd for dei.
+- `core.js` sin `renderAdminPanel()` held tilstanden i ein ny modul-variabel `adminFullscreen` (persistert via `Store` under `admin-panel-fullscreen`, same mønster som Workspace sin sidemeny-kollaps) — naudsynt sidan panelet re-rendrar heile `innerHTML`-en sin på nesten kvart faneskift.
+- Ny CSS (`index.html` OG `admin/index.html` — fann og retta ein pre-eksisterande drift mellom dei to: `admin/index.html` sin kopi av `.modal__panel--admin`-CSS-en mangla flex-kolonne-fiksen `index.html` alt hadde): `.modal.is-fullscreen` fjernar den vanlege 1rem-paddinga, `.modal.is-fullscreen .modal__panel--admin` fyller heile viewporten kant til kant.
+- **Faktisk visuelt stadfesta denne gongen** — ekte nettlesar-test via ein lokal statisk server (login-skjermaet krev ekte Supabase-legitimasjon som ikkje var tilgjengeleg lokalt, så testen brukte `components.js` sin ekte `modal()`-funksjon direkte, ikkje det fulle adminpanelet): knappen synest korrekt i headeren, klikk ekspanderer panelet kant-til-kant, ikonet byter til "minimer"-varianten, header held seg fast medan innhaldet skrollar.
+
+Testa: `node test.js` (534/535, kjend feil uendra — talet 534 var alt gjeldande FØR denne endringa, stadfesta via `git stash`-samanlikning, ikkje ein ny regresjon), `node test-workspace.js` (162/163, kjend feil uendra). Cache-bust: `components.js?v=16`, `core.js?v=56`, `console-core.js?v=135`. `VIBEVERK_VERSION` 0.43.2 → 0.43.3.
+
 ## 0.43.2 — 2026-07-17
 
 ### Fullskjerm-variant for `openDialog()`/`openReplyModal()` (grunnlag for framtidig kundeadmin-design-verktøy)
