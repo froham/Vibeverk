@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## (dokumentasjon, ingen versjonsbump) — 2026-07-19
+
+### B-6/B-7-utkast korrigert etter ekstern Codex-gjennomgang
+
+Codex sin gjennomgang av 2026-07-18-utkasta fann fleire stader der dei overvurderte kva GDPR-sletteflyten faktisk garanterer, og undervurderte kva data Resend/`leads`-tabellen faktisk lagrar. Alle funn stadfesta direkte mot koden før retting (ikkje berre teke Codex sitt ord for det):
+
+- **`draft-inbound-email-legal-basis-memo.md`**: retta "single/komplett sletteflyt"-overdrivinga (leads/bookingar/CRM-kommunikasjonar/chat/Storage-vedlegg er framleis fire-and-forget, berre kunde-rada og `inbound_emails` er feilsjekka); lagt til at `leads.message` lagrar FULL utrimma tekst (ulikt `crm_comms` sin 5000-teikn-avkorting); retta at `rejected_invalid_sig` aldri faktisk vert skriven (401 skjer FØR databaseskriving); retta "ingen match → ny profil" til den faktiske finn-eller-gjenbruk-logikken; presisert dei tre ulike tydingane av "verifisert" (kundeliste-filter / einskild-post-merke / faktisk identitetskontroll — ingen av dei er det siste); utvida spørsmåla til juridisk rådgjevar til å dekkje naudsyn/proporsjonalitet, informasjonsplikt til tredjepersonar, DPIA, og Resend sitt eige overføringsgrunnlag (SCC vs. DPF, ikkje anteke).
+- **`customer-go-live-checklist.md`**: same rettingar reflektert i sjekklista; lagt til eit nytt, obligatorisk punkt om at `features.crm.crmFull` IKKJE faktisk slår av inbound e-post-mottak (reint ei UI-innstilling for utgåande sending) — den einaste reelle "av"-brytaren er om Resend sitt mottaksdomene/webhook faktisk er sett opp; presisert at CRM-dokument-tilgang er bucket-vid, ikkje avgrensa til "berre det som er festa".
+- **`draft-privacy-policy-thirdparty-section.md`**: Resend-avsnittet utvida til å nemne full e-posttekst/HTML/headera/mottakaradresser/vedlegg og Resend sin eigen separate lagringsperiode; overføringsgrunnlaget presisert som "må stadfestast" (SCC eller DPF) i staden for anteke SCC.
+
+Neste steg: attende til brukar sin eigen siste kvalitetssjekk.
+
 ## (dokumentasjon, ingen versjonsbump) — 2026-07-18
 
 ### B-6/B-7-utkast: DPA-/go-live-sjekkliste oppdatert + ny rettsgrunnlags-memo for innkomande e-post
