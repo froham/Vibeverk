@@ -43,10 +43,31 @@ Mark each item as required (R) or recommended (Anbefalt/A) based on the column. 
 ## Retention and deletion
 
 - [ ] **(R) Retention periods for each data category have been agreed with the customer and documented.**
-  - Covers: chat messages, CRM records, user accounts, notes, tasks, announcements, KB articles.
+  - Covers: chat messages, CRM records, user accounts, notes, tasks, announcements, KB articles, inbound email metadata (see "Inbound email" section below — has its own, distinct retention question).
   - Note: automated deletion is not currently implemented in the platform — manual processes must be defined.
 
 - [ ] **(R) The customer understands how to delete data (user accounts, chat records, CRM entries) and has a process for handling data subject access and deletion requests.**
+  - **Updated 2026-07-18**: the "Slett alle data for en person (GDPR §17)" tool (Web-admin → Henvendelser) is now the single, complete deletion path — it matches on both a person's primary and alternate email addresses, frees any uploaded document attachments from Storage, and removes their `inbound_emails` rows, not just leads/bookings/CRM records. Confirm this is the tool staff are trained to use for any deletion request.
+
+---
+
+## Inbound email (if `features.crm.crmFull` / inbound email is enabled)
+
+- [ ] **(R) Customer understands that inbound email automatically creates a CRM profile from an unrecognized sender.**
+  - When someone emails the customer's dedicated inbound address and there's no existing CRM match, a new, unverified CRM customer profile is created automatically — without any human review, and without the sender ever having interacted with the site directly.
+  - **Open legal question, not resolvable by this checklist**: whether "legitimate interest" is a sufficient legal basis for this automatic profile creation from a wholly unknown/unverified sender. See `docs/compliance/draft-inbound-email-legal-basis-memo.md` for the full analysis — this must be resolved with qualified legal counsel before a real `crmFull` customer relies on this feature in production, not deferred indefinitely.
+  - Technical mitigations already built: these profiles are visibly flagged "not verified" in the CRM UI until a real human interaction occurs (a phone note, a filled-in note/phone field, or an explicit "Verifiser"-click), and a bulk-identify/bulk-delete action exists specifically for cleaning up unverified profiles that turn out to be spam or misdirected mail.
+- [ ] **(R) Customer has agreed a retention policy for `inbound_emails` rows, distinct from CRM record retention.**
+  - This table logs metadata (sender address/name, subject, message threading headers, SPF/DKIM/DMARC results) for essentially every email that reaches the inbound address — including rejected/spoofed mail and mail from senders who never become a real customer. This is closer to a security log purpose than a customer-relationship purpose, and may warrant a shorter, separate retention period. No email body text is stored in this table itself (only in the CRM communication record, for successfully matched/created profiles).
+- [ ] **(A) Resend's own privacy policy / DPA has been checked for inbound email specifically**, not just outbound sending — inbound processing means Resend now handles content from third parties who never had any prior relationship with the customer, a materially different category of data subject than outbound recipients. See the updated `docs/compliance/draft-privacy-policy-thirdparty-section.md`.
+
+---
+
+## CRM document attachments (private Storage bucket, built 2026-07-18)
+
+- [ ] **(R) Customer understands who can view uploaded CRM documents.**
+  - Any authenticated Workspace user (admin, editor, **and member**) can open a document once it's attached to a customer record — this was a deliberate, confirmed product decision (member should be able to view documents even though only admin/editor can upload or delete them), not an oversight. If the customer expects document access to be admin/editor-only, this must be flagged before go-live.
+- [ ] **(A) Customer is aware that documents uploaded before 2026-07-18 (if any) remain in the older, public Storage bucket** with permanently-valid public URLs, rather than the newer private bucket with short-lived signed URLs — these were deliberately not migrated. Not relevant for a brand-new customer with no pre-existing documents.
 
 ---
 
@@ -69,8 +90,9 @@ Mark each item as required (R) or recommended (Anbefalt/A) based on the column. 
 
 ## Third-party integrations
 
-- [ ] **(R) All enabled third-party integrations (Tidio, Plausible, Google Fonts) are listed in the privacy notice.**
+- [ ] **(R) All enabled third-party integrations (Resend, Plausible, Google Fonts) are listed in the privacy notice.**
   - Google Fonts sends font requests to Google's CDN and may log visitor IP addresses. This may require disclosure even if Fonts is not considered a "tracking" service.
+  - **Updated 2026-07-18**: "Tidio" removed from this list — no Tidio integration exists in the codebase (confirmed by the 2026-07-16 Privacy Advisor pass, see the note under "Privacy documentation for website visitors" above). **Resend added** — it was previously missing from this list despite being a real, always-active third party for outbound email, and now also inbound email if that feature is enabled.
 
 - [ ] **(A) Customer has reviewed what data each third-party integration receives and confirmed this is acceptable for their use case.**
 

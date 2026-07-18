@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## (dokumentasjon, ingen versjonsbump) — 2026-07-18
+
+### B-6/B-7-utkast: DPA-/go-live-sjekkliste oppdatert + ny rettsgrunnlags-memo for innkomande e-post
+
+Fyrste Claude-utkast (per avtalt rekkjefølgje: Claude → ekstern Codex-gjennomgang → brukar sin siste kvalitetssjekk), no som "den store gjennomgangen" (0.51.0) er gjennomført. Reint dokumentasjonsarbeid — ingen kodeendring, difor ingen versjonsbump.
+
+- `docs/compliance/customer-go-live-checklist.md`: nye seksjonar for innkomande e-post (inkl. peikar til den nye rettsgrunnlags-memoen) og CRM-dokument-vedlegg (den nye private bucket-en frå 0.50.0); fjerna forelda Tidio-referansar (stadfesta aldri bygd), lagt til Resend (var alt i bruk, men mangla frå lista).
+- `docs/compliance/draft-privacy-policy-thirdparty-section.md`: Resend-avsnittet utvida til å nemne innkomande e-post, ikkje berre utgåande.
+- **Ny fil** `docs/compliance/draft-inbound-email-legal-basis-memo.md`: samlar fakta + alt bygde mitigeringar (uverifisert-merking, bulk-slett, GDPR-konsolidering) + attverande opne spørsmål (rettsgrunnlag, inbound_emails-retensjon) for den ULØYSTE juridiske avklaringa frå 2026-07-17-gjennomgangen. Løyser IKKJE spørsmålet — førebur det for ekte juridisk rådgjeving.
+
 ## 0.51.0 — 2026-07-18
 
 ### Full kodebase-gjennomgang (Claude 4 agentar + ekstern Codex) — 4 batchar fiksa og deploya
