@@ -45,7 +45,7 @@ window.URL.revokeObjectURL = window.URL.revokeObjectURL || (() => {});
 window.confirm = () => true;
 
 [
-  "config.js","components.js","core.js","template-klassisk.js",
+  "config.js","components.js","core.js","template-klassisk.js","template-panorama.js",
   "workspace/workspace-core.js",
   "workspace/module-announcements.js",
   "workspace/module-settings.js",
@@ -602,7 +602,7 @@ nav("#/notes"); nav("#/dashboard");
   // Ingen intranettFeatures-patching her -- poenget er nettopp å teste
   // config.js sin ekte, upatcha standard (kb: false).
   [
-    "config.js", "components.js", "core.js", "template-klassisk.js",
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js",
     "workspace/workspace-core.js",
     "workspace/module-dashboard.js",
     "workspace/module-kb.js"
@@ -663,7 +663,7 @@ nav("#/notes"); nav("#/dashboard");
   window3.confirm = () => true;
 
   [
-    "config.js", "components.js", "core.js", "template-klassisk.js",
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js",
     "workspace/workspace-core.js",
     "workspace/module-dashboard.js",
     "workspace/module-workspaceship.js"

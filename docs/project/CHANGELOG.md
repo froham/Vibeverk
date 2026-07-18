@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.45.0 — 2026-07-18
+
+### Design-modulen: Fase 1 — "Panorama", den fyrste faktisk nye malen
+
+Andre mal i det veksande mal-galleriet (etter "Klassisk" = Fase 0-nullstillingspunktet). Motsett av dagens statiske, tekst-ved-sida-av-bilete-oppsett: store, dominerande bilete er sjølve hovudelementet, minimal tekst.
+
+- Ny fil `template-panorama.js` — sjølvstendig IIFE, registrerer `window.SiteTemplates.panorama` (same register-mønster som `template-klassisk.js`, ingen endring i eksisterande malar). Eiga, isolert `.pano-*`-prefiksa CSS injisert via ein `<style>`-tag i `document.head`, ingen kollisjon med Klassisk sine `.hero`/`.about__media`/`.card`-klassar.
+  - **Forsidetopp**: fullbreidde bakgrunnsbilete (`min-height:100vh`), botnforankra tittel/undertittel/CTA, mørk gradient-overlegg for lesbar tekst uansett biletinnhald.
+  - **Om oss**: stort, breitt bilete (21:9) etterfølgt av sentrert, smalare tekstblokk.
+  - **Tenester**: rutenett av biletkort (4:5-format) med botn-overlegg-tittel; kort utan bilete fell trygt tilbake til eit avgrensa kort med ikon+tekst i staden for å bryte rutenettet.
+  - Stabile anker-id-ar (`hjem`/`om-oss`/`tjenester`) og delt `sanitizeRichHtml()` er begge følgde, per Arkitekten sine faste reglar for nye mal-forfattarar.
+- `adminDesign()` sin `templates`-liste (core.js) utvida med Panorama-oppføringa.
+- Live nettlesar-stadfesta (lokal statisk server, `config.js` sin Supabase-tilkopling mellombels blanka lokalt for å unngå at `hydrateFromSupabase()` overskreiv test-verdien frå den ekte produksjonsdatabasen — reversert att før commit, ingen reell kode-feil): hero/om-oss/tenester viser alle korrekte `.pano-*`-klassar, biletlaus korttilbakefall fungerer, sanering stadfesta (bevarer trygge taggar som `<b>`).
+- UX/Mobile Reviewer-gjennomgang av den nye malen (påkravd for Fase 1 per planen, ikkje Fase 0). Ingen blokkerande funn. Tre HIGH-funn retta før merge: (1) biletkredittbadgen låg inni den smale `.pano-hero__inner`-kolonnen og ville flyte laust midt på sida på skjermar breiare enn ~900px i staden for å ankre til biletkanten — flytta til å vere syskenelement direkte i `.pano-hero`, same mønster som Klassisk; (2) mørkleggingsgradienten i Forsidetopp hadde ingen sikkerheitsmargin mot lyse/kvite bilete — styrka botn-opasiteten og utvida overgangen; (3) Om-oss-biletet sitt 21:9-format hadde ingen mobiloverstyring, noko som ville gjeve eit svært tynt utsnitt på smale skjermar — lagt til ei 4:3-overstyring under 700px. Éin MEDIUM-funn (biletkort-rutenett sin sidemarg matcha ikkje `.container` sin) retta i same runde. Resterande MEDIUM/polish-funn (fast botn-gradient på korttittel-overlegget kan under-mørkleggje ved lange, brytande titlar; bilete-/ikkje-bilete-kort er visuelt ulike språk i same rutenett) vurdert som akseptable for denne runden, ikkje blokkerande.
+
+Testa: `node test.js` (535/536, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra) — begge testfilene sine skriptlaste-lister utvida med `template-panorama.js`. Cache-bust: `core.js?v=59`, `console-core.js?v=141`, ny `template-panorama.js?v=1` i alle fire HTML-inngangar. `VIBEVERK_VERSION` 0.44.2 → 0.45.0.
+
 ## 0.44.2 — 2026-07-18
 
 ### Design-modulen: åtvaringsbanner i Console når kunden kan redigere farge/font sjølv
