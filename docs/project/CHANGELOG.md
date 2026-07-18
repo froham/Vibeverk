@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.50.0 — 2026-07-18
+
+### C-8 sitt private CRM-dokument-bucket verifisert end-to-end (ny `crm-documents`-smoketest)
+
+Etter at 0.49.0 sin `pg-safeupdate`-BLOCKER synte at "migrasjonen køyrde reint" IKKJE er prov på at ein funksjon faktisk fungerer, vart same disiplin brukt på C-8: ny `crm-documents`-flyt i `.claude/skills/smoke-vibeverk/runner.js` som driv den EKTE UI-en heilt gjennom — opprettar ein kasteand-kunde, lastar opp ei ekte fil via "Dokument"-hurtighandlinga, stadfestar `crmdoc:`-prefikset (ikkje fall attende til gamal offentleg media-bucket), og klikkar den lagra vedleggs-chip-en i kunden sin tidslinje. **Stadfesta PASS live mot `vibeverk-staging`** — både backend/RLS (direkte `getCrmDocumentUrl()`-kall gir ein ekte signert URL med korrekt bucket/sti/token) og sjølve klikk-for-å-opne-vegen (etiketten løyser seg korrekt, aldri "Kunne ikkje opne").
+
+Undervegs vart eit Playwright/Chromium-eigenskap avdekt og dokumentert (IKKJE ein app-bug): ein `window.open("","_blank")`-popup som seinare vert omdirigert via `win.location.href` til ein ekte `application/pdf`-signert-URL, vert handsama av Chromium sin innebygde PDF-visar på ein måte som gjer at Playwright sin `popup.url()` aldri viser den faktiske URL-en (står verande "about:blank" sjølv om omdirigeringa faktisk skjedde) — stadfesta ved at eit direkte `getCrmDocumentUrl()`-kall returnerte ein heilt gyldig, token'a URL medan `popup.url()` stod fast i 15+ sekund. Løyst ved å verifisere suksess via etiketten sin eigen tilstand i staden for popup-en sin URL.
+
 ## 0.49.0 — 2026-07-18
 
 ### CRM-dokument: privat Storage-bucket (C-8) + backup-restore-smoketest (C-9), og ein reell BLOCKER funne+fiksa i restore_backup_tables()
