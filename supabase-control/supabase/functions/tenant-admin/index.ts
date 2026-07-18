@@ -294,6 +294,65 @@ serve(async (req: Request) => {
     return { safe: true };
   }
 
+  // Shared Auth-config-sync slice, extracted from configure_tenant_smtp's own
+  // authPatch/PATCH/confirm-GET logic (Codex-gjennomgang 2026-07-18, HIGH --
+  // Arkitekt-konsultert 2026-07-18 for denne utpakkinga): update_tenant_hostnames
+  // skreiv tidlegare BERRE tenants.hostnames-kolonna, og rørte aldri det
+  // tilhøyrande Supabase-prosjektet sin Auth site_url/uri_allow_list -- ein
+  // kunde som byter hostname EtTER sitt fyrste SMTP-oppsett fekk difor ein
+  // stille forelda Auth-konfig, som kunne sende nye invitasjons-/support-
+  // lenker (som alt les hostnames FERSKT ved kvart kall) til eit domene Auth
+  // sjølv ikkje kjenner att -- GoTrue feilar ikkje på ei ukjend redirectTo,
+  // ho fell berre stille tilbake til den forelda site_url.
+  //
+  // NB (Arkitekt-tilråding): dette er MEDVITE ein delt SLICE, ikkje éin stor
+  // delt funksjon med configure_tenant_smtp -- SMTP-felta (smtp_host/-pass/...)
+  // høyrer framleis heime lokalt i configure_tenant_smtp, ikkje her, sidan
+  // update_tenant_hostnames ikkje eig SMTP-oppsettet i det heile.
+  //
+  // Kallar returnerer { ok: true } eller { ok: false, detail } -- feilar
+  // ALDRI heile den kallande handlinga (hostname-skrivinga sjølv må framleis
+  // lukkast for at routing skal fungere), og gjer INGENTING (returnerer
+  // { ok: true } stille) viss tenanten ikkje har noko live data_plane_url
+  // enno (provisioning-steg der configure_tenant_smtp uansett vil setje rett
+  // verdi seinare, når han faktisk køyrer).
+  async function patchTenantAuthConfig(tenant: { data_plane_url?: string | null; hostnames?: string[] | null }): Promise<{ ok: true } | { ok: false; detail: string }> {
+    if (!tenant.data_plane_url) return { ok: true };
+    const mgmtToken = Deno.env.get("TENANT_MGMT_API_TOKEN");
+    if (!mgmtToken) return { ok: false, detail: "TENANT_MGMT_API_TOKEN manglar på server" };
+    const hostnames = (tenant.hostnames as string[]) || [];
+    if (hostnames.length === 0) return { ok: true };
+    const ref = tenant.data_plane_url.replace(/^https:\/\//, "").split(".")[0];
+    const mgmtHeaders = { "Authorization": "Bearer " + mgmtToken, "Content-Type": "application/json" };
+    const authPatch: Record<string, unknown> = {
+      site_url: "https://" + hostnames[0],
+      uri_allow_list: hostnames.map((h) => "https://" + h + "/**").join(","),
+    };
+    try {
+      const patchResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
+        method: "PATCH",
+        headers: mgmtHeaders,
+        body: JSON.stringify(authPatch),
+      });
+      if (!patchResp.ok) {
+        const bodyText = await patchResp.text().catch(() => "");
+        return { ok: false, detail: "Management API PATCH HTTP " + patchResp.status + (bodyText ? ": " + bodyText : "") };
+      }
+      // Stadfest at det faktisk landa, ikkje berre stol på PATCH-en (same
+      // disiplin som configure_tenant_smtp alt brukar).
+      const getResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
+        method: "GET",
+        headers: mgmtHeaders,
+      });
+      if (!getResp.ok) return { ok: false, detail: "stadfesting feila: GET HTTP " + getResp.status };
+      const confirmed = await getResp.json();
+      if (confirmed.site_url !== authPatch.site_url) return { ok: false, detail: "stadfesting feila: site_url matcha ikkje etter lagring" };
+    } catch (e) {
+      return { ok: false, detail: e instanceof Error ? e.message : "nettverksfeil" };
+    }
+    return { ok: true };
+  }
+
   // ── register_tenant ──────────────────────────────────────────────────────
   // Step 1 of the checklist. Creates the tenants row; status is always
   // 'provisioning' regardless of what the caller sends (a new tenant is
@@ -430,8 +489,17 @@ serve(async (req: Request) => {
       await auditFinish(auditId, "error", "status endra seg mens handlinga køyrde");
       return json({ error: "Tenanten sin status endra seg — prøv igjen" }, 409);
     }
-    await auditFinish(auditId, "success");
-    return json({ success: true });
+    // Hald Auth sin site_url/uri_allow_list i takt med det nye hostnamnet
+    // (Codex-funn 2026-07-18, sjå patchTenantAuthConfig sin eigen kommentar).
+    // Feilar ALDRI heile handlinga over dette -- hostname-skrivinga sjølv
+    // (routing sitt grunnlag) har alt lukkast på dette punktet, og ein Auth-
+    // synk-feil er ein lågare-alvorsgrad forelda-risiko, ikkje ein grunn til
+    // å blokkere routing. Skriv resultatet inn i audit-detaljen slik at
+    // Console kan syne ei "hugs å stadfeste Auth-oppsettet"-åtvaring seinare,
+    // same mønster som smtp_configured_at sin eigen suksess-med-atterhald.
+    const authSync = await patchTenantAuthConfig({ data_plane_url: tenant.data_plane_url, hostnames: cleanHostnames });
+    await auditFinish(auditId, "success", authSync.ok ? undefined : "hostname lagra, men Auth-konfig-synkronisering feila: " + authSync.detail);
+    return json({ success: true, auth_config_warning: authSync.ok ? undefined : authSync.detail });
   }
 
   // ── update_tenant_slug ────────────────────────────────────────────────────
