@@ -1981,7 +1981,8 @@ window.App = (function () {
      dekker berre dei grunnleggjande farge-/font-vala brukar bad om). */
   function adminDesign(body) {
     var templates = [
-      { id: "klassisk", label: "Klassisk", desc: "Dagens design — bilete i full breidde bak tittel i Forsidetopp, tekst ved sida av bilete i Om oss." }
+      { id: "klassisk", label: "Klassisk", desc: "Dagens design — bilete i full breidde bak tittel i Forsidetopp, tekst ved sida av bilete i Om oss." },
+      { id: "panorama", label: "Panorama", desc: "Store bilete er hovudelementet — minimal tekst, ei meir visuell/redaksjonell kjensle enn Klassisk." }
     ];
     var current = activeTemplate();
     var sc = getSuperConfig();

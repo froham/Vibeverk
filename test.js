@@ -18,7 +18,7 @@ window.URL.createObjectURL = window.URL.createObjectURL || (() => "blob:mock-url
 window.URL.revokeObjectURL = window.URL.revokeObjectURL || (() => {});
 
 // Last filene i samme rekkefølge som index.html
-["config.js", "components.js", "core.js", "template-klassisk.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-crm.js", "module-mediabank.js"].forEach(f => {
+["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-crm.js", "module-mediabank.js"].forEach(f => {
   const code = fs.readFileSync(f, "utf8");
   window.eval(code);
 });
