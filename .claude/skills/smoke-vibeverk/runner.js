@@ -509,10 +509,142 @@ async function flowBackupRestore(page) {
   }
 }
 
+// ── Flow: CRM document upload (private bucket + signed URL) ────────────────
+// Verifies the C-8 feature (crm-documents private Storage bucket,
+// 20260718113648_crm_documents_bucket.sql) actually works end-to-end for a
+// real user, not just that the migration applied cleanly -- this is a brand
+// new, security-sensitive feature (private bucket + RLS), and the
+// backup-restore flow's own first live run (same day) proved that a
+// migration applying without error is NOT proof the feature it implements
+// actually works (see pg-safeupdate BLOCKER, fixed in
+// 20260718175406_fix_restore_backup_tables_safeupdate.sql).
+//
+// Drives the real UI throughout: new customer -> "Dokument" quick-action ->
+// upload a real file via #dlg-dc-file -> save -> click the resulting
+// attachment chip in the customer's timeline and confirm the resolve-on-
+// click signed-URL path succeeds (see the Chromium/PDF-viewer note below for
+// why success is verified via the label's own state, not popup.url()).
+// Cleans up in a finally block: frees the real Storage object via
+// App.crmDocs.freeCrmDocument() first, then deletes the throwaway
+// customer/comm rows via SQL.
+async function flowCrmDocuments(page) {
+  await loginWorkspaceAdmin(page);
+
+  const custName = TAG + "-crmdoc-kunde";
+  const custEmail = "smoketest-" + STAMP + "-crmdoc@vibeverk-test.invalid";
+
+  await page.goto(BASE_URL + "/workspace/#/crm", { waitUntil: "networkidle" });
+  await page.waitForSelector("[data-crm-new]", { timeout: 10000 });
+  await page.click("[data-crm-new]");
+  await page.waitForSelector("#dlg-nc-email", { timeout: 8000 });
+  await page.fill("#dlg-nc-name", custName);
+  await page.fill("#dlg-nc-email", custEmail);
+  await page.click("#dlg-nc-save");
+
+  const rowSel = '[data-crm-open]:has-text("' + custName + '")';
+  await page.waitForSelector(rowSel, { timeout: 8000 });
+  await page.click(rowSel);
+  console.log("Kasteand-kunde (crm-documents) oppretta og opna via ekte UI: OK");
+
+  let chipRef = null;
+  try {
+    await page.waitForSelector('[data-qa="crm-qa-doc"]', { timeout: 8000 });
+    await page.click('[data-qa="crm-qa-doc"]');
+    await page.waitForSelector("#dlg-dc-file", { timeout: 8000 });
+    await page.fill("#dlg-dc-name", "Smoketest-dokument");
+    await page.setInputFiles("#dlg-dc-file", {
+      name: "smoketest-" + STAMP + ".pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4\n" + TAG + " test content"),
+    });
+    // putCrmDocument() is a real network upload to vibeverk-staging's
+    // crm-documents bucket -- wait for the status line to clear (upload
+    // done) rather than a fixed delay.
+    await page.waitForFunction(() => {
+      const st = document.querySelector("[data-dc-file-status]");
+      return st && st.textContent.trim() === "";
+    }, { timeout: 15000 });
+    chipRef = await page.getAttribute("[data-dc-att-current] [data-crmdoc-ref]", "data-crmdoc-ref");
+    if (!chipRef || chipRef.indexOf("crmdoc:") !== 0) {
+      throw new Error('Opplasting ga ikkje ein "crmdoc:"-prefiksa referanse (fann: ' + chipRef + ") -- fell attende til gamal media-sti?");
+    }
+    console.log("Ekte opplasting til privat crm-documents-bucket ga korrekt crmdoc:-referanse: OK");
+    await page.click("#dlg-dc-save");
+    await page.waitForSelector("#dlg-dc-save", { state: "detached", timeout: 8000 });
+
+    // Click the SAME attachment chip, now rendered in the customer's
+    // timeline (not the dialog) -- this is the resolve-on-click signed-URL
+    // path a real user actually exercises after saving.
+    await page.waitForSelector('[data-crmdoc-ref="' + chipRef + '"]', { timeout: 8000 });
+    // Confirms the RESOLVE mechanism itself (getCrmDocumentUrl -> a real,
+    // correctly-scoped signed Storage URL) independent of the click/popup --
+    // isolates a genuine backend/RLS success from any browser-level quirk in
+    // how the popup navigation surfaces (see below).
+    const directUrl = await page.evaluate((ref) => window.App.crmDocs.getCrmDocumentUrl(ref).then((u) => ({ ok: true, u })).catch((e) => ({ ok: false, e: e.message })), chipRef);
+    if (!directUrl.ok || directUrl.u.indexOf("/storage/v1/object/sign/crm-documents/") === -1 || directUrl.u.indexOf("token=") === -1) {
+      throw new Error("getCrmDocumentUrl() ga ikkje ein gyldig signert crm-documents-URL: " + JSON.stringify(directUrl));
+    }
+    console.log("getCrmDocumentUrl() gir ein ekte signert URL med korrekt bucket/sti/token: OK");
+
+    // Click the SAME chip in the timeline -- this is the resolve-on-click
+    // path a real user exercises. A genuine Chromium quirk (confirmed via
+    // manual diagnosis, 2026-07-18): a window.open("","_blank") popup later
+    // redirected via win.location.href to a real application/pdf URL gets
+    // handled by Chromium's built-in PDF viewer in a way Playwright's
+    // popup.url() never reflects (stays "about:blank" even though the
+    // redirect genuinely happened) -- NOT a bug in the app. Verifying via the
+    // label's own state transition instead ("Opnar …" then back to the
+    // filename, never "Kunne ikkje opne") matches exactly what a real user
+    // perceives, and is what bindAttachmentChips() itself exposes as its
+    // user-facing success/failure signal.
+    const [popup] = await Promise.all([
+      page.context().waitForEvent("page", { timeout: 15000 }),
+      page.click('[data-crmdoc-ref="' + chipRef + '"]'),
+    ]);
+    const labelSel = '[data-crmdoc-ref="' + chipRef + '"] [data-crmdoc-label]';
+    // aria-live="polite" is set once by the click handler and never removed
+    // in either the success or failure branch, so it can't be used as a
+    // "settled" signal -- wait instead for the transient "Opnar …" text
+    // itself to go away (either reverted to the filename on success, or
+    // replaced by "Kunne ikkje opne" on failure).
+    await page.waitForFunction((sel) => {
+      const el = document.querySelector(sel);
+      return el && el.textContent.trim() !== "Opnar …";
+    }, labelSel, { timeout: 8000 });
+    const finalLabel = await page.textContent(labelSel);
+    await popup.close().catch(() => {});
+    if (finalLabel.indexOf("Kunne ikkje opne") !== -1) {
+      throw new Error("Vedleggs-chip synte feilmeldinga «Kunne ikkje opne» etter klikk");
+    }
+    console.log("Klikk på vedleggs-chip i tidslinja løyste opp og opna ein signert URL utan feil (etikett attende til: «" + finalLabel + "»): OK");
+  } finally {
+    // Free the actual Storage object FIRST, via the app's own real
+    // freeCrmDocument() code path (page.evaluate against the still-open,
+    // authenticated page) -- the SQL cleanup below only removes the
+    // crm_comms/crm_customers ROWS, it has no way to also call
+    // storage.remove(), so skipping this step would leave an orphaned
+    // object in the crm-documents bucket every run.
+    if (chipRef) {
+      try {
+        await page.evaluate((ref) => window.App.crmDocs.freeCrmDocument(ref), chipRef);
+        console.log("Opplasta Storage-objekt fjerna via App.crmDocs.freeCrmDocument(): OK");
+      } catch (e) { console.error("Cleanup warning: kunne ikkje fjerne Storage-objektet:", e.message); }
+    }
+    try {
+      runStagingSql(
+        "delete from crm_comms where customer_id in (select id from crm_customers where email = '" + custEmail + "');"
+      );
+      runStagingSql("delete from crm_customers where email = '" + custEmail + "';");
+      console.log("Kasteand-kunde og tilhøyrande hendingar fjerna (SQL-opprydding).");
+    } catch (e) { console.error("Cleanup warning: kunne ikkje fjerne kasteand-kunde:", e.message); }
+  }
+}
+
 const FLOWS = {
   "dashboard-shortcuts": flowDashboardShortcuts,
   "user-deletion": flowUserDeletion,
   "backup-restore": flowBackupRestore,
+  "crm-documents": flowCrmDocuments,
 };
 
 (async () => {
