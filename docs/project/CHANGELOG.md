@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.49.0 — 2026-07-18
+
+### CRM-dokument: privat Storage-bucket (C-8) + backup-restore-smoketest (C-9), og ein reell BLOCKER funne+fiksa i restore_backup_tables()
+
+Del av launch-readiness-kartlegginga (sjå ROADMAP.md) — arbeid mot "kva må på plass før første ekte kunde".
+
+- **C-8**: Nytt `App.crmDocs`-objekt i `core.js`, separat frå `Media` (privat `crm-documents`-Storage-bucket, 20MB-tak, MIME-allowlist, signerte URL-ar med 5 min utløp). RLS: INSERT/DELETE krev `can_edit_content()` (admin/editor), SELECT ope for alle autentiserte roller inkl. member (stadfesta brukarval — member skal kunne opne/sjå dokument, sjølv om dei ikkje kan laste opp). Eksisterande dokument i den gamle offentlege `media`-bucket-en vert medvite verande liggande som legacy — berre nye opplastingar går gjennom `crm-documents`. `module-crm.js` sine vedleggs-chips/dokumentdialog oppdaterte til å bruke `CrmDocs` for nye opplastingar. Arkitekt-konsultert, Security- og UX-gjennomgått, alle HIGH-funn retta (m.a. `window.open("", "_blank")` synkront i klikk-handteraren for å unngå iOS Safari sin popup-blokkerar). Migrasjon `20260718113648_crm_documents_bucket.sql` — no køyrd mot `vibeverk-staging`, IKKJE enno mot produksjon.
+- **C-9**: Ny `backup-restore`-Playwright-smoketest-flyt i `.claude/skills/smoke-vibeverk/runner.js` (QA-designa testdekning). Ny `loginWebAdmin()`-hjelpar, gjort idempotent saman med `loginWorkspaceAdmin()` (begge deler éi Supabase Auth-økt — eit fyrste feil forsøk synte at eit andre, ubetinga innloggingskall timar ut når skjemaet aldri dukkar opp fordi økta alt er gyldig).
+- **REELL BLOCKER funne og fiksa** (fyrste nokosinne live-køyring av `restore_backup_tables()`, verken i staging eller produksjon tidlegare): funksjonen sine ni `DELETE FROM <tabell>;`-setningar manglar WHERE-klausul, og vart avviste av Supabase sin `pg-safeupdate`-utviding (lasta via `session_preload_libraries` for PostgREST/RPC-rolla — gjeld óg INNI ein `SECURITY DEFINER`-funksjon kalla via RPC, ikkje berre direkte klient-spørjingar). Sikkerhetskopi-gjenoppretting via den ekte "Sikkerhetskopi"-fana har truleg ALDRI fungert sidan funksjonen vart laga 2026-07-13. Fiksa i `20260718175406_fix_restore_backup_tables_safeupdate.sql` (legg til `WHERE true` på alle ni — funksjonelt identisk, tilfredsstiller berre utvidinga sitt syntaktiske krav). Køyrd mot `vibeverk-staging`, `backup-restore`-testen PASSERTE deretter fullstendig live (eksport, FK-forfattar-nullstilling, OG sjølve transaksjons-rollback-regresjonstesten for 2026-07-06-BLOCKER-en). **IKKJE enno køyrd mot produksjon** — same fiks bør prioriterast dit snart, sidan funksjonen sannsynlegvis er like broten der.
+
 ## 0.48.0 — 2026-07-18
 
 ### Design-modulen: Mal 3 — "Scroll-story" (scrollytelling)

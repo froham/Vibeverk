@@ -171,8 +171,19 @@ async function withAdminPage(fn) {
   return ok;
 }
 
+// IDEMPOTENT -- safe to call multiple times in the same run. First live run
+// of flowBackupRestore (2026-07-18) surfaced a real bug: this flow logs in
+// via BOTH Workspace and Web-admin in the same browser session (they share
+// one Supabase Auth session, same origin), so a second loginWebAdmin() call
+// after Workspace already authenticated landed straight on the admin panel
+// -- the #admin-email login form never rendered at all, and the old
+// unconditional waitForSelector("#admin-email") just timed out after 10s.
+// Checking for the POST-login marker FIRST (short timeout) and skipping the
+// form-fill entirely when already authenticated fixes this for both helpers.
 async function loginWorkspaceAdmin(page) {
   await page.goto(BASE_URL + "/workspace/", { waitUntil: "networkidle" });
+  const alreadyIn = await page.waitForSelector("#intranet-nav, .i-nav", { timeout: 3000 }).catch(() => null);
+  if (alreadyIn) return;
   await page.waitForSelector("#intranet-email", { timeout: 10000 });
   await page.fill("#intranet-email", ADMIN_EMAIL);
   await page.fill("#intranet-pass", ADMIN_PASSWORD);
@@ -186,6 +197,8 @@ async function loginWorkspaceAdmin(page) {
 // not #intranet-email/#intranet-pass). This is where "Sikkerhetskopi" lives.
 async function loginWebAdmin(page) {
   await page.goto(BASE_URL + "/#admin", { waitUntil: "networkidle" });
+  const alreadyIn = await page.waitForSelector(".admin-catbar, .tabs", { timeout: 3000 }).catch(() => null);
+  if (alreadyIn) return;
   await page.waitForSelector("#admin-email", { timeout: 10000 });
   await page.fill("#admin-email", ADMIN_EMAIL);
   await page.fill("#admin-pass", ADMIN_PASSWORD);
@@ -414,8 +427,7 @@ async function flowBackupRestore(page) {
     // suite), author a task for them, snapshot WHILE that reference is still
     // live, delete the member, then restore that snapshot and confirm the
     // restore succeeds (not an FK violation) with created_by nulled.
-    await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
-    if (!(await page.$("#u-email"))) await loginWorkspaceAdmin(page);
+    await loginWorkspaceAdmin(page);
     await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
     await page.waitForSelector("#u-email", { timeout: 10000 });
     const memberEmail = "smoketest-" + STAMP + "-bkp@vibeverk-test.invalid";
@@ -439,8 +451,7 @@ async function flowBackupRestore(page) {
     const snapshotWithMember = await (async () => { await loginWebAdmin(page); return exportSnapshot(); })();
 
     // Delete the member via the real UI.
-    await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
-    if (!(await page.$(rowSel))) await loginWorkspaceAdmin(page);
+    await loginWorkspaceAdmin(page);
     await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
     await page.waitForSelector(rowSel, { timeout: 10000 });
     page.once("dialog", (d) => d.accept());
