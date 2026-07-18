@@ -1964,20 +1964,40 @@ window.App = (function () {
       </div>`;
   }
 
-  /* --- Admin: Design (designmal-val, "Design-modul"/sidebygger, Fase 0) -----
-     Berre synleg når feat("sidebygger") er sant (sjå allowedCategoriesForRole).
-     Fase 0 har berre éin mal ("Klassisk" -- dagens design, uendra). Framtidige
-     malar vert lagt til i `templates`-lista under etter kvart som dei vert
-     bygde (kvar sin eigen fil, sjå template-klassisk.js sin kommentar). */
+  /* --- Admin: Design (designmal-val + farge/font, "Design-modul"/sidebygger,
+     Fase 0) -- Berre synleg når feat("sidebygger") er sant (sjå
+     allowedCategoriesForRole). Fase 0 har berre éin mal ("Klassisk" -- dagens
+     design, uendra). Framtidige malar vert lagt til i `templates`-lista under
+     etter kvart som dei vert bygde (kvar sin eigen fil, sjå
+     template-klassisk.js sin kommentar).
+
+     Farge/font-delen skriv til DEN SAME "superconfig"-Store-nøkkelen som
+     Console sitt "Web"-tema-panel (renderWeb() i console-core.js) alt
+     brukar (applySuperConfig()/applyTheme() les nøyaktig same nøkkel,
+     uansett kven som skreiv sist) -- ingen ny synk-mekanisme, berre ein ny
+     skrivar til det som alt finst. Medvite ein ENKLARE versjon enn Console
+     sitt fulle panel (ingen WCAG-kontrastvalidator/palett-generator/logo-
+     opplasting enno -- desse kan leggjast til seinare om det trengst, dette
+     dekker berre dei grunnleggjande farge-/font-vala brukar bad om). */
   function adminDesign(body) {
     var templates = [
       { id: "klassisk", label: "Klassisk", desc: "Dagens design — bilete i full breidde bak tittel i Forsidetopp, tekst ved sida av bilete i Om oss." }
     ];
     var current = activeTemplate();
+    var sc = getSuperConfig();
+    var col = Object.assign({ primary: "#1a7a6e", secondary: "#c17f3e", background: "#fbfaf8", text: "#1B1B1F", surface: "#ffffff", radius: 14 }, sc.colors || {});
+    var fnt = Object.assign({ display: "", body: "" }, sc.fonts || {});
+    function colorRow(id, label, value) {
+      return '<div style="display:flex;align-items:center;gap:.6rem;justify-content:space-between">' +
+        '<label style="font-size:.85rem;font-weight:600">' + C.esc(label) + '</label>' +
+        '<input type="color" id="' + id + '" value="' + C.esc(value) + '" style="width:44px;height:32px;padding:0;border:1.5px solid var(--color-border);border-radius:6px;cursor:pointer">' +
+      '</div>';
+    }
     body.innerHTML =
-      '<p class="prose prose--muted">Vel design-mal for nettsida. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
+      '<p class="prose prose--muted">Vel design-mal for nettsida, og set fargar/fontar. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
       '<form data-design class="admin-form">' +
         '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          '<legend style="font-weight:700">Designmal</legend>' +
           templates.map(function (t) {
             var checked = t.id === current ? " checked" : "";
             return '<label style="display:flex;align-items:flex-start;gap:.6rem;padding:.7rem;border:1.5px solid var(--color-border);border-radius:10px;cursor:pointer">' +
@@ -1985,6 +2005,29 @@ window.App = (function () {
               '<span><strong style="display:block">' + C.esc(t.label) + '</strong><span style="font-size:.85rem;color:var(--color-muted)">' + C.esc(t.desc) + '</span></span>' +
             '</label>';
           }).join("") +
+        '</div>' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          '<legend style="font-weight:700">Fargar</legend>' +
+          colorRow("cs-d-primary", "Primærfarge", col.primary) +
+          colorRow("cs-d-secondary", "Sekundærfarge", col.secondary) +
+          colorRow("cs-d-bg", "Bakgrunnsfarge", col.background) +
+          colorRow("cs-d-text", "Tekstfarge", col.text) +
+          colorRow("cs-d-surface", "Overflate (kort/panel)", col.surface) +
+          '<div class="field" style="margin-top:.3rem">' +
+            '<label>Hjørne-radius</label>' +
+            '<select id="cs-d-radius">' +
+              '<option value="0"' + (col.radius == 0 ? " selected" : "") + '>Skarpe hjørner</option>' +
+              '<option value="8"' + (col.radius == 8 ? " selected" : "") + '>Litt runde</option>' +
+              '<option value="14"' + (col.radius == 14 ? " selected" : "") + '>Standard</option>' +
+              '<option value="24"' + (col.radius == 24 ? " selected" : "") + '>Runde</option>' +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          '<legend style="font-weight:700">Fontar</legend>' +
+          C.field({ id: "cs-d-dfont", label: "Display-font (overskrifter)", value: fnt.display, placeholder: "Syne" }) +
+          C.field({ id: "cs-d-bfont", label: "Brødtekst-font", value: fnt.body, placeholder: "Inter" }) +
+          '<p class="field__hint">Namn på ein Google Fonts-skrifttype. La stå tomt for å bruke standarden.</p>' +
         '</div>' +
         C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
         '<p class="form__status" data-design-status role="status" aria-live="polite"></p>' +
@@ -1994,6 +2037,23 @@ window.App = (function () {
       var picked = body.querySelector('input[name="design-template"]:checked');
       content.designTemplate = picked ? picked.value : "klassisk";
       saveContent();
+
+      var scNow = getSuperConfig();
+      scNow.colors = Object.assign({}, scNow.colors || {}, {
+        primary: body.querySelector("#cs-d-primary").value,
+        secondary: body.querySelector("#cs-d-secondary").value,
+        background: body.querySelector("#cs-d-bg").value,
+        text: body.querySelector("#cs-d-text").value,
+        surface: body.querySelector("#cs-d-surface").value,
+        radius: parseInt(body.querySelector("#cs-d-radius").value, 10)
+      });
+      scNow.fonts = Object.assign({}, scNow.fonts || {}, {
+        display: body.querySelector("#cs-d-dfont").value.trim(),
+        body: body.querySelector("#cs-d-bfont").value.trim()
+      });
+      Store.set(SUPER_KEY, scNow);
+      applySuperConfig();
+      applyTheme();
       render();
       setStatus(body.querySelector("[data-design-status]"), "Lagret.", "ok");
     });
