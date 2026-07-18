@@ -17,8 +17,11 @@
 -- lastar alt heile bookings-cachen for alle asset i eitt kall ved modul-
 -- oppstart (same "menneskeleg skala"-føresetnad som resten av appen), denne
 -- funksjonen speglar akkurat det mønsteret for anon-grenen.
+-- Merk: "time" må dobbeltsiterast i RETURNS TABLE (stadfesta live 2026-07-18 --
+-- ulikt "date", som parsar fint uquota i same posisjon, gav "time" umedieret
+-- ein syntaksfeil her -- ikkje reint namnekonflikt-teori, verifisert empirisk).
 CREATE OR REPLACE FUNCTION get_taken_booking_slots()
-RETURNS TABLE (asset_id text, date date, time text)
+RETURNS TABLE (asset_id text, date date, "time" text)
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
