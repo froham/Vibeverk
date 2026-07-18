@@ -518,7 +518,7 @@
           var picker = assetEl.querySelector(".bk-picker");
           var active = picker && picker.querySelector(".bk-datepill.is-active");
           if (picker && active) picker.querySelector("[data-times]").innerHTML = renderTimes(a, active.getAttribute("data-date"));
-          box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + time + '. Din referanse: #' + newBk.referenceNumber + '</p>';
+          box.innerHTML = '<p class="bk-confirm__ok">' + C.icon("circle-check") + ' Reservert! ' + C.formatDate(date) + ' kl. ' + esc(time) + '. Din referanse: #' + esc(String(newBk.referenceNumber)) + '</p>';
         })
         .catch(function (err) {
           if (submitBtn) submitBtn.disabled = false;
@@ -847,7 +847,7 @@
             '<strong>' + esc(a?a.name:"(slettet)") + '</strong>' +
             '<span class="admin-row__meta">' + C.formatDate(b.date) + ' kl. ' + esc(b.time) + '</span>' +
             App.statusBadge(st) +
-            (b.referenceNumber ? '<span class="crm-custnum">#' + b.referenceNumber + '</span>' : '') +
+            (b.referenceNumber ? '<span class="crm-custnum">#' + esc(String(b.referenceNumber)) + '</span>' : '') +
           '</div>' +
           '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem">' +
             '<div style="display:flex;gap:.4rem">' +

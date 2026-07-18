@@ -3498,7 +3498,7 @@ window.App = (function () {
               <strong>${C.esc(l.name)}</strong>
               <a href="mailto:${C.esc(l.email)}">${C.esc(l.email)}</a>
               ${statusBadge(st)}
-              ${l.referenceNumber ? '<span class="crm-custnum">#' + l.referenceNumber + '</span>' : ""}
+              ${l.referenceNumber ? '<span class="crm-custnum">#' + C.esc(String(l.referenceNumber)) + '</span>' : ""}
             </div>
             <details class="lead-details" data-lead-details="${C.esc(l.id)}">
               <summary>${C.esc(preview)}${preview.length === 90 ? "…" : ""}</summary>
