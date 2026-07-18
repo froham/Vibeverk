@@ -68,7 +68,23 @@
 
   function loadBookings(cb) {
     if (!_sb) { _bookings = App.store.get("booking-bookings", []) || []; cb && cb(); return; }
+    // Anon har ALDRI hatt SELECT-tilgang på bookings (radene har namn/e-post/
+    // telefon/melding) -- den gamle .select("*") over gav difor stille
+    // {data:null, error:{...}} for ein besøkjande, aldri sjekka, så _bookings
+    // vart tolka som ei TOM liste og kalenderen synte ALLE tider som ledige,
+    // sjølv fullbooka dagar (Codex-funn 2026-07-18, MEDIUM). Bruk i staden
+    // get_taken_booking_slots() (PII-fri) for ein ikkje-autentisert brukar.
+    var authed = !!(App.getAuthRole && App.getAuthRole());
+    if (!authed) {
+      _sb.rpc("get_taken_booking_slots").then(function (r) {
+        if (r.error) { logWriteError("hente opptekne tider", r.error); _bookings = []; cb && cb(); return; }
+        _bookings = (r.data || []).map(function (row) { return { assetId: row.asset_id, date: row.date, time: row.time }; });
+        cb && cb();
+      });
+      return;
+    }
     _sb.from("bookings").select("*").order("created_at", { ascending: false }).then(function (r) {
+      if (r.error) { logWriteError("hente bookingar", r.error); _bookings = []; cb && cb(); return; }
       _bookings = (r.data || []).map(dbBookingToJs);
       cb && cb();
     });
@@ -308,7 +324,13 @@
       if (!disabled)  cls += " bk-cal__cell--available";
       if (isFull && !isPast && !isWrong && !isBlocked2) cls += " bk-cal__cell--full";
 
-      var dataAttr = disabled ? "" : ' data-cal-date="' + iso + '" data-cal-asset="' + esc(a.id) + '"';
+      // tabindex/role/aria-label (2026-07-18-fiks, Codex-funn MEDIUM): desse
+      // cellene var reine klikk-berre <div>-ar utan nokon tastaturveg i det
+      // heile -- ein tastaturbrukar kunne fokusere månadsknappane, men aldri
+      // ein einaste dato, og kom difor aldri vidare til reservasjonsskjemaet.
+      // Sjølve valet handterast framleis via DEN SAME delegerte klikk-
+      // handteraren (keydown-handteraren under kallar berre .click()).
+      var dataAttr = disabled ? "" : ' data-cal-date="' + iso + '" data-cal-asset="' + esc(a.id) + '" tabindex="0" role="button" aria-label="' + esc(dayLabel(d)) + (hasTimes ? ", " + available + " ledig" + (available !== 1 ? "e" : "") + " tid" + (available !== 1 ? "er" : "") : "") + '"';
       cells += '<div class="' + cls + '"' + dataAttr + '>' +
         '<span class="bk-cal__day">' + day + '</span>' +
         (!disabled && hasTimes ? '<span class="bk-cal__avail">' + available + ' ledig' + (available !== 1 ? 'e' : '') + '</span>' : '') +
@@ -448,6 +470,18 @@
       }
     });
 
+    // Tastatur-val av kalenderdag (2026-07-18-fiks, Codex-funn MEDIUM) --
+    // gjenbrukar den delegerte klikk-handteraren over via .click() i staden
+    // for å duplisere valdaglogikken. Space skal ikkje scrolle sida når ei
+    // fokusert kalender-celle har fokus (same standard som ein ekte knapp).
+    root.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      var calCell = e.target.closest && e.target.closest("[data-cal-date]");
+      if (!calCell) return;
+      e.preventDefault();
+      calCell.click();
+    });
+
     // Send forespørsel → lagre som lead (admin ser det under Leads)
     var cform = root.querySelector("[data-bk-contact-form]");
     if (cform) {
@@ -461,10 +495,17 @@
         if (!name || !email || !message) { st.textContent = "Fyll inn navn, e-post og melding."; st.className = "form__status is-error"; return; }
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Sjekk e-postadressen."; st.className = "form__status is-error"; return; }
         if (!App.ui.termsAccepted(cform, "bk-c")) { st.textContent = "Du må godta personvernerklæringen for å sende inn."; st.className = "form__status is-error"; return; }
-        App.addLead({ name: name, email: email, message: message });
-        cform.reset();
-        st.textContent = (CFG.contactSection && CFG.contactSection.successMessage) || "Takk! Vi tar kontakt så snart vi kan.";
-        st.className = "form__status is-ok";
+        st.textContent = "Sender …"; st.className = "form__status";
+        App.addLead({ name: name, email: email, message: message }).then(function () {
+          cform.reset();
+          st.textContent = (CFG.contactSection && CFG.contactSection.successMessage) || "Takk! Vi tar kontakt så snart vi kan.";
+          st.className = "form__status is-ok";
+        }).catch(function () {
+          // IKKJE nullstill skjemaet -- same fiks som kontaktskjemaet i
+          // core.js (Codex-funn 2026-07-18, HIGH).
+          st.textContent = "Noko gjekk gale. Prøv igjen om litt, eller ta kontakt direkte.";
+          st.className = "form__status is-error";
+        });
       });
     }
   }

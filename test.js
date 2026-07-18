@@ -686,6 +686,18 @@ const __asyncTests = (async () => {
   if (iCalCell2) fire(iCalCell2, "click");
   var bksNow = JSON.parse(window.localStorage.getItem("nordpunkt:booking-bookings") || "[]");
   assert(bksNow.length > 0, "reservert tid er lagra i databasen");
+
+  // Tastatur-val av kalenderdag (2026-07-18-fiks, Codex-funn MEDIUM) --
+  // kalenderdagane var tidlegare reine klikk-berre <div>-ar utan tabindex/
+  // tastaturhandler i det heile.
+  var kbCell = instAsset.querySelector(".bk-cal__cell--available[data-cal-date]");
+  assert(!!kbCell && kbCell.getAttribute("tabindex") === "0" && kbCell.getAttribute("role") === "button", "kalenderdag har tabindex/role for tastaturtilgang");
+  if (kbCell) {
+    var timesWrap = instAsset.querySelector("[data-times]");
+    timesWrap.innerHTML = ""; // nullstill frå tidlegare klikk i denne testen
+    kbCell.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    assert(timesWrap.innerHTML.trim().length > 0, "Enter-tast på ei kalenderdag-celle viser tider, same som klikk (2026-07-18-fiks)");
+  }
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
   // Booking: to separate e-postmaler (avbooking/svar) + svar-modal med to valg

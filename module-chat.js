@@ -769,26 +769,17 @@
           if (AppRef && AppRef.addLead) AppRef.addLead({ name:name||email, email:email, message:msg, source:"chat-offline" });
           showSuccess();
         }
-        if (_sb) {
-          Chat.createConv(name||email, email).then(function(conv) {
-            return _sb.from("chat_messages").insert({
-              id: Chat.newId(), conversation_id: conv.id,
-              text: msg, sender: "visitor", at: Date.now()
-            });
-          }).then(function(r) {
-            if (r && r.error) {
-              console.error("[chat] offline msg insert failed:", r.error.message, r.error);
-              fallback();
-            } else {
-              showSuccess();
-            }
-          }).catch(function(err) {
-            console.error("[chat] offline form failed:", err.message);
-            fallback();
-          });
-        } else {
-          fallback();
-        }
+        // 2026-07-18-fiks (Codex-funn, MEDIUM): forsøkte tidlegare FYRST å
+        // oppprette ein ekte samtale (Chat.createConv()) og deretter setje inn
+        // ei melding direkte i chat_messages -- direkte anon-INSERT i
+        // chat_messages er REVOKE-a heilt (baseline_schema.sql), så dette
+        // kalla feila 100% av gongene, kvar gong. Nettoresultatet var éin
+        // permanent, tom fantomsamtale (frå createConv, aldri rydda opp) PLUS
+        // ein duplikat-lead frå fallback() -- begge for KVAR offline-melding,
+        // sjølv om besøkjande berre nokon gong såg éin suksessmelding. Går no
+        // rett til fallback() (lead-oppretting), same veg som når _sb ikkje
+        // er konfigurert i det heile -- ingen fantomsamtale, ingen duplikat.
+        fallback();
       });
     }
 

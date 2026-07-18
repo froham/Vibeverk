@@ -766,7 +766,7 @@ window.App = (function () {
     if (!_sb) {
       existing.unshift(newLead);
       Store.set("leads", existing);
-      return newLead;
+      return Promise.resolve(newLead);
     }
     if (!_isAuthed) {
       // Anonym besøkande: leads har ingen anon-GRANT i det heile (RLS kan
@@ -775,7 +775,13 @@ window.App = (function () {
       // lenger (2026-07-06) — ei anonym innsending skal leve i Supabase, ikkje
       // berre i den eine besøkande sin eigen nettlesar, som var det
       // opphavlege "når aldri admin"-funnet.
-      _sb.rpc("insert_anon_lead", {
+      //
+      // Returnerer no ein Promise (Codex-funn 2026-07-18, HIGH): dette var
+      // tidlegare heilt fire-and-forget -- kontaktskjemaet/booking-
+      // førespurnadsskjemaet synte "Takk, vi har mottatt" og tømde seg SJØLV
+      // OM RPC-en feila (Supabase nede, avvist innhald), utan at den
+      // besøkjande nokon gong fekk vite at bedrifta faktisk ikkje mottok noko.
+      return _sb.rpc("insert_anon_lead", {
         p_id: newLead.id, p_kind: newLead.kind, p_name: newLead.name, p_email: newLead.email,
         p_message: newLead.message, p_reference_number: newLead.referenceNumber,
         p_source: newLead.source, p_chat_id: newLead.chatId, p_attachments: newLead.attachments,
@@ -783,12 +789,16 @@ window.App = (function () {
         // supabase/migrations/20260717140000_dedup_anon_lead_chat_id.sql) --
         // null for vanlege Kontakt/Tilbud-leads utan chatId, uendra åtferd.
         p_visitor_id: lead.visitorId || null
-      }).then(function (r) { if (r.error) logWriteError("opprette anonym henvendelse", r.error); });
-      return newLead;
+      }).then(function (r) {
+        if (r.error) { logWriteError("opprette anonym henvendelse", r.error); return Promise.reject(r.error); }
+        return newLead;
+      });
     }
     _leads.unshift(newLead);
-    _sb.from("leads").insert(Object.assign(jsLeadToDb(newLead), { id: newLead.id, created_at: newLead.time })).then(function () {}).catch(function (err) { logWriteError("opprette henvendelse", err); });
-    return newLead;
+    return _sb.from("leads").insert(Object.assign(jsLeadToDb(newLead), { id: newLead.id, created_at: newLead.time })).then(function (r) {
+      if (r.error) { logWriteError("opprette henvendelse", r.error); return Promise.reject(r.error); }
+      return newLead;
+    }).catch(function (err) { logWriteError("opprette henvendelse", err); return Promise.reject(err); });
   }
 
   function updateLead(id, changes) {
@@ -1279,10 +1289,16 @@ window.App = (function () {
         return;
       }
 
-      addLead({ name: name, email: email, message: message });
-
-      form.reset();
-      setStatus(status, content.contactSection.successMessage || CFG.contactSection.successMessage, "ok");
+      setStatus(status, "Sender …", "ok");
+      addLead({ name: name, email: email, message: message }).then(function () {
+        form.reset();
+        setStatus(status, content.contactSection.successMessage || CFG.contactSection.successMessage, "ok");
+      }).catch(function () {
+        // IKKJE nullstill skjemaet -- den besøkjande skal kunne prøve igjen
+        // utan å skrive alt på nytt (Codex-funn 2026-07-18, HIGH: skjemaet
+        // synte tidlegare suksess og tømde seg SJØLV OM innsendinga feila).
+        setStatus(status, "Noko gjekk gale. Prøv igjen om litt, eller ta kontakt direkte.", "error");
+      });
     });
   }
   function setStatus(el, msg, kind) {

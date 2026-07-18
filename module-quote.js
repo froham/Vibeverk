@@ -325,8 +325,17 @@
           if (st.invoiceEmail) lines.push("Faktura e-post: " + st.invoiceEmail);
         }
 
-        App.addLead({ name: name, email: st.email, message: lines.join("\n"), kind: "tilbud", attachments: attachments });
-        renderStep3(inner);
+        // App.addLead() sin anonyme gren returnerer no ein Promise (Codex-
+        // funn 2026-07-18, HIGH) -- venta/sjekka her, i staden for å syne
+        // steg 3 (suksess) uansett om sjølve innsendinga faktisk lukkast.
+        return App.addLead({ name: name, email: st.email, message: lines.join("\n"), kind: "tilbud", attachments: attachments }).then(function () {
+          renderStep3(inner);
+        }).catch(function (leadErr) {
+          if (submitBtn) { submitBtn.disabled = false; }
+          err.textContent = "Kunne ikke sende inn forespørselen. Prøv igjen om litt.";
+          err.style.display = "";
+          console.error("[tilbud] innsending feila:", leadErr);
+        });
       }).catch(function (uploadErr) {
         if (submitBtn) { submitBtn.disabled = false; }
         err.textContent = "Kunne ikke laste opp ett eller flere vedlegg. Prøv igjen, eventuelt med færre/mindre filer.";
