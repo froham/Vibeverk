@@ -556,7 +556,7 @@ window.App = (function () {
       }, CFG.footer || {}, overrides.footer || {}),
       // Design-modul ("sidebygger", Fase 0) -- kva designmal denne kunden
       // har valt. "klassisk" (dagens design) er standard for alle som ikkje
-      // eksplisitt har valt noko anna -- sjå adminDesign()/activeTemplate().
+      // eksplisitt har valt noko anna -- sjå adminDesignMal()/activeTemplate().
       designTemplate: overrides.designTemplate || "klassisk"
     };
     // Normaliser alle bilder til { src, pos } (også eldre strengverdier)
@@ -823,8 +823,9 @@ window.App = (function () {
   }
 
   // Meta-beskrivelse, Open Graph/Twitter-card-tagger og favicon — alt satt fra
-  // config.company (kun redigerbart i super-admin, siden dette er oppsett Vibeverk
-  // gjør, ikke noe kunden trenger å tenke på i den enkle admin-en).
+  // config.company. Redigerbart både i Console (super-admin) og i Web-admin
+  // sin Design-fane ("SEO"-underfana, adminDesignSeo()) sidan v0.47.0 — same
+  // superconfig-nøkkel, applyTheme() kallar denne på nytt etter kvar lagring.
   function applyMeta() {
     const com = CFG.company || {};
     const title = com.name + (com.tagline ? " — " + com.tagline : "");
@@ -1290,7 +1291,11 @@ window.App = (function () {
   }
   function buildAdminTabs() {
     const tabs = [
-      { id: "design",     label: "Design",     category: "design" },
+      { id: "design-mal",    label: "Mal",    category: "design" },
+      { id: "design-firma",  label: "Firma",  category: "design" },
+      { id: "design-seo",    label: "SEO",    category: "design" },
+      { id: "design-fargar", label: "Fargar", category: "design" },
+      { id: "design-fontar", label: "Fontar", category: "design" },
       { id: "analyse",    label: "Analyse",    category: "innstillinger" },
       { id: "navigasjon", label: "Navigasjon", category: "innstillinger" },
       { id: "innhold",    label: "Innhold",    category: "innhold" },
@@ -1568,7 +1573,11 @@ window.App = (function () {
 
   function renderAdminTab(body) {
     if (!body) return;
-    if (activeTab === "design")     return adminDesign(body);
+    if (activeTab === "design-mal")    return adminDesignMal(body);
+    if (activeTab === "design-firma")  return adminDesignFirma(body);
+    if (activeTab === "design-seo")    return adminDesignSeo(body);
+    if (activeTab === "design-fargar") return adminDesignFargar(body);
+    if (activeTab === "design-fontar") return adminDesignFontar(body);
     if (activeTab === "innhold")    return adminContent(body);
     if (activeTab === "tjenester")  return adminServices(body);
     if (activeTab === "aktuelt")    return adminNews(body);
@@ -2217,45 +2226,38 @@ window.App = (function () {
     });
   }
 
-  /* --- Admin: Design (designmal-val + farge/font/logo, "Design-modul"/
-     sidebygger). Berre synleg når feat("sidebygger") er sant (sjå
-     allowedCategoriesForRole). Malar vert lagt til i `templates`-lista under
-     etter kvart som dei vert bygde (kvar sin eigen fil, sjå
-     template-klassisk.js sin kommentar).
+  /* --- Admin: Design ("Design-modul"/sidebygger). Berre synleg når
+     feat("sidebygger") er sant (sjå allowedCategoriesForRole). Delt over 5
+     faner (Mal/Firma/SEO/Fargar/Fontar) i staden for eitt langt skjema --
+     kvar fane har sitt eige skjema/lagre-steg, same mønster som "Innhold"-
+     kategorien alt bruker (Innhold/Tjenester/Aktuelt som separate faner).
 
-     Farge/font/logo-delen skriv til DEN SAME "superconfig"-Store-nøkkelen
-     som Console sitt "Web"-tema-panel (renderWeb() i console-core.js) alt
-     brukar (applySuperConfig()/applyTheme() les nøyaktig same nøkkel,
-     uansett kven som skreiv sist) -- ingen ny synk-mekanisme, berre ein ny
-     skrivar til det som alt finst. No på full djupne med Console sitt panel
-     for farge/font (WCAG-kontrastvalidator, fargepalett-generator, kuratert
-     skriftpar-liste, nullstill-til-standard) og eit avgrensa logo-opplasting
-     (raster-berre, sjå Media.putLogo() sin kommentar for kvifor SVG er
-     eksplisitt utelaten her). */
-  function adminDesign(body) {
+     Farge/font/logo/tagline/SEO-felta skriv til DEN SAME "superconfig"-
+     Store-nøkkelen som Console sitt "Web"-tema-panel (renderWeb() i
+     console-core.js) alt brukar (applySuperConfig()/applyTheme() les
+     nøyaktig same nøkkel, uansett kven som skreiv sist) -- ingen ny synk-
+     mekanisme. "Firmanavn" er MEDVITE IKKJE eksponert her (brukar sin
+     eigen vurdering: kan endre kundeidentiteten, høyrer heime i Console). */
+  function colorRow(id, label, value, hint) {
+    return '<label for="' + id + '" style="display:flex;align-items:center;gap:1rem;padding:.9rem 1rem;max-width:420px;border:1.5px solid var(--color-border);border-radius:12px;cursor:pointer">' +
+      '<input type="color" id="' + id + '" value="' + C.esc(value) + '" style="width:56px;height:56px;padding:0;border:1.5px solid var(--color-border);border-radius:12px;cursor:pointer;flex-shrink:0">' +
+      '<span style="display:grid;gap:.15rem">' +
+        '<strong style="font-size:.9rem">' + C.esc(label) + '</strong>' +
+        (hint ? '<span style="font-size:.8rem;color:var(--color-muted)">' + C.esc(hint) + '</span>' : '') +
+      '</span>' +
+    '</label>';
+  }
+
+  function adminDesignMal(body) {
     var templates = [
       { id: "klassisk", label: "Klassisk", desc: "Dagens design — bilete i full breidde bak tittel i Forsidetopp, tekst ved sida av bilete i Om oss." },
       { id: "panorama", label: "Panorama", desc: "Store bilete er hovudelementet — minimal tekst, ei meir visuell/redaksjonell kjensle enn Klassisk." }
     ];
     var current = activeTemplate();
-    var sc = getSuperConfig();
-    var col = Object.assign({ primary: "#1a7a6e", secondary: "#c17f3e", background: "#fbfaf8", text: "#1B1B1F", surface: "#ffffff", radius: 14 }, sc.colors || {});
-    var fnt = Object.assign({ display: "", body: "" }, sc.fonts || {});
-    var com = Object.assign({ logoUrl: "" }, sc.company || {});
-    function colorRow(id, label, value, hint) {
-      return '<div style="display:grid;gap:.15rem">' +
-        '<div style="display:flex;align-items:center;gap:.6rem;justify-content:space-between">' +
-          '<label for="' + id + '" style="font-size:.85rem;font-weight:600">' + C.esc(label) + '</label>' +
-          '<input type="color" id="' + id + '" value="' + C.esc(value) + '" style="width:44px;height:32px;padding:0;border:1.5px solid var(--color-border);border-radius:6px;cursor:pointer">' +
-        '</div>' +
-        (hint ? '<p class="field__hint" style="margin:0">' + C.esc(hint) + '</p>' : '') +
-      '</div>';
-    }
     body.innerHTML =
-      '<p class="prose prose--muted">Vel design-mal for nettsida, og set fargar/fontar/logo. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
-      '<form data-design class="admin-form">' +
+      '<p class="prose prose--muted">Vel design-mal for nettsida. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
+      '<form data-design-mal class="admin-form">' +
         '<div class="admin-group" style="display:grid;gap:.6rem">' +
-          '<legend style="font-weight:700">Designmal</legend>' +
           templates.map(function (t) {
             var checked = t.id === current ? " checked" : "";
             return '<label style="display:flex;align-items:flex-start;gap:.6rem;padding:.7rem;border:1.5px solid var(--color-border);border-radius:10px;cursor:pointer">' +
@@ -2263,6 +2265,29 @@ window.App = (function () {
               '<span><strong style="display:block">' + C.esc(t.label) + '</strong><span style="font-size:.85rem;color:var(--color-muted)">' + C.esc(t.desc) + '</span></span>' +
             '</label>';
           }).join("") +
+        '</div>' +
+        C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
+        '<p class="form__status" data-design-mal-status role="status" aria-live="polite"></p>' +
+      '</form>';
+
+    body.querySelector("[data-design-mal]").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var picked = body.querySelector('input[name="design-template"]:checked');
+      content.designTemplate = picked ? picked.value : "klassisk";
+      saveContent();
+      render();
+      setStatus(body.querySelector("[data-design-mal-status]"), "Lagret.", "ok");
+    });
+  }
+
+  function adminDesignFirma(body) {
+    var sc = getSuperConfig();
+    var com = Object.assign({ tagline: "", logoUrl: "" }, sc.company || {});
+    body.innerHTML =
+      '<p class="prose prose--muted">Tagline og logo vert vist i sidehovudet og andre stader på nettsida.</p>' +
+      '<form data-design-firma class="admin-form">' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          C.field({ id: "cs-d-tagline", label: "Tagline", value: com.tagline || "", placeholder: "Ein kort setning under firmanamnet" }) +
         '</div>' +
         '<div class="admin-group" style="display:grid;gap:.6rem">' +
           '<legend style="font-weight:700">Logo</legend>' +
@@ -2277,109 +2302,9 @@ window.App = (function () {
             '<p class="field__hint" id="cs-d-logo-status"></p>' +
           '</div>' +
         '</div>' +
-        '<div class="admin-group" style="display:grid;gap:.6rem">' +
-          '<legend style="font-weight:700">Fargar</legend>' +
-          '<div>' +
-            '<button type="button" class="btn btn--ghost btn--sm" id="cs-d-palette-generate">🎨 Generer fargepalett</button>' +
-            '<p class="field__hint">Set saman eit heilt fargeforslag (primær, sekundær, bakgrunn, tekst, overflate) som er lett å lese. Klikk gjerne fleire gongar for ulike forslag. Berre teksten og primærfargen sjekkast (sjå under) — dei andre vert ikkje validerte. Ingenting vert lagra før du trykkjer «Lagre».</p>' +
-          '</div>' +
-          colorRow("cs-d-primary", "Primærfarge", col.primary, "Knappar, lenker og aktive element") +
-          colorRow("cs-d-secondary", "Sekundærfarge", col.secondary, "CTA-knappar og uthevingar") +
-          colorRow("cs-d-bg", "Bakgrunnsfarge", col.background, "Sideflata bak alt innhald") +
-          colorRow("cs-d-text", "Tekstfarge", col.text, "Hovudtekst og overskrifter") +
-          colorRow("cs-d-surface", "Overflate (kort/panel)", col.surface, "Kort, modalar og paneler") +
-          '<div id="cs-d-contrast-info"></div>' +
-          '<div class="field" style="margin-top:.3rem">' +
-            '<label>Hjørne-radius</label>' +
-            '<select id="cs-d-radius">' +
-              '<option value="0"' + (col.radius == 0 ? " selected" : "") + '>Skarpe hjørner</option>' +
-              '<option value="8"' + (col.radius == 8 ? " selected" : "") + '>Litt runde</option>' +
-              '<option value="14"' + (col.radius == 14 ? " selected" : "") + '>Standard</option>' +
-              '<option value="24"' + (col.radius == 24 ? " selected" : "") + '>Runde</option>' +
-            '</select>' +
-          '</div>' +
-        '</div>' +
-        '<div class="admin-group" style="display:grid;gap:.6rem">' +
-          '<legend style="font-weight:700">Fontar</legend>' +
-          '<div class="fontpair-row">' +
-            DESIGN_FONT_PAIRS.map(function (p, i) {
-              return '<button type="button" class="fontpair-btn" data-design-pair="' + i + '">' + C.esc(p.label) + '</button>';
-            }).join("") +
-          '</div>' +
-          C.field({ id: "cs-d-dfont", label: "Display-font (overskrifter)", value: fnt.display, placeholder: "Syne" }) +
-          designFontPreviewMarkup("cs-d-dfont-preview") +
-          C.field({ id: "cs-d-bfont", label: "Brødtekst-font", value: fnt.body, placeholder: "Inter" }) +
-          designFontPreviewMarkup("cs-d-bfont-preview") +
-          '<p class="field__hint">Vel eit av dei ferdige skriftparane over, eller skriv inn eit eige. Fritekst-namnet må stemme NØYAKTIG med namnet på <a href="https://fonts.google.com" target="_blank" rel="noopener">Google Fonts</a> (t.d. «Poppins») — bla deg fram der for å finne fleire, kopier namnet nøyaktig som det står øvst på skrifta si eiga side.</p>' +
-          '<div style="margin-top:.3rem">' +
-            '<button type="button" class="btn btn--ghost btn--sm" id="cs-d-reset">↺ Nullstill fargar og fontar til standard</button>' +
-          '</div>' +
-        '</div>' +
         C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
-        '<p class="form__status" data-design-status role="status" aria-live="polite"></p>' +
+        '<p class="form__status" data-design-firma-status role="status" aria-live="polite"></p>' +
       '</form>';
-
-    designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
-    designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
-    designRefreshFontPairActive(body);
-    ["cs-d-dfont", "cs-d-bfont"].forEach(function (id) {
-      body.querySelector("#" + id).addEventListener("input", function () {
-        designRefreshFontPreview(id, id === "cs-d-dfont" ? "cs-d-dfont-preview" : "cs-d-bfont-preview", body);
-        designRefreshFontPairActive(body);
-      });
-    });
-    body.querySelectorAll("[data-design-pair]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var p = DESIGN_FONT_PAIRS[parseInt(btn.getAttribute("data-design-pair"), 10)];
-        if (!p) return;
-        body.querySelector("#cs-d-dfont").value = p.display;
-        body.querySelector("#cs-d-bfont").value = p.body;
-        designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
-        designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
-        designRefreshFontPairActive(body);
-      });
-    });
-
-    designRefreshContrastInfo(body);
-    ["cs-d-text", "cs-d-bg", "cs-d-primary"].forEach(function (id) {
-      body.querySelector("#" + id).addEventListener("input", function () { designRefreshContrastInfo(body); });
-    });
-    body.querySelector("#cs-d-palette-generate").addEventListener("click", function () {
-      var palette = designGenerateThemePalette();
-      body.querySelector("#cs-d-primary").value   = palette.primary;
-      body.querySelector("#cs-d-secondary").value = palette.secondary;
-      body.querySelector("#cs-d-bg").value        = palette.background;
-      body.querySelector("#cs-d-text").value      = palette.text;
-      body.querySelector("#cs-d-surface").value   = palette.surface;
-      designRefreshContrastInfo(body);
-    });
-    // Delegert lyttar -- overlever at designRefreshContrastInfo() byggjer
-    // #cs-d-contrast-info sitt innhald (inkl. "Generer forslag"-knappane)
-    // på nytt kvar gong.
-    body.querySelector("#cs-d-contrast-info").addEventListener("click", function (e) {
-      var btn = e.target.closest("[data-design-suggest]");
-      if (!btn) return;
-      var fieldId = btn.getAttribute("data-design-suggest");
-      var target  = parseFloat(btn.getAttribute("data-design-suggest-target"));
-      var bg = body.querySelector("#cs-d-bg").value;
-      var fg = body.querySelector("#" + fieldId).value;
-      body.querySelector("#" + fieldId).value = designSuggestAccessibleColor(fg, bg, target);
-      designRefreshContrastInfo(body);
-    });
-    body.querySelector("#cs-d-reset").addEventListener("click", function () {
-      body.querySelector("#cs-d-primary").value = CFG.colors.primary;
-      body.querySelector("#cs-d-secondary").value = CFG.colors.secondary;
-      body.querySelector("#cs-d-bg").value = CFG.colors.background;
-      body.querySelector("#cs-d-text").value = CFG.colors.text;
-      body.querySelector("#cs-d-surface").value = CFG.colors.surface;
-      body.querySelector("#cs-d-radius").value = "14";
-      body.querySelector("#cs-d-dfont").value = CFG.fonts.display || "";
-      body.querySelector("#cs-d-bfont").value = CFG.fonts.body || "";
-      designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
-      designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
-      designRefreshFontPairActive(body);
-      designRefreshContrastInfo(body);
-    });
 
     // Logo-filopplasting -- går direkte mot KUNDEN sitt eige, allereie
     // autentiserte Supabase-Storage-prosjekt via Media.putLogo() (raster-
@@ -2422,33 +2347,244 @@ window.App = (function () {
       });
     })();
 
-    body.querySelector("[data-design]").addEventListener("submit", function (e) {
+    body.querySelector("[data-design-firma]").addEventListener("submit", function (e) {
       e.preventDefault();
-      var picked = body.querySelector('input[name="design-template"]:checked');
-      content.designTemplate = picked ? picked.value : "klassisk";
-      saveContent();
-
       var scNow = getSuperConfig();
-      scNow.colors = Object.assign({}, scNow.colors || {}, {
-        primary: body.querySelector("#cs-d-primary").value,
-        secondary: body.querySelector("#cs-d-secondary").value,
-        background: body.querySelector("#cs-d-bg").value,
-        text: body.querySelector("#cs-d-text").value,
-        surface: body.querySelector("#cs-d-surface").value,
-        radius: parseInt(body.querySelector("#cs-d-radius").value, 10)
-      });
-      scNow.fonts = Object.assign({}, scNow.fonts || {}, {
-        display: body.querySelector("#cs-d-dfont").value.trim(),
-        body: body.querySelector("#cs-d-bfont").value.trim()
-      });
       scNow.company = Object.assign({}, scNow.company || {}, {
+        tagline: body.querySelector("#cs-d-tagline").value.trim(),
         logoUrl: body.querySelector("#cs-d-logo").value.trim()
       });
       Store.set(SUPER_KEY, scNow);
       applySuperConfig();
       applyTheme();
       render();
-      setStatus(body.querySelector("[data-design-status]"), "Lagret.", "ok");
+      setStatus(body.querySelector("[data-design-firma-status]"), "Lagret.", "ok");
+    });
+  }
+
+  function adminDesignSeo(body) {
+    var sc = getSuperConfig();
+    var com = Object.assign({ metaDescription: "", ogImage: "", favicon: "" }, sc.company || {});
+    body.innerHTML =
+      '<p class="prose prose--muted">Styrer korleis nettsida vert vist i Google-søk og når nokon deler ei lenke på sosiale medium.</p>' +
+      '<form data-design-seo class="admin-form">' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          C.field({ id: "cs-d-metadesc", label: "Meta-beskrivelse", multiline: true, rows: 2,
+            value: com.metaDescription || "", placeholder: "Kort beskrivelse, 1–2 setningar",
+            help: "Teksten som vises under tittelen i Google-søk. Kort og beskrivende, 1–2 setningar." }) +
+          C.field({ id: "cs-d-ogimage", label: "Delingsbilde (OG-bilde)", value: com.ogImage || "", placeholder: "https://… (1200×630px)",
+            help: "Bildet som vises når nokon deler lenka til sida på Facebook, LinkedIn eller andre sosiale medium." }) +
+          '<div id="cs-d-ogimage-preview-wrap" style="display:' + (com.ogImage ? "flex" : "none") + ';align-items:center;justify-content:center;width:160px;height:84px;margin-top:-.4rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-tint);overflow:hidden">' +
+            '<img id="cs-d-ogimage-preview" src="' + C.esc(com.ogImage || "") + '" alt="" style="max-width:100%;max-height:100%;object-fit:contain">' +
+          '</div>' +
+          C.field({ id: "cs-d-favicon", label: "Favicon-URL", value: com.favicon || "", placeholder: "https://…",
+            help: "Det vesle ikonet som vises i nettlesar-fana og bokmerke." }) +
+        '</div>' +
+        C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
+        '<p class="form__status" data-design-seo-status role="status" aria-live="polite"></p>' +
+      '</form>';
+
+    (function () {
+      var ogField = body.querySelector("#cs-d-ogimage");
+      var ogWrap  = body.querySelector("#cs-d-ogimage-preview-wrap");
+      var ogImg   = body.querySelector("#cs-d-ogimage-preview");
+      ogField.addEventListener("input", function () {
+        var src = ogField.value.trim();
+        if (src) { ogImg.src = src; ogWrap.style.display = "flex"; }
+        else { ogWrap.style.display = "none"; }
+      });
+    })();
+
+    body.querySelector("[data-design-seo]").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var scNow = getSuperConfig();
+      scNow.company = Object.assign({}, scNow.company || {}, {
+        metaDescription: body.querySelector("#cs-d-metadesc").value.trim(),
+        ogImage: body.querySelector("#cs-d-ogimage").value.trim(),
+        favicon: body.querySelector("#cs-d-favicon").value.trim()
+      });
+      Store.set(SUPER_KEY, scNow);
+      applySuperConfig();
+      applyTheme();
+      render();
+      setStatus(body.querySelector("[data-design-seo-status]"), "Lagret.", "ok");
+    });
+  }
+
+  function adminDesignFargar(body) {
+    var sc = getSuperConfig();
+    var col = Object.assign({ primary: "#1a7a6e", secondary: "#c17f3e", background: "#fbfaf8", text: "#1B1B1F", surface: "#ffffff", radius: 14 }, sc.colors || {});
+    var radiusOptions = [
+      { value: "0",  label: "Skarpe hjørner" },
+      { value: "8",  label: "Litt runde" },
+      { value: "14", label: "Standard" },
+      { value: "24", label: "Runde" }
+    ];
+    body.innerHTML =
+      '<p class="prose prose--muted">Vel fargane nettsida skal bruke.</p>' +
+      '<form data-design-fargar class="admin-form">' +
+        '<div class="admin-group" style="display:grid;gap:1rem">' +
+          '<div style="padding-bottom:1.1rem;border-bottom:1px solid var(--color-border)">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-d-palette-generate">🎨 Generer fargepalett</button>' +
+            '<p class="field__hint" style="margin-top:.6rem">Set saman eit heilt fargeforslag (primær, sekundær, bakgrunn, tekst, overflate) som er lett å lese. Klikk gjerne fleire gongar for ulike forslag. Berre teksten og primærfargen sjekkast (sjå under) — dei andre vert ikkje validerte. Ingenting vert lagra før du trykkjer «Lagre».</p>' +
+          '</div>' +
+          colorRow("cs-d-primary", "Primærfarge", col.primary, "Knappar, lenker og aktive element") +
+          colorRow("cs-d-secondary", "Sekundærfarge", col.secondary, "CTA-knappar og uthevingar") +
+          colorRow("cs-d-bg", "Bakgrunnsfarge", col.background, "Sideflata bak alt innhald") +
+          colorRow("cs-d-text", "Tekstfarge", col.text, "Hovudtekst og overskrifter") +
+          colorRow("cs-d-surface", "Overflate (kort/panel)", col.surface, "Kort, modalar og paneler") +
+          '<div id="cs-d-contrast-info"></div>' +
+        '</div>' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          '<label style="font-weight:700">Hjørne-radius</label>' +
+          '<p class="field__hint" style="margin:0">Styrer avrundinga på knappar, kort og bilete i heile nettstaden.</p>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.7rem">' +
+            radiusOptions.map(function (r) {
+              var checked = String(col.radius) === r.value ? " checked" : "";
+              var btnR = parseInt(r.value, 10) < 14 ? r.value + "px" : "999px";
+              return '<label style="display:flex;flex-direction:column;align-items:center;gap:.6rem;padding:.8rem;border:1.5px solid var(--color-border);border-radius:10px;cursor:pointer;text-align:center">' +
+                '<span style="width:100%;height:34px;background:var(--color-tint);border-radius:' + r.value + 'px;display:flex;align-items:center;justify-content:center">' +
+                  '<span style="width:60%;height:14px;background:var(--color-primary);border-radius:' + btnR + '"></span>' +
+                '</span>' +
+                '<span style="display:flex;align-items:center;gap:.4rem">' +
+                  '<input type="radio" name="cs-d-radius" value="' + r.value + '"' + checked + '>' +
+                  '<span style="font-size:.8rem;font-weight:600">' + C.esc(r.label) + '</span>' +
+                '</span>' +
+              '</label>';
+            }).join("") +
+          '</div>' +
+          '<div style="margin-top:.3rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-d-fargar-reset">↺ Nullstill fargar til standard</button>' +
+            '<p class="field__hint" style="margin-top:.3rem">Nullstiller berre skjemaet over — trykk «Lagre» for å ta endringa i bruk.</p>' +
+          '</div>' +
+        '</div>' +
+        C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
+        '<p class="form__status" data-design-fargar-status role="status" aria-live="polite"></p>' +
+      '</form>';
+
+    designRefreshContrastInfo(body);
+    ["cs-d-text", "cs-d-bg", "cs-d-primary"].forEach(function (id) {
+      body.querySelector("#" + id).addEventListener("input", function () { designRefreshContrastInfo(body); });
+    });
+    body.querySelector("#cs-d-palette-generate").addEventListener("click", function () {
+      var palette = designGenerateThemePalette();
+      body.querySelector("#cs-d-primary").value   = palette.primary;
+      body.querySelector("#cs-d-secondary").value = palette.secondary;
+      body.querySelector("#cs-d-bg").value        = palette.background;
+      body.querySelector("#cs-d-text").value      = palette.text;
+      body.querySelector("#cs-d-surface").value   = palette.surface;
+      designRefreshContrastInfo(body);
+    });
+    // Delegert lyttar -- overlever at designRefreshContrastInfo() byggjer
+    // #cs-d-contrast-info sitt innhald (inkl. "Generer forslag"-knappane)
+    // på nytt kvar gong.
+    body.querySelector("#cs-d-contrast-info").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-design-suggest]");
+      if (!btn) return;
+      var fieldId = btn.getAttribute("data-design-suggest");
+      var target  = parseFloat(btn.getAttribute("data-design-suggest-target"));
+      var bg = body.querySelector("#cs-d-bg").value;
+      var fg = body.querySelector("#" + fieldId).value;
+      body.querySelector("#" + fieldId).value = designSuggestAccessibleColor(fg, bg, target);
+      designRefreshContrastInfo(body);
+    });
+    body.querySelector("#cs-d-fargar-reset").addEventListener("click", function () {
+      body.querySelector("#cs-d-primary").value = CFG.colors.primary;
+      body.querySelector("#cs-d-secondary").value = CFG.colors.secondary;
+      body.querySelector("#cs-d-bg").value = CFG.colors.background;
+      body.querySelector("#cs-d-text").value = CFG.colors.text;
+      body.querySelector("#cs-d-surface").value = CFG.colors.surface;
+      var defaultRadio = body.querySelector('input[name="cs-d-radius"][value="14"]');
+      if (defaultRadio) defaultRadio.checked = true;
+      designRefreshContrastInfo(body);
+    });
+
+    body.querySelector("[data-design-fargar]").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var scNow = getSuperConfig();
+      var radiusChecked = body.querySelector('input[name="cs-d-radius"]:checked');
+      scNow.colors = Object.assign({}, scNow.colors || {}, {
+        primary: body.querySelector("#cs-d-primary").value,
+        secondary: body.querySelector("#cs-d-secondary").value,
+        background: body.querySelector("#cs-d-bg").value,
+        text: body.querySelector("#cs-d-text").value,
+        surface: body.querySelector("#cs-d-surface").value,
+        radius: parseInt(radiusChecked ? radiusChecked.value : "14", 10)
+      });
+      Store.set(SUPER_KEY, scNow);
+      applySuperConfig();
+      applyTheme();
+      render();
+      setStatus(body.querySelector("[data-design-fargar-status]"), "Lagret.", "ok");
+    });
+  }
+
+  function adminDesignFontar(body) {
+    var sc = getSuperConfig();
+    var fnt = Object.assign({ display: "", body: "" }, sc.fonts || {});
+    body.innerHTML =
+      '<p class="prose prose--muted">Vel skrifttypar for overskrifter og brødtekst.</p>' +
+      '<form data-design-fontar class="admin-form">' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          '<div class="fontpair-row">' +
+            DESIGN_FONT_PAIRS.map(function (p, i) {
+              return '<button type="button" class="fontpair-btn" data-design-pair="' + i + '">' + C.esc(p.label) + '</button>';
+            }).join("") +
+          '</div>' +
+          C.field({ id: "cs-d-dfont", label: "Display-font (overskrifter)", value: fnt.display, placeholder: "Syne" }) +
+          designFontPreviewMarkup("cs-d-dfont-preview") +
+          C.field({ id: "cs-d-bfont", label: "Brødtekst-font", value: fnt.body, placeholder: "Inter" }) +
+          designFontPreviewMarkup("cs-d-bfont-preview") +
+          '<p class="field__hint">Vel eit av dei ferdige skriftparane over, eller skriv inn eit eige. Fritekst-namnet må stemme NØYAKTIG med namnet på <a href="https://fonts.google.com" target="_blank" rel="noopener">Google Fonts</a> (t.d. «Poppins») — bla deg fram der for å finne fleire, kopier namnet nøyaktig som det står øvst på skrifta si eiga side.</p>' +
+          '<div style="margin-top:.3rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-d-fontar-reset">↺ Nullstill fontar til standard</button>' +
+            '<p class="field__hint" style="margin-top:.3rem">Nullstiller berre skjemaet over — trykk «Lagre» for å ta endringa i bruk.</p>' +
+          '</div>' +
+        '</div>' +
+        C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
+        '<p class="form__status" data-design-fontar-status role="status" aria-live="polite"></p>' +
+      '</form>';
+
+    designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
+    designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
+    designRefreshFontPairActive(body);
+    ["cs-d-dfont", "cs-d-bfont"].forEach(function (id) {
+      body.querySelector("#" + id).addEventListener("input", function () {
+        designRefreshFontPreview(id, id === "cs-d-dfont" ? "cs-d-dfont-preview" : "cs-d-bfont-preview", body);
+        designRefreshFontPairActive(body);
+      });
+    });
+    body.querySelectorAll("[data-design-pair]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var p = DESIGN_FONT_PAIRS[parseInt(btn.getAttribute("data-design-pair"), 10)];
+        if (!p) return;
+        body.querySelector("#cs-d-dfont").value = p.display;
+        body.querySelector("#cs-d-bfont").value = p.body;
+        designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
+        designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
+        designRefreshFontPairActive(body);
+      });
+    });
+    body.querySelector("#cs-d-fontar-reset").addEventListener("click", function () {
+      body.querySelector("#cs-d-dfont").value = CFG.fonts.display || "";
+      body.querySelector("#cs-d-bfont").value = CFG.fonts.body || "";
+      designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
+      designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
+      designRefreshFontPairActive(body);
+    });
+
+    body.querySelector("[data-design-fontar]").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var scNow = getSuperConfig();
+      scNow.fonts = Object.assign({}, scNow.fonts || {}, {
+        display: body.querySelector("#cs-d-dfont").value.trim(),
+        body: body.querySelector("#cs-d-bfont").value.trim()
+      });
+      Store.set(SUPER_KEY, scNow);
+      applySuperConfig();
+      applyTheme();
+      render();
+      setStatus(body.querySelector("[data-design-fontar-status]"), "Lagret.", "ok");
     });
   }
 
