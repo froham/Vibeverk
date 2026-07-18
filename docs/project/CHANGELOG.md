@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.47.0 — 2026-07-18
+
+### Design-fana delt i 5 underfaner + Tagline/SEO kundevendt + visuell opprydding
+
+Brukar såg det live panelet frå v0.46.0 og gav konkret tilbakemelding (skjermbilete av "Fargar") pluss eit spørsmål om kor mykje av "Firma"/SEO-felta kunden sjølv bør styre.
+
+- **Design-fana delt i 5 underfaner** (Mal | Firma | SEO | Fargar | Fontar), etter brukar sitt forslag om at panelet vart for tett — same underfane-mønster som "Innhold"-kategorien alt bruker (Innhold/Tjenester/Aktuelt). `buildAdminTabs()` fekk 5 nye tab-oppføringar (alle `category:"design"`) i staden for éin; den gamle, eine `adminDesign()`-funksjonen er delt i `adminDesignMal()`/`adminDesignFirma()`/`adminDesignSeo()`/`adminDesignFargar()`/`adminDesignFontar()`, kvar med sitt eige skjema og «Lagre»-steg (skriv berre til sin eigen del av `superconfig`/`content`, ingen krasj mellom faner). "Nullstill"-knappen er delt i to, scoped til kvar sin fane (fargar/fontar).
+- **Tagline vert kundevendt redigerbar** (ny "Firma"-fane), etter diskusjon om kva av "Firma"/SEO-felta kunden bør styre sjølv. **Firmanavn held fram Console-only**, medvite — brukar sin eigen vurdering: kan endre kundeidentiteten, ikkje noko som skal vere eit enkelt sjølvbeteningsval.
+- **Heile "SEO og deling"-seksjonen vert kundevendt redigerbar** (ny "SEO"-fane): meta-beskrivelse, delingsbilde (OG-bilde), favicon — porta frå Console sitt identiske panel, reine URL/tekstfelt (ingen opplasting-UI denne runden, stadfesta med brukar — vurderast seinare berre om ein kunde faktisk etterspør det).
+- **Visuell opprydding i "Fargar"**, etter brukar sitt skjermbilete-baserte innspel: meir luft rundt "🎨 Generer fargepalett" (delelinje + auka avstand før fargeboksane), fargeboksane redesigna til større (56×56px), kort-baserte rader (heile raden klikkbar, ikkje berre sjølve fargefeltet), og "Hjørne-radius" bytt frå ein plain nettlesar-`<select>` til ein visuell kort-veljar som VISER den faktiske avrundinga (og pill-vs-firkanta-knappåtferda) for kvart alternativ i staden for berre tekst.
+
+**UX/Mobile Reviewer-pass** (meiningsfull visuell endring + ny fane-struktur): ingen blokkerande funn. Tre MEDIUM-funn retta: fargeboks-korta hadde ingen `max-width` og strekte seg ubehageleg breitt ut på desktop/fullskjerm (sett `max-width:420px`); SEO-fana sitt delingsbilde-felt hadde ingen biletførehandsvising (i motsetnad til Logo-feltet rett ved sida av, same mønster) — lagt til; "Nullstill"-knappane sa ikkje at berre skjemaet vert nullstilt, ikkje sjølve lagringa — lagt til ei kort hint-linje ved begge. Nokre polish-funn (5-fane-raden sin bretjepunkt ved 375px, korta sin `:focus-within`-stil) vurdert som ikkje-blokkerande, ikkje fiksa denne runden.
+
+Testa: `node test.js` (535/536, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra). Live nettlesar-stadfesta (alle 5 faner, Tagline/meta-beskrivelse lagrar og oppdaterer `document.title`/`<meta name="description">` live via `applyTheme()`→`applyMeta()`, nullstill-knappane går korrekt til denne kunden sin eigen `config.js`). Cache-bust: `core.js?v=61`, `console-core.js?v=143`. `VIBEVERK_VERSION` 0.46.0 → 0.47.0.
+
 ## 0.46.0 — 2026-07-18
 
 ### Design-modulen: farge/font på full djupne + sjølvbetent logo-opplasting
