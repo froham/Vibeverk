@@ -536,8 +536,9 @@
     .admin-form { display: grid; gap: 1rem; align-items: start; }
     .admin-form--card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.2rem; margin-top: 1rem; }
     .fontpair-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .9rem; }
-    .fontpair-btn { font: inherit; font-size: .82rem; padding: .4rem .8rem; border-radius: 999px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); cursor: pointer; }
+    .fontpair-btn { font: inherit; font-size: .82rem; padding: .65rem .95rem; border-radius: 999px; border: 1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); cursor: pointer; }
     .fontpair-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .fontpair-btn.is-active { border-color: var(--color-primary); background: var(--color-tint); color: var(--color-primary); font-weight: 700; }
     .email-tpl-card { margin-top: 0; margin-bottom: 1.2rem; }
     .email-tpl-card summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: .5rem; }
     .email-tpl-card__body { margin-top: .8rem; }
@@ -603,7 +604,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js?v=11"></script>
   <script src="components.js?v=17"></script>
-  <script src="core.js?v=59"></script>
+  <script src="core.js?v=60"></script>
   <script src="template-klassisk.js?v=1"></script>
   <script src="template-panorama.js?v=1"></script>
   <!-- Ekstra-moduler lastes her, etter core.js -->

@@ -327,6 +327,78 @@ window.App = (function () {
       });
     },
 
+    // Logo-opplasting frå Web-admin sin Design-fane (kunden sin EIGEN,
+    // allereie autentiserte økt -- ingen kontrollplan/service_role
+    // tilgjengeleg her, i motsetnad til Console sin upload_logo-broker-
+    // handling). Difor MEDVITE berre raster (PNG/JPEG/WebP) -- SVG er
+    // eksplisitt IKKJE støtta i denne sjølvbetenings-stien, sidan trygg
+    // SVG-sanering krev ei serversside-funksjon (som broker-en har via
+    // ei allowlist), og denne koden har ingen tilsvarande server å sanere
+    // gjennom. Uendra SVG-opplasting frå klienten ville opna ei reell
+    // lagra-XSS-flate. Behelder gjennomsiktigheit (PNG-utdata for PNG/WebP-
+    // kjelder) i staden for å tvinge JPEG slik put() gjer for innhaldsbilete.
+    //
+    // MEDVITE INGEN "media:"-localStorage-fallback her (i motsetnad til
+    // put()/putFile()): CFG.company.logoUrl vert brukt direkte som <img src>
+    // i sidehovudet (C.nav() sitt logoUrl-felt) UTAN eit Media.resolve()-
+    // steg, sidan feltet historisk alltid har vore ein ekte URL-streng
+    // (Console sin upload_logo-broker skriv aldri noko anna). Ein
+    // "media:"-referanse der ville vist eit knust bilete i sidehovudet
+    // heilt til neste ekte opplasting. Krev difor ei ekte Supabase-tilkopling
+    // (alltid til stades for kvar reelt utplassert kunde) i staden for å
+    // opne ein ny verdiform inn i eit felt som resten av koden ikkje veit
+    // korleis det skal løysast.
+    LOGO_MAX_DIM: 800,
+    // Sikringsnett mot dekomprimeringsbombe (t.d. ein 30000×30000 low-entropy
+    // PNG som komprimerer godt under 6MB-grensa, men dekodar til fleire GB
+    // pikseldata) -- SAME feilklasse som vart funnen og fiksa éin gong før i
+    // Console sin upload_logo-broker (sjå CHANGELOG 0.39.0), der ein
+    // pre-dekode header-parse stogga han FØR faktisk biletdekoding. Reint
+    // klientside JS kan ikkje unngå at nettlesaren dekodar biletet FØR
+    // img.onload fyrer (ingen måte å lese dimensjonar utan det, med mindre
+    // ein handrullar PNG/JPEG/WebP-header-parsing), så dette stoggar i staden
+    // FØR denne koden lagar eit like stort/dyrt canvas OG re-kodar det --
+    // reduserer risiko, garanterer det ikkje (sjå ADR/tryggingsgjennomgang).
+    MAX_PIXELS: 40 * 1000 * 1000,
+    putLogo: function (file) {
+      const self = this;
+      const ALLOWED = { "image/png": 1, "image/jpeg": 1, "image/webp": 1 };
+      return new Promise(function (resolve, reject) {
+        if (!_sb) { reject(new Error("nosupabase")); return; }
+        if (!ALLOWED[file.type]) { reject(new Error("type")); return; }
+        if (file.size > 6 * 1024 * 1024) { reject(new Error("size")); return; }
+        const reader = new FileReader();
+        reader.onerror = function () { reject(new Error("read")); };
+        reader.onload = function () {
+          const img = new Image();
+          img.onerror = function () { reject(new Error("decode")); };
+          img.onload = function () {
+            if (img.width * img.height > self.MAX_PIXELS) { reject(new Error("dims")); return; }
+            let w = img.width, h = img.height;
+            const m = self.LOGO_MAX_DIM;
+            if (w > m || h > m) { const s = m / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            const outType = file.type === "image/jpeg" ? "image/jpeg" : "image/png";
+            const quality = outType === "image/jpeg" ? 0.9 : undefined;
+            canvas.toBlob(function (blob) {
+              if (!blob) { reject(new Error("decode")); return; }
+              const ext = outType === "image/jpeg" ? "jpg" : "png";
+              const path = "logo-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7) + "." + ext;
+              _sb.storage.from("media").upload(path, blob, { contentType: outType, upsert: false })
+                .then(function (r) {
+                  if (r.error) { reject(r.error); return; }
+                  resolve(_sb.storage.from("media").getPublicUrl(path).data.publicUrl);
+                });
+            }, outType, quality);
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    },
+
     // Gjør en lagret verdi om til noe <img src> forstår.
     resolve: function (value) {
       if (!value) return "";
@@ -1964,21 +2036,202 @@ window.App = (function () {
       </div>`;
   }
 
-  /* --- Admin: Design (designmal-val + farge/font, "Design-modul"/sidebygger,
-     Fase 0) -- Berre synleg når feat("sidebygger") er sant (sjå
-     allowedCategoriesForRole). Fase 0 har berre éin mal ("Klassisk" -- dagens
-     design, uendra). Framtidige malar vert lagt til i `templates`-lista under
+  /* --- WCAG-kontrastrekning + fargeforslag + fargepalett-generator, PORTA
+     ordrett frå Console sin console-core.js (renderWeb()/contrastRatio()/
+     suggestAccessibleColor()/generateThemePalette()) -- IKKJE delt kode,
+     sidan Web-admin (core.js) og Console (console-core.js) aldri deler
+     JS-kontekst (same grunngjeving som Console sin eigen kommentar om
+     fontforhandsvisinga si duplisering). Rein klientside-matte, ingen
+     lagring før faktisk "Lagre". */
+  function designHexToRgb(hex) {
+    var h = (hex || "").replace("#", "");
+    if (h.length === 3) h = h.split("").map(function (c) { return c + c; }).join("");
+    var num = parseInt(h, 16) || 0;
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+  function designRelLuminance(hex) {
+    var rgb = designHexToRgb(hex);
+    var chans = [rgb.r, rgb.g, rgb.b].map(function (c) {
+      var s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * chans[0] + 0.7152 * chans[1] + 0.0722 * chans[2];
+  }
+  function designContrastRatio(hex1, hex2) {
+    var l1 = designRelLuminance(hex1), l2 = designRelLuminance(hex2);
+    var lighter = Math.max(l1, l2), darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+  function designHexToHsl(hex) {
+    var rgb = designHexToRgb(hex);
+    var r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; }
+    else {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+  }
+  function designHslToHex(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    var r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      var hue2rgb = function (p, q, t) {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      var p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1 / 3);
+    }
+    function toHex(x) { var v = Math.round(x * 255).toString(16); return v.length === 1 ? "0" + v : v; }
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+  }
+  function designSuggestAccessibleColor(fgHex, bgHex, targetRatio) {
+    var hsl = designHexToHsl(fgHex);
+    var darker  = designHslToHex(hsl.h, hsl.s, Math.max(0, hsl.l - 10));
+    var lighter = designHslToHex(hsl.h, hsl.s, Math.min(100, hsl.l + 10));
+    var goDarker = designContrastRatio(darker, bgHex) >= designContrastRatio(lighter, bgHex);
+    var l = hsl.l, hex = fgHex;
+    for (var i = 0; i < 40 && designContrastRatio(hex, bgHex) < targetRatio; i++) {
+      l = goDarker ? Math.max(0, l - 2.5) : Math.min(100, l + 2.5);
+      hex = designHslToHex(hsl.h, hsl.s, l);
+      if (l <= 0 || l >= 100) break;
+    }
+    return hex;
+  }
+  function designGenerateThemePalette() {
+    var hue = Math.floor(Math.random() * 360);
+    var secondaryHue = (hue + 150 + Math.floor(Math.random() * 60)) % 360;
+    var background = designHslToHex(hue, 12, 97);
+    var surface = "#ffffff";
+    var text      = designSuggestAccessibleColor(designHslToHex(hue, 15, 15), background, 4.5);
+    var primary   = designSuggestAccessibleColor(designHslToHex(hue, 70, 45), background, 3);
+    var secondary = designSuggestAccessibleColor(designHslToHex(secondaryHue, 65, 48), background, 3);
+    return { primary: primary, secondary: secondary, background: background, text: text, surface: surface };
+  }
+  function designRefreshContrastInfo(body) {
+    var el = body.querySelector("#cs-d-contrast-info");
+    if (!el) return;
+    var text = body.querySelector("#cs-d-text").value;
+    var bg = body.querySelector("#cs-d-bg").value;
+    var primary = body.querySelector("#cs-d-primary").value;
+    var textRatio = designContrastRatio(text, bg);
+    var primaryRatio = designContrastRatio(primary, bg);
+    var textOk = textRatio >= 4.5;
+    var primaryOk = primaryRatio >= 3;
+    el.innerHTML =
+      '<p style="margin:.4rem 0 0;font-size:.82rem">' +
+        (textOk ? "✓ Teksten er lett å lese mot bakgrunnen" : "⚠ Teksten kan vere vanskeleg å lese mot bakgrunnen") +
+        " (kontrast " + textRatio.toFixed(1) + ":1, bør vere minst 4.5:1)" +
+        (textOk ? "" : ' <button type="button" class="btn btn--ghost btn--sm" data-design-suggest="cs-d-text" data-design-suggest-target="4.5" style="padding:.5rem .8rem;font-size:.82rem">Generer forslag</button>') +
+      "</p>" +
+      '<p style="margin:.2rem 0 0;font-size:.82rem">' +
+        (primaryOk ? "✓ Primærfargen skil seg godt frå bakgrunnen" : "⚠ Primærfargen kan vere vanskeleg å sjå mot bakgrunnen") +
+        " (kontrast " + primaryRatio.toFixed(1) + ":1, bør vere minst 3:1 — gjeld t.d. knappekantar)" +
+        (primaryOk ? "" : ' <button type="button" class="btn btn--ghost btn--sm" data-design-suggest="cs-d-primary" data-design-suggest-target="3" style="padding:.5rem .8rem;font-size:.82rem">Generer forslag</button>') +
+      "</p>";
+  }
+
+  /* --- Kuratert skriftpar-liste, PORTA ordrett frå Console (FONT_PAIRS i
+     console-core.js) -- same 11 par, slik at kunden vel mellom nøyaktig dei
+     same, alt nedlasta/kjende skriftane operatøren har tilgjengeleg. Live
+     forhandsvisning hentar Google Fonts sitt CSS2-API, same mønster som
+     Console (ikkje delt kode, sjå notatet over). */
+  var DESIGN_FONT_PAIRS = [
+    { label: "Syne + Inter",                    display: "Syne",               body: "Inter" },
+    { label: "Playfair + Source Sans 3",         display: "Playfair Display",   body: "Source Sans 3" },
+    { label: "Space Grotesk + Work Sans",        display: "Space Grotesk",      body: "Work Sans" },
+    { label: "Fraunces + Karla",                 display: "Fraunces",           body: "Karla" },
+    { label: "Poppins + Nunito Sans",            display: "Poppins",            body: "Nunito Sans" },
+    { label: "Bricolage Grotesque + Inter",      display: "Bricolage Grotesque",body: "Inter" },
+    { label: "DM Serif Display + DM Sans",       display: "DM Serif Display",   body: "DM Sans" },
+    { label: "Libre Baskerville + Lato",         display: "Libre Baskerville",  body: "Lato" },
+    { label: "Archivo + Roboto",                 display: "Archivo",            body: "Roboto" },
+    { label: "Outfit + Plus Jakarta Sans",       display: "Outfit",             body: "Plus Jakarta Sans" },
+    { label: "Cormorant Garamond + Mulish",      display: "Cormorant Garamond", body: "Mulish" }
+  ];
+  var _designFontPreviewState = {};
+  function designRebuildPreviewFontLink() {
+    var families = [];
+    var seen = {};
+    Object.keys(_designFontPreviewState).forEach(function (k) {
+      var f = _designFontPreviewState[k];
+      var key = f.name + "|" + f.weights.join(",");
+      if (seen[key]) return;
+      seen[key] = true;
+      families.push("family=" + encodeURIComponent(f.name).replace(/%20/g, "+") + ":wght@" + f.weights.join(";"));
+    });
+    var linkEl = document.getElementById("design-preview-fonts");
+    if (!families.length) return;
+    if (!linkEl) {
+      linkEl = document.createElement("link");
+      linkEl.id = "design-preview-fonts";
+      linkEl.rel = "stylesheet";
+      document.head.appendChild(linkEl);
+    }
+    linkEl.href = "https://fonts.googleapis.com/css2?" + families.join("&") + "&display=swap";
+  }
+  function designFontPreviewMarkup(id) {
+    return '<p id="' + id + '" style="margin:.4rem 0 0;padding:.55rem .75rem;' +
+      'border:1px solid var(--color-border);border-radius:8px;font-size:1.15rem;' +
+      'opacity:.45;transition:opacity .15s" aria-hidden="true">Aa Bb Cc — Eksempeltekst 123</p>';
+  }
+  function designRefreshFontPreview(nameId, previewId, body) {
+    var nameEl = body.querySelector("#" + nameId);
+    var prevEl = body.querySelector("#" + previewId);
+    if (!nameEl || !prevEl) return;
+    var name = nameEl.value.trim();
+    if (!name) {
+      prevEl.style.fontFamily = "inherit";
+      prevEl.style.opacity = ".45";
+      delete _designFontPreviewState[previewId];
+      designRebuildPreviewFontLink();
+      return;
+    }
+    prevEl.style.fontFamily = "'" + name.replace(/'/g, "") + "', sans-serif";
+    prevEl.style.opacity = "1";
+    _designFontPreviewState[previewId] = { name: name, weights: [400, 700] };
+    designRebuildPreviewFontLink();
+  }
+  function designRefreshFontPairActive(body) {
+    var d = body.querySelector("#cs-d-dfont").value.trim().toLowerCase();
+    var b = body.querySelector("#cs-d-bfont").value.trim().toLowerCase();
+    body.querySelectorAll("[data-design-pair]").forEach(function (btn) {
+      var p = DESIGN_FONT_PAIRS[parseInt(btn.getAttribute("data-design-pair"), 10)];
+      var isMatch = !!p && p.display.toLowerCase() === d && p.body.toLowerCase() === b;
+      btn.classList.toggle("is-active", isMatch);
+    });
+  }
+
+  /* --- Admin: Design (designmal-val + farge/font/logo, "Design-modul"/
+     sidebygger). Berre synleg når feat("sidebygger") er sant (sjå
+     allowedCategoriesForRole). Malar vert lagt til i `templates`-lista under
      etter kvart som dei vert bygde (kvar sin eigen fil, sjå
      template-klassisk.js sin kommentar).
 
-     Farge/font-delen skriv til DEN SAME "superconfig"-Store-nøkkelen som
-     Console sitt "Web"-tema-panel (renderWeb() i console-core.js) alt
+     Farge/font/logo-delen skriv til DEN SAME "superconfig"-Store-nøkkelen
+     som Console sitt "Web"-tema-panel (renderWeb() i console-core.js) alt
      brukar (applySuperConfig()/applyTheme() les nøyaktig same nøkkel,
      uansett kven som skreiv sist) -- ingen ny synk-mekanisme, berre ein ny
-     skrivar til det som alt finst. Medvite ein ENKLARE versjon enn Console
-     sitt fulle panel (ingen WCAG-kontrastvalidator/palett-generator/logo-
-     opplasting enno -- desse kan leggjast til seinare om det trengst, dette
-     dekker berre dei grunnleggjande farge-/font-vala brukar bad om). */
+     skrivar til det som alt finst. No på full djupne med Console sitt panel
+     for farge/font (WCAG-kontrastvalidator, fargepalett-generator, kuratert
+     skriftpar-liste, nullstill-til-standard) og eit avgrensa logo-opplasting
+     (raster-berre, sjå Media.putLogo() sin kommentar for kvifor SVG er
+     eksplisitt utelaten her). */
   function adminDesign(body) {
     var templates = [
       { id: "klassisk", label: "Klassisk", desc: "Dagens design — bilete i full breidde bak tittel i Forsidetopp, tekst ved sida av bilete i Om oss." },
@@ -1988,14 +2241,18 @@ window.App = (function () {
     var sc = getSuperConfig();
     var col = Object.assign({ primary: "#1a7a6e", secondary: "#c17f3e", background: "#fbfaf8", text: "#1B1B1F", surface: "#ffffff", radius: 14 }, sc.colors || {});
     var fnt = Object.assign({ display: "", body: "" }, sc.fonts || {});
-    function colorRow(id, label, value) {
-      return '<div style="display:flex;align-items:center;gap:.6rem;justify-content:space-between">' +
-        '<label style="font-size:.85rem;font-weight:600">' + C.esc(label) + '</label>' +
-        '<input type="color" id="' + id + '" value="' + C.esc(value) + '" style="width:44px;height:32px;padding:0;border:1.5px solid var(--color-border);border-radius:6px;cursor:pointer">' +
+    var com = Object.assign({ logoUrl: "" }, sc.company || {});
+    function colorRow(id, label, value, hint) {
+      return '<div style="display:grid;gap:.15rem">' +
+        '<div style="display:flex;align-items:center;gap:.6rem;justify-content:space-between">' +
+          '<label for="' + id + '" style="font-size:.85rem;font-weight:600">' + C.esc(label) + '</label>' +
+          '<input type="color" id="' + id + '" value="' + C.esc(value) + '" style="width:44px;height:32px;padding:0;border:1.5px solid var(--color-border);border-radius:6px;cursor:pointer">' +
+        '</div>' +
+        (hint ? '<p class="field__hint" style="margin:0">' + C.esc(hint) + '</p>' : '') +
       '</div>';
     }
     body.innerHTML =
-      '<p class="prose prose--muted">Vel design-mal for nettsida, og set fargar/fontar. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
+      '<p class="prose prose--muted">Vel design-mal for nettsida, og set fargar/fontar/logo. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
       '<form data-design class="admin-form">' +
         '<div class="admin-group" style="display:grid;gap:.6rem">' +
           '<legend style="font-weight:700">Designmal</legend>' +
@@ -2008,12 +2265,30 @@ window.App = (function () {
           }).join("") +
         '</div>' +
         '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          '<legend style="font-weight:700">Logo</legend>' +
+          '<div id="cs-d-logo-preview-wrap" style="display:' + (com.logoUrl ? "flex" : "none") + ';align-items:center;justify-content:center;width:120px;height:64px;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-tint);overflow:hidden">' +
+            '<img id="cs-d-logo-preview" src="' + C.esc(Media.resolve(com.logoUrl || "")) + '" alt="" style="max-width:100%;max-height:100%;object-fit:contain">' +
+          '</div>' +
+          C.field({ id: "cs-d-logo", label: "Logo-URL", value: com.logoUrl || "", placeholder: "https://…",
+            help: "Lim inn ei lenke til ein logo som alt er hosta ein annan stad, ELLER last opp ei fil under." }) +
+          '<div class="field" style="margin-top:-.4rem">' +
+            '<label>Last opp logo (PNG, JPEG eller WebP, maks 6MB — vert automatisk skalert ned)</label>' +
+            '<input type="file" id="cs-d-logo-file" accept="image/png,image/jpeg,image/webp">' +
+            '<p class="field__hint" id="cs-d-logo-status"></p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
           '<legend style="font-weight:700">Fargar</legend>' +
-          colorRow("cs-d-primary", "Primærfarge", col.primary) +
-          colorRow("cs-d-secondary", "Sekundærfarge", col.secondary) +
-          colorRow("cs-d-bg", "Bakgrunnsfarge", col.background) +
-          colorRow("cs-d-text", "Tekstfarge", col.text) +
-          colorRow("cs-d-surface", "Overflate (kort/panel)", col.surface) +
+          '<div>' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-d-palette-generate">🎨 Generer fargepalett</button>' +
+            '<p class="field__hint">Set saman eit heilt fargeforslag (primær, sekundær, bakgrunn, tekst, overflate) som er lett å lese. Klikk gjerne fleire gongar for ulike forslag. Berre teksten og primærfargen sjekkast (sjå under) — dei andre vert ikkje validerte. Ingenting vert lagra før du trykkjer «Lagre».</p>' +
+          '</div>' +
+          colorRow("cs-d-primary", "Primærfarge", col.primary, "Knappar, lenker og aktive element") +
+          colorRow("cs-d-secondary", "Sekundærfarge", col.secondary, "CTA-knappar og uthevingar") +
+          colorRow("cs-d-bg", "Bakgrunnsfarge", col.background, "Sideflata bak alt innhald") +
+          colorRow("cs-d-text", "Tekstfarge", col.text, "Hovudtekst og overskrifter") +
+          colorRow("cs-d-surface", "Overflate (kort/panel)", col.surface, "Kort, modalar og paneler") +
+          '<div id="cs-d-contrast-info"></div>' +
           '<div class="field" style="margin-top:.3rem">' +
             '<label>Hjørne-radius</label>' +
             '<select id="cs-d-radius">' +
@@ -2026,13 +2301,127 @@ window.App = (function () {
         '</div>' +
         '<div class="admin-group" style="display:grid;gap:.6rem">' +
           '<legend style="font-weight:700">Fontar</legend>' +
+          '<div class="fontpair-row">' +
+            DESIGN_FONT_PAIRS.map(function (p, i) {
+              return '<button type="button" class="fontpair-btn" data-design-pair="' + i + '">' + C.esc(p.label) + '</button>';
+            }).join("") +
+          '</div>' +
           C.field({ id: "cs-d-dfont", label: "Display-font (overskrifter)", value: fnt.display, placeholder: "Syne" }) +
+          designFontPreviewMarkup("cs-d-dfont-preview") +
           C.field({ id: "cs-d-bfont", label: "Brødtekst-font", value: fnt.body, placeholder: "Inter" }) +
-          '<p class="field__hint">Namn på ein Google Fonts-skrifttype. La stå tomt for å bruke standarden.</p>' +
+          designFontPreviewMarkup("cs-d-bfont-preview") +
+          '<p class="field__hint">Vel eit av dei ferdige skriftparane over, eller skriv inn eit eige. Fritekst-namnet må stemme NØYAKTIG med namnet på <a href="https://fonts.google.com" target="_blank" rel="noopener">Google Fonts</a> (t.d. «Poppins») — bla deg fram der for å finne fleire, kopier namnet nøyaktig som det står øvst på skrifta si eiga side.</p>' +
+          '<div style="margin-top:.3rem">' +
+            '<button type="button" class="btn btn--ghost btn--sm" id="cs-d-reset">↺ Nullstill fargar og fontar til standard</button>' +
+          '</div>' +
         '</div>' +
         C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
         '<p class="form__status" data-design-status role="status" aria-live="polite"></p>' +
       '</form>';
+
+    designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
+    designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
+    designRefreshFontPairActive(body);
+    ["cs-d-dfont", "cs-d-bfont"].forEach(function (id) {
+      body.querySelector("#" + id).addEventListener("input", function () {
+        designRefreshFontPreview(id, id === "cs-d-dfont" ? "cs-d-dfont-preview" : "cs-d-bfont-preview", body);
+        designRefreshFontPairActive(body);
+      });
+    });
+    body.querySelectorAll("[data-design-pair]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var p = DESIGN_FONT_PAIRS[parseInt(btn.getAttribute("data-design-pair"), 10)];
+        if (!p) return;
+        body.querySelector("#cs-d-dfont").value = p.display;
+        body.querySelector("#cs-d-bfont").value = p.body;
+        designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
+        designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
+        designRefreshFontPairActive(body);
+      });
+    });
+
+    designRefreshContrastInfo(body);
+    ["cs-d-text", "cs-d-bg", "cs-d-primary"].forEach(function (id) {
+      body.querySelector("#" + id).addEventListener("input", function () { designRefreshContrastInfo(body); });
+    });
+    body.querySelector("#cs-d-palette-generate").addEventListener("click", function () {
+      var palette = designGenerateThemePalette();
+      body.querySelector("#cs-d-primary").value   = palette.primary;
+      body.querySelector("#cs-d-secondary").value = palette.secondary;
+      body.querySelector("#cs-d-bg").value        = palette.background;
+      body.querySelector("#cs-d-text").value      = palette.text;
+      body.querySelector("#cs-d-surface").value   = palette.surface;
+      designRefreshContrastInfo(body);
+    });
+    // Delegert lyttar -- overlever at designRefreshContrastInfo() byggjer
+    // #cs-d-contrast-info sitt innhald (inkl. "Generer forslag"-knappane)
+    // på nytt kvar gong.
+    body.querySelector("#cs-d-contrast-info").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-design-suggest]");
+      if (!btn) return;
+      var fieldId = btn.getAttribute("data-design-suggest");
+      var target  = parseFloat(btn.getAttribute("data-design-suggest-target"));
+      var bg = body.querySelector("#cs-d-bg").value;
+      var fg = body.querySelector("#" + fieldId).value;
+      body.querySelector("#" + fieldId).value = designSuggestAccessibleColor(fg, bg, target);
+      designRefreshContrastInfo(body);
+    });
+    body.querySelector("#cs-d-reset").addEventListener("click", function () {
+      body.querySelector("#cs-d-primary").value = CFG.colors.primary;
+      body.querySelector("#cs-d-secondary").value = CFG.colors.secondary;
+      body.querySelector("#cs-d-bg").value = CFG.colors.background;
+      body.querySelector("#cs-d-text").value = CFG.colors.text;
+      body.querySelector("#cs-d-surface").value = CFG.colors.surface;
+      body.querySelector("#cs-d-radius").value = "14";
+      body.querySelector("#cs-d-dfont").value = CFG.fonts.display || "";
+      body.querySelector("#cs-d-bfont").value = CFG.fonts.body || "";
+      designRefreshFontPreview("cs-d-dfont", "cs-d-dfont-preview", body);
+      designRefreshFontPreview("cs-d-bfont", "cs-d-bfont-preview", body);
+      designRefreshFontPairActive(body);
+      designRefreshContrastInfo(body);
+    });
+
+    // Logo-filopplasting -- går direkte mot KUNDEN sitt eige, allereie
+    // autentiserte Supabase-Storage-prosjekt via Media.putLogo() (raster-
+    // berre, sjå den funksjonen sin kommentar for kvifor SVG er utelaten).
+    (function () {
+      var fileInput = body.querySelector("#cs-d-logo-file");
+      var statusEl  = body.querySelector("#cs-d-logo-status");
+      var urlField  = body.querySelector("#cs-d-logo");
+      var previewWrap = body.querySelector("#cs-d-logo-preview-wrap");
+      var previewImg  = body.querySelector("#cs-d-logo-preview");
+      function updatePreview() {
+        var src = Media.resolve(urlField.value.trim());
+        if (src) { previewImg.src = src; previewWrap.style.display = "flex"; }
+        else { previewWrap.style.display = "none"; }
+      }
+      urlField.addEventListener("input", updatePreview);
+      fileInput.addEventListener("change", function () {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        statusEl.textContent = "Lastar opp …";
+        Media.putLogo(file).then(function (url) {
+          urlField.value = url;
+          updatePreview();
+          statusEl.textContent = "✓ Lasta opp! Hugs å trykkje «Lagre» for å ta han i bruk.";
+          fileInput.value = "";
+        }).catch(function (err) {
+          if (err && err.message === "type") {
+            statusEl.textContent = "Filtypen er ikkje støtta her. Bruk PNG, JPEG eller WebP (SVG-logo kan Vibeverk laste opp for deg via Console).";
+          } else if (err && err.message === "size") {
+            statusEl.textContent = "Fila er for stor (maks 6MB).";
+          } else if (err && err.message === "dims") {
+            statusEl.textContent = "Biletet har for høg oppløysing. Prøv eit mindre/enklare bilete.";
+          } else if (err && err.message === "nosupabase") {
+            statusEl.textContent = "Logo-opplasting krev ei aktiv tilkopling. Lim inn ei lenke i staden, eller ta kontakt med Vibeverk.";
+          } else {
+            statusEl.textContent = "Opplasting feila. Prøv igjen, eller lim inn ei lenke i staden.";
+          }
+          fileInput.value = "";
+        });
+      });
+    })();
+
     body.querySelector("[data-design]").addEventListener("submit", function (e) {
       e.preventDefault();
       var picked = body.querySelector('input[name="design-template"]:checked');
@@ -2051,6 +2440,9 @@ window.App = (function () {
       scNow.fonts = Object.assign({}, scNow.fonts || {}, {
         display: body.querySelector("#cs-d-dfont").value.trim(),
         body: body.querySelector("#cs-d-bfont").value.trim()
+      });
+      scNow.company = Object.assign({}, scNow.company || {}, {
+        logoUrl: body.querySelector("#cs-d-logo").value.trim()
       });
       Store.set(SUPER_KEY, scNow);
       applySuperConfig();
