@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.48.0 — 2026-07-18
+
+### Design-modulen: Mal 3 — "Scroll-story" (scrollytelling)
+
+Tredje designmal i det veksande mal-galleriet (etter Klassisk og Panorama). Brukar ønska å "meistre ein mal" til med eit scrollytelling-uttrykk: heile sida les som ein sekvens av store, biletdominerte "augeblikk" som opnar seg progressivt idet kunden scrollar.
+
+- Ny fil `template-scrollstory.js` — same isolasjonsmønster som Klassisk/Panorama (eigen fil, `.story-*`-prefiksa CSS, registrerer `window.SiteTemplates.scrollstory`). MEDVITE ingen scroll-jacking/pinning — bygd i staden på den EKSISTERANDE `.reveal`/IntersectionObserver-mekanismen (respekterer alt `prefers-reduced-motion`), der kvart "augeblikk" (hero, about, KVART tenestekort) får si eiga `.reveal`-klasse sidan `bindScrollReveal()` observerer alle `.reveal`-element flatt, ikkje éin per seksjon.
+- **Forsidetopp**: sentrert (ikkje botnforankra som Panorama) tittel/undertittel/CTA over eit fullbreidde 100vh-bilete, med ein liten animert "scroll for å utforske"-indikator (respekterer reduced motion, skjult på korte/liggande mobilskjermar).
+- **Om oss / Tenester**: fullbreidde biletbakgrunn med sentrert tekst overlagt, i staden for Panorama sin bilete-så-tekst-under-kvarandre-oppbygging — dette er hovudskiljet frå Panorama. Kvart tenestekort vert sitt eige nær-full-viewport "augeblikk" i sekvens i staden for eit rutenett; fungerer best med eit moderat tal kort (om lag 3–6).
+- **Isolasjonstest-runde** (eksplisitt bede om av brukar no som det finst tre malar): sykla gjennom Klassisk → Panorama → Scroll-story → Klassisk, både via friske sideinnlastingar og via byte i admin utan omlasting (det realistiske "kunde lagrar nytt malval"-forløpet) — stadfesta null CSS-/klasse-lekkasje mellom malane i begge scenario.
+- Éin reell bug funne under eiga live-testing (ikkje av reviewaren): Forsidetoppen sin fallback utan bilete arva `color:#fff` frå bilete-varianten, som gjorde tittelen usynleg mot ein lys standardbakgrunn — retta med ein eigen `.story-hero--noimg`-variant (same prinsipp som Panorama og Klassisk sine eigne biletlause fallback-ar).
+
+**UX/Mobile Reviewer-pass** (påkravd, genuint ny markup/struktur): ingen blokkerande funn. Tre HIGH-funn retta før merge — Om oss/tenestekort brukte rå CSS-`background-image` (kopiert frå Forsidetoppen sin teknikk) i staden for delte `C.coverImg()`, som gjorde at dei mista BÅDE alt-tekst OG lazy-loading som Klassisk/Panorama sine tilsvarande bilete alt har — omskrive til å bruke `C.coverImg()` inni ein absolutt-posisjonert bakgrunnsboks (behelder den visuelle "bilete bak sentrert tekst"-kjensla, men no som eit ekte `&lt;img alt loading="lazy"&gt;`); det flate mørkleggingslaget (.45–.48 opasitet) var svakare enn kontrastnivået Panorama sin eigen gjennomgang kravde for tekst i normal storleik — styrka til .55–.58 i alle tre seksjonstypar. Forsidetoppen sjølv held fram med rå `background-image` (same konvensjon som Klassisk/Panorama, og lazy-loading ville skada LCP på det fyrste, alltid synlege biletet) — fekk i staden ein `aria-label` bygd frå biletet sin alt-tekst. Éin MEDIUM-funn retta: `min-height:100vh` åleine er utsett for iOS Safari sin dynamiske adresselinje-feil på stabla fullskjerm-seksjonar — lagt til `100svh` som progressiv forbetring (fell trygt tilbake til `100vh` i eldre nettlesarar).
+
+Testa: `node test.js` (535/536, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra). Live nettlesar-stadfesta (alt-tekst/lazy-loading/objekt-tilpassing stadfesta med ekte testbilete, isolasjonstest-runde over). Cache-bust: `core.js?v=62`, ny `template-scrollstory.js?v=1` i alle fire HTML-inngangar. `VIBEVERK_VERSION` 0.47.0 → 0.48.0.
+
 ## 0.47.0 — 2026-07-18
 
 ### Design-fana delt i 5 underfaner + Tagline/SEO kundevendt + visuell opprydding

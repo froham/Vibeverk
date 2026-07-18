@@ -2251,7 +2251,8 @@ window.App = (function () {
   function adminDesignMal(body) {
     var templates = [
       { id: "klassisk", label: "Klassisk", desc: "Dagens design — bilete i full breidde bak tittel i Forsidetopp, tekst ved sida av bilete i Om oss." },
-      { id: "panorama", label: "Panorama", desc: "Store bilete er hovudelementet — minimal tekst, ei meir visuell/redaksjonell kjensle enn Klassisk." }
+      { id: "panorama", label: "Panorama", desc: "Store bilete er hovudelementet — minimal tekst, ei meir visuell/redaksjonell kjensle enn Klassisk." },
+      { id: "scrollstory", label: "Scroll-story", desc: "Sida les som ein sekvens av store augeblikk som opnar seg idet du scrollar — fungerer best med eit moderat tal tenestekort (om lag 3–6)." }
     ];
     var current = activeTemplate();
     body.innerHTML =
