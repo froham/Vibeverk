@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.44.1";
+  var VIBEVERK_VERSION = "0.44.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -846,8 +846,24 @@ window.VwConsole = (function () {
     var com = Object.assign({}, sc.company || {});
     var fnt = Object.assign({}, sc.fonts   || {});
 
+    // Design-modulen ("sidebygger") gjev no kunden sin EIGEN, direkte
+    // skrivetilgang til farge/font (Web-admin sin nye "Design"-fane, same
+    // superconfig-nøkkel som HER). saveSC() sender heile det gjeldande
+    // superconfig-objektet frå operatøren sitt eige, potensielt eldre
+    // nettlesarminne (ikkje ein fersk refetch før lagring) -- lagrar
+    // operatøren HER etter at kunden alt har endra farge/font sjølv, vinn
+    // operatøren sin eldre kopi. Medvite valt som ei enkel åtvaring i
+    // staden for å byggje om alle seks lagre-handterarane til å refetche
+    // ferskt (brukar vurderte kollisjonsrisikoen som lita i praksis).
+    var sidebyggerWarning = (sc.features && sc.features.sidebygger === true)
+      ? '<div class="i-notice i-notice--warn" style="margin-bottom:1rem;padding:.8rem 1rem;border:1.5px solid #E8833A;border-radius:8px;background:color-mix(in srgb,#E8833A 10%,transparent);font-size:.88rem">' +
+          '<strong>Denne kunden har Design-modulen aktivert.</strong> Kunden kan sjølv endre farge/font direkte i Web-admin. Ver varsam med å lagre endringar her — di lagring overskriv HEILE fargar/fontar-oppsettet, inkludert eventuelle endringar kunden nyleg har gjort sjølv.' +
+        '</div>'
+      : "";
+
     wrap.innerHTML =
       '<form id="cs-form">' +
+        sidebyggerWarning +
         '<fieldset class="admin-group"><legend>Firma</legend>' +
           C.field({ id:"cs-name",    label:"Firmanavn",  value: com.name    || "" }) +
           C.field({ id:"cs-tagline", label:"Tagline",    value: com.tagline || "" }) +
