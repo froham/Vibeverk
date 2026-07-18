@@ -165,7 +165,11 @@ window.SITE_CONFIG = {
                          //   Utan denne: Outlook (mailto) er einaste svaralternativ, konsistent overalt.
     mediabank:     true,  // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
     scrollbanner:  true,  // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js
-    chat:          true   // ← Native chat-boble. Krever module-chat.js
+    chat:          true,  // ← Native chat-boble. Krever module-chat.js
+    sidebygger:    false  // ← Design-modul ("sidebygger"): kunden vel sjølv designmal i Web-admin sin
+                          //   nye "Design"-fane. Betalt tillegg -- MÅ vere eksplisitt false som standard
+                          //   (feat() sitt "sant med mindre eksplisitt false"-mønster ville elles vist
+                          //   fana for alle). Berre Console/superconfig skal kunne skru denne på.
   },
 
   /* --- Workspace-funksjoner (skru av/på) ------------------------------------

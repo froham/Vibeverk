@@ -30,6 +30,25 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.44.0 — 2026-07-18
+
+### Design-modul ("sidebygger") — Fase 0: infrastruktur + "Klassisk"-mal portert inn
+
+Fyrste implementasjon av eit nytt, betalt tillegg: ein "Design"-fane i Web-admin (heilt fyrst i fanerekkjefølgja: Design | Innhold | Henvendelser | Innstillinger | Min konto) der kunden framover skal kunne velje mellom fleire heile designmalar for nettsida — ikkje per-seksjon-val, ikkje eit fritt drag-and-drop-verktøy. Sjå `docs/roadmap/ROADMAP.md` for full bakgrunn (konsoliderer tre tidlegare, spreidde roadmap-punkt) og planfila for detaljert teknisk grunngjeving (to Arkitekt-konsultasjonar).
+
+- **Ny fil `template-klassisk.js`**: dagens eksisterande `hero()`/`about()`/`services()`-implementasjon, ordrett flytta hit frå `components.js` (reint flyttesteg, ingen visuell endring). Registrerer seg i eit nytt `window.SiteTemplates`-register.
+- **`components.js`** sine `hero()`/`about()`/`services()` er no tynne, uendra vidaresendarar til `window.SiteTemplates.klassisk` — held funksjonane "pure" (ingen kobling til `content`/kva mal som er aktiv for ein gjeven kunde, per CLAUDE.md sitt prinsipp for denne fila).
+- **`core.js`**: ny `activeTemplate()`/`resolveTemplate()`-logikk (les `content.designTemplate`, defaultar til `"klassisk"`), `registerBuiltinSections()` kallar no det oppløyste malobjektet direkte. Ny `adminDesign()`-fane (viser berre "Klassisk" enno). `ADMIN_CATEGORIES`/`allowedCategoriesForRole()`/`buildAdminTabs()`/`renderAdminTab()` utvida for den nye "design"-kategorien, gata bak `feat("sidebygger")` (Console-only entitlement, same mønster som `crmFull` — kunden kan IKKJE skru dette på sjølv).
+- **`config.js`**: nytt `features.sidebygger: false`-felt (MÅ vere eksplisitt `false` som standard, sidan `feat()` sitt "sant med mindre eksplisitt false"-mønster elles ville vist fana for alle).
+- **Reell bug funne og retta undervegs**: `loadContent()` bygger `content`-objektet frå eit fast sett namngjevne felt kvar gong sida lastar — eit nytt `content.designTemplate`-felt sett via admin-lagring ville stille forsvunne att ved neste sideinnlasting utan ein eksplisitt `designTemplate: overrides.designTemplate || "klassisk"`-linje, som no er lagt til.
+- **Testinfrastruktur**: `test.js`/`test-workspace.js` sine skriptlaste-lister mangla `template-klassisk.js` — utan det braut heile forsidesida sin rendering i testmiljøet (hero/about/services returnerte tom streng, sidan komponent-forwarderane ikkje fann noko mal å vidaresende til). Retta i alle tre stadene testfilene laster skript.
+
+**Visuelt stadfesta** via lokal statisk server + ekte nettlesar (DOM-inspeksjon av `#om-oss`/`#tjenester`-innhald direkte, ikkje berre skjermbilete — desse seksjonane har ein `.reveal`-scroll-animasjon som kan gjere eit programmatisk-scrolla skjermbilete misvisande tomt sjølv om innhaldet faktisk ligg der).
+
+**Ikkje bygd i denne fasen**: sjølve "mal 2" (den fyrste faktisk NYE malen) — eige, seinare steg. `features.sidebygger` står som `false` for alle, inkludert Vibeverk sin eigen produksjon — ingen synleg endring for nokon kunde før dette flagget eksplisitt vert skrudd på.
+
+Testa: `node test.js` (534/535, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra). `VIBEVERK_VERSION` 0.43.5 → 0.44.0 (ny funksjonalitet, MINOR). Cache-bust: `components.js?v=17`, `core.js?v=57`, `template-klassisk.js?v=1` (ny), `console-core.js?v=138`.
+
 ## 0.43.5 — 2026-07-18
 
 ### Reverterte 0.43.4 sin sentrerte skjema-CSS — kaskaderande innsnevringsbug

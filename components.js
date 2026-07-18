@@ -336,72 +336,28 @@ window.Components = (function () {
 
   /* --- Seksjonene ----------------------------------------------------------- */
 
-  // Hjem / hero. Med bilde: fullbredde banner med mørk overlegg for lesbarhet.
-  // Fokuspunktet (d.image.pos) styrer background-position.
+  // Hjem/Om oss/Tjenester — flytta til template-klassisk.js (Design-modul/
+  // "sidebygger", Fase 0, sjå ROADMAP.md). Desse tre held fram som tynne
+  // vidaresendarar til "klassisk"-malen sitt register, IKKJE fordi dei
+  // vel kva mal som er aktiv for ein gjeven kunde (den avgjerda skal
+  // components.js ALDRI ta — sjå CLAUDE.md sitt "components.js: pure
+  // functions... never customer-specific"-prinsipp), men reint for
+  // bakoverkompatibilitet dersom noko framleis kallar C.hero()/C.about()/
+  // C.services() direkte. Sjølve mal-valet (content.designTemplate) vert
+  // løyst i core.js sin registerBuiltinSections(), som kallar det valde
+  // malobjektet sine hero/about/services-funksjonar direkte i staden for
+  // desse tre når ein annan mal enn "klassisk" er aktiv.
   function hero(d) {
-    const img = d.image && d.image.src ? d.image : null;
-    const style = img
-      ? ` style="background-image:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.4)),url('${esc(img.src)}');background-position:${esc(img.pos || "50% 50%")}"`
-      : "";
-    return `
-      <section id="hjem" class="section section--hero reveal ${img ? "has-image" : ""}"${style}>
-        <div class="container hero">
-          <h1 class="hero__title">${esc(d.title)}</h1>
-          <p class="hero__subtitle">${esc(d.subtitle)}</p>
-          <div class="hero__actions">
-            ${d.ctaLabel && d.ctaTarget ? button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : ""}
-          </div>
-        </div>
-        ${img ? creditBadge(img) : ""}
-      </section>`;
+    var t = window.SiteTemplates && window.SiteTemplates.klassisk;
+    return t ? t.hero(d) : "";
   }
-
-  // Om oss
   function about(d) {
-    const hasImg = d.image && d.image.src;
-    const media = hasImg
-      ? `<div class="about__media">${coverImg(d.image, "about__img")}</div>`
-      : "";
-    return `
-      <section id="om-oss" class="section reveal">
-        <div class="container about ${hasImg ? "about--with-media" : ""}">
-          <div class="about__body">
-            ${eyebrow(d.intro || d.heading)}
-            <h2 class="section__title">${esc(d.heading)}</h2>
-            <div class="prose">${sanitizeRichHtml(d.text)}</div>
-          </div>
-          ${media}
-        </div>
-      </section>`;
+    var t = window.SiteTemplates && window.SiteTemplates.klassisk;
+    return t ? t.about(d) : "";
   }
-
-  // Tjenester. Hvert kort har samme struktur: valgfri full-bredde media på topp,
-  // deretter en padded kropp. Like høyde sikres i CSS.
   function services(d) {
-    const cards = (d.cards || []).map(function (c) {
-      const hasImg = c.image && c.image.src;
-      // Bilde har forrang over ikon når det er lastet opp/limt inn.
-      const media = hasImg
-        ? coverImg(c.image, "card__media")
-        : `<span class="card__icon">${icon(c.icon)}</span>`;
-      return `
-        <article class="card ${hasImg ? "card--media" : ""}">
-          ${hasImg ? media : ""}
-          <div class="card__body">
-            ${hasImg ? "" : media}
-            <h3 class="card__title">${esc(c.title)}</h3>
-            <div class="card__text">${sanitizeRichHtml(c.text)}</div>
-          </div>
-        </article>`;
-    }).join("");
-    return `
-      <section id="tjenester" class="section reveal">
-        <div class="container">
-          ${eyebrow(d.intro || d.heading)}
-          <h2 class="section__title">${esc(d.heading)}</h2>
-          <div class="cards">${cards}</div>
-        </div>
-      </section>`;
+    var t = window.SiteTemplates && window.SiteTemplates.klassisk;
+    return t ? t.services(d) : "";
   }
 
   // Kort utdrag på ordgrense
