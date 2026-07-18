@@ -579,7 +579,11 @@ window.Components = (function () {
     const o = opts || {};
     const f = o.footer || {};
     const year = o.year || new Date().getFullYear();
-    const copyright = (f.copyright || ("© " + year + " " + esc(o.name || "")));
+    // f.copyright er eit fritekstfelt redigerbart av rolla "editor" (core.js
+    // allowedCategoriesForRole) og vart tidlegare sett inn RÅTT i innerHTML --
+    // ein lagra XSS synleg for ALLE besøkjande på det offentlege nettstaden,
+    // ikkje berre i eit admin-panel. Funne av Codex-gjennomgangen 2026-07-18.
+    const copyright = f.copyright ? esc(f.copyright) : ("© " + year + " " + esc(o.name || ""));
 
     const infoLines = [
       f.orgNr          ? esc(f.orgNr) : "",

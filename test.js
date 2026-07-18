@@ -144,6 +144,25 @@ clickCat("henvendelser"); clickTab("leads");
 var tabLabelsHenv = [...doc.querySelectorAll(".tab")].map(t => t.textContent);
 assert(tabLabelsHenv.indexOf("Kontakt") > -1 && tabLabelsHenv.indexOf("Leads") === -1, "henvendelses-fanen heter «Kontakt»");
 
+// 7c) Tryggleiksfiks 2026-07-18 (Security Auditor-funn, CRITICAL): l.referenceNumber vart
+// rendra RÅ (ikkje C.esc()-a) i adminLeads() sin liste, sjølv om insert_anon_lead()/
+// insert_anon_booking() (dei anon-kallbare RPC-ane) ikkje validerer/avgrensar
+// p_reference_number i det heile -- ein uinnlogga aktør kunne difor planta eit skript
+// som køyrde i EIN INNLOGGA ADMIN sin nettlesar berre ved at admin opna Henvendelser-
+// fana. Stadfestar at HTML-spesialteikn no vert escapa.
+(function () {
+  var leadsRaw = JSON.parse(window.localStorage.getItem("nordpunkt:leads")) || [];
+  leadsRaw.push({
+    id: "lead-xss-test", kind: "kontakt", name: "XSS Test", email: "xss@test.no",
+    message: "test", time: new Date().toISOString(), status: "ny",
+    referenceNumber: '"><img src=x data-xss-marker onerror="window.__xssFired=true">'
+  });
+  window.localStorage.setItem("nordpunkt:leads", JSON.stringify(leadsRaw));
+  clickCat("innhold"); clickCat("henvendelser"); clickTab("leads");
+  assert(!doc.querySelector("[data-xss-marker]"), "referansenummer med HTML-spesialteikn vert escapa i Henvendelser-lista, ikkje tolka som DOM-element (2026-07-18-tryggleiksfiks)");
+  assert(window.__xssFired !== true, "injisert skript i referansenummer køyrer IKKJE (2026-07-18-tryggleiksfiks)");
+})();
+
 clickCat("innstillinger"); clickTab("analyse");
 var tabLabelsInnst = [...doc.querySelectorAll(".tab")].map(t => t.textContent);
 assert(tabLabelsInnst.indexOf("Analyse") === 0, "Analyse-fanen er først i Innstillinger-kategorien");
@@ -1656,6 +1675,13 @@ const __asyncTests = (async () => {
   // Ingen personvernstekst satt: Personvern-lenke vises ikke i det heile
   var hNoPriv = C.footer({ name: "Test", links: links4, privacy: { heading:"", text:"" } });
   assert(hNoPriv.indexOf("Personvern") === -1, "Personvern-lenke skjules helt når ingen personvernstekst er satt");
+
+  // Tryggleiksfiks 2026-07-18 (Codex-funn, HIGH): f.copyright vart tidlegare
+  // sett inn RÅTT i innerHTML -- ein lagra XSS synleg for ALLE besøkjande,
+  // redigerbar av rolla "editor". Stadfestar at HTML-spesialteikn no vert escapa.
+  var hXss = C.footer({ name: "Test", links: [], footer: { copyright: '"><img src=x onerror="window.__footerXssFired=true">' } });
+  assert(hXss.indexOf("<img src=x") === -1, "footer.copyright med HTML-spesialteikn vert escapa, ikkje tolka som DOM-element");
+  assert(hXss.indexOf("&lt;img") > -1, "footer.copyright sitt innhald finst framleis, berre escapa");
 
   // --- Mediebank ---
   console.log("\n— Mediebank —");

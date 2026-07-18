@@ -33,6 +33,16 @@ function json(body: unknown, status = 200) {
 // eit fråvær av signal er IKKJE det same som eit stadfesta signal) — sjå
 // kjend-avgrensing-notatet i ROADMAP.md, bør stadfestast med ein ekte
 // testepost etter fyrste deploy, ikkje anteke frå dokumentasjon åleine.
+// pass krev DMARC i tillegg til SPF+DKIM (Codex-gjennomgang 2026-07-18, HIGH):
+// SPF og DKIM kan begge vere ekte "pass" for EIN ANNAN, angripar-kontrollert
+// domene enn den synlege From-adressa -- det beviser ingenting om at avsendaren
+// faktisk EIG den synlege domenet utan alignment-sjekken DMARC gjer (RFC 7489).
+// Ei rå avsendaradresse-samanlikning lenger nede (matcha mot CRM-kunden) er
+// difor verdilaus utan dette. Ikkje eigenutvikla alignment-logikk her -- Resend
+// sin oppstraums-mailtenar reknar alt ut eit ekte dmarc=pass/fail-resultat (som
+// SJØLV krev alignment), så å krevje det direkte er den enklaste presise fiksen.
+// Fail-closed som før: manglande dmarc=-resultat i det heile parsar til null,
+// feilar sjekken, akkurat som spf/dkim alt gjer.
 function parseAuthResults(headers: Record<string, string>): { spf: string | null; dkim: string | null; dmarc: string | null; pass: boolean } {
   var raw = headers["authentication-results"] || "";
   var spfM  = raw.match(/\bspf=(\w+)/i);
@@ -41,7 +51,7 @@ function parseAuthResults(headers: Record<string, string>): { spf: string | null
   var spf   = spfM  ? spfM[1].toLowerCase()  : null;
   var dkim  = dkimM ? dkimM[1].toLowerCase() : null;
   var dmarc = dmarcM ? dmarcM[1].toLowerCase() : null;
-  return { spf, dkim, dmarc, pass: spf === "pass" && dkim === "pass" };
+  return { spf, dkim, dmarc, pass: spf === "pass" && dkim === "pass" && dmarc === "pass" };
 }
 
 // Resend sin "references"-header er ei mellomromsskild liste med Message-ID-ar
