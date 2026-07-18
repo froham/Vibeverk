@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.44.2 — 2026-07-18
+
+### Design-modulen: åtvaringsbanner i Console når kunden kan redigere farge/font sjølv
+
+Oppfølging av spørsmålet om Web-admin sin nye farge/font-editor og Console sitt "Web"-tema-panel faktisk er synkroniserte. Stadfesta: dei skriv til DEN SAME `superconfig`-nøkkelen, men Console sin `saveSC()` sender heile det gjeldande superconfig-objektet frå operatøren sitt eige, potensielt eldre nettlesarminne — ikkje ein fersk refetch rett før lagring. Lagrar operatøren i Console etter at kunden alt har endra farge/font sjølv i Web-admin, vinn operatøren sin eldre kopi (full overskriving, ikkje ein felt-for-felt-flettling).
+
+Brukar vurderte den faktiske kollisjonsrisikoen (operatør og kunde redigerer samstundes) som lita i praksis, og valde ei enkel åtvaring i staden for å byggje om alle seks lagre-handterarane i Console til å refetche ferskt før kvar lagring:
+
+- Ny åtvaringsbanner øvst i `renderWeb()` (Console sitt "Web"-tema-panel), synleg berre når den valde kunden har `features.sidebygger` aktivert: «Denne kunden har Design-modulen aktivert. Kunden kan sjølv endre farge/font direkte i Web-admin. Ver varsam med å lagre endringar her…»
+
+Testa: `node test.js` (535/536, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra) — Console har ingen eigen automatisk testdekning frå før. `VIBEVERK_VERSION` 0.44.1 → 0.44.2, `console-core.js?v=140`.
+
 ## 0.44.1 — 2026-07-18
 
 ### Design-modulen: Console-toggle + grunnleggjande farge/font i Web-admin
