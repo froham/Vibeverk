@@ -136,6 +136,10 @@ window.SITE_CONFIG = {
   // Kunden har ikkje tilgang til dette panelet. Workspace-tilgang styrast av
   // Supabase-brukarar og roller, ikkje av desse passorda.
   // MERK: Fila er offentleg på GitHub Pages — bruk eit sterkt, unikt passord per kunde.
+  // Denne malverdien er MEDVITE ikkje eit ekte passord (jf. ADR-0003: denne
+  // fallbacken er uansett aldri ein reell autentiseringsveg når Supabase er
+  // konfigurert) -- men SKAL likevel bytast per ekte kunde under onboarding,
+  // sjå docs/architecture/customer-delivery-checklist.md punkt 1.
   admin: {
     password: "test",                          // ← BYTT før produksjon (Vibeverk sitt passord)
 

@@ -1239,7 +1239,7 @@ const __asyncTests = (async () => {
   // dobbelt, både som ekte kolonne OG inni `data` jsonb) som elles ville
   // feila stille i produksjon utan å nokon gong synast i eit testløp.
   console.log("\n— CRM: feltmapping Supabase<->JS —");
-  (function () {
+  await (async function () {
     var T = window.CrmAdmin._test;
     assert(!!T, "CrmAdmin._test er eksponert for feltmapping-testing");
 
@@ -1309,6 +1309,37 @@ const __asyncTests = (async () => {
     assert(T.isSafeAttachmentUrl("  javascript:alert(1)") === false, "isSafeAttachmentUrl() avviser javascript:-URI med leiande whitespace");
     assert(T.isSafeAttachmentUrl("") === false, "isSafeAttachmentUrl() avviser tom streng");
     assert(T.isSafeAttachmentUrl(null) === false, "isSafeAttachmentUrl() avviser null");
+
+    // App.crmDocs (privat CRM-dokument-bucket, lagt til for å lukke det kjende
+    // "delt offentleg media-bucket for private forretningsdokument"-holet).
+    assert(!!window.App.crmDocs, "App.crmDocs er eksponert");
+    assert(window.App.crmDocs.isCrmDocRef("crmdoc:1234-abc.pdf") === true, "isCrmDocRef() kjenner att crmdoc:-prefikset");
+    assert(window.App.crmDocs.isCrmDocRef("https://eksempel.no/fil.pdf") === false, "isCrmDocRef() avviser vanlege URL-ar (eldre, offentlege media-vedlegg)");
+    assert(window.App.crmDocs.isCrmDocRef("file:1234-abc") === false, "isCrmDocRef() avviser file:-referansar (lokal demo-lagring)");
+    assert(window.App.crmDocs.isCrmDocRef(null) === false, "isCrmDocRef() avviser null");
+    assert(window.App.crmDocs.isCrmDocRef("") === false, "isCrmDocRef() avviser tom streng");
+
+    // attachmentChip() sin nye grein: crmdoc:-referansar skal rendre ein
+    // <button data-crmdoc-ref>, ALDRI eit href-attributt direkte (signert URL
+    // hentast asynkront via App.crmDocs.getCrmDocumentUrl(), aldri interpolert
+    // inn i HTML-en sjølv).
+    var crmdocChip = T.attachmentChip({ name: "Kontrakt.pdf", ref: "crmdoc:1234-abc.pdf", size: 20480 });
+    assert(crmdocChip.indexOf("data-crmdoc-ref=") > -1, "attachmentChip() rendrar data-crmdoc-ref for crmdoc:-vedlegg");
+    assert(crmdocChip.indexOf("<button") === 0, "attachmentChip() rendrar crmdoc:-vedlegg som ein <button>, ikkje ein <a>");
+    assert(crmdocChip.indexOf("href=") === -1, "attachmentChip() sitt crmdoc:-utdata inneheld ALDRI eit href-attributt");
+    var legacyChip = T.attachmentChip({ name: "Gammal.pdf", ref: "https://eksempel.no/gammal.pdf", size: 1024 });
+    assert(legacyChip.indexOf("<a href=") === 0, "attachmentChip() held fram med <a href> for eldre, offentlege media-vedlegg (uendra åtferd)");
+
+    // putCrmDocument()/getCrmDocumentUrl()/freeCrmDocument() sin no-Supabase-
+    // gren (jsdom konfigurerer aldri _sb) -- same "file:"-fallback-mønster som
+    // Media.putFile() alt har, stadfesta som eit ekte, sjølvstendig rundtur.
+    var crmDocFile = new window.File([new Uint8Array([37,80,68,70])], "kontrakt.pdf", { type: "application/pdf" });
+    var crmDocAtt = await window.App.crmDocs.putCrmDocument(crmDocFile);
+    assert(crmDocAtt.ref.indexOf("file:") === 0, "putCrmDocument() fell tilbake til file:-referanse utan Supabase konfigurert");
+    var resolvedCrmDocUrl = await window.App.crmDocs.getCrmDocumentUrl(crmDocAtt.ref);
+    assert(typeof resolvedCrmDocUrl === "string" && resolvedCrmDocUrl.indexOf("data:") === 0, "getCrmDocumentUrl() løyser ein file:-referanse til ein reell data-URL");
+    window.App.crmDocs.freeCrmDocument(crmDocAtt.ref);
+    assert(window.localStorage.getItem("nordpunkt:" + crmDocAtt.ref) === null, "freeCrmDocument() fjernar file:-referansen frå localStorage");
   })();
 
   // --- leads: feltmapping Supabase<->JS + isTilbud()-klassifisering ---

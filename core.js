@@ -499,6 +499,88 @@ window.App = (function () {
   };
 
   /* ===========================================================================
+     1c) CRM-DOKUMENT-VEDLEGG (privat, signert-URL-tilgang)
+     ---------------------------------------------------------------------------
+     EIGEN, MEDVITE IKKJE ein del av Media over -- CRM-dokument er private
+     forretningsdokument (eigen, privat "crm-documents"-bucket: admin/editor
+     lastar opp, ALLE autentiserte roller kan opne via ein fersk signert URL)
+     i motsetnad til Media sin delte, OFFENTLEGE "media"-bucket (brukt av
+     Tilbod/mediebank/kunngjeringar/hero-/om oss-bilete). Å blande desse to
+     ulike tillitsgrensene inn i éi delt funksjon ville risikert at ei
+     framtidig endring lek den private stien inn i den offentlege (eller
+     omvendt) -- sjå docs/architecture/storage-and-data-flow.md.
+
+     Eksisterande CRM-dokument (i den gamle, offentlege media-bucket-en) vert
+     MEDVITE IKKJE migrerte -- dei held fram å fungere som før (vanlege
+     offentlege URL-ar), berre NYE opplastingar går gjennom denne stien. Sjå
+     isCrmDocRef()/getCrmDocumentUrl() sin fallback-gren for korleis dei to
+     ref-formene skiljast utan datamigrering. */
+  const CrmDocs = {
+    MAX_FILE_MB: 4,
+    MAX_FILE_MB_REMOTE: 20,
+    putCrmDocument: function (file) {
+      const self = this;
+      return new Promise(function (resolve, reject) {
+        if (_sb) {
+          if (file.size > self.MAX_FILE_MB_REMOTE * 1024 * 1024) { reject(new Error("size")); return; }
+          const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+          const path = Date.now() + "-" + Math.random().toString(36).slice(2, 7) + "." + ext;
+          _sb.storage.from("crm-documents").upload(path, file, { contentType: file.type, upsert: false })
+            .then(function (r) {
+              if (r.error) { reject(r.error); return; }
+              resolve({ name: file.name, ref: "crmdoc:" + path, type: file.type, size: file.size });
+            });
+        } else {
+          // Ingen Supabase konfigurert (lokal/test) -- inga privat-vs-offentleg
+          // tillitsgrense å skilje på her, bruk same "file:"-fallback som
+          // Media.putFile() sin eigen ikkje-konfigurert gren.
+          if (file.size > self.MAX_FILE_MB * 1024 * 1024) { reject(new Error("size")); return; }
+          const reader = new FileReader();
+          reader.onerror = function () { reject(new Error("read")); };
+          reader.onload = function () {
+            const ref = "file:" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+            if (!Store.set(ref, { name: file.name, type: file.type, dataUrl: reader.result })) {
+              reject(new Error("quota")); return;
+            }
+            resolve({ name: file.name, ref: ref, type: file.type, size: file.size });
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    },
+    // Referanse → Promise<opnbar URL>. "crmdoc:"-referansar krev EIN FERSK
+    // signert URL (~5 min levetid) kvar gong -- ALDRI cacha/gjenbruk verdien,
+    // sidan levetida er medvite kort for å hindre at ein kopiert/delt lenke
+    // held fram å fungere lenge etter at ho vart delt.
+    getCrmDocumentUrl: function (ref) {
+      if (!ref) return Promise.resolve("");
+      if (ref.indexOf("crmdoc:") === 0) {
+        if (!_sb) return Promise.resolve("");
+        const path = ref.slice("crmdoc:".length);
+        return _sb.storage.from("crm-documents").createSignedUrl(path, 300).then(function (r) {
+          if (r.error) throw r.error;
+          return r.data.signedUrl;
+        });
+      }
+      if (ref.indexOf("file:") === 0) { const r = Store.get(ref, null); return Promise.resolve(r ? r.dataUrl : ""); }
+      return Promise.resolve(ref); // eldre, offentlege media-URL-ar -- uendra, ingen henting nødvendig
+    },
+    freeCrmDocument: function (ref) {
+      if (!ref) return;
+      if (ref.indexOf("crmdoc:") === 0) {
+        if (_sb) _sb.storage.from("crm-documents").remove([ref.slice("crmdoc:".length)]);
+        return;
+      }
+      if (ref.indexOf("file:") === 0) { Store.remove(ref); return; }
+      // Eldre, offentlege media-URL-ar -- dei ligg framleis i media-bucket-en
+      // (lasta opp via den gamle Media.putFile()-stien), frigjer via Media
+      // sin eigen mekanisme, ikkje denne.
+      Media.freeFile(ref);
+    },
+    isCrmDocRef: function (ref) { return !!ref && ref.indexOf("crmdoc:") === 0; }
+  };
+
+  /* ===========================================================================
      2) INNHOLDS-TILSTAND
      ---------------------------------------------------------------------------
      Redigerbart innhold seedes fra config og overstyres av det admin har lagret.
@@ -4846,6 +4928,7 @@ window.App = (function () {
     // Praktiske kroker for moduler/integrasjoner:
     store: Store,                      // namespacet localStorage (get/set/remove)
     media: Media,                      // bilde-/filhåndtering (put, resolveImage, putFile, ...)
+    crmDocs: CrmDocs,                   // private CRM-dokument-vedlegg (signert URL, sjå CrmDocs sin eigen kommentar)
     feature: feat,                     // les feature-flagg
     getContent: function () { return content; },
     getLeads: getLeads,
