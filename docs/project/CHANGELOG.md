@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.44.1 — 2026-07-18
+
+### Design-modulen: Console-toggle + grunnleggjande farge/font i Web-admin
+
+Brukar peika på to reelle hol rett etter at Fase 0 vart merga: (1) `sidebygger`-flagget hadde ingen faktisk Console-UI for å skru det på/av, (2) farge/font (planen sitt "Tier 1", diskutert tidlegare same dag) vart aldri lagt inn i sjølve Design-fana, berre malveljaren.
+
+- **Console** (`console-core.js`): `sidebygger` lagt til i `FEAT_LABELS`/`FEAT_HELP` (vises som "Design" i "Modular"-fana sin funksjonssjekkliste, same stad som `crmFull`/`chat`/osv.) — no faktisk av/på-styrbart per kunde.
+- **Web-admin sin `adminDesign()`**: utvida med eit grunnleggjande farge- og font-panel (5 fargeveljarar, hjørne-radius, display-/brødtekst-font), i tillegg til mal-veljaren. Skriv til DEN SAME `superconfig`-Store-nøkkelen Console sitt "Web"-tema-panel alt bruker (`applySuperConfig()`/`applyTheme()` les nøkkelen likt uansett kven som skreiv) — ingen ny synk-mekanisme, berre ein ny, enklare skrivar. Medvite utan WCAG-kontrastvalidator/palett-generator/logo-opplasting enno (Console sitt fulle panel har framleis desse) — dekker berre dei grunnleggjande vala brukar bad om.
+
+Testa: `node test.js` (535/536, kjend feil uendra), `node test-workspace.js` (162/163, kjend feil uendra). Cache-bust: `core.js?v=58`, `console-core.js?v=139`. `VIBEVERK_VERSION` 0.44.0 → 0.44.1.
+
 ## 0.44.0 — 2026-07-18
 
 ### Design-modul ("sidebygger") — Fase 0: infrastruktur + "Klassisk"-mal portert inn
