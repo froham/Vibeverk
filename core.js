@@ -481,7 +481,11 @@ window.App = (function () {
       // ← seedet fra config.footer, redigerbart i admin
       footer: Object.assign({
         orgNr: "", invoiceAddress: "", invoiceEmail: "", copyright: "", extraLines: []
-      }, CFG.footer || {}, overrides.footer || {})
+      }, CFG.footer || {}, overrides.footer || {}),
+      // Design-modul ("sidebygger", Fase 0) -- kva designmal denne kunden
+      // har valt. "klassisk" (dagens design) er standard for alle som ikkje
+      // eksplisitt har valt noko anna -- sjå adminDesign()/activeTemplate().
+      designTemplate: overrides.designTemplate || "klassisk"
     };
     // Normaliser alle bilder til { src, pos } (også eldre strengverdier)
     content.hero.image = Media.norm(content.hero.image);
@@ -1184,26 +1188,37 @@ window.App = (function () {
   // Admin-faner gruppert i tre kategorier, slik at panelet ikke blir uoversiktlig
   // når mange moduler er aktive. Hver modul kan selv si hvilken kategori den
   // hører til via admin.category — default "innhold" hvis ikke angitt.
+  // "design" står FYRST med vilje (Design-modul/"sidebygger", ROADMAP.md) --
+  // gjev fanerekkjefølgja Design | Innhold | Henvendelser | Innstillinger |
+  // Min konto direkte via ADMIN_CATEGORIES si eiga rekkjefølgje, ingen eigen
+  // sorteringslogikk treng byggjast. Synleg berre når feat("sidebygger") er
+  // sant (sjå allowedCategoriesForRole under) -- eit betalt tillegg, ikkje
+  // noko alle kundar skal sjå som standard.
   const ADMIN_CATEGORIES = [
+    { id: "design",        label: "Design" },
     { id: "innhold",       label: "Innhold" },
     { id: "henvendelser",  label: "Henvendelser" },
     { id: "innstillinger", label: "Innstillinger" },
     { id: "konto",         label: "Min konto" }
   ];
   // Kva faner kvar rolle ser i web-adminen:
-  //   admin       → alt (innhold + henvendelser + innstillinger)
-  //   editor      → innhald og henvendelser (ikkje innstillinger)
+  //   admin       → alt (design* + innhold + henvendelser + innstillinger)
+  //   editor      → design* + innhald og henvendelser (ikkje innstillinger)
   //   member → berre henvendelser (getAuthRole() normaliserer eldre "employee" til "member")
+  //   *design berre dersom feat("sidebygger") er sant -- Console-only
+  //   betalingsflagg, IKKJE noko kunden sjølv kan skru på (feat() les
+  //   CFG.features, som berre Console/superconfig kan skrive til).
   function allowedCategoriesForRole(role) {
     var cats;
     if (role === "member") cats = ["henvendelser"];
-    else if (role === "editor") cats = ["innhold", "henvendelser"];
-    else cats = ["innhold", "henvendelser", "innstillinger"];
+    else if (role === "editor") cats = feat("sidebygger") ? ["design", "innhold", "henvendelser"] : ["innhold", "henvendelser"];
+    else cats = feat("sidebygger") ? ["design", "innhold", "henvendelser", "innstillinger"] : ["innhold", "henvendelser", "innstillinger"];
     if (_sb) cats = cats.concat(["konto"]);
     return cats;
   }
   function buildAdminTabs() {
     const tabs = [
+      { id: "design",     label: "Design",     category: "design" },
       { id: "analyse",    label: "Analyse",    category: "innstillinger" },
       { id: "navigasjon", label: "Navigasjon", category: "innstillinger" },
       { id: "innhold",    label: "Innhold",    category: "innhold" },
@@ -1481,6 +1496,7 @@ window.App = (function () {
 
   function renderAdminTab(body) {
     if (!body) return;
+    if (activeTab === "design")     return adminDesign(body);
     if (activeTab === "innhold")    return adminContent(body);
     if (activeTab === "tjenester")  return adminServices(body);
     if (activeTab === "aktuelt")    return adminNews(body);
@@ -1946,6 +1962,41 @@ window.App = (function () {
           ${C.button({ label: "Fjern felt", icon: "trash", variant: "ghost", attrs: 'data-extra-remove' })}
         </div>
       </div>`;
+  }
+
+  /* --- Admin: Design (designmal-val, "Design-modul"/sidebygger, Fase 0) -----
+     Berre synleg når feat("sidebygger") er sant (sjå allowedCategoriesForRole).
+     Fase 0 har berre éin mal ("Klassisk" -- dagens design, uendra). Framtidige
+     malar vert lagt til i `templates`-lista under etter kvart som dei vert
+     bygde (kvar sin eigen fil, sjå template-klassisk.js sin kommentar). */
+  function adminDesign(body) {
+    var templates = [
+      { id: "klassisk", label: "Klassisk", desc: "Dagens design — bilete i full breidde bak tittel i Forsidetopp, tekst ved sida av bilete i Om oss." }
+    ];
+    var current = activeTemplate();
+    body.innerHTML =
+      '<p class="prose prose--muted">Vel design-mal for nettsida. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
+      '<form data-design class="admin-form">' +
+        '<div class="admin-group" style="display:grid;gap:.6rem">' +
+          templates.map(function (t) {
+            var checked = t.id === current ? " checked" : "";
+            return '<label style="display:flex;align-items:flex-start;gap:.6rem;padding:.7rem;border:1.5px solid var(--color-border);border-radius:10px;cursor:pointer">' +
+              '<input type="radio" name="design-template" value="' + C.esc(t.id) + '"' + checked + ' style="margin-top:.2rem">' +
+              '<span><strong style="display:block">' + C.esc(t.label) + '</strong><span style="font-size:.85rem;color:var(--color-muted)">' + C.esc(t.desc) + '</span></span>' +
+            '</label>';
+          }).join("") +
+        '</div>' +
+        C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
+        '<p class="form__status" data-design-status role="status" aria-live="polite"></p>' +
+      '</form>';
+    body.querySelector("[data-design]").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var picked = body.querySelector('input[name="design-template"]:checked');
+      content.designTemplate = picked ? picked.value : "klassisk";
+      saveContent();
+      render();
+      setStatus(body.querySelector("[data-design-status]"), "Lagret.", "ok");
+    });
   }
 
   function adminContent(body) {
@@ -4142,15 +4193,29 @@ window.App = (function () {
 
   // Standardseksjonene registreres på nøyaktig samme måte som en framtidig
   // modul ville gjort — det er det som gjør arkitekturen utvidbar.
+  // Design-modul ("sidebygger", Fase 0, sjå ROADMAP.md) -- kva designmal
+  // som faktisk skal rendre kvar innebygd seksjon for DENNE kunden.
+  // content.designTemplate er berre eitt felt til i den alt eksisterande
+  // content-blob-en (same Store/Supabase-synk som alt anna der), defaultar
+  // til "klassisk" (dagens design, uendra) for alle kundar som ikkje
+  // eksplisitt har valt noko anna. Fell trygt tilbake til components.js
+  // sine eigne forwarder-funksjonar (C.hero/C.about/C.services) dersom
+  // window.SiteTemplates av ein eller annan grunn ikkje er lasta i det heile.
+  function activeTemplate() { return (content && content.designTemplate) || "klassisk"; }
+  function resolveTemplate() {
+    var reg = window.SiteTemplates || {};
+    return reg[activeTemplate()] || reg.klassisk || C;
+  }
+
   function registerBuiltinSections() {
     registerModule({ id: "hjem",     label: "Hjem",     order: 10,
       render: function () {
-        return C.hero(Object.assign({}, CFG.hero, content.hero, { image: Media.resolveImage(content.hero.image) }));
+        return resolveTemplate().hero(Object.assign({}, CFG.hero, content.hero, { image: Media.resolveImage(content.hero.image) }));
       } });
 
     registerModule({ id: "om-oss",   label: "Om oss",   order: 20,
       render: function () {
-        return C.about(Object.assign({}, CFG.about, {
+        return resolveTemplate().about(Object.assign({}, CFG.about, {
           heading: content.about.heading, intro: content.about.intro, text: content.about.text, image: Media.resolveImage(content.about.image)
         }));
       } });
@@ -4160,7 +4225,7 @@ window.App = (function () {
         const cards = content.services.map(function (c) {
           return Object.assign({}, c, { image: Media.resolveImage(c.image) });
         });
-        return C.services(Object.assign({}, CFG.services, content.servicesSection, { cards: cards }));
+        return resolveTemplate().services(Object.assign({}, CFG.services, content.servicesSection, { cards: cards }));
       } });
 
     registerModule({ id: "aktuelt",  label: "Aktuelt",  order: 40,
