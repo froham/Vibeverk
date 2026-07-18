@@ -180,6 +180,23 @@ async function loginWorkspaceAdmin(page) {
   await page.waitForSelector("#intranet-nav, .i-nav", { timeout: 15000 });
 }
 
+// Web-admin (the site's OWN admin panel, #admin) is a THIRD, distinct login
+// path from loginWorkspaceAdmin -- reached directly via the #admin hash (no
+// triple-click-footer needed), a different form (#admin-email/#admin-pass,
+// not #intranet-email/#intranet-pass). This is where "Sikkerhetskopi" lives.
+async function loginWebAdmin(page) {
+  await page.goto(BASE_URL + "/#admin", { waitUntil: "networkidle" });
+  await page.waitForSelector("#admin-email", { timeout: 10000 });
+  await page.fill("#admin-email", ADMIN_EMAIL);
+  await page.fill("#admin-pass", ADMIN_PASSWORD);
+  // requestSubmit() via evaluate, not a guessed submit-button selector --
+  // same technique confirmed reliable during this feature's own manual
+  // live-browser verification (clicking coordinates/selectors on this exact
+  // form proved flaky; direct form submission did not).
+  await page.evaluate(() => document.querySelector("[data-login]").requestSubmit());
+  await page.waitForSelector(".admin-catbar, .tabs", { timeout: 15000 });
+}
+
 // ── Flow: dashboard shortcuts (KB + announcements) ──────────────────────────
 // Regression coverage for a real, previously-shipped bug (CHANGELOG 0.32.x):
 // the "Ny kunngjøring"/"Ny artikkel" dashboard shortcuts used to race the
@@ -310,9 +327,181 @@ async function flowUserDeletion(page) {
   }
 }
 
+// ── Flow: backup/restore ────────────────────────────────────────────────────
+// Test-coverage designed by the QA agent 2026-07-18 before this was written
+// (see docs/roadmap/ROADMAP.md "Next" item 5). Regression coverage for the
+// 2026-07-06 external Codex-review BLOCKER: the old client-orchestrated
+// restore did delete-then-insert per table with NO transaction, so a failure
+// partway through left some tables wiped and others not. The fix
+// (supabase/migrations/20260713104738_restore_backup_tables_rpc.sql) deletes
+// all nine tables and re-inserts in FK-safe order INSIDE ONE transaction --
+// any failure anywhere rolls back everything. To actually reproduce the old
+// failure mode (not just the earlier, separate manifest-shape validation),
+// the corrupted payload must PASS structural validation but fail DURING an
+// INSERT -- an invalid `status` value on one `tasks` row (CHECK constraint
+// only allows todo/in_progress/done) does exactly this, since tasks inserts
+// after five other tables have already succeeded in the same call.
+//
+// Snapshot-restore-self pattern throughout: export_backup_tables() at the
+// very start (via page.evaluate against the already-authenticated admin
+// session's own Supabase client, window.App.supabase), every mutation
+// undone in a `finally` block by restoring that exact original snapshot --
+// self-healing, this flow should never leave staging in a different state
+// than it found it in, matching user-deletion's own cleanup discipline. This
+// flow's blast radius is categorically LARGER than dashboard-shortcuts/
+// user-deletion though: restore_backup_tables() mirror-overwrites ALL NINE
+// tables for the whole (single-tenant) project, not a tag-scoped mutation --
+// never run this concurrently with anything else touching vibeverk-staging.
+async function flowBackupRestore(page) {
+  await loginWebAdmin(page);
+
+  async function exportSnapshot() {
+    return page.evaluate(async () => {
+      const r = await window.App.supabase.rpc("export_backup_tables");
+      if (r.error) throw new Error("export_backup_tables failed: " + r.error.message);
+      return r.data;
+    });
+  }
+  async function restoreSnapshot(snapshot) {
+    return page.evaluate(async (snap) => {
+      const r = await window.App.supabase.rpc("restore_backup_tables", { p_tables: snap });
+      return { error: r.error ? r.error.message : null, data: r.data };
+    }, snapshot);
+  }
+  async function countAll() {
+    return page.evaluate(async () => {
+      const tables = ["crm_bedrifter","crm_customers","crm_comms","leads","bookings","tasks","announcements","kb_articles","links"];
+      const out = {};
+      for (const t of tables) {
+        const r = await window.App.supabase.from(t).select("*", { count: "exact", head: true });
+        out[t] = r.count;
+      }
+      return out;
+    });
+  }
+
+  const baseline = await exportSnapshot();
+  let memberUid = null;
+  const taskTitle = TAG + " backup-restore task";
+
+  try {
+    // A) Export completeness -- all nine keys present as arrays, even when empty.
+    const expectedTables = ["crm_bedrifter","crm_customers","crm_comms","leads","bookings","tasks","announcements","kb_articles","links"];
+    for (const t of expectedTables) {
+      if (!Array.isArray(baseline[t])) throw new Error("export_backup_tables() mangla eller feilforma nøkkelen '" + t + "'");
+    }
+    console.log("Export inneheld alle ni tabellar som array (inkl. tomme): OK");
+
+    // Also exercise the REAL export button + a real browser download event,
+    // not just the RPC call above -- the actual UI code path under test.
+    await page.click('[data-admin-cat="innstillinger"]');
+    await page.click('[data-tab="sikkerhetskopi"]');
+    await page.waitForSelector("[data-backup-export]", { timeout: 8000 });
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 15000 }),
+      page.click("[data-backup-export]"),
+    ]);
+    const downloadPath = await download.path();
+    const downloadedPayload = JSON.parse(fs.readFileSync(downloadPath, "utf8"));
+    if (!downloadedPayload.vibeverk_backup || downloadedPayload.version !== 2) {
+      throw new Error("Nedlasta fil manglar vibeverk_backup/version-felta -- er formatet endra utan at denne testen er oppdatert?");
+    }
+    console.log("Ekte nedlasting via [data-backup-export]-knappen: OK");
+
+    // D) FK author-nulling regression (20260712203346_fix_user_delete_fk_restrict.sql).
+    // Invite a throwaway member via the real Workspace UI (same pattern as
+    // flowUserDeletion -- no login path exists for an invited member in this
+    // suite), author a task for them, snapshot WHILE that reference is still
+    // live, delete the member, then restore that snapshot and confirm the
+    // restore succeeds (not an FK violation) with created_by nulled.
+    await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
+    if (!(await page.$("#u-email"))) await loginWorkspaceAdmin(page);
+    await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
+    await page.waitForSelector("#u-email", { timeout: 10000 });
+    const memberEmail = "smoketest-" + STAMP + "-bkp@vibeverk-test.invalid";
+    await page.fill("#u-email", memberEmail);
+    await page.fill("#u-name", TAG + "-bkp");
+    await page.click("#u-invite-btn");
+    await page.waitForFunction(() => {
+      const t = (document.getElementById("u-invite-status") || {}).textContent || "";
+      return t.length > 0 && t !== "Sender…";
+    }, { timeout: 15000 }).catch(() => {});
+    const inviteStatus = await page.textContent("#u-invite-status");
+    if (!inviteStatus || inviteStatus.indexOf("sendt") === -1) {
+      throw new Error('Invitasjon feila -- statustekst: "' + (inviteStatus || "(tom)") + '"');
+    }
+    const rowSel = '.u-remove-btn[data-name="' + TAG + '-bkp"]';
+    await page.waitForSelector(rowSel, { timeout: 10000 });
+    memberUid = await page.getAttribute(rowSel, "data-uid");
+    if (!memberUid) throw new Error("Kunne ikkje lese data-uid for den nyinviterte brukaren");
+
+    runStagingSql("insert into tasks (title, status, created_by) values ('" + taskTitle.replace(/'/g, "''") + "', 'todo', '" + memberUid + "');");
+    const snapshotWithMember = await (async () => { await loginWebAdmin(page); return exportSnapshot(); })();
+
+    // Delete the member via the real UI.
+    await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
+    if (!(await page.$(rowSel))) await loginWorkspaceAdmin(page);
+    await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
+    await page.waitForSelector(rowSel, { timeout: 10000 });
+    page.once("dialog", (d) => d.accept());
+    await page.click(rowSel);
+    await page.waitForSelector(rowSel, { state: "detached", timeout: 10000 });
+    console.log("Throwaway member (backup-restore) fjerna via ekte UI: OK");
+
+    // Restore the snapshot taken WHILE the (now-deleted) member's task
+    // reference was still live -- must succeed (not an FK violation), and
+    // the restored row's created_by must come back NULL, not the old uid.
+    await loginWebAdmin(page);
+    const restoreResultD = await restoreSnapshot(snapshotWithMember);
+    if (restoreResultD.error) throw new Error("Gjenoppretting med ein sletta forfattar-referanse feila (skulle nullstille, ikkje feile): " + restoreResultD.error);
+    const taskAfterD = runStagingSql("select created_by from tasks where title = '" + taskTitle.replace(/'/g, "''") + "';");
+    const taskRowD = (taskAfterD && taskAfterD.rows || [])[0];
+    if (!taskRowD) throw new Error("Oppgåva forsvann under gjenoppretting -- skulle overleve med created_by nulla ut");
+    if (taskRowD.created_by !== null) throw new Error("created_by vart IKKJE nulla ut ved gjenoppretting (fann: " + taskRowD.created_by + ")");
+    console.log("Gjenoppretting med sletta forfattar-referanse: created_by korrekt nulla ut, ingen FK-feil: OK");
+
+    // C) Corrupted-during-INSERT payload is fully rolled back, not partially
+    // applied -- THE centerpiece regression test for the 2026-07-06 BLOCKER.
+    const beforeCounts = await countAll();
+    const corrupted = JSON.parse(JSON.stringify(snapshotWithMember));
+    if (!corrupted.tasks.length) throw new Error("Forventa minst éi tasks-rad å korrumpere (den nett gjenoppretta oppgåva) -- testoppsettet er feil");
+    corrupted.tasks[0].status = "BOGUS-STATUS-" + STAMP; // valid shape, invalid CHECK-constraint value
+    const restoreResultC = await restoreSnapshot(corrupted);
+    if (!restoreResultC.error) throw new Error("restore_backup_tables() skulle ha AVVIST ein payload med ein ugyldig tasks.status-verdi, men returnerte ingen feil");
+    const afterCounts = await countAll();
+    for (const t of Object.keys(beforeCounts)) {
+      if (beforeCounts[t] !== afterCounts[t]) {
+        throw new Error("BLOCKER-regresjon: radtal for '" + t + "' endra seg (" + beforeCounts[t] + " -> " + afterCounts[t] + ") etter ein AVVIST gjenoppretting -- transaksjonen rulla IKKJE heilt tilbake");
+      }
+    }
+    console.log("Korrumpert payload avvist UTAN delvis datatap på nokon av dei ni tabellane: OK (2026-07-06-regresjon dekt)");
+  } finally {
+    // Always restore the TRUE original baseline, regardless of which step
+    // above failed -- self-healing per this flow's own design.
+    try {
+      await loginWebAdmin(page);
+      const finalRestore = await restoreSnapshot(baseline);
+      if (finalRestore.error) console.error("KRITISK opprydding-åtvaring: klarte ikkje gjenopprette den opphavlege baseline-snapshotten:", finalRestore.error);
+      else console.log("Baseline-snapshot gjenoppretta -- staging attende i opphavleg tilstand.");
+    } catch (e) {
+      console.error("KRITISK opprydding-åtvaring: unntak under sluttgjenoppretting:", e.message);
+    }
+    if (memberUid) {
+      try {
+        const check = runStagingSql("select id from users where id = '" + memberUid + "';");
+        if (check && (check.rows || []).length > 0) {
+          runStagingSql("delete from auth.users where id = '" + memberUid + "';");
+          console.log("Cleanup: fjerna orphaned throwaway-medlem (backup-restore-flyten sitt eige UI-steg fullførte ikkje denne køyringa)");
+        }
+      } catch (e) { console.error("Cleanup warning: kunne ikkje verifisere/fjerne throwaway-medlem:", e.message); }
+    }
+  }
+}
+
 const FLOWS = {
   "dashboard-shortcuts": flowDashboardShortcuts,
   "user-deletion": flowUserDeletion,
+  "backup-restore": flowBackupRestore,
 };
 
 (async () => {

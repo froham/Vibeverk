@@ -152,7 +152,8 @@
       dbCustomerToJs: dbCustomerToJs, jsCustomerToDb: jsCustomerToDb,
       dbBedriftToJs:  dbBedriftToJs,  jsBedriftToDb:  jsBedriftToDb,
       dbCommToJs:     dbCommToJs,     jsCommToDb:     jsCommToDb,
-      isSafeAttachmentUrl: isSafeAttachmentUrl
+      isSafeAttachmentUrl: isSafeAttachmentUrl,
+      attachmentChip: attachmentChip
     }
   };
 
@@ -356,7 +357,7 @@
     // så ubetinga frigjering her er trygt (2026-07-06-funn: dette mangla heilt).
     var toDelete = _comms.find(function (c) { return c.id === id; });
     if (toDelete && toDelete.type === "document" && toDelete.attachment && toDelete.attachment.ref) {
-      App.media.freeFile(toDelete.attachment.ref);
+      App.crmDocs.freeCrmDocument(toDelete.attachment.ref);
     }
     _comms = _comms.filter(function (c) { return c.id !== id; });
     if (_sb) _sb.from("crm_comms").delete().eq("id", id).then(function () {}).catch(function (err) { logWriteError("slette hendelse", err); });
@@ -1163,6 +1164,7 @@
   }
 
   function bindTimelineActions(scope, body, c, tl, refresh) {
+    bindAttachmentChips(scope);
     scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(isWorkspaceMember())return;if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
     scope.querySelectorAll("[data-task-toggle]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();updateComm(btn.getAttribute("data-task-toggle"),{done:true});refresh();});});
     scope.querySelectorAll("[data-reply-email]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();var orig=getComms().find(function(x){return x.id===btn.getAttribute("data-reply-email");});openEmailDialog(c,refresh,orig);});});
@@ -1772,13 +1774,70 @@
   // utan å sjekke det sjølv, uansett kva App.media.putFile() normalt returnerer.
   // Same sperre/regex som components.js sin sanitizeRichHtml() brukar for <a href>.
   function isSafeAttachmentUrl(ref) { return !!ref && !/^\s*javascript:/i.test(ref); }
+  // "crmdoc:"-referansar peikar til den private crm-documents-bucket-en --
+  // dei vert ALDRI interpolert inn i eit href-attributt direkte (uendra risiko
+  // frå isSafeAttachmentUrl() sin javascript:-sjekk over), berre sendt som eit
+  // SDK-parameter til App.crmDocs.getCrmDocumentUrl(), difor ingen ny
+  // injeksjonsflate her sjølv om denne prefiks-sjekken er eksakt/anchored,
+  // ikkje ein laus substreng-test.
   function attachmentChip(att) {
     if (!att) return "";
     var kb = att.size ? Math.round(att.size/1024) + " KB" : "";
+    if (App.crmDocs.isCrmDocRef(att.ref)) {
+      // class="crm-tl-btn" -- same usynlege ::before-treffflate-utviding som
+      // "Fullfør"/"Svar"-knappane i same tidslinje alt bruker (UX-gjennomgang
+      // 2026-07-18: denne knappen hadde mista fiksen sine nabo-knappar har).
+      return '<button type="button" class="crm-tl-btn" data-crmdoc-ref="'+esc(att.ref)+'" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-text);background:none;cursor:pointer;font:inherit"><i class="ti ti-paperclip" style="color:var(--color-primary,#2980B9)"></i> <span data-crmdoc-label>'+esc(att.name)+(kb?' <span style="color:var(--color-muted)">('+kb+')</span>':'')+'</span></button>';
+    }
     if (!isSafeAttachmentUrl(att.ref)) {
       return '<span style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-muted)"><i class="ti ti-paperclip"></i> '+esc(att.name)+' (ugyldig lenke)</span>';
     }
     return '<a href="'+esc(att.ref)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:8px;font-size:.8rem;color:var(--color-text);text-decoration:none"><i class="ti ti-paperclip" style="color:var(--color-primary,#2980B9)"></i> '+esc(att.name)+(kb?' <span style="color:var(--color-muted)">('+kb+')</span>':'')+'</a>';
+  }
+  // Bind klikk-oppløysing for kvart "crmdoc:"-vedlegg innanfor eit gjeve
+  // DOM-utsnitt -- må kallast på nytt kvar gong attachmentChip() sitt utdata
+  // vert sett inn (innerHTML), sidan delegert binding ikkje overlever ei
+  // innerHTML-overskriving. window.open("", "_blank") MÅ kallast SYNKRONT
+  // inni sjølve klikk-handteraren (ikkje etter .then()) -- elles blokkerer
+  // iOS Safari sin popup-blokkerar den nye fana, sidan ho då ikkje lenger
+  // reknar opninga som direkte brukar-utløyst.
+  function bindAttachmentChips(scope) {
+    if (!scope) return;
+    scope.querySelectorAll("[data-crmdoc-ref]").forEach(function (btn) {
+      if (btn._crmdocBound) return;
+      btn._crmdocBound = true;
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var ref = btn.getAttribute("data-crmdoc-ref");
+        var labelEl = btn.querySelector("[data-crmdoc-label]");
+        var originalHtml = labelEl.innerHTML;
+        var win = window.open("", "_blank");
+        // Skriv eit mellombels lasteinnhald inn i den tomme fana med det same
+        // -- utan dette syner fana ingenting (kein spinnar) medan den signerte
+        // URL-en hentast, og brukaren sitt fokus har typisk alt flytta seg dit
+        // (UX-gjennomgang 2026-07-18).
+        if (win && win.document) {
+          try { win.document.write('<p style="font-family:sans-serif;padding:2rem;color:#555">Opnar dokument …</p>'); } catch (e2) { /* ignorer, reint kosmetisk */ }
+        }
+        labelEl.setAttribute("aria-live", "polite");
+        labelEl.textContent = "Opnar …";
+        function showFailure() {
+          if (win) win.close();
+          labelEl.textContent = "Kunne ikkje opne";
+          setTimeout(function () { labelEl.innerHTML = originalHtml; }, 2500);
+        }
+        App.crmDocs.getCrmDocumentUrl(ref).then(function (url) {
+          // Både "tomt (ikkje avvist) resultat" OG "fana vart blokkert (win er
+          // null)" skal syne SAME feilmelding -- ingen av dei skal stille
+          // reversere til normal utan forklaring (UX-gjennomgang 2026-07-18:
+          // ein blokkert popup gav før ingen tilbakemelding i det heile,
+          // sjølv om URL-en faktisk vart løyst korrekt).
+          if (!url || !win) { showFailure(); return; }
+          win.location.href = url;
+          labelEl.innerHTML = originalHtml;
+        }).catch(showFailure);
+      });
+    });
   }
 
   function openDocDialog(c, refresh, existing) {
@@ -1799,22 +1858,24 @@
       onMount:function(dl){
         bindRt(dl);
         var statusEl=dl.querySelector("[data-dc-file-status]"), currentEl=dl.querySelector("[data-dc-att-current]");
+        bindAttachmentChips(currentEl);
         dl.querySelector("#dlg-dc-file").addEventListener("change",function(e){
           var file=e.target.files[0]; if (!file) return;
           statusEl.textContent="Laster opp «"+file.name+"»…";
           var prevAttachment=attachment; // frigjer FØRST etter at det nye opplastet vellykka — sjå notat under
-          App.media.putFile(file).then(function(att){
+          App.crmDocs.putCrmDocument(file).then(function(att){
             attachment=att;
             statusEl.textContent="";
             currentEl.innerHTML=attachmentChip(attachment);
+            bindAttachmentChips(currentEl);
             // Frigjer det GAMLE vedlegget berre no, etter at det nye faktisk er
             // lasta opp — friar det FØR ville mista fila viss opplastinga hadde
             // feila, og late brukaren utan noko å falle tilbake til (2026-07-06-funn).
             if (prevAttachment && prevAttachment.ref && prevAttachment.ref !== attachment.ref) {
-              App.media.freeFile(prevAttachment.ref);
+              App.crmDocs.freeCrmDocument(prevAttachment.ref);
             }
           }).catch(function(err){
-            if (err && err.message==="size") statusEl.textContent="Filen er for stor (maks "+(App.supabase?App.media.MAX_FILE_MB_REMOTE:App.media.MAX_FILE_MB)+" MB).";
+            if (err && err.message==="size") statusEl.textContent="Filen er for stor (maks "+(App.supabase?App.crmDocs.MAX_FILE_MB_REMOTE:App.crmDocs.MAX_FILE_MB)+" MB).";
             else statusEl.textContent="Kunne ikke laste opp filen. Prøv en mindre fil.";
           });
         });
