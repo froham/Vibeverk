@@ -141,6 +141,41 @@
       matches.forEach(function (c) { deleteCustomer(c.id); });
       return matches.length;
     },
+    // Konsolidert "slett alt for denne personen"-inngang (Batch 3, launch-
+    // readiness-fiksrunda 2026-07-18) -- Privacy-gjennomgangen (Claude) OG
+    // Codex fann UAVHENGIG same hol: core.js sin Henvendelser-fane-boks (den
+    // einaste merka "GDPR §17") kalla berre CrmAdmin.deleteCustomersByEmail()
+    // over, som (a) berre matcha PRIMÆR e-post, ikkje altEmails, og (b) ALDRI
+    // fria Storage-vedlegg eller sletta inbound_emails -- begge delar CRM-
+    // panelet sine EIGNE to slette-knappar (custRow/renderCustomer sine
+    // "Slett"-knappar) alt gjorde korrekt via deleteAllForEmail(customerEmails(c))
+    // + deleteCustomer(id). Denne funksjonen gjer NO det same, men frå eit
+    // søk på EIN e-postadresse (kan matche fleire kundar via altEmails), og
+    // returnerer eit resultat kallaren kan awaite/sjekke feil på, i staden
+    // for å rapportere suksess uavhengig av utfallet.
+    deleteEverythingForEmail: function (email) {
+      var e = (email || "").trim().toLowerCase();
+      if (!e) return Promise.resolve({ error: null, customersDeleted: 0 });
+      var matches = getCustomers().filter(function (c) {
+        return customerEmails(c).some(function (ce) { return ce.toLowerCase() === e; });
+      });
+      var allEmails = [e];
+      matches.forEach(function (c) {
+        customerEmails(c).forEach(function (ce) {
+          if (allEmails.indexOf(ce.toLowerCase()) === -1) allEmails.push(ce.toLowerCase());
+        });
+      });
+      var commsPromise = deleteAllForEmail(allEmails);
+      var custPromises = matches.map(function (c) { return deleteCustomer(c.id); });
+      return Promise.all([commsPromise].concat(custPromises)).then(function (results) {
+        var errors = [];
+        results.forEach(function (r) {
+          if (Array.isArray(r)) { r.forEach(function (x) { if (x && x.error) errors.push(x.error); }); }
+          else if (r && r.error) { errors.push(r.error); }
+        });
+        return { error: errors.length ? errors[0] : null, errorCount: errors.length, customersDeleted: matches.length };
+      });
+    },
     // Eksponerer dei reine JS<->DB-feltmappingsfunksjonane for testing (sjå
     // test.js "CRM: feltmapping Supabase<->JS"). Desse vert ALDRI kalla via
     // ekte nettverkskall i testmiljøet (App.supabase er ikkje konfigurert i
@@ -276,10 +311,22 @@
     if (_sb) _sb.from("crm_customers").update(jsCustomerToDb(idx >= 0 ? _customers[idx] : patch)).eq("id", id).then(function () {}).catch(function (err) { logWriteError("oppdatere kunde", err); });
     else App.store.set(CUST_KEY, _customers);
   }
+  // Returnerer ein Promise<{error}> (i tillegg til den synkrone lokale
+  // fjerninga over) sidan crm_customers ikkje har noko lokalt fallback --
+  // ein feila Supabase-sletting her ville elles forsvinne heilt stille.
+  // Eksisterande kallarar som ignorerer returverdien (dei to CRM-panel-
+  // knappane) er framleis kompatible, sidan .then()/.catch() alt er handtert
+  // internt her (ingen unhandled-rejection-risiko).
   function deleteCustomer(id) {
     _customers = _customers.filter(function (c) { return c.id !== id; });
-    if (_sb) _sb.from("crm_customers").delete().eq("id", id).then(function () {}).catch(function (err) { logWriteError("slette kunde", err); });
-    else App.store.set(CUST_KEY, _customers);
+    if (_sb) {
+      return _sb.from("crm_customers").delete().eq("id", id).then(function (r) {
+        if (r.error) { logWriteError("slette kunde", r.error); return { error: r.error }; }
+        return { error: null };
+      }).catch(function (err) { logWriteError("slette kunde", err); return { error: err }; });
+    }
+    App.store.set(CUST_KEY, _customers);
+    return Promise.resolve({ error: null });
   }
   function customerEmails(c) { return [c.email].concat(c.altEmails || []).filter(Boolean); }
 
@@ -582,6 +629,10 @@
   /* =========================================================================
      SLETT ALT FOR PERSON (GDPR)
      ====================================================================== */
+  // Returnerer ein Promise<Array<{error}>> for inbound_emails-slettinga (den
+  // eine delen her utan noko lokalt fallback) -- resten (leads/bookings/
+  // comms/chat) held fram fire-and-forget som før, sjå Batch 5 i
+  // launch-readiness-planen for ei breiare sveip av det mønsteret.
   function deleteAllForEmail(emails) {
     var es = emails.map(function (e) { return (e||"").toLowerCase(); });
     if (App.getLeads && App.deleteLead) {
@@ -603,7 +654,18 @@
     // inbound_emails ber avsendar-e-post/emne/rå-headera for innkomande post
     // (sjå supabase/functions/inbound-email) — same PII-grunngjeving som
     // leads/comms over, må slettast same veg (Privacy-gjennomgang 2026-07-17).
-    if (_sb) es.forEach(function(e){ _sb.from("inbound_emails").delete().ilike("from_email", e).then(function(){}).catch(function(err){logWriteError("slette innkomande e-post",err);}); });
+    var inboundPromises = [];
+    if (_sb) {
+      es.forEach(function (e) {
+        inboundPromises.push(
+          _sb.from("inbound_emails").delete().ilike("from_email", e).then(function (r) {
+            if (r.error) { logWriteError("slette innkomande e-post", r.error); return { error: r.error }; }
+            return { error: null };
+          }).catch(function (err) { logWriteError("slette innkomande e-post", err); return { error: err }; })
+        );
+      });
+    }
+    return Promise.all(inboundPromises);
   }
 
   /* =========================================================================
@@ -1841,7 +1903,8 @@
   }
 
   function openDocDialog(c, refresh, existing) {
-    var attachment = existing ? (existing.attachment || null) : null;
+    var originalAttachment = existing ? (existing.attachment || null) : null;
+    var attachment = originalAttachment;
     openDialog({
       title:existing?"Rediger dokument":"Legg til dokument",
       bodyHtml:
@@ -1862,28 +1925,51 @@
         dl.querySelector("#dlg-dc-file").addEventListener("change",function(e){
           var file=e.target.files[0]; if (!file) return;
           statusEl.textContent="Laster opp «"+file.name+"»…";
-          var prevAttachment=attachment; // frigjer FØRST etter at det nye opplastet vellykka — sjå notat under
+          var prevAttachment=attachment;
           App.crmDocs.putCrmDocument(file).then(function(att){
+            // 2026-07-18-fiks (Codex-funn, HIGH): friar IKKJE det opphavlege
+            // vedlegget her lenger -- berre ved eit stadfesta Lagre-klikk
+            // (under). Å fri det med det same som FØR gjorde at eit
+            // etterfølgjande Avbryt-klikk mista den gamle fila for alltid,
+            // samstundes som den nye opplastinga vart verande orphaned (aldri
+            // faktisk knytt til noko, sidan Avbryt berre lukka dialogen).
+            // Unntak: viss brukaren alt bytte fil TIDLEGARE i same dialog-økt
+            // (fil A, så fil B, utan Lagre/Avbryt imellom), er den
+            // mellomliggande opplastinga (A) alt forelda og trygg å fri no --
+            // ho er korkje det opphavlege vedlegget eller noko som nokon gong
+            // vil verte lagra.
+            if (prevAttachment && prevAttachment.ref && prevAttachment.ref !== att.ref &&
+                (!originalAttachment || prevAttachment.ref !== originalAttachment.ref)) {
+              App.crmDocs.freeCrmDocument(prevAttachment.ref);
+            }
             attachment=att;
             statusEl.textContent="";
             currentEl.innerHTML=attachmentChip(attachment);
             bindAttachmentChips(currentEl);
-            // Frigjer det GAMLE vedlegget berre no, etter at det nye faktisk er
-            // lasta opp — friar det FØR ville mista fila viss opplastinga hadde
-            // feila, og late brukaren utan noko å falle tilbake til (2026-07-06-funn).
-            if (prevAttachment && prevAttachment.ref && prevAttachment.ref !== attachment.ref) {
-              App.crmDocs.freeCrmDocument(prevAttachment.ref);
-            }
           }).catch(function(err){
             if (err && err.message==="size") statusEl.textContent="Filen er for stor (maks "+(App.supabase?App.crmDocs.MAX_FILE_MB_REMOTE:App.crmDocs.MAX_FILE_MB)+" MB).";
             else statusEl.textContent="Kunne ikke laste opp filen. Prøv en mindre fil.";
           });
         });
-        dl.querySelector("#dlg-dc-cancel").addEventListener("click",function(){closeDialog(dl);});
+        dl.querySelector("#dlg-dc-cancel").addEventListener("click",function(){
+          // Viss ei NY fil vart lasta opp i denne dialog-økta utan å bli
+          // lagra, er originalAttachment framleis urørt -- fri i staden den
+          // no-orphaned nye opplastinga, sidan ho aldri vert knytt til noko
+          // (2026-07-18-fiks).
+          if (attachment && attachment.ref && (!originalAttachment || attachment.ref !== originalAttachment.ref)) {
+            App.crmDocs.freeCrmDocument(attachment.ref);
+          }
+          closeDialog(dl);
+        });
         dl.querySelector("#dlg-dc-save").addEventListener("click",function(){
           var name=dl.querySelector("#dlg-dc-name").value.trim(); if(!name){dl.querySelector("#dlg-dc-name").focus();return;}
           var nh=readRt(dl,"dlg-dc-note");
           var patch={title:name,docType:dl.querySelector("#dlg-dc-type").value,note:plainRt(nh),noteHtml:nh,attachment:attachment};
+          // No, og berre no, er bytet stadfesta -- fri det OPPHAVLEGE vedlegget
+          // (viss det faktisk vart bytt ut), ikkje tidlegare (2026-07-18-fiks).
+          if (originalAttachment && originalAttachment.ref && (!attachment || originalAttachment.ref !== attachment.ref)) {
+            App.crmDocs.freeCrmDocument(originalAttachment.ref);
+          }
           if (existing) updateComm(existing.id, patch); else addComm(Object.assign({customerId:c.id,type:"document"}, patch));
           closeDialog(dl); refresh();
         });

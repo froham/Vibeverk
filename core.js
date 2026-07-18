@@ -804,6 +804,18 @@ window.App = (function () {
   }
 
   function deleteLead(id) {
+    // Fri Tilbod-vedlegg (besøkjande sine opplasta filer, media-bucket) FØR
+    // raden fjernast lokalt -- elles ligg filene att for alltid i det
+    // offentlege bucket-et med ein varig URL, uansett kva slettevei som
+    // brukast (Privacy-gjennomgang 2026-07-18, MEDIUM). Leads utan vedlegg
+    // (dei fleste) er uendra -- attachments er tom array då.
+    var toDelete = getLeads().find(function (l) { return l.id === id; });
+    if (toDelete && Array.isArray(toDelete.attachments)) {
+      toDelete.attachments.forEach(function (att) {
+        var ref = att && att.ref ? att.ref : att;
+        if (ref) Media.freeFile(ref);
+      });
+    }
     if (!_sb || !_isAuthed) {
       Store.set("leads", getLeads().filter(function (l) { return l.id !== id; }));
       return;
@@ -3434,15 +3446,40 @@ window.App = (function () {
   function setLeadStatus(id, status) {
     updateLead(id, { status: status });
   }
+  // Batch 3, launch-readiness-fiksrunda 2026-07-18: dette var det EINASTE
+  // sletteverktøyet i heile appen merka "GDPR §17" i eigen synleg tekst, men
+  // var samstundes det MINST komplette (Privacy-gjennomgang OG Codex fann
+  // uavhengig av kvarandre same hol) -- matcha berre primær-e-post (ikkje
+  // altEmails), fria aldri Storage-vedlegg, rørte aldri inbound_emails, og
+  // rapporterte eit tal synkront utan å vente på/sjekke om nokon av dei
+  // underliggande Supabase-slettingane faktisk lukkast. No delegert til
+  // CrmAdmin.deleteEverythingForEmail() (same funksjon CRM-panelet sine to
+  // eigne, alt-komplette slette-knappar no òg brukar via deleteAllForEmail),
+  // som returnerer ein Promise kallaren kan awaite/sjekke feil på.
   function deleteByEmail(email) {
     email = (email || "").trim().toLowerCase();
-    if (!email) return 0;
+    if (!email) return Promise.resolve({ error: null, found: false });
+
+    // Reint synkrone, lokale oppslag (ingen nettverkskall) for "ingen data
+    // funne"-meldinga -- same avgjerdsgrunnlag som før, berre henta FØR
+    // sjølve slettinga i staden for utleia frå eit sletta-tal etterpå.
+    const foundLead = getLeads().some(function (l) { return (l.email || "").toLowerCase() === email; });
+    const foundBooking = (Store.get("booking-bookings", []) || []).some(function (b) { return (b.email || "").toLowerCase() === email; });
+    const foundChat = !!(window.VwChat && window.VwChat.getConvs && window.VwChat.getConvs().some(function (c) { return (c.email || "").toLowerCase() === email; }));
+
+    if (window.CrmAdmin && window.CrmAdmin.deleteEverythingForEmail) {
+      return window.CrmAdmin.deleteEverythingForEmail(email).then(function (r) {
+        return { error: r.error, found: foundLead || foundBooking || foundChat || r.customersDeleted > 0 };
+      });
+    }
+
+    // Fallback når CRM-modulen ikkje er lasta (features.crm av) -- enklare
+    // sletting utan alt-e-post-matching/vedlegg-frigjering/inbound_emails,
+    // sidan det då ikkje finst nokon reell CRM-kundedata å konsolidere mot.
     let count = 0;
-    // Leads og tilbod
     const matchingLeads = getLeads().filter(function (l) { return (l.email || "").toLowerCase() === email; });
     matchingLeads.forEach(function (l) { deleteLead(l.id); });
     count += matchingLeads.length;
-    // Bookingar (via window.BookingAdmin når modulen er lasta, elles direkte Store)
     if (window.BookingAdmin && window.BookingAdmin.deleteBookingsByEmail) {
       count += window.BookingAdmin.deleteBookingsByEmail(email);
     } else {
@@ -3451,24 +3488,13 @@ window.App = (function () {
       Store.set("booking-bookings", bkAfter);
       count += bk.length - bkAfter.length;
     }
-    // CRM-kundar (om modulen er aktiv) — via window.CrmAdmin, sidan crm-customers
-    // ikkje lenger er ein store-blob (flytta til crm_customers-tabellen 2026-07-03).
-    if (window.CrmAdmin && window.CrmAdmin.deleteCustomersByEmail) {
-      count += window.CrmAdmin.deleteCustomersByEmail(email);
-    } else {
-      const customers = Store.get("crm-customers", []) || [];
-      const custAfter = customers.filter(function (c) { return (c.email || "").toLowerCase() !== email; });
-      Store.set("crm-customers", custAfter);
-      count += customers.length - custAfter.length;
-    }
-    // Chat-samtalar
     if (window.VwChat && window.VwChat.getConvs && window.VwChat.deleteConv) {
       const chats = window.VwChat.getConvs()
         .filter(function (c) { return (c.email || "").toLowerCase() === email; });
       chats.forEach(function (c) { window.VwChat.deleteConv(c.id); });
       count += chats.length;
     }
-    return count;
+    return Promise.resolve({ error: null, found: count > 0 });
   }
 
   function adminLeads(body) {
@@ -3610,16 +3636,27 @@ window.App = (function () {
       const email = body.querySelector("#gdpr-email").value.trim();
       const st    = body.querySelector("[data-gdpr-status]");
       if (!confirm("Slett ALL data knyttet til «" + email + "»? Dette kan ikke angres.")) return;
-      const n = deleteByEmail(email);
-      body.querySelector("#gdpr-email").value = "";
-      if (n > 0) {
-        st.textContent = "✓ Sletta " + n + " oppføring(ar) for " + email + ".";
-        st.className = "form__status is-ok";
+      st.textContent = "Slettar …";
+      st.className = "form__status";
+      deleteByEmail(email).then(function (result) {
+        body.querySelector("#gdpr-email").value = "";
+        if (result.error) {
+          // Ein eller fleire underliggande slettingar feila (r.error, ikkje
+          // berre ein nettverksfeil) -- IKKJE hevd suksess her, sjølv om
+          // noko truleg vart sletta. Tidlegare rapporterte denne funksjonen
+          // alltid eit tal synkront, uavhengig av om Supabase-slettingane
+          // faktisk lukkast (Privacy-/Codex-funn 2026-07-18).
+          st.textContent = "Sletting feila delvis for " + email + " — prøv igjen, eller kontakt utviklar viss feilen held fram.";
+          st.className = "form__status is-error";
+        } else if (result.found) {
+          st.textContent = "✓ Sletta alle data for " + email + ".";
+          st.className = "form__status is-ok";
+        } else {
+          st.textContent = "Ingen data funne for " + email + ".";
+          st.className = "form__status is-error";
+        }
         adminLeads(body);
-      } else {
-        st.textContent = "Ingen data funne for " + email + ".";
-        st.className = "form__status is-error";
-      }
+      });
     });
   }
 

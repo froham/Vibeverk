@@ -1244,6 +1244,119 @@ const __asyncTests = (async () => {
   window.App.addLead({ name: "Slett Meg", email: "slett@test.no", message: "test" });
   clickAdminTab("leads");
   assert(!!doc.querySelector("[data-gdpr-form]"), "GDPR-slette-skjema finst i Kontakt-fanen");
+
+  // Batch 3, launch-readiness-fiksrunda 2026-07-18: konsolidert GDPR-slette-
+  // flyt (CrmAdmin.deleteEverythingForEmail, kalla frå deleteByEmail()).
+  // Privacy-gjennomgangen OG Codex fann UAVHENGIG at den gamle deleteByEmail()
+  // berre matcha PRIMÆR e-post (ikkje altEmails) og rapporterte suksess
+  // synkront utan å vente på/sjekke om dei underliggande Supabase-slettingane
+  // faktisk lukkast. Testar her at søk på den samanslåtte testkunden sin
+  // ALT-e-post (frå sammenslåings-testen over) faktisk finn og slettar han,
+  // saman med ein lead knytt til akkurat den alt-e-posten.
+  await (async function () {
+    var altEmailTarget = (merged.altEmails || [])[0];
+    assert(!!altEmailTarget, "den sammanslåtte testkunden har ein alt-e-post å teste alt-e-post-matching mot");
+    if (!altEmailTarget) return;
+    window.App.addLead({ name: "Alt-e-post-test", email: altEmailTarget, message: "skal slettast via alt-e-post-matching" });
+    var beforeCustomers = window.CrmAdmin.getCustomers().length;
+    var result = await window.CrmAdmin.deleteEverythingForEmail(altEmailTarget);
+    assert(result.error === null, "deleteEverythingForEmail() rapporterer ingen feil for eit vellykka kall");
+    assert(result.customersDeleted === 1, "deleteEverythingForEmail() finn og slettar kunden via ALT-e-post, ikkje berre primær-e-post");
+    assert(window.CrmAdmin.getCustomers().length === beforeCustomers - 1, "kunden er faktisk fjerna frå den lokale kunde-lista");
+    var leadsAfter = JSON.parse(window.localStorage.getItem("nordpunkt:leads") || "[]");
+    assert(!leadsAfter.some(function (l) { return l.email === altEmailTarget; }), "leads knytt til alt-e-posten er òg sletta (heile e-postsettet, ikkje berre primær)");
+  })();
+
+  // Batch 3, launch-readiness-fiksrunda 2026-07-18: deleteLead() friar no
+  // Tilbod-vedlegg (App.media.putFile()-opplastingar frå besøkjande) FØR
+  // leaden fjernast -- tidlegare vart desse filene aldri fria, uansett kva
+  // slettevei som vart brukt (Privacy-gjennomgang 2026-07-18, MEDIUM).
+  await (async function () {
+    var attFile = new window.File([new Uint8Array([1, 2, 3])], "tilbud-vedlegg.jpg", { type: "image/jpeg" });
+    var att = await window.App.media.putFile(attFile);
+    window.App.addLead({ name: "Vedlegg-test", email: "vedlegg-sletting@test.no", message: "test", kind: "tilbud", attachments: [att] });
+    assert(window.localStorage.getItem("nordpunkt:" + att.ref) !== null, "vedlegget er lagra før sletting (føresetnad for testen)");
+    var leadWithAtt = window.App.getLeads().find(function (l) { return l.email === "vedlegg-sletting@test.no"; });
+    assert(!!leadWithAtt, "testleaden med vedlegg finst før sletting");
+    window.App.deleteLead(leadWithAtt.id);
+    assert(window.localStorage.getItem("nordpunkt:" + att.ref) === null, "Tilbod-vedlegget er fria frå lagring når leaden slettast (2026-07-18-fiks)");
+  })();
+
+  // Batch 3, launch-readiness-fiksrunda 2026-07-18 (Codex-funn, HIGH): eit
+  // avbrote dokumentbytte i CRM-dokumentdialogen sletta tidlegare den
+  // eksisterande fila permanent, sjølv om brukaren trykte Avbryt. Testar
+  // begge sider av fiksen: (1) Avbryt etter opplasting UTAN eksisterande
+  // vedlegg friar den no-orphaned nye opplastinga; (2) Avbryt etter eit BYTE
+  // (eksisterande vedlegg alt lagra) held det opphavlege vedlegget urørt og
+  // friar berre den nye, ulagra opplastinga.
+  await (async function () {
+    // Media/CrmDocs sitt lokale "file:"-fallback (brukt her sidan Supabase
+    // ikkje er konfigurert i jsdom) gjev ikkje attachmentChip() ein
+    // data-crmdoc-ref å lese (det krev "crmdoc:"-prefiks, berre reelt i
+    // produksjon med Supabase konfigurert) -- spor difor kva NYE
+    // "nordpunkt:file:..."-nøkkel som dukkar opp i localStorage etter kvar
+    // opplasting, i staden for å lese referansen frå DOM-et.
+    function newFileRefs(before) {
+      var after = Object.keys(window.localStorage).filter(function (k) { return k.indexOf("nordpunkt:file:") === 0; });
+      return after.filter(function (k) { return before.indexOf(k) === -1; }).map(function (k) { return k.slice("nordpunkt:".length); });
+    }
+    window.App.addLead({ name: "Dok-dialog-test", email: "dokdialog@test.no", message: "test" });
+    clickAdminTab("mod-crm");
+    var dokCust = JSON.parse(window.localStorage.getItem("nordpunkt:crm-customers") || "[]").find(c => c.email === "dokdialog@test.no");
+    assert(!!dokCust, "testkunde for dokumentdialog-testen finst");
+    fire(doc.querySelector('[data-crm-open="' + dokCust.id + '"]'), "click");
+
+    // Scenario 1: ingen eksisterande vedlegg, last opp, trykk Avbryt.
+    var beforeKeys1 = Object.keys(window.localStorage).filter(function (k) { return k.indexOf("nordpunkt:file:") === 0; });
+    fire(doc.querySelector('[data-qa="crm-qa-doc"]'), "click");
+    var fileInput1 = doc.querySelector("#dlg-dc-file");
+    var f1 = new window.File([new Uint8Array([1, 2, 3])], "kontrakt-v1.pdf", { type: "application/pdf" });
+    Object.defineProperty(fileInput1, "files", { value: [f1], configurable: true });
+    fileInput1.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await new Promise(r => setTimeout(r, 30));
+    var ref1 = newFileRefs(beforeKeys1)[0];
+    assert(!!ref1 && window.localStorage.getItem("nordpunkt:" + ref1) !== null, "fyrste opplasting lagra før Avbryt (føresetnad)");
+    doc.querySelector("#dlg-dc-cancel").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(window.localStorage.getItem("nordpunkt:" + ref1) === null, "Avbryt utan eksisterande vedlegg friar den no-orphaned nye opplastinga");
+
+    // Scenario 2: lagre EIT vedlegg først (via Lagre), opne på nytt, bytt fil, trykk Avbryt.
+    var beforeKeysA = Object.keys(window.localStorage).filter(function (k) { return k.indexOf("nordpunkt:file:") === 0; });
+    fire(doc.querySelector('[data-qa="crm-qa-doc"]'), "click");
+    var fileInputA = doc.querySelector("#dlg-dc-file");
+    var fA = new window.File([new Uint8Array([4, 5, 6])], "kontrakt-original.pdf", { type: "application/pdf" });
+    Object.defineProperty(fileInputA, "files", { value: [fA], configurable: true });
+    fileInputA.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await new Promise(r => setTimeout(r, 30));
+    var refOriginal = newFileRefs(beforeKeysA)[0];
+    assert(!!refOriginal, "det opphavlege vedlegget vart lasta opp (føresetnad for scenario 2)");
+    doc.querySelector("#dlg-dc-name").value = "Kontrakt original";
+    doc.querySelector("#dlg-dc-save").dispatchEvent(new window.Event("click", { bubbles: true }));
+    var docComm = (JSON.parse(window.localStorage.getItem("nordpunkt:crm-comms") || "[]")).find(function (x) { return x.customerId === dokCust.id && x.type === "document"; });
+    assert(!!docComm && docComm.attachment && docComm.attachment.ref === refOriginal, "det opphavlege dokumentet er faktisk lagra med rett referanse");
+    assert(window.localStorage.getItem("nordpunkt:" + refOriginal) !== null, "det opphavlege vedlegget finst framleis i lagring etter Lagre");
+
+    // refresh() (kalla av #dlg-dc-save over) er renderCustomer() sin eigen
+    // refresh-callback -- me er alt attende på kundevisinga, ingen ny
+    // navigering naudsynt.
+    var tlItem = doc.querySelector('[data-tl-item="' + docComm.id + '"]');
+    assert(!!tlItem, "det lagra dokumentet vises no som eit tidslinje-element");
+    if (tlItem) fire(tlItem, "click"); // opnar openDocDialog(c,refresh,item) for redigering
+    var fileInputB = doc.querySelector("#dlg-dc-file");
+    if (fileInputB) {
+      var beforeKeysB = Object.keys(window.localStorage).filter(function (k) { return k.indexOf("nordpunkt:file:") === 0; });
+      var fB = new window.File([new Uint8Array([7, 8, 9])], "kontrakt-bytt.pdf", { type: "application/pdf" });
+      Object.defineProperty(fileInputB, "files", { value: [fB], configurable: true });
+      fileInputB.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await new Promise(r => setTimeout(r, 30));
+      var refNew = newFileRefs(beforeKeysB)[0];
+      assert(!!refNew && refNew !== refOriginal, "eit nytt vedlegg er lasta opp for å byte ut det opphavlege");
+      assert(window.localStorage.getItem("nordpunkt:" + refOriginal) !== null, "det OPPHAVLEGE vedlegget er FRAMLEIS i lagring rett etter ny opplasting, FØR Avbryt/Lagre (2026-07-18-fiks -- kjernen i buggen)");
+      doc.querySelector("#dlg-dc-cancel").dispatchEvent(new window.Event("click", { bubbles: true }));
+      assert(window.localStorage.getItem("nordpunkt:" + refOriginal) !== null, "det opphavlege vedlegget er FRAMLEIS i lagring etter Avbryt (2026-07-18-fiks)");
+      assert(window.localStorage.getItem("nordpunkt:" + refNew) === null, "den nye, ulagra opplastinga er fria etter Avbryt");
+    }
+  })();
+
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
   // --- CRM: feltmapping Supabase<->JS (crm_customers/crm_bedrifter/crm_comms) ---
