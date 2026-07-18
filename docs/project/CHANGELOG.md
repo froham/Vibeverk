@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.51.0 — 2026-07-18
+
+### Full kodebase-gjennomgang (Claude 4 agentar + ekstern Codex) — 4 batchar fiksa og deploya
+
+Etter at `/code-review ultra` synte seg vere diff-basert (ingen diff mot rein `main`), vart den "store gjennomgangen" i staden køyrd som fire parallelle Claude-bakgrunnsagentar (sikkerheit/QA/UX/personvern) pluss ein tilsvarande prompt til ein ekstern Codex-økt. Begge sett funn vart reconsiliert (sjå plan-fila for full detalj) — Codex fann sjølvstendig fleire reelle hol Claude sin eigen tryggingsagent hadde missa i same filer (DMARC-alignment, footer-XSS), som stadfestar verdien av to uavhengige gjennomgangar.
+
+**Batch 1 (tryggleik, deploya)**: (1) `reference_number` rendra RÅTT i Henvendelser-/Booking-listene — ein uinnlogga aktør kunne planta eit skript som køyrde i ein innlogga admin sin nettlesar (CRITICAL). (2) `footer.copyright` rendra RÅTT, redigerbart av rolla "editor", synleg for ALLE besøkjande (Codex-funn, HIGH). (3) DMARC-alignment vart aldri sjekka i inbound-e-post-verifiseringa — SPF+DKIM kunne begge vere ekte "pass" for eit anna domene enn den synlege avsendaren (Codex-funn, HIGH). Edge Function `inbound-email` deploya på nytt.
+
+**Batch 2 (tryggleik, kontrollplan)**: tenant-hostname-endring synkroniserte aldri Auth sin `site_url`/allow-list — nye invitasjons-/support-lenker kunne falle stille tilbake til eit forelda domene (Codex-funn, HIGH; Arkitekt-konsultert før fiks). Edge Function `tenant-admin` deploya til supabase-control. Media-bucket-kvote/rate-limit (Codex sitt andre HIGH-funn) er MEDVITE IKKJE løyst denne runda — treng eiga, djupare arkitekt-designrunde, spora som eige oppfølgingspunkt.
+
+**Batch 3 (GDPR/datatryggleik)**: den einaste boksen merka "GDPR §17" var det MINST komplette av to sletteflytar (matcha berre primær-e-post, fria aldri Storage-vedlegg/inbound_emails, rapporterte suksess synkront utan feilsjekk) — konsolidert til éin komplett funksjon (`CrmAdmin.deleteEverythingForEmail`). Tilbod-vedlegg vart aldri fria ved sletting. Avbrote dokumentbytte i CRM sletta permanent den eksisterande fila sjølv ved Avbryt.
+
+**Batch 4 (kundevendte tillits-/logikkbuggar)**: Kontakt-/booking-/tilbodsskjema synte suksess og tømde seg sjølv om innsendinga faktisk feila. Bookingkalenderen synte ALLE tider som ledige for besøkjande (anon har aldri hatt SELECT på bookings) — ny PII-fri `get_taken_booking_slots()`-RPC. Bookingkalenderen fekk tastaturtilgang (var reine klikk-berre `<div>`-ar). Offline-chat-skjemaet slutta å skape ein fantomsamtale + duplikat-lead for kvar melding. Eitt femte funn ("uverifisert"-status ved tilsett-svar) vart eksplisitt stadfesta av brukar som RETT åtferd, ikkje ein bug — urørt.
+
+Batch 5 (breiare fire-and-forget-sveip) og Batch 6 (UX/tilgjenge, inkl. Console-responsivitet) er medvite utsett til ei seinare runde.
+
 ## 0.50.0 — 2026-07-18
 
 ### C-8 sitt private CRM-dokument-bucket verifisert end-to-end (ny `crm-documents`-smoketest)
