@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.64.1 — 2026-07-19
+
+### Retting av 0.64.0: Resend bevarer IKKJE ein sjølvvald Message-ID-header — den ekte verdien må hentast, ikkje mynta
+
+Live-verifikasjon av 0.64.0-fiksen (tre ekte send+svar-rundar mot produksjon, siste med rett inngåande Resend-adresse) synte at rotårsaks-fiksen sitt "Del A" var utilstrekkeleg: Resend (relayen bak, Amazon SES) bevarer IKKJE ein sjølvvald `Message-ID`-header verbatim, sjølv om han vert sendt med i sendekallet. Den faktiske e-posten mottakaren fekk, og som mottakaren sitt ekte svar sin `In-Reply-To` viste til, hadde ein SES-tildelt Message-ID (`<...@eu-west-1.amazonses.com>`), heilt ulik vår eigen genererte `<uuid@vibeverk.no>`-verdi — stadfesta direkte i `inbound_emails`-loggen sin `in_reply_to`-kolonne.
+
+- **`supabase/functions/send-reply/index.ts`**: oppfølgingskallet til Resend sin `GET /emails/{id}` (som 0.64.0 nedgraderte til rein diagnostikk) er no den AUTORITATIVE kjelda for `resendMessageId` att — held vår eigen genererte id som fallback berre om oppfølgingskallet feilar heilt (nettverksfeil e.l.), ikkje som primærkjelde.
+- Same feil vart fanga same dag via faktisk levert bevis (ikkje berre kode-lesing) — understrekar kvifor "Del B" i den opphavlege planen (behalde oppfølgingskallet som verifikasjon) var rett kalla, sjølv om den fyrste implementeringa av "Del A" viste seg feil.
+
+Ikkje enno reverifisert med ein fjerde send+svar-runde etter denne retteninga — bør gjerast før dette reknast som endeleg stadfesta.
+
+`test.js`: 576 OK / 0 FEIL. `test-workspace.js`: 162 OK / 0 FEIL (ingen av desse dekker sjølve Deno-funksjonen direkte).
+
 ## 0.64.0 — 2026-07-19
 
 ### E-post-tråd-matching har aldri fungert i produksjon — fiksa rotårsaka, la til samanslegen samtale-visning i CRM
