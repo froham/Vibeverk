@@ -517,7 +517,17 @@ window.App = (function () {
           const path = r.data.path, token = r.data.token;
           _sb.storage.from("media").uploadToSignedUrl(path, token, file, { contentType: file.type })
             .then(function (up) {
-              if (up.error) { reject(up.error); return; }
+              if (up.error) {
+                // up.error.message er ei rå, teknisk Supabase Storage-melding
+                // (t.d. "mime type text/plain is not supported") -- ALDRI vis
+                // denne direkte til ein besøkjande (copy-style-guide-brot,
+                // fanga live 2026-07-19 under launch-readiness-testing). Logg
+                // rå detalj til konsollen for feilsøking, kast ein trygg,
+                // attkjennande kode i staden.
+                console.error("[Tilbod] lagringsopplasting feila:", up.error);
+                reject(new Error("storage-upload-failed"));
+                return;
+              }
               resolve({ name: file.name, ref: _sb.storage.from("media").getPublicUrl(path).data.publicUrl, type: file.type, size: file.size });
             });
         });
