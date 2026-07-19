@@ -1214,21 +1214,79 @@
      ====================================================================== */
   var TL_COLLAPSED_LIMIT = 5;
 
-  function buildTimeline(items, limit) {
+  // Grupperer e-post-comms med same threadId inn i éin samanslegen node
+  // ("samtale"), i staden for å visast som separate flate rader (2026-07-19,
+  // svar på brukarønske etter live-testing av e-post-svar-funksjonen).
+  // Berre email_sent/email_received deltek — same isEmail-avgrensing som den
+  // eksisterande "N i tråd"-badgen i tlItem() har alt brukt (telefonnotat,
+  // oppgåver, dokument o.l. har ingen threadId-konsept og vert verande
+  // enkeltrader). items er alt sortert nyast-fyrst (getTimeline()), so det
+  // fyrste møtet med ein gjeven threadId under gjennomgangen ER trådens
+  // nyaste medlem — ingen ekstra sortering trengst.
+  function buildTimelineNodes(items) {
     var threads={};
     items.forEach(function(it){if((it.type==="email_sent"||it.type==="email_received")&&it.threadId){threads[it.threadId]=(threads[it.threadId]||0)+1;}});
-    var show = (limit && items.length > limit) ? items.slice(0, limit) : items;
-    var html = show.map(function(it){return tlItem(it,threads);}).join("");
-    if (limit && items.length > limit) {
-      var hidden = items.length - limit;
+    var seen={}, nodes=[];
+    items.forEach(function(it){
+      var isEmail=it.type==="email_sent"||it.type==="email_received";
+      if (isEmail && it.threadId) {
+        if (seen[it.threadId]) return; // alt sendt ut som del av ei tidlegare gruppe
+        seen[it.threadId]=true;
+        var members=items.filter(function(x){return(x.type==="email_sent"||x.type==="email_received")&&x.threadId===it.threadId;});
+        nodes.push({kind:"thread", threadId:it.threadId, members:members});
+      } else {
+        nodes.push({kind:"single", item:it});
+      }
+    });
+    return {nodes:nodes, threads:threads};
+  }
+
+  function buildTimeline(items, limit) {
+    var built = buildTimelineNodes(items);
+    var nodes = built.nodes, threads = built.threads;
+    var show = (limit && nodes.length > limit) ? nodes.slice(0, limit) : nodes;
+    var html = show.map(function(node, i){
+      return node.kind==="single" ? tlItem(node.item,threads) : tlThreadGroup(node,threads,i===0);
+    }).join("");
+    if (limit && nodes.length > limit) {
+      var hidden = nodes.length - limit;
       html += '<button data-tl-expand style="display:flex;align-items:center;gap:.35rem;margin:.65rem auto 0;padding:.38rem .9rem;border:1.5px dashed var(--color-border,#d1d5db);border-radius:999px;background:transparent;font:inherit;font-size:.8rem;font-weight:600;color:var(--color-muted);cursor:pointer;width:100%;justify-content:center">'+
         '<i class="ti ti-chevron-down" style="font-size:.85rem"></i> Vis '+hidden+' eldre hendelse'+(hidden!==1?"r":"")+'</button>';
     }
     return html;
   }
 
+  // Éin "samtale" — samlar alle e-postar med same threadId under ein
+  // opne/lukke-bar <details>. module-crm.js har ingen injisert stilsett
+  // nokon stad (alt er inline style, ulikt module-chat.js sitt tilsvarande
+  // "Lukket (N)"-mønster for chat-samtalar) — held difor stilen inline og
+  // byter pil-ikonets retning via ein "toggle"-hendingslyttar
+  // (bindTimelineActions) i staden for ein CSS [open]-veljar.
+  function tlThreadGroup(node, threads, defaultOpen) {
+    var members = node.members; // alt nyast-fyrst
+    var newest = members[0];
+    var rows = members.map(function(m){return tlItem(m,threads);}).join("");
+    return '<details class="crm-tl-thread-group" data-tl-thread="'+esc(node.threadId)+'"'+(defaultOpen?' open':'')+' style="border-bottom:1px solid var(--color-border,#e5e7eb)">' +
+      '<summary style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.5rem 0;cursor:pointer;list-style:none">' +
+        '<span style="display:flex;align-items:center;gap:.5rem;min-width:0">' +
+          '<i class="ti ti-messages" style="font-size:.8rem;color:var(--color-muted);flex-shrink:0"></i>' +
+          '<span style="font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(newest.title||newest.subject||"E-postsamtale")+'</span>' +
+          '<span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#2980B9 12%,transparent);color:#2980B9;flex-shrink:0">'+members.length+' meldinger</span>' +
+        '</span>' +
+        '<i class="ti ti-chevron-right crm-tl-thread-caret" style="flex-shrink:0;color:var(--color-muted);font-size:.85rem;transition:transform .15s"></i>' +
+      '</summary>' +
+      '<div style="padding-left:.2rem">'+rows+'</div>' +
+    '</details>';
+  }
+
   function bindTimelineActions(scope, body, c, tl, refresh) {
     bindAttachmentChips(scope);
+    scope.querySelectorAll("details.crm-tl-thread-group").forEach(function(det){
+      var caret=det.querySelector(".crm-tl-thread-caret");
+      if (!caret) return;
+      caret.style.transform = det.open ? "rotate(90deg)" : "";
+      det.addEventListener("toggle", function(){ caret.style.transform = det.open ? "rotate(90deg)" : ""; });
+    });
     scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){
       e.stopPropagation();
       if(isWorkspaceMember())return;

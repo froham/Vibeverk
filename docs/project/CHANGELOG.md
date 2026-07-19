@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.64.0 — 2026-07-19
+
+### E-post-tråd-matching har aldri fungert i produksjon — fiksa rotårsaka, la til samanslegen samtale-visning i CRM
+
+Brukar testa CRM sin e-post-svar-funksjon manuelt i produksjon i dag (ekte svar til ein reell kunde, kunden svarte tilbake, svaret vart korrekt tråda i kunden sin eigen e-postklient). Den innkomande meldinga vart likevel merkt "Ikkje verifisert" — overraskande, sidan det openbert var eit ekte, autentisert svar.
+
+**Rotårsak, stadfesta direkte mot produksjonsdatabasen**: "Ikkje verifisert" måler *"vart denne oppføringa automatisk oppretta frå ein e-post me ikkje kunne tråd-matche"*, ikkje DKIM/SPF/DMARC-autentisering (dette er alt dokumentert, sjå `docs/compliance/draft-inbound-email-legal-basis-memo.md`). Problemet var at tråd-matchinga i praksis ALLTID feilar: kvar einaste `email_sent`-rad i produksjon (frå 2026-06-30 og fram til i dag) hadde `data.resendMessageId = NULL`. `send-reply/index.ts` sitt oppfølgingskall til Resend (`GET /emails/{id}`) for å hente den ekte Message-ID-en gav aldri eit brukbart resultat — koden sin eigen kommentar hevda dette var "ikkje-kritisk", men i praksis øydela det heile tråd-matching-designet permanent, sidan `process_inbound_email()` er bygd rundt akkurat dette feltet.
+
+- **`supabase/functions/send-reply/index.ts`**: genererer no vår eigen RFC5322 Message-ID FØR sending (`crypto.randomUUID()`) og sender han med som ein eigen header på sjølve sendekallet, i staden for å stole på Resend sitt oppfølgingskall i ettertid. Oppfølgingskallet er behalde, men berre som rein diagnostikk (retry + logging) — det er ikkje lenger load-bearing for returverdien. Ikkje enno stadfesta live om Resend faktisk bevarer ein sjølvvald Message-ID-header uendra (krev ei ekte sending å avgjere — diagnostikken vil vise dette på neste sending).
+- **`supabase/migrations/20260719204806_inbound_email_unmatched_thread_id.sql`**: "ukjend avsendar"-greina i `process_inbound_email()` fekk aldri ein `threadId` i det heile (berre den matcha greina gjorde). Fiksa til å gjenbruke kunden sin siste eksisterande tråd (om ein finst), elles mynte ein fersk. Ingen etterfylling av historiske rader (avklart med brukar) — reint framoverretta.
+- **`module-crm.js`**: CRM-tidslinja grupperer no e-postar med same `threadId` i éin samanslegen, opne/lukke-bar "samtale" (`buildTimeline()`/ny `tlThreadGroup()`), i staden for å vise kvar e-post som ei separat flat rad. Berre den nyaste samtalen er open som standard. Andre hendingstypar (telefonnotat, oppgåver, dokument) er uendra, framleis enkeltrader.
+
+`test.js`: 576 OK / 0 FEIL. `test-workspace.js`: 162 OK / 0 FEIL.
+
+---
+
 ## (ingen kodeendring i repoet, kun ein live Supabase-secret + dokumentasjon) — 2026-07-19
 
 ### Sunnvask-demo sin `send-reply` kunne ikkje faktisk sende e-post — RESEND_API_KEY var aldri sett
