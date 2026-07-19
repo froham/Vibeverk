@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.59.0 — 2026-07-19
+
+### Touch-target-storleik-sveip (Batch 6, resten) + eit mist WCAG-kontrastfunn retta
+
+Held fram Batch 6 sitt "touch-target-storleik-bump"-punkt, som 0.52.0 uttrykkeleg utsette fordi det då kravde visuell nettlesarverifisering. Denne runda vart det gjort likevel, avgrensa til dei ikon-berre lukk-/fjern-knappane som fekk `aria-label` i 0.52.0 (dei tydelegaste, mest brukte tilfella — ikkje eit uttømmande sveip av heile kodebasen):
+
+- Delt CRM-dialog-lukkeknapp (`crm-dlg-close`, brukt av ALLE `openDialog()`-dialogar), e-postsvar-lukk (`data-reply-close`), hub-modal-lukk, Workspace sine kontakt-/booking-/tilbods-/oppgåve-detaljruter, kunngjerings-lesar/redigering, notat-modal, mediebank-lysbilete: alle bumpa frå reelt ustilt/knapt polstra til `min-width/min-height: 36px` (flex-sentrert, ikonet urørt visuelt).
+- E-postsvar-editoren sin vedleggs-fjern-knapp (tettare kontekst, mindre bump til 28px).
+- CRM-tidslinja sin "Fjern hending"-knapp (`crm-tl-del`) fekk både `aria-label="Fjern"` (mangla heilt frå før) og ein 32px touch-target, i tillegg til touch-target-bump på Workspace og Console sine hamburgerknappar (40px).
+- **Eit ekstra WCAG-kontrastfunn frå 0.52.0-sveipen vart oppdaga under dette arbeidet**: den klikkbare "Ikkje verifisert"-VERIFISER-knappen i CRM-tidslinja (`data-verify-comm`, ei anna rendring av same badge enn den alt retta i 0.52.0) brukte framleis rå `#E8833A`-tekstfarge — 0.52.0 sin grep fanga ikkje opp denne fordi verktøyet trunkerte akkurat den linja. Retta til same `#A8551A` som resten.
+
+Nokre knappar (Workspace sin kunngjeringsbanner sin lukk-knapp, og dei tre ikon-knappane i kvart mediebank-filkort) vart medvite IKKJE endra denne runda — dei sit i tettpakka, høgdeavgrensa layoutar (ein tynn banner, eit tett bilete-rutenett) der ein rein kode-basert bump utan visuell stikkprøve kunne bryte det eksisterande utsjånaden. Same avgrensing som Console-punktet i 0.53.0: full stadfesting krev ekte nettlesar-mål, ikkje berre CSS-lesing.
+
 ## 0.58.0 — 2026-07-19
 
 ### Console-responsivitet — hamburger/overlay-mønster porta frå Workspace
