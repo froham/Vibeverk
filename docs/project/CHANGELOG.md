@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.62.0 — 2026-07-19
+
+### Codex sin live-testrunde mot Sunnvask-demo: tre funn, to fiksa, éin klarna som ikkje-bug
+
+Ekstern Codex-økt fekk admin-tilgang og køyrde ei eiga, sjølvstendig gjennomkøyring av testmatrisa mot Sunnvask-demo (kontakt, tilbod med/utan vedlegg, chat-fallback, oppgåver, notat, CRM-dokument, responsivitet 375/768/1280px, alle Workspace-rutene) — alt bestod, ingen kode endra av det. Tre presentasjonsklar-funn vart rapportert:
+
+1. **To PWTEST-kundar synlege i kundelista** — desse var att frå MIN EIGEN live-testing tidlegare same dag (B2/B3.2 i `TEST-MATRIX.md`), ikkje frå Codex sin eigen (som korrekt rapporterte null eigne rester). Sletta: `leads` (2 rader), `crm_customers` (2 rader). Éin liten (68 byte) test-PNG står att i Storage — usynleg i UI, ville kravd ein service_role-nøkkel å fjerne via Storage-API-et (SQL åleine kan ikkje slette `storage.objects`-rader direkte), vurdert som ikkje verdt å jage.
+2. **Stort tomrom mellom «Om oss» og footeren, opplevd som underfylt på desktop** — undersøkt direkte: DOM-inspeksjon synte INGEN faktisk gap (kvar seksjon sin topp-piksel er nøyaktig lik føregåande seksjon sin botn-piksel), og alle reveal-på-scroll-klassane hadde alt løyst til `is-visible`/`opacity:1`. Sunnvask-demo sitt `store.content` har faktisk fullt innhald (hero/about/3 tenester/3 nyhende/kontakt). Mest sannsynlege forklaring: «Om oss»-seksjonen manglar eige bilete (`about.image.src` er tom streng) og er berre to setningar tekst, medan KVAR seksjon får same generøse 112–128px topp/botn-padding uavhengig av innhaldsmengd — på ein brei skjerm les dette som «halvferdig», sjølv om det ikkje er ein render-feil. Ikkje fiksa denne runda — krev anten ekte About-bilete (innhald, ikkje kode) eller ei bevisst paddings-justering (påverkar alle tenantar, ikkje berre demoen) — open avgjerd.
+3. **Konsollvarsel om manglande SITE_CONFIG-felt på nesten alle sider — FIKSA.** `core.js` sin `applyConfigDefaults()` sjekka `DEFAULT_CFG_SHAPE`-nøklane (company/colors/fonts/privacy/admin/workspace/hero/about/contact/news/services/contactSection) mot det rå `window.SITE_CONFIG` og åtvara viss nokon mangla — men for KVAR Fase-6-tenant (både Sunnvask-demo og Vibeverk sjølv, sidan DNS-flyttinga) er desse nøklane STRUKTURELT alltid fråverande på dette tidspunktet, med vilje (dei kjem frå superconfig/broker seinare, sjå `api/tenant-config.js`). Varselet fyrte difor identisk anten kunden sin faktiske konfigurasjon var fylt ut eller ikkje — reint støy, aldri eit reelt signal i Fase-6-verda. Fjerna heilt (fillConfigDefaults() sjølv er uendra og verkar framleis korrekt). `docs/architecture/tenant-onboarding-runbook.md` retta samtidig — Steg 8 der viste til nettopp dette varselet som eit "innebygd sjekkliste-signal", noko som aldri faktisk stemte (varselet fyrte likt uansett om steget var gjort).
+- `test.js`: 576 OK / 0 FEIL. `test-workspace.js`: 162 OK / 0 FEIL. Ingen regresjon.
+
 ## 0.61.0 — 2026-07-19
 
 ### Rå Supabase Storage-feilmelding lekte til besøkjande på tilbodsskjemaet — funne via live nettlesartesting, no fiksa
