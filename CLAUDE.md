@@ -71,11 +71,7 @@ node test.js       # public site — must pass
 node test-workspace.js  # Workspace — must pass
 ```
 
-CI runs both on every push. Known-failing tests (pre-existing, unrelated to current work):
-- `"henvendelses-fanen heter «Kontakt»"` (test.js — tab label mismatch)
-- `"o3: workspaceship via direkterute"` (test-workspace.js — workspace redirect test)
-
-All other tests must remain green. Do not silently remove or skip failing tests.
+CI runs both on every push. Both suites must be fully green (0 FEIL) — the two long-standing known-failing tests (`"henvendelses-fanen heter «Kontakt»"` in `test.js`, `"o3: workspaceship via direkterute"` in `test-workspace.js`) were fixed 2026-07-19: the first was a stale exact-match assertion that never accounted for the `.tab-badge` unread-count span `setTabBadge()` injects into the same button (a real feature, not a bug — the assertion now strips the badge text before comparing); the second tested a route (`#/workspaceship`) that no longer exists after the Fase 10 `customModules` rename to `spaceship` — removed as genuinely redundant, since the AA section's `aa2` already covers the same behavior correctly under the current name/config. Do not silently remove or skip failing tests going forward — if a new one appears, fix it or get explicit sign-off before treating it as an accepted baseline.
 
 ## Supabase rules
 

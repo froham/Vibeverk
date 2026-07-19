@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.60.0 — 2026-07-19
+
+### Begge kjende, langvarige testunntak fjerna — begge suitene no 0 FEIL
+
+Del av ein bredare launch-readiness/oppryddings-runde (Codex-forslag, justert og godkjent av brukar). Ingen produktkode endra — reint testkode-arbeid, ingen deploy-risiko.
+
+- **`test.js`** (`"henvendelses-fanen heter «Kontakt»"`): rotårsak funnen ved direkte feilsøking (ikkje gjetting) — `setTabBadge()` (`core.js`) legg eit `.tab-badge`-span inn i "Kontakt"-fana når det finst uleste henvendelser, som gjer `textContent` til `"Kontakt1"` i staden for `"Kontakt"`. Ekte, tiltenkt funksjon — ikkje ein bug. Testen sin eksakte array-samanlikning tok aldri høgde for dette. Retta: ein liten hjelpefunksjon strippar badge-teksten før samanlikning.
+- **`test-workspace.js`** (`"o3: workspaceship via direkterute"`): testa ei rute (`#/workspaceship`) som ikkje lenger finst — Fase 10 sitt `customModules`-arbeid registrerer spelet under modul-id `"spaceship"` i staden, og berre når `customModules.spaceship.enabled===true`. Fjerna som reelt overflødig: AA-seksjonen sin `aa2`-test dekkjer alt same åtferd korrekt, med rett namn og rett config-oppsett.
+
+**`test.js`: 576 OK / 0 FEIL. `test-workspace.js`: 162 OK / 0 FEIL.** `CLAUDE.md` sin "Testing"-seksjon oppdatert til å ikkje lenger liste nokon aksepterte unntak.
+
 ## 0.59.0 — 2026-07-19
 
 ### Touch-target-storleik-sveip (Batch 6, resten) + eit mist WCAG-kontrastfunn retta
