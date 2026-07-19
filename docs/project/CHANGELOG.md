@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.58.0 — 2026-07-19
+
+### Console-responsivitet — hamburger/overlay-mønster porta frå Workspace
+
+Console hadde ingen responsiv CSS i det heile — sidemenyen (`.cs-sidebar`, fast 224px) var alltid synleg og trengte plass frå hovudinnhaldet uansett skjermbreidde, urørt sidan Console vart bygd. Dette var det største attverande punktet frå Batch 6 (UX/tilgjenge), spora sidan 0.51.0 sin store gjennomgang og eksplisitt utsett då.
+
+Porta Workspace sitt allereie eksisterande hamburger/overlay-mønster (`.i-hamburger`/`.i-sidebar-overlay` i `workspace/index.html` og `workspace-core.js`) til Console:
+- Ny `.cs-mobile-bar` (sticky, berre synleg under 700px) med hamburgerknapp og "Console"-tittel, lagt til øvst i `.cs-main`.
+- `.cs-sidebar` vert `position: fixed` og skyvd av skjermen (`translateX(-100%)`) under 700px, med ein overlegg (`.cs-sidebar-overlay`) som viser/skjuler saman med menyen.
+- `buildShell()` i `console-core.js` bind opne/lukke-logikk identisk med Workspace sitt mønster — overlegg-klikk og val av eit nav-punkt lukkar menyen att.
+
+Verifisert visuelt (ikkje berre kode-lese): `resize_window` gav ikkje reell viewport-endring i dette miljøet sitt nettlesar-sandkasse, så mekanismen (av/på-tilstand, overlegg, auto-lukk ved navigering) vart i staden stadfesta ved mellombels å tvinge `@media`-brytpunktet aktivt i ein eingongs test-kopi (aldri committa) — hamburgeropning, overlegg-lukking og nav-val-lukking fungerte alle som venta.
+
+**Ikkje del av denne runda**: ein grundigare gjennomgang av INNHALDET i kvar Console-fane (skjema/tabellar/rutenett) sin respons på smale skjermar utover sjølve skallet — same avgrensing som touch-target-sveipen i 0.52.0, treng ekte mobil-nettlesar-verifisering.
+
 ## 0.57.0 — 2026-07-19
 
 ### Media-bucket anon-opplastingskvote — deploya til produksjon, ein reell bug fanga undervegs
@@ -74,7 +89,6 @@ Den siste attverande posten frå Batch 2 (0.51.0/0.52.0): den offentlege `media`
 - Regresjonstest lagt til i `test.js` (575/1, opp frå 573/1 — 2 nye assertions).
 
 **IKKJE fullført denne runda, per Arkitekten sitt eige, eksplisitte åtvaring**: den gamle, opne `media_insert_anon_attachments`-RLS-policyen (som framleis tillèt anon å laste opp direkte via `.upload()` under `files/%`, heilt utanom det nye kvote-gatet) er MEDVITE ikkje fjerna enno. Å fjerne han no, før den nye signert-token-vegen er stadfesta å fungere ende-til-ende mot ein ekte Supabase-instans, kunne brote heile Tilbod-vedleggsfunksjonen blindt. Kvoten er difor i dag reint eit VEDLEGG til den eksisterande opne vegen, ikkje enno ei reell sperre — ein scripta åtakar kunne framleis kalle `.upload()` direkte og omgå heile mekanismen. **Attverande steg, i rekkefølgje**: (1) deploy migrasjon + funksjon til staging, (2) ein ekte opplastingstest gjennom det faktiske Tilbod-skjemaet for å stadfeste `x-forwarded-for`-antakinga og heile flyten, (3) FØRST DA, i ein eigen, seinare migrasjon: fjern/innsnevr `media_insert_anon_attachments` slik at anon-opplasting til `files/%` krev eit gyldig signert token.
-
 ## 0.52.0 — 2026-07-19
 
 ### Full kodebase-gjennomgang — Batch 5 (breiare feilhandtering) og Batch 6 (UX/tilgjenge) fiksa
