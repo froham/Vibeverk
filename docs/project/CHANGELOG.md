@@ -30,6 +30,24 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.56.0 — 2026-07-19
+
+### Media-bucket anon-opplastingskvote — FULLFØRT (RLS-hòlet stengt, verifisert på staging)
+
+Fullfører 0.55.0 sin attverande punkt. Deploya migrasjon + Edge Function + secret til `vibeverk-staging`, og køyrde ein ekte, ende-til-ende test direkte mot staging (ikkje berre kode-lesing):
+
+- Kvote-telling akkumulerer korrekt per (hasha) besøkjande over fleire kall.
+- Kvote-sperra slår faktisk inn ved grensa (20/dag) — eit ekte 429-svar med den brukarvende norske meldinga vart stadfesta.
+- Ein ekte fil vart lasta opp via det signerte tokenet og stadfesta offentleg nåbar (`storage/v1/object/public/media/...`).
+
+**Den kritiske, tidlegare uløyste uvissa vart løyst empirisk før RLS-policyen vart fjerna**: mellombels drop av den gamle, opne `media_insert_anon_attachments`-policyen synte at (1) eit direkte anon `.upload()`-kall no feilar korrekt (RLS-avvist), OG (2) den signerte opplastings-token-flyten *framleis* fungerer heilt normalt. Dette stadfester at Supabase sin signert-URL-mekanisme autoriserer via sjølve tokenet (utferda av ein service_role-klient etter ein godkjent kvotesjekk), ikkje via denne RLS-policyen — nøyaktig det Arkitekten bad om å stadfeste før dette steget vart teke.
+
+`supabase/migrations/20260719132533_remove_open_anon_media_upload_policy.sql`: fjernar `media_insert_anon_attachments` for godt. Etter denne migrasjonen er `anon-media-upload-token`-funksjonen DEN EINASTE vegen inn for anonyme opplastingar til `media`-bucket-en sitt `files/`-prefiks.
+
+**Éin attverande, ikkje fullt løyst uvisse**: om `x-forwarded-for` faktisk gjev éin unik IP per besøkjande i produksjon, eller om alle anonyme besøkjande på tvers av plattforma i praksis deler éi "ukjend"-kvote-bøtte (testa berre frå éin maskin, kunne ikkje simulere fleire ulike besøkjande-IP-ar). Verre fall er framleis betre enn ingen sperre i det heile, men presisjonen er ikkje stadfesta.
+
+**Ikkje enno deploya til produksjon** — ventar på eksplisitt godkjenning per den vanlege deployment-sperra.
+
 ## 0.55.0 — 2026-07-19
 
 ### Media-bucket anon-opplastingskvote (Batch 2, resten) — Arkitekt-konsultert, bygd, IKKJE fullført utrulla
