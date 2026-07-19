@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.57.0";
+  var VIBEVERK_VERSION = "0.58.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -773,11 +773,34 @@ window.VwConsole = (function () {
             '<div class="cs-version" title="Sjå docs/project/CHANGELOG.md for endringshistorikk">Vibeverk v' + C.esc(VIBEVERK_VERSION) + '</div>' +
           '</div>' +
         '</aside>' +
-        '<main class="cs-main"><div class="cs-content" id="cs-content"></div></main>' +
+        '<div class="cs-sidebar-overlay" id="cs-sidebar-overlay"></div>' +
+        '<main class="cs-main">' +
+          '<div class="cs-mobile-bar">' +
+            '<button type="button" class="cs-hamburger" id="cs-hamburger" aria-label="Meny"><span class="ti ti-menu-2"></span></button>' +
+            '<span class="cs-mobile-bar__brand">Console</span>' +
+          '</div>' +
+          '<div class="cs-content" id="cs-content"></div>' +
+        '</main>' +
       '</div>';
 
+    // Hamburgermeny (mobil) — same av/på-mønster som Workspace sitt
+    // .i-hamburger/.i-sidebar-overlay (workspace-core.js buildShell()).
+    var csSidebar = document.querySelector(".cs-sidebar");
+    var csOverlay = document.getElementById("cs-sidebar-overlay");
+    var csHamburger = document.getElementById("cs-hamburger");
+    function openCsSidebar() {
+      if (csSidebar) csSidebar.classList.add("is-open");
+      if (csOverlay) csOverlay.classList.add("is-open");
+    }
+    function closeCsSidebar() {
+      if (csSidebar) csSidebar.classList.remove("is-open");
+      if (csOverlay) csOverlay.classList.remove("is-open");
+    }
+    if (csHamburger) csHamburger.addEventListener("click", openCsSidebar);
+    if (csOverlay) csOverlay.addEventListener("click", closeCsSidebar);
+
     document.querySelectorAll("[data-cs-nav]").forEach(function (btn) {
-      btn.addEventListener("click", function () { navigate(btn.getAttribute("data-cs-nav")); });
+      btn.addEventListener("click", function () { closeCsSidebar(); navigate(btn.getAttribute("data-cs-nav")); });
     });
     document.querySelector(".cs-logout-btn").addEventListener("click", logout);
     var tenantSelect = document.getElementById("cs-tenant-select");

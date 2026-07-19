@@ -288,11 +288,47 @@
       font-size: .72rem; color: #64748b;
     }
 
-    .cs-main { flex: 1; overflow-y: auto; background: var(--color-bg); }
-    .cs-content { max-width: 720px; padding: 2rem 2rem 4rem; margin: 0 auto; }
+    .cs-main { flex: 1; overflow-y: auto; background: var(--color-bg); display: flex; flex-direction: column; }
+    .cs-content { max-width: 720px; width: 100%; padding: 2rem 2rem 4rem; margin: 0 auto; }
 
     .cs-page-head { margin-bottom: 1.6rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
     .cs-page-title { font-size: 1.45rem; font-weight: 700; }
+
+    /* --- Mobil (port av Workspace sitt hamburger/overlay-mønster, sjå
+       workspace/index.html ".i-hamburger"/".i-sidebar-overlay") ------------ */
+    .cs-mobile-bar {
+      display: none;
+      position: sticky; top: 0; z-index: 30; flex-shrink: 0;
+      align-items: center; gap: .8rem;
+      height: 52px; padding: 0 1.1rem;
+      background: var(--color-bg);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .cs-hamburger {
+      display: none;
+      background: none; border: 0; cursor: pointer;
+      font-size: 1.3rem; color: var(--color-text); line-height: 1;
+      min-width: 40px; min-height: 40px;
+      align-items: center; justify-content: center;
+    }
+    .cs-mobile-bar__brand { font-weight: 700; font-size: .95rem; color: var(--color-text); }
+    .cs-sidebar-overlay {
+      display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40;
+    }
+    @media (max-width: 700px) {
+      .cs-hamburger { display: flex; align-items: center; }
+      .cs-mobile-bar { display: flex; }
+      .cs-sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0;
+        z-index: 50; transform: translateX(-100%);
+        transition: transform .22s ease;
+        box-shadow: 4px 0 24px rgba(0,0,0,.35);
+      }
+      .cs-sidebar.is-open { transform: translateX(0); }
+      .cs-sidebar-overlay.is-open { display: block; }
+      .cs-content { padding: 1.2rem 1rem 3rem; }
+    }
   </style>
 </head>
 <body>
@@ -315,6 +351,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=153"></script>
+  <script src="console-core.js?v=154"></script>
 </body>
 </html>
