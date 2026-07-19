@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.63.0 — 2026-07-19
+
+### Chat-heartbeaten skreiv aldri til databasen — admin sin "Online"-knapp har vore ein illusjon
+
+Funne under B5-live-testing (testmatrisa) mot Sunnvask-demo: logga inn som ekte admin, klikka "Online" i chat-panelet (`#vwca-avail-btn`), knappen synte korrekt "Online" i UI-et — men ei uavhengig, direkte SQL-sjekk av `store`-tabellen synte at rada `chat-heartbeat` ALDRI vart oppretta, uansett kor mange gonger knappen vart klikka av/på. Ei ny nettlesarfane som ein anonym besøkjande synte konsekvent den OFFLINE-fallback-skjemaet ("Vi er ikke tilgjengelig akkurat nå"), aldri den levande chat-komponisten.
+
+**Rotårsak, stadfesta empirisk** (`module-chat.js`, `_startHeartbeat()`): `_sb.from("store").upsert(...)` vart kalla utan `.then()`/`await`. supabase-js sin `PostgrestBuilder` er ein "lazy thenable" -- det faktiske HTTP-kallet vert FYRST sendt når `.then()` (eller `await`) vert kalla på resultatet. Utan det køyrer koden utan synleg feil, men ingenting vert nokon gong sendt til Supabase. Stadfesta direkte: identisk kall utan `.then()` skreiv aldri rada (kontrollert via SQL etterpå); identisk kall MED `await` skreiv rada med det same (status 201, ingen feil).
+
+**Reell konsekvens**: sidan `heartbeatFresh` (den delen av koden som avgjer om ein besøkjande skal sjå den levande chat-komponisten eller offline-skjemaet) krev ei fersk `chat-heartbeat`-rad, har ingen admin NOKON gong faktisk vore "online" frå ein besøkjande sitt synspunkt, uansett kor mange gonger dei har trykt knappen — funksjonen har vore stille øydelagd sidan han vart bygd, ikkje berre inaktiv i denne demoen.
+
+**Fiksa**: `_startHeartbeat()` sin `hb()`-funksjon `.then()`-ar no det faktiske resultatet og loggar til konsollen viss det feilar. Same fiks lagt til på eit separat, urelatert stille-kall (`Chat.deleteConv()`, linje 290) — denne funksjonen har for øvrig ingen kallar nokon stad i koden i dag (daud kode, ikkje ein reell buggy live-flyt), men fiksa for konsistens sidan same mønster gjentek seg.
+
+Ikkje enno stadfesta live på nytt etter deploy (krev at fiksen faktisk er live på Sunnvask-demo/produksjon), og ikkje ein full kodebase-brei sveip etter same mønster andre stader (jf. den attverande, medvite utsette Batch 5-punktet i den store gjennomgangsplanen frå tidlegare denne økta) — berre denne konkrete, empirisk stadfesta forekomsten er fiksa no.
+
+`test.js`: 576 OK / 0 FEIL. `test-workspace.js`: 162 OK / 0 FEIL.
+
 ## 0.62.0 — 2026-07-19
 
 ### Codex sin live-testrunde mot Sunnvask-demo: tre funn, to fiksa, éin klarna som ikkje-bug

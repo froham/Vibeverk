@@ -73,10 +73,21 @@
   function _startHeartbeat() {
     if (_heartbeatIv || !_sb) return;
     function hb() {
+      // MÅ .then()-ast -- supabase-js sin PostgrestBuilder er ein "lazy
+      // thenable": han sender ALDRI det faktiske HTTP-kallet før .then()/
+      // await vert kalla på han. Utan dette vart heile heartbeat-skrivinga
+      // ei stille no-op -- admin sin "Online"-knapp synte "Online" i UI-et,
+      // men chat-heartbeat-rada vart aldri skriven, så heartbeatFresh var
+      // alltid false og besøkjande fekk ALLTID "offline"-skjemaet, uansett
+      // om ein admin faktisk var til stades (fanga live 2026-07-19 under
+      // testing -- stadfesta empirisk: identisk kall utan .then() skreiv
+      // aldri rada, same kall med .then()/await gjorde det, status 201).
       _sb.from("store").upsert(
         {tenant_id: _CHAT_NS || "site", key: "chat-heartbeat", value: {ts: Date.now()}},
         {onConflict: "tenant_id,key"}
-      );
+      ).then(function (r) {
+        if (r.error) console.error("[chat] heartbeat feila:", r.error);
+      });
     }
     hb();
     _heartbeatIv = setInterval(hb, 60000);
@@ -276,7 +287,9 @@
     deleteConv: function (id) {
       Chat.store.set("chat:msgs:" + id, null);
       Chat.setConvs(Chat.getConvs().filter(function (c) { return c.id !== id; }));
-      if (_sb) _sb.from("chat_conversations").delete().eq("id", id);
+      if (_sb) _sb.from("chat_conversations").delete().eq("id", id).then(function (r) {
+        if (r.error) console.error("[chat] sletting av samtale feila:", r.error);
+      });
     },
 
     hydrateFromSupabase: function (cb) {
