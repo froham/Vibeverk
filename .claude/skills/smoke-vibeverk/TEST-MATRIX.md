@@ -245,6 +245,8 @@ debt."
 
 ## E. Console: onboarding checklist and support-access generation
 
+**Decision 2026-07-19**: the user will test Console's onboarding checklist manually themselves, rather than this session building the automated flow described in `.claude/skills/smoke-vibeverk/SKILL.md`'s "What this does NOT cover yet" (a disposable control-plane tenant row + an OTP-delivery bypass — categorically more invasive than everything else in that suite). Not started, not blocking anything else in this matrix.
+
 | # | Test | Coverage | Pass = |
 |---|---|---|---|
 | E.1 | Onboarding checklist flow end-to-end for a **new, disposable** control-plane tenant row (not Sunnvask-demo itself — Sunnvask-demo is already onboarded; re-running onboarding against it would be destructive/confusing) | Explicitly flagged in SKILL.md's own "What this does NOT cover yet" section — not started, and rightly called "categorically more invasive than everything else here" | A disposable tenant reaches `status: active` only after `routing_verified_at` is genuinely set (per `console-core.js`'s own comment, lines 1704–1711, `activate_tenant` unconditionally rejects until then) |
