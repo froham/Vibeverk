@@ -80,19 +80,17 @@ serve(async (req) => {
     const fromName  = Deno.env.get("RESEND_FROM_NAME")  || "Vibeverk";
     const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@vibeverk.no";
 
-    // Genererer vår EIGEN RFC5322 Message-ID og sender han med som ein eigen
-    // header på sjølve sendekallet, i staden for å stole på eit oppfølgings-
-    // kall til Resend sin GET /emails/{id} for å hente ein Message-ID i
-    // ettertid (sjå lenger ned) -- stadfesta empirisk 2026-07-19 at DETTE
-    // oppfølgingskallet ALDRI har gjeve eit brukbart resultat i produksjon,
-    // over tre veker (kvar einaste email_sent-rad hadde data.resendMessageId
-    // = NULL). Konsekvens: process_inbound_email() sin tråd-matching
-    // (In-Reply-To/References mot nettopp dette feltet, sjå
-    // supabase/migrations/20260717120000_inbound_email.sql) har ALDRI kunna
-    // lykkast for noko svar -- kvart einaste ekte, autentisert kundesvar har
-    // difor stille hamna i "ukjend avsendar"-greina og vorte feilaktig merkt
-    // "Ikkje verifisert" i CRM-et. Å generere Message-ID-en sjølv, FØR
-    // sending, fjernar heile denne race/timing-avhengnaden.
+    // Vi genererer framleis vår eigen RFC5322 Message-ID og sender han med
+    // som ein eigen header på sjølve sendekallet, MEN -- stadfesta empirisk
+    // 2026-07-19, via ein ekte send+svar-runde -- Resend (relayen bak, Amazon
+    // SES) BEVARER IKKJE ein sjølvvald Message-ID-header. Den faktiske
+    // e-posten som når mottakaren, og som mottakaren sitt svar sin
+    // In-Reply-To faktisk viser til, får ein SES-tildelt Message-ID i staden
+    // (form <...@eu-west-1.amazonses.com>). Vår eigen genererte id under er
+    // difor berre eit fallback-forsøk (kan framleis hjelpe om Resend sin
+    // åtferd skulle endre seg), IKKJE den autoritative kjelda -- det er
+    // oppfølgingskallet til GET /emails/{id} lenger ned som må levere den
+    // faktiske verdien tråd-matchinga skal lagrast med.
     const ourMessageId = `<${crypto.randomUUID()}@vibeverk.no>`;
 
     const payload: Record<string, unknown> = {
@@ -117,18 +115,18 @@ serve(async (req) => {
       return json({ error: resendData.message || "Resend returnerte feil" }, 502);
     }
 
-    // Reint diagnostisk oppfølgingskall no -- IKKJE lenger load-bearing for
-    // returverdien (den er alltid ourMessageId over). Behalde for å
-    // stadfesta/avkrefte om Resend faktisk bevarer ein sjølvvald
-    // Message-ID-header uendra (kan ikkje avgjerast utan ein ekte sending) --
-    // sjå Supabase-funksjonsloggane for "[send-reply] verify-messageid" etter
-    // neste ekte sending. Kort retry sidan Resend sitt system truleg treng
-    // litt tid før GET /emails/{id} har full metadata klar. Vert `await`-a
-    // (ikkje eit uavhengig bakgrunnsløfte) sidan Deno Edge Functions ikkje
-    // garanterer at usikra bakgrunnsarbeid held fram å køyre etter at eit
-    // svar alt er sendt tilbake til klienten -- same synkrone mønster som
-    // det opphavlege, eittgongs oppfølgingskallet hadde.
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Oppfølgingskall til GET /emails/{id} for å hente den FAKTISKE
+    // Message-ID-en Resend/SES tildelte -- dette er no den autoritative
+    // kjelda for data.resendMessageId (sjå kommentaren over). Kort retry
+    // sidan Resend sitt system truleg treng litt tid før GET /emails/{id}
+    // har full metadata klar. Vert `await`-a (ikkje eit uavhengig
+    // bakgrunnsløfte) sidan Deno Edge Functions ikkje garanterer at usikra
+    // bakgrunnsarbeid held fram å køyre etter at eit svar alt er sendt
+    // tilbake til klienten. Feilar alle forsøka (nettverksfeil, uventa
+    // responsform), fell me tilbake til vår eigen genererte id -- verre enn
+    // den ekte verdien for tråd-matching, men framleis betre enn NULL.
+    let realMessageId: string | null = null;
+    for (let attempt = 1; attempt <= 3 && !realMessageId; attempt++) {
       await new Promise((r) => setTimeout(r, attempt * 300));
       try {
         const mResp = await fetch("https://api.resend.com/emails/" + resendData.id, {
@@ -136,25 +134,22 @@ serve(async (req) => {
         });
         const mData = await mResp.json().catch(() => null);
         console.error(`[send-reply] verify-messageid forsøk ${attempt}:`, mResp.status, JSON.stringify(mData));
-        const gotMessageId =
+        realMessageId =
           mData?.message_id ||
           mData?.headers?.["Message-ID"] ||
           mData?.headers?.["message-id"] ||
           null;
-        if (gotMessageId) {
-          if (gotMessageId !== ourMessageId) {
-            console.warn(`[send-reply] Resend sin ekte Message-ID (${gotMessageId}) skil seg frå vår eigen (${ourMessageId}) -- Resend bevarer IKKJE ein sjølvvald header uendra.`);
-          } else {
-            console.error("[send-reply] Stadfesta: Resend bevarte vår sjølvvalde Message-ID uendra.");
-          }
-          break;
-        }
       } catch (e) {
         console.error(`[send-reply] verify-messageid forsøk ${attempt} feila:`, String(e));
       }
     }
+    if (realMessageId) {
+      console.error(`[send-reply] Faktisk Message-ID stadfesta: ${realMessageId} (vår eigen genererte var ${ourMessageId}, ikkje brukt).`);
+    } else {
+      console.error(`[send-reply] Klarte ikkje hente ekte Message-ID etter 3 forsøk -- fell tilbake til vår eigen genererte id (${ourMessageId}), tråd-matching for DENNE e-posten vil truleg feile.`);
+    }
 
-    return json({ success: true, id: resendData.id, message_id: ourMessageId });
+    return json({ success: true, id: resendData.id, message_id: realMessageId || ourMessageId });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
