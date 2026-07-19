@@ -170,10 +170,15 @@ window.SITE_CONFIG = {
     mediabank:     true,  // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
     scrollbanner:  true,  // ← Scrollbanner-seksjonar. Krever module-scrollbanner.js
     chat:          true,  // ← Native chat-boble. Krever module-chat.js
-    sidebygger:    false  // ← Design-modul ("sidebygger"): kunden vel sjølv designmal i Web-admin sin
+    sidebygger:    false, // ← Design-modul ("sidebygger"): kunden vel sjølv designmal i Web-admin sin
                           //   nye "Design"-fane. Betalt tillegg -- MÅ vere eksplisitt false som standard
                           //   (feat() sitt "sant med mindre eksplisitt false"-mønster ville elles vist
                           //   fana for alle). Berre Console/superconfig skal kunne skru denne på.
+    carousel:      false  // ← Bilde/film-karusell (module-carousel.js). MÅ vere eksplisitt false som
+                          //   standard, motsett av scrollbanner sitt mønster over -- ny, uprøvd
+                          //   rulle-/videokode med ein reell ny lagringskostnad (eigen media-video-
+                          //   bucket). Berre Console/superconfig skal kunne skru denne på, akkurat
+                          //   som sidebygger.
   },
 
   /* --- Workspace-funksjoner (skru av/på) ------------------------------------
