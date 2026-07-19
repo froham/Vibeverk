@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.55.0 — 2026-07-19
+
+### Media-bucket anon-opplastingskvote (Batch 2, resten) — Arkitekt-konsultert, bygd, IKKJE fullført utrulla
+
+Den siste attverande posten frå Batch 2 (0.51.0/0.52.0): den offentlege `media`-bucket-en sin anon-opplastingsveg (Tilbod-skjemaet sine vedlegg, `module-quote.js`) hadde ingen grense på talet på filer eller opplastingsfrekvens — berre 20MB per fil. Arkitekten vart konsultert om mekanisme (sjå agent-rapport i økta) og konkluderte at ein rein Postgres-trigger/RLS-sjekk aldri kan sjå den faktiske besøkjande sin IP, sidan Storage-API-et opnar si eiga tilkopling uavhengig av PostgREST — kvoteteljing MÅ skje via ein Edge Function.
+
+**Bygd denne runda:**
+- `supabase/migrations/20260719124203_anon_media_upload_quota.sql`: ny `anon_upload_quota`-tabell (nøkkel = hasha IP + dato) + `bump_and_check_anon_upload_quota()`-RPC, `SECURITY DEFINER`, eksplisitt `REVOKE FROM anon, authenticated` (berre kallbar frå ein service_role-klient).
+- `supabase/functions/anon-media-upload-token/index.ts`: ny Edge Function — les besøkjande sin IP frå `x-forwarded-for` (**ikkje enno empirisk stadfesta mot ein ekte produksjonsrequest**, same atterhald som DMARC-arbeidet i `inbound-email`), hashar han med ein pepper-secret, sjekkar/aukar dagens kvote (20/dag), og gjev berre ut eit signert opplastings-token dersom under kvote.
+- `core.js`: ny `Media.putFileAnon(file)` — separat frå den eksisterande `Media.putFile()` (som framleis brukast ugata av dei autentiserte vegane: Aktuelt-editoren og Workspace sitt mediebibliotek). Fell trygt tilbake til `putFile()` sin lokale `file:`-lagring når Supabase ikkje er konfigurert (jsdom/test).
+- `module-quote.js`: Tilbod-skjemaet kallar no `putFileAnon()` i staden for `putFile()`, med eigen feilhandtering for kvote-meldinga (ei ferdig brukarvend setning frå funksjonen, ikkje ein kort feilkode).
+- Regresjonstest lagt til i `test.js` (575/1, opp frå 573/1 — 2 nye assertions).
+
+**IKKJE fullført denne runda, per Arkitekten sitt eige, eksplisitte åtvaring**: den gamle, opne `media_insert_anon_attachments`-RLS-policyen (som framleis tillèt anon å laste opp direkte via `.upload()` under `files/%`, heilt utanom det nye kvote-gatet) er MEDVITE ikkje fjerna enno. Å fjerne han no, før den nye signert-token-vegen er stadfesta å fungere ende-til-ende mot ein ekte Supabase-instans, kunne brote heile Tilbod-vedleggsfunksjonen blindt. Kvoten er difor i dag reint eit VEDLEGG til den eksisterande opne vegen, ikkje enno ei reell sperre — ein scripta åtakar kunne framleis kalle `.upload()` direkte og omgå heile mekanismen. **Attverande steg, i rekkefølgje**: (1) deploy migrasjon + funksjon til staging, (2) ein ekte opplastingstest gjennom det faktiske Tilbod-skjemaet for å stadfeste `x-forwarded-for`-antakinga og heile flyten, (3) FØRST DA, i ein eigen, seinare migrasjon: fjern/innsnevr `media_insert_anon_attachments` slik at anon-opplasting til `files/%` krev eit gyldig signert token.
+
 ## 0.52.0 — 2026-07-19
 
 ### Full kodebase-gjennomgang — Batch 5 (breiare feilhandtering) og Batch 6 (UX/tilgjenge) fiksa
