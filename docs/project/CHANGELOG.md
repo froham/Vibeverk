@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.61.0 — 2026-07-19
+
+### Rå Supabase Storage-feilmelding lekte til besøkjande på tilbodsskjemaet — funne via live nettlesartesting, no fiksa
+
+Fanga under manuell, verkeleg nettlesarbasert gjennomkøyring av testmatrisa (`.claude/skills/smoke-vibeverk/TEST-MATRIX.md` B3.2) mot Sunnvask-demo — ikkje via kodelesing åleine, som er heile poenget med å faktisk køyre live-testar. Ei fil med feil MIME-type (`.txt`) sendt inn som vedlegg på tilbodsskjemaet synte den rå, tekniske Supabase Storage-feilmeldinga ("mime type text/plain is not supported") direkte til den besøkjande — eit brot på `docs/architecture/copy-style-guide.md` sitt standande krav om at alt brukarvendt innhald skal unngå teknisk sjargong.
+
+- **`core.js`** (`Media.putFileAnon`): fangar no `up.error` frå Storage-opplastinga, loggar den rå detaljen til konsollen for feilsøking, og kastar ein kort, intern feilkode (`"storage-upload-failed"`) i staden for å la det rå feilobjektet forplante seg vidare.
+- **`module-quote.js`**: catch-handleren sin denylist for interne feilkodar (`"size"`, `"upload-token"`) er utvida med `"storage-upload-failed"`, slik at brukaren framleis ser den eksisterande, trygge, generiske opplastingsfeil-meldinga i staden for den rå Storage-teksten.
+- Stadfesta direkte via SQL at det mislykka forsøket (feil MIME-type) korrekt skapte **null** `leads`-rader — i tråd med den alt kode-dokumenterte `Promise.all()`-åtferda (éin mislykka vedleggsopplasting blokkerer heile innsendinga, ikkje berre vedlegget).
+- Retesta same flyt med eit gyldig `.png`-vedlegg: innsendinga lukkast, og den resulterande `leads`-rada sitt `attachments`-felt vart stadfesta å peike på eit ekte, hentbart Storage-objekt (`HEAD` → `200 image/png`), ikkje berre ein filnamn-streng — B3.2 sitt eksakte pass-kriterium i testmatrisa.
+- `test.js`: 576 OK / 0 FEIL. `test-workspace.js`: 162 OK / 0 FEIL. Ingen regresjon.
+
 ## (ingen kodeendring i repoet, kun dokumentasjon + live Supabase-endringar) — 2026-07-19
 
 ### Sunnvask-demo sitt driftsgjeld-gap lukka + ein reell dokumentasjonsfeil retta av brukar
