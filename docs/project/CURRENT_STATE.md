@@ -11,7 +11,7 @@ Concise, factual summary of what is actually implemented right now. Not a wishli
 ### Code and test state
 - `main` branch, HEAD is **0.60.0** (`console/console-core.js`'s `VIBEVERK_VERSION`).
 - `test.js`: **576 OK / 0 FEIL**. `test-workspace.js`: **162 OK / 0 FEIL**. Both suites fully green — the two long-standing known-failing tests (a stale exact-match assertion that never accounted for an unread-count badge span; a test of a route renamed away in the Fase 10 `customModules` work) were both fixed 2026-07-19, same round. See `CLAUDE.md`'s Testing section.
-- 19 files in `supabase/migrations/`; the newest three (`20260719124203`, `20260719132533`, `20260719133529`) landed 2026-07-19 as part of the media-upload-quota work.
+- 20 files in `supabase/migrations/`; the newest three (`20260719124203`, `20260719132533`, `20260719133529`) landed 2026-07-19 as part of the media-upload-quota work.
 
 ### Three delivery surfaces
 Public website (`/`), Workspace (`/workspace/`), Vibeverk Operator Console (`/console/`) — unchanged from `docs/architecture/system-overview.md`, no drift found this pass.
@@ -25,17 +25,15 @@ Public website (`/`), Workspace (`/workspace/`), Vibeverk Operator Console (`/co
 | `vibeverk-staging` | `syqnyfeponexmkdvnsga` | Shared dev/test project — not a tenant either test case runs against directly |
 | `vibeverk-control` | `jxoglthrnshabqmdmnui` | Control plane (tenant registry), not a data-plane project |
 
-### Migration / Edge Function matrix (directly queried 2026-07-19, not inferred)
+### Migration / Edge Function matrix (directly queried, latest pass 2026-07-19)
 
 | Project | Migrations (`supabase_migrations.schema_migrations`) | `manage-user` | `send-reply` | `inbound-email` | `anon-media-upload-token` |
 |---|---|---|---|---|---|
-| Production | 19/19 applied, matches repo exactly | ACTIVE | ACTIVE | ACTIVE | ACTIVE |
-| Staging | 19/19 applied, identical to production | ACTIVE | absent | absent | ACTIVE |
-| Sunnvask-demo | **not directly queried — no DB password available** | ACTIVE | absent | absent | absent |
+| Production | 20/20 applied, matches repo exactly | ACTIVE | ACTIVE | ACTIVE | ACTIVE |
+| Staging | 20/20 applied, identical to production | ACTIVE | absent | absent | ACTIVE |
+| Sunnvask-demo | 20/20 applied — **closed 2026-07-19** (was 11/20, missing 9 migrations back to its 2026-07-14 onboarding date; confirmed by direct query, then closed with `db push` + 3 function deploys, re-verified afterward) | ACTIVE | ACTIVE | ACTIVE | ACTIVE |
 
-The Edge Function column is a directly confirmed fact for all three projects (`npx supabase functions list` needs only API auth, not a DB password).
-
-**Sunnvask-demo's migration state is an inference, not a confirmed fact.** It was onboarded 2026-07-14 via Console's real onboarding flow, which applies whatever migrations exist in the repo at onboarding time; since it's missing every Edge Function added after that date, it likely still sits around migration `20260714133000`, meaning it's likely missing 9 later migrations (the 2026-07-15 export-backup RPC, the two 2026-07-17 inbound-email/dedup migrations, the 2026-07-18 crm-documents-bucket and restore-fix and anon-booking-slots migrations, and all three of 2026-07-19's media-quota migrations). **This needs external DB verification** (Sunnvask-demo's pooler connection string, or running `npx supabase db push` against it) before being treated as fact — see `docs/roadmap/ROADMAP.md` "Next". If the inference holds, the concrete, code-verified consequences today would be: the booking calendar's anon branch would silently show fully-booked days as available (the exact regression `get_taken_booking_slots()`, added 2026-07-18, was built to fix — the single highest-impact possible gap here, since it's silent, not an error); CRM document uploads and Tilbud attachment uploads would fail gracefully (a shown error message, not a crash or silent regression).
+All three columns are now directly confirmed fact for all three projects — no outstanding inference. Sunnvask-demo is deployment-current with production/staging as of 2026-07-19.
 
 ### A real testing-strategy gap
 Staging is missing `send-reply`/`inbound-email`, so outbound/inbound email cannot be end-to-end tested anywhere except production today — conflicting with the general "never destructive-test against production" instinct. Not yet resolved — see `docs/roadmap/ROADMAP.md` "Next".
@@ -51,15 +49,10 @@ Staging is missing `send-reply`/`inbound-email`, so outbound/inbound email canno
 - **Storage**: a public `media` bucket (images, general attachments) and a private `crm-documents` bucket (signed-URL access, admin/editor only) — see `docs/archive/current-state-history-2026-07-19.md` for the design rationale. A per-visitor daily upload quota (`anon-media-upload-token` Edge Function + `bump_and_check_anon_upload_quota()`) closed an anon-abuse gap in production 2026-07-19 (`supabase/migrations/20260719*`).
 - **Inbound email**: live in production since v0.43.0/0.43.1 (2026-07-17) — Message-ID/DKIM/SPF-verified thread matching, auto-creates a Kontakt lead + CRM customer on no match, reuses the existing `crm_comms` timeline pattern. Not deployed to staging or Sunnvask-demo (see matrix above).
 - **Mini-CRM timeline**: chat and email both appear as `crm_comms` entries on the customer timeline (not just a "jump to chat" shortcut).
-- **Design templates ("sidebygger")**: three site-wide templates (Klassisk, Panorama, Scroll-story) behind `features.sidebygger` (off by default everywhere today), plus customer-editable Tagline/SEO/colours/fonts/logo in a dedicated Web-admin "Design" tab. See `docs/roadmap/ROADMAP.md` "Later" for what's still open here.
+- **Design templates ("sidebygger")**: three site-wide templates (Klassisk, Panorama, Scroll-story), plus customer-editable Tagline/SEO/colours/fonts/logo in a dedicated Web-admin "Design" tab. **`features.sidebygger` is `true` on BOTH real tenants** (directly queried against `store.superconfig` on production and Sunnvask-demo 2026-07-19 — an earlier draft of this file wrongly claimed it was off everywhere, caught and corrected the same day by the user spotting it live in a screenshot of their own admin panel; don't trust this kind of claim without a direct query again). See `docs/roadmap/ROADMAP.md` "Later" for what's still open here.
 - **`customModules` manifest**: pipeline built and proven end-to-end (a real per-customer custom module shipped and loaded). No second real customer module exists yet — ordinary future dev work, not an open roadmap item.
 - **Support access**: `generate_support_access` mints a time-boxed, audit-logged magic link for an existing real admin at a tenant (impersonation via real identity, no standing/phantom account) — privacy-reviewed, no code changes required by that review.
 - **Testing**: `test.js`/`test-workspace.js` jsdom harnesses (counts above), run in CI on every push. A separate Playwright smoke-test suite (`.claude/skills/smoke-vibeverk/`) exists against `vibeverk-staging` for `dashboard-shortcuts` and `user-deletion` (both PASS live) — `backup-restore`, the full login matrix, and Console's onboarding checklist are still not covered by it.
-
-## Partially implemented
-
-- **Design-modul ("sidebygger")**: built (see above) but `features.sidebygger` is off in every real config today — no customer is actually using it live.
-- **Sunnvask-demo's deployment currency**: see "Migration / Edge Function matrix" above — a likely-real gap, not yet closed.
 
 ## Not implemented
 

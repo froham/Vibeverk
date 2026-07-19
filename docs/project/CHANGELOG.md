@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## (ingen kodeendring i repoet, kun dokumentasjon + live Supabase-endringar) — 2026-07-19
+
+### Sunnvask-demo sitt driftsgjeld-gap lukka + ein reell dokumentasjonsfeil retta av brukar
+
+Direkte oppfølging av launch-readiness-runda (0.53.0–0.60.0). Brukar oppga Sunnvask-demo sin pooler-tilkoplingsstreng, som gjorde det mogleg å stadfeste og lukke gapet den same dokumentasjonsrunda berre kunne mistenkje:
+
+- **Stadfesta nøyaktig som mistenkt**: Sunnvask-demo (`nzgibflxodcwuhtaprrs`) sat på migrasjon `20260714133000`, 9 migrasjonar bak. `npx supabase db push` deploya dei attverande 9, deretter vart `send-reply`, `inbound-email` og `anon-media-upload-token` deploya som Edge Functions, pluss ein ny `ANON_UPLOAD_QUOTA_PEPPER`-secret. Alt verifisert direkte etterpå (migrasjonstal, bucket-eksistens, RPC-tilgang) — ikkje berre stolt på ein rein exit-kode. Sunnvask-demo er no fullt deployment-likt med produksjon/staging.
+- **Ein reell dokumentasjonsfeil fanga av brukar, ikkje av nokon gjennomgang**: denne same runda sin dokumentasjon (`CURRENT_STATE.md`, `ROADMAP.md`, `TEST-MATRIX.md`) hadde skrive at `features.sidebygger` var av på begge reelle tenantar — ein påstand henta frå gamal prosjektminne, aldri direkte spurt opp mot den faktiske databasen. Brukar viste eit skjermbilete av sitt eige, live Web-admin-panel med Design-fana synleg og spurde "stemmer dette?". Direkte spørring mot `store.superconfig` på begge prosjekt stadfesta: **`features.sidebygger` er faktisk `true` på både produksjon og Sunnvask-demo.** Alle tre dokumenta retta same dag. Same lærdom som fleire gonger tidlegare denne økta: ikkje gjenta ein tidlegare påstand utan å spørje opp den faktiske kjelda på nytt.
+
 ## 0.60.0 — 2026-07-19
 
 ### Begge kjende, langvarige testunntak fjerna — begge suitene no 0 FEIL
