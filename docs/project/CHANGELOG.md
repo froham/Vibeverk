@@ -30,6 +30,28 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.66.0 — 2026-07-20
+
+### Ny modul: bilde/film-karusell (`module-carousel.js`), av som standard
+
+Ny, sjølvstendig karusell-komponent — kan setjast inn på sida på same måte som scrollbanner (eiga `App.registerModule()`-oppføring per karusell, admin-CRUD under "Innhald"), men støttar fleire slides som roterer, med bilete- OG videoslides. Bygd som eit eige steg, ikkje inn i Design-modulen/sidebygger enno (brukar sin idé om å flytte begge dit seinare står ved lag som eit separat, seinare steg).
+
+**Viktig kode-funn undervegs**: scrollbanner er IKKJE ein roterande karusell i dag — kvar banner er sin eigen, uavhengige, statiske enkeltbilete-seksjon utan slide-array, auto-rullering, piler eller sveip. Rulle-/karusell-mekanikken i denne modulen er difor heilt ny kode (kryssoverblending mellom slides, ingen ekstern biblioteksavhengnad), ikkje ein kopi av noko eksisterande.
+
+**Framdrift**: kvar karusell vel sjølv `advance.mode` — `"auto"` (tidsstyrt, konfigurerbart intervall i sekund, pausar ved hover/fokus/skjult fane, undertrykt heilt av `prefers-reduced-motion: reduce`) eller `"manual"` (ingen tidsstyring — pil-knappar, klikkbare prikk-indikatorar, sveip via pointer-hendingar med 40px-terskel, pil-tastar når fokusert).
+
+**Video-scope, medvite avgrensa for v1**: berre `video/mp4`, 20 MB per fil, stille/ambient korte produktvideoar (alltid `muted loop playsinline` — ingen lydhandtering). Ny, eigen Storage-bucket `media-video` (`supabase/migrations/20260719224831_carousel_video_bucket.sql`) — ikkje ei utviding av den delte `media`-bucketen, sidan `media` sin `files/`-prefiks også vert brukt av den anonyme, kvote-styrte tilbods-vedlegg-flyten (same grunngjeving som `crm-documents`-bucketen). Ny `Media.putVideo()`/`Media.freeVideo()` i `core.js`.
+
+**CSP-fiks (naudsynt, ikkje valfri)**: verken `index.html` eller `admin/index.html` sin CSP hadde ein `media-src`-direktiv — utan han fell video-avspeling attende til `default-src 'self'`, som ville stille blokkert alle `https://*.supabase.co`-videoar. Lagt til `media-src 'self' https://*.supabase.co;` i begge filene.
+
+**Feature-flag**: ny `carousel`-flagg, **av som standard** (`config.js`: `carousel: false`) — motsett av scrollbanner sitt "på om ikkje eksplisitt av"-mønster, sidan dette er ny, uprøvd rulle-/videokode med ein reell ny lagringskostnad. Skru på per kunde etter kvart som utprøvd.
+
+**Ikkje gjort i denne runden**: ingen integrasjon i Design-modulen/sidebygger, ingen retrofitting av scrollbanner sitt eige orphan-on-delete Storage-hòl (berre den nye karusell-koden sine eigne slides friar opp Storage-objekt ved sletting), ingen Workspace-flate (same fotavtrykk som scrollbanner — berre offentleg side + Web-admin).
+
+**Testa**: `test.js` (nye "— Karusell —"-blokker, jsdom-separat vindauge-mønster henta frå `test-workspace.js` sitt Z/AA-mønster: config-flagg patcha via kjeldetekst-erstatning, `localStorage` førehandssådd, `setInterval`-spion for å telje tidsstyrings-oppretting utan ekte tidsforseinking) — 586/586 OK. `test-workspace.js` uendra (ingen Workspace-flate) — 162/162 OK.
+
+**Attstår før produksjonsklar**: ekte opplasting-test med eit ekte mp4-klipp + bilete i same karusell (stadfeste at CSP-fiksen faktisk let videoen spele i ein ekte nettlesar, ikkje berre at koden ser rett ut), UX/Mobile Reviewer-gjennomgang, `docs/architecture/copy-style-guide.md`-sjekk av nye tekststrengar. Migrasjonen er IKKJE køyrd mot noko Supabase-prosjekt enno (krev eiga godkjenning, åtskilt frå kode-merge).
+
 ## 0.65.0 — 2026-07-19
 
 ### CRM sin E-post/Svar-dialog sende literal "{dato}"/"{melding}"-tekst til ekte kundar

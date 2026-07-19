@@ -2466,6 +2466,138 @@ const __asyncTests = (async () => {
     window.localStorage.setItem(ns + "chat:convs", JSON.stringify(saved));
   })();
 
+  // --- Karusell (module-carousel.js) ---------------------------------------
+  // features.carousel er eksplisitt false som standard (config.js) -- eiga,
+  // separat DOM med flagget patcha til true, sidan App.ready() sin gate vert
+  // avgjort éin gong ved skriptlasting, ikkje reevaluert seinare i den same,
+  // alt-lasta konteksten (same mønster som test-workspace.js sine Z/AA-
+  // seksjonar for intranettFeatures.kb/customModules). Frøplantar karusell-
+  // data via localStorage FØR modulen lastar, sidan syncModules() køyrer
+  // synkront ved skriptlasting i denne harnessen -- ingen admin-CRUD-skjema
+  // vert simulert her (scrollbanner sjølv har heller ingen CRUD-testdekning
+  // i denne fila i dag, sjå launch-readiness-runda 2026-07-19).
+  console.log("\n— Karusell —");
+  (function () {
+    var html2 = fs.readFileSync("index.html", "utf8");
+    var dom2 = new JSDOM(html2, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window2 = dom2.window;
+    window2.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window2.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window2.scrollTo = () => {};
+    window2.HTMLElement.prototype.scrollIntoView = () => {};
+    window2.URL.createObjectURL = window2.URL.createObjectURL || (() => "blob:mock-url");
+    window2.URL.revokeObjectURL = window2.URL.revokeObjectURL || (() => {});
+
+    // Tel kor mange setInterval-kall som skjer, i staden for å vente på ekte
+    // tid -- lèt oss teste auto-/manuell-grenene deterministisk og raskt.
+    var intervalCalls = 0;
+    var realSetInterval2 = window2.setInterval;
+    window2.setInterval = function () { intervalCalls++; return realSetInterval2.apply(window2, arguments); };
+
+    var autoCarousel = {
+      id: "crsl-test-auto", label: "Test auto", order: 25, height: "medium",
+      advance: { mode: "auto", intervalSec: 5 }, textColor: "#ffffff",
+      slides: [
+        { id: "sl-1", kind: "image", order: 0, image: { src: "https://eksempel.no/1.jpg", pos: "50% 50%" }, title: "Slide 1" },
+        { id: "sl-2", kind: "image", order: 1, image: { src: "https://eksempel.no/2.jpg", pos: "50% 50%" }, title: "Slide 2" }
+      ]
+    };
+    var manualCarousel = {
+      id: "crsl-test-manual", label: "Test manuell", order: 26, height: "medium",
+      advance: { mode: "manual", intervalSec: 5 }, textColor: "#ffffff",
+      slides: [
+        { id: "sl-3", kind: "image", order: 0, image: { src: "https://eksempel.no/3.jpg", pos: "50% 50%" }, title: "M1" },
+        { id: "sl-4", kind: "image", order: 1, image: { src: "https://eksempel.no/4.jpg", pos: "50% 50%" }, title: "M2" }
+      ]
+    };
+    window2.localStorage.setItem("nordpunkt:carousels", JSON.stringify([autoCarousel, manualCarousel]));
+
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-carousel.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/carousel:\s*false/, "carousel: true");
+      window2.eval(src);
+    });
+    window2.document.dispatchEvent(new window2.Event("DOMContentLoaded", { bubbles: true }));
+    var doc2 = window2.document;
+
+    assert(!!doc2.getElementById("crsl-test-auto"), "karusell 1: App.registerModule()-oppføringa rendrar som ein eigen <section> med rett id");
+    assert(!!doc2.getElementById("crsl-test-manual"), "karusell 2: same for den andre, uavhengige karusellen (ikkje éin delt behaldar)");
+
+    var autoSlides = doc2.querySelectorAll("#crsl-test-auto [data-crsl-slide]");
+    assert(autoSlides.length === 2, "karusell 1 rendrar begge slides: " + autoSlides.length);
+    assert(autoSlides[0].classList.contains("is-active") && !autoSlides[1].classList.contains("is-active"),
+      "berre fyrste slide er is-active ved oppstart");
+
+    assert(!doc2.querySelector("#crsl-test-auto [data-crsl-prev]"), "auto-modus viser INGEN piler (berre manuell modus har piler, sjå renderCarousel)");
+    assert(!!doc2.querySelector("#crsl-test-manual [data-crsl-prev]") && !!doc2.querySelector("#crsl-test-manual [data-crsl-next]"),
+      "manuell modus viser piler for fram-/attende-navigasjon");
+    assert(doc2.querySelectorAll("#crsl-test-auto [data-crsl-dot]").length === 2, "prikk-indikatorar finst for begge slides, uavhengig av modus");
+
+    assert(intervalCalls === 1, "nøyaktig éin setInterval oppretta totalt -- éin for auto-karusellen, INGEN for den manuelle (som ikkje skal ha nokon tidsstyring i det heile): " + intervalCalls);
+
+    // Sveip (peikar-hendingar) på den MANUELLE karusellen (ingen timer der
+    // til å forstyrre testen). jsdom manglar full PointerEvent-støtte --
+    // MouseEvent med same type-streng ("pointerdown"/"pointerup") fungerer
+    // identisk her, sidan addEventListener berre matchar på type-namnet.
+    var manualViewport = doc2.querySelector("#crsl-test-manual [data-crsl-viewport]");
+    manualViewport.dispatchEvent(new window2.MouseEvent("pointerdown", { clientX: 500, bubbles: true }));
+    manualViewport.dispatchEvent(new window2.MouseEvent("pointerup", { clientX: 440, bubbles: true })); // dx=-60, over 40px-terskelen
+    var manualSlidesAfterSwipe = doc2.querySelectorAll("#crsl-test-manual [data-crsl-slide]");
+    assert(!manualSlidesAfterSwipe[0].classList.contains("is-active") && manualSlidesAfterSwipe[1].classList.contains("is-active"),
+      "sveip mot venstre over 40px-terskelen avanserer nøyaktig éin slide framover");
+
+    manualViewport.dispatchEvent(new window2.MouseEvent("pointerdown", { clientX: 500, bubbles: true }));
+    manualViewport.dispatchEvent(new window2.MouseEvent("pointerup", { clientX: 480, bubbles: true })); // dx=-20, under terskelen
+    var manualSlidesAfterSmallSwipe = doc2.querySelectorAll("#crsl-test-manual [data-crsl-slide]");
+    assert(manualSlidesAfterSmallSwipe[1].classList.contains("is-active"),
+      "sveip under 40px-terskelen avanserer IKKJE (framleis same slide som før)");
+  })();
+
+  // --- Karusell: prefers-reduced-motion undertrykkjer tidsstyringa heilt,
+  // sjølv for ein auto-modus-karusell (eiga DOM, sidan matchMedia sitt mock-
+  // svar vert lese éin gong ved mount()) --------------------------------
+  (function () {
+    var html3 = fs.readFileSync("index.html", "utf8");
+    var dom3 = new JSDOM(html3, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window3 = dom3.window;
+    window3.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window3.matchMedia = function () { return { matches: true, addEventListener(){}, removeEventListener(){} }; }; // reduced-motion: reduce
+    window3.scrollTo = () => {};
+    window3.HTMLElement.prototype.scrollIntoView = () => {};
+    window3.URL.createObjectURL = window3.URL.createObjectURL || (() => "blob:mock-url");
+    window3.URL.revokeObjectURL = window3.URL.revokeObjectURL || (() => {});
+
+    var intervalCalls3 = 0;
+    var realSetInterval3 = window3.setInterval;
+    window3.setInterval = function () { intervalCalls3++; return realSetInterval3.apply(window3, arguments); };
+
+    window3.localStorage.setItem("nordpunkt:carousels", JSON.stringify([{
+      id: "crsl-test-reduced", label: "Test redusert rørsle", order: 25, height: "medium",
+      advance: { mode: "auto", intervalSec: 5 }, textColor: "#ffffff",
+      slides: [
+        { id: "slr-1", kind: "image", order: 0, image: { src: "https://eksempel.no/1.jpg", pos: "50% 50%" } },
+        { id: "slr-2", kind: "image", order: 1, image: { src: "https://eksempel.no/2.jpg", pos: "50% 50%" } }
+      ]
+    }]));
+
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-carousel.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/carousel:\s*false/, "carousel: true");
+      window3.eval(src);
+    });
+    window3.document.dispatchEvent(new window3.Event("DOMContentLoaded", { bubbles: true }));
+
+    assert(intervalCalls3 === 0, "prefers-reduced-motion:reduce undertrykkjer tidsstyringa heilt, sjølv for ein auto-modus-karusell: " + intervalCalls3);
+  })();
+
   console.log("\nResultat: OK " + (globalThis.__ok||0) + " / FEIL " + (globalThis.__err||0));
 })();
 

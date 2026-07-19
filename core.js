@@ -531,6 +531,43 @@ window.App = (function () {
         });
       });
     },
+    // Video-slide-opplasting for module-carousel.js. EIGEN bucket
+    // ("media-video", sjå supabase/migrations/20260719224831_carousel_video_bucket.sql)
+    // -- IKKJE den delte "media"-bucketen, sidan den sin files/-prefiks er
+    // akkurat prefiksen den anonyme, kvote-styrte tilbods-vedlegg-flyten
+    // (putFileAnon() over) har lov til å skrive til. Å utvide `media` for
+    // video ville stille opna den anonyme flyten for video òg. v1-scope:
+    // berre video/mp4, klientside MIME-sjekk FØR opplasting (forsvar-i-
+    // djupna, same mønster som putLogo() sin ALLOWED-sjekk -- ikkje berre
+    // stole på bucketen sin eigen server-side allow-liste). Ingen
+    // localStorage-fallback (video er aldri lita nok for det) -- krev ei
+    // ekte Supabase-tilkopling, kastar elles direkte.
+    MAX_VIDEO_MB: 20,
+    putVideo: function (file) {
+      const self = this;
+      const ALLOWED = { "video/mp4": 1 };
+      return new Promise(function (resolve, reject) {
+        if (!_sb) { reject(new Error("nosupabase")); return; }
+        if (!ALLOWED[file.type]) { reject(new Error("type")); return; }
+        if (file.size > self.MAX_VIDEO_MB * 1024 * 1024) { reject(new Error("size")); return; }
+        const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
+        const path = "clips/" + Date.now() + "-" + Math.random().toString(36).slice(2, 7) + "." + ext;
+        _sb.storage.from("media-video").upload(path, file, { contentType: file.type, upsert: false })
+          .then(function (r) {
+            if (r.error) { reject(r.error); return; }
+            resolve(_sb.storage.from("media-video").getPublicUrl(path).data.publicUrl);
+          });
+      });
+    },
+    // Speglar free() sin Storage-slette-gren, for media-video-bucketen.
+    freeVideo: function (src) {
+      if (!src || !_sb) return;
+      if (src.indexOf("/storage/v1/object/public/media-video/") > -1) {
+        const path = src.split("/storage/v1/object/public/media-video/")[1];
+        if (path) _sb.storage.from("media-video").remove([decodeURIComponent(path)]);
+      }
+    },
+
     // Referanse → nedlastbar href (data-URL for opplastet fil, ellers URL-en selv).
     resolveFile: function (ref) {
       if (!ref) return "";
