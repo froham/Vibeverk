@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.57.0 — 2026-07-19
+
+### Media-bucket anon-opplastingskvote — deploya til produksjon, ein reell bug fanga undervegs
+
+Deploya 0.55.0/0.56.0 sin fulle media-opplastingskvote (migrasjonar + Edge Function + secret) til produksjon (`clzczbyklgdtdhgjphup`), etter staging-verifiseringa i 0.56.0.
+
+**Reell, ny bug fanga live under produksjonsdeploy, ikkje berre anteke løyst**: rett etter migrasjonen var pusha, stadfesta ein direkte `has_function_privilege`-sjekk at `service_role` IKKJE hadde `EXECUTE` på `bump_and_check_anon_upload_quota()` på produksjon — sjølv om same sjekk synte `true` på staging rett før. 0.55.0 sin migrasjon hadde (per den etablerte ADR-0008-konvensjonen) stole på at Supabase sin plattform-standard-ACL automatisk gjev `service_role` denne tilgangen — men denne konvensjonen stemmer tydelegvis ikkje likt på tvers av alle prosjekt (truleg avhengig av når kvart prosjekt vart oppretta, jf. `config.toml` sin eigen kommentar om at "auto_expose_new_tables"-standarden er i endring). Utan denne fiksen ville Edge Function-en feila stille kvar gong ein anonym besøkjande faktisk prøvde å laste opp eit Tilbod-vedlegg i produksjon.
+
+`supabase/migrations/20260719133529_grant_service_role_anon_upload_quota.sql`: eksplisitt `GRANT EXECUTE ... TO service_role`, deploya til BÅDE produksjon og staging (for konsistens, sjølv der grant alt fanst via plattform-standard). Stadfesta direkte (`has_function_privilege`) på begge etterpå.
+
+**Full ende-til-ende-test køyrd direkte mot produksjon** (minimal — éin token-førespurnad, éi ekte opplasting, éin offentleg-URL-sjekk, deretter rydda opp — IKKJE ein full kvote-uttømming som på staging, for å ikkje bruke opp ein reell kunde sin dagskvote unødvendig): alt fungerte som venta.
+
 ## 0.56.0 — 2026-07-19
 
 ### Media-bucket anon-opplastingskvote — FULLFØRT (RLS-hòlet stengt, verifisert på staging)
