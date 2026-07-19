@@ -80,7 +80,7 @@ Click "Set opp e-post". This configures the tenant's Supabase Auth SMTP to use t
 
 Company name, colors/fonts, actual page text (hero/about/contact/news/services), privacy policy, the web-admin password, which modules are enabled — done in Console's other tabs ("Produkt", "Web", "Workspace", "Modular", "Analyse", "Personvern"), not on this checklist card. **Do this before step 10** (the real admin invite) so the customer's own admin sees a finished setup immediately, not defaults.
 
-A fresh tenant with none of this filled in shows a console warning (`SITE_CONFIG manglar felt: company, colors, fonts, privacy, admin, workspace, hero, about, contact, news, services, contactSection`) — that warning is effectively this step's own checklist.
+There is no console warning to lean on here as a "did I fill this in" signal — a console.warn that used to fire for these fields was removed 2026-07-19 (it fired unconditionally for every Fase-6 tenant regardless of whether step 8 was actually completed, since it checked the base `api/tenant-config.js` skeleton, which structurally never carries these fields either way — see `docs/project/CHANGELOG.md`). Verify step 8 was done by checking the tenant's actual `store.content`/`store.superconfig` rows (or the live site itself), not a console message.
 
 ## Step 9 — Point a hostname at Vercel, then verify routing ("9. Peik hostname mot Vercel og verifiser ruting")
 

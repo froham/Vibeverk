@@ -78,15 +78,13 @@ window.App = (function () {
   }
 
   (function applyConfigDefaults() {
-    const missingTopLevel = Object.keys(DEFAULT_CFG_SHAPE).filter(function (key) {
-      return !(key in CFG) || CFG[key] === undefined;
-    });
-    if (missingTopLevel.length) {
-      console.warn(
-        "[vibeverk] SITE_CONFIG manglar felt: " + missingTopLevel.join(", ") +
-        " — brukar standardverdiar til tenanten sin eigen konfigurasjon (superconfig/broker) er sett opp."
-      );
-    }
+    // Ikkje console.warn her: for kvar Fase-6-tenant (api/tenant-config.js sitt
+    // skjelett, sjå kommentaren over) er ALLE DEFAULT_CFG_SHAPE-nøklane
+    // *alltid* fråverande ved dette tidspunktet, med vilje -- dei kjem frå
+    // superconfig/broker seinare. Eit console.warn her ville difor fyrt på kvar
+    // einaste sideopning for kvar einaste ekte tenant, utan å signalisere noko
+    // faktisk uventa (fanga 2026-07-19 under live-testing av Sunnvask-demo:
+    // konsollen fylte seg med denne "åtvaringa" på nesten alle sider).
     fillConfigDefaults(CFG, DEFAULT_CFG_SHAPE);
   })();
   // ──────────────────────────────────────────────────────────────────────────
