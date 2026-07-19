@@ -308,7 +308,7 @@
       // heilt (ingen henvendelse opprettast) viss EITT vedlegg ikkje kan lastast
       // opp, i staden for å stille droppe det — brukaren får ein sjanse til å
       // prøve på nytt med færre/mindre filer.
-      Promise.all(st.files.map(function (f) { return App.media.putFile(f); })).then(function (attachments) {
+      Promise.all(st.files.map(function (f) { return App.media.putFileAnon(f); })).then(function (attachments) {
         // Bygg meldings-sammendrag
         var lines = ["Tilbudsforespørsel", ""];
         lines.push("Jobbeskrivelse");
@@ -338,7 +338,17 @@
         });
       }).catch(function (uploadErr) {
         if (submitBtn) { submitBtn.disabled = false; }
-        err.textContent = "Kunne ikke laste opp ett eller flere vedlegg. Prøv igjen, eventuelt med færre/mindre filer.";
+        // "size" er den einaste korte feilkoden putFileAnon() framleis kan
+        // kaste (matchar putFile() sin eksisterande konvensjon) -- alle andre
+        // feil frå anon-media-upload-token-funksjonen kjem som ei ferdig
+        // brukarvend setning (t.d. kvote-meldinga), og skal visast direkte.
+        if (uploadErr && uploadErr.message === "size") {
+          err.textContent = "Ett eller flere vedlegg er for store (maks " + App.media.MAX_FILE_MB_REMOTE + " MB per fil).";
+        } else if (uploadErr && uploadErr.message && uploadErr.message !== "upload-token") {
+          err.textContent = uploadErr.message;
+        } else {
+          err.textContent = "Kunne ikke laste opp ett eller flere vedlegg. Prøv igjen, eventuelt med færre/mindre filer.";
+        }
         err.style.display = "";
         console.error("[tilbud] vedleggsopplasting feila:", uploadErr);
       });

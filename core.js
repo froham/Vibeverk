@@ -482,6 +482,47 @@ window.App = (function () {
         }
       });
     },
+    // Som putFile(), men for ANONYME besøkjande sine vedlegg (i dag berre
+    // Tilbod-skjemaet, module-quote.js). Går via anon-media-upload-token
+    // Edge Function-en i staden for direkte .upload() -- den funksjonen
+    // sjekkar ei dagleg opplastingskvote per (hasha) IP FØR ho gjev ut eit
+    // signert opplastings-token, sidan direkte anon-.upload() ikkje har
+    // NOKON grense på talet på filer/frekvens (berre 20MB per fil). Sjå
+    // supabase/migrations/20260719124203_anon_media_upload_quota.sql.
+    // Autentiserte opplastingar (admin/editor sin Aktuelt-editor,
+    // Workspace sitt mediebibliotek) skal ALDRI bruke denne -- dei brukar
+    // framleis putFile() sin direkte, ugatede veg over.
+    putFileAnon: function (file) {
+      const self = this;
+      return new Promise(function (resolve, reject) {
+        if (!_sb) { self.putFile(file).then(resolve, reject); return; }
+        if (file.size > self.MAX_FILE_MB_REMOTE * 1024 * 1024) { reject(new Error("size")); return; }
+        _sb.functions.invoke("anon-media-upload-token", {
+          body: { filename: file.name, contentType: file.type }
+        }).then(function (r) {
+          if (r.error) {
+            // functions.invoke() sin error.message er alltid ei generisk
+            // "non-2xx status"-melding -- den faktiske ({error:"..."})
+            // kroppen ligg berre i error.context (rå Response), same
+            // lærdom som console-core.js sin extractFunctionErrorMessage().
+            if (r.error.context && typeof r.error.context.json === "function") {
+              r.error.context.json().then(function (b) {
+                reject(new Error((b && b.error) || "upload-token"));
+              }).catch(function () { reject(new Error("upload-token")); });
+            } else {
+              reject(new Error("upload-token"));
+            }
+            return;
+          }
+          const path = r.data.path, token = r.data.token;
+          _sb.storage.from("media").uploadToSignedUrl(path, token, file, { contentType: file.type })
+            .then(function (up) {
+              if (up.error) { reject(up.error); return; }
+              resolve({ name: file.name, ref: _sb.storage.from("media").getPublicUrl(path).data.publicUrl, type: file.type, size: file.size });
+            });
+        });
+      });
+    },
     // Referanse → nedlastbar href (data-URL for opplastet fil, ellers URL-en selv).
     resolveFile: function (ref) {
       if (!ref) return "";

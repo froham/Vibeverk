@@ -1294,6 +1294,21 @@ const __asyncTests = (async () => {
     assert(window.localStorage.getItem("nordpunkt:" + att.ref) === null, "Tilbod-vedlegget er fria frå lagring når leaden slettast (2026-07-18-fiks)");
   })();
 
+  // 2026-07-19: module-quote.js sitt Tilbod-skjema kallar no App.media.putFileAnon()
+  // i staden for putFile() direkte, sidan anon-opplastingar til media-bucket-en
+  // no skal gå via ein kvote-gata Edge Function (media-bucket anon-opplastings-
+  // kvote, sjå supabase/migrations/20260719124203_anon_media_upload_quota.sql).
+  // I jsdom (ingen _sb konfigurert) fell putFileAnon() trygt tilbake til
+  // putFile() sin eksisterande, ugata "file:"-lokallagring-veg -- stadfestar at
+  // fallback-grenen faktisk fungerer identisk, ikkje berre at metoden finst.
+  await (async function () {
+    assert(typeof window.App.media.putFileAnon === "function", "App.media.putFileAnon() finst (ny kvote-gata anon-opplastingsveg)");
+    var f = new window.File([new Uint8Array([9, 9, 9])], "kvote-test.png", { type: "image/png" });
+    var att = await window.App.media.putFileAnon(f);
+    assert(!!att && att.ref && att.ref.indexOf("file:") === 0, "putFileAnon() fell tilbake til same lokale file:-lagring som putFile() når Supabase ikkje er konfigurert");
+    window.App.media.freeFile(att.ref);
+  })();
+
   // Batch 3, launch-readiness-fiksrunda 2026-07-18 (Codex-funn, HIGH): eit
   // avbrote dokumentbytte i CRM-dokumentdialogen sletta tidlegare den
   // eksisterande fila permanent, sjølv om brukaren trykte Avbryt. Testar
