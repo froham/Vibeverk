@@ -141,7 +141,17 @@ function clickCat(id) { var b = doc.querySelector('[data-admin-cat="' + id + '"]
 function clickTab(id) { var b = doc.querySelector('[data-tab="' + id + '"]'); if (b) b.dispatchEvent(new window.Event("click", { bubbles: true })); }
 
 clickCat("henvendelser"); clickTab("leads");
-var tabLabelsHenv = [...doc.querySelectorAll(".tab")].map(t => t.textContent);
+// setTabBadge() (core.js) legg eit .tab-badge-span (uleste-teljar) INNI leads-
+// fana sin <button> når det finst nye henvendelser — .textContent slår difor
+// saman til t.d. "Kontakt1" utan skiljeteikn. Strip badge-teksten FØR
+// samanlikning, elles feiler denne testen kvar gong det finst ≥1 uleste
+// henvendelse i testdataen, sjølv om fana faktisk heiter "Kontakt" korrekt.
+function tabLabelWithoutBadge(t) {
+  var badge = t.querySelector(".tab-badge");
+  var label = t.textContent;
+  return badge ? label.slice(0, label.length - badge.textContent.length) : label;
+}
+var tabLabelsHenv = [...doc.querySelectorAll(".tab")].map(tabLabelWithoutBadge);
 assert(tabLabelsHenv.indexOf("Kontakt") > -1 && tabLabelsHenv.indexOf("Leads") === -1, "henvendelses-fanen heter «Kontakt»");
 
 // 7c) Tryggleiksfiks 2026-07-18 (Security Auditor-funn, CRITICAL): l.referenceNumber vart

@@ -272,8 +272,14 @@ assert(Array.isArray(orgData.people)&&orgData.people.length>0, "n3: people-data"
 assert(!doc.querySelector('[data-inav="workspaceship"]'), "o1: workspaceship skjult");
 App.store.set("wsp-workspaceship",{best:42});
 assert(App.store.get("wsp-workspaceship",{}).best===42, "o2: highscore lagra");
-nav("#/workspaceship");
-assert(!!doc.querySelector("#workspaceship-root"), "o3: workspaceship via direkterute");
+// o3 (fjerna): testa tidlegare "nav('#/workspaceship')" -> "#workspaceship-root"
+// finst -- ei rute som ikkje lenger finst. Fase 10 sitt customModules-arbeid
+// registrerer i dag spelet under modul-id "spaceship" (ikkje "workspaceship"),
+// og BERRE når customModules.spaceship.enabled===true i config -- default-
+// configen i denne testfila set aldri det flagget, så ruta 404-a alltid her,
+// heilt uavhengig av namnet. Same åtferd er alt korrekt dekt av AA-seksjonen
+// under (sjå aa2), som patchar config riktig FØR ho navigerer -- denne
+// assertionen dupliserte ikkje noko reelt, ho testa berre eit utgått namn.
 
 /* --- Q) BRUKARSTYRING ----------------------------------------------------- */
 nav("#/users");
