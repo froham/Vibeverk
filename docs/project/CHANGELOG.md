@@ -30,6 +30,12 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## (ingen kodeendring i repoet, kun ein live Supabase-secret + dokumentasjon) — 2026-07-19
+
+### Sunnvask-demo sin `send-reply` kunne ikkje faktisk sende e-post — RESEND_API_KEY var aldri sett
+
+Fanga under B7.3-live-testing (CRM "Svar"-utsending mot Sunnvask-demo, med brukar sitt eksplisitte samtykke til å sende ein reell test-e-post til si eiga adresse). Funksjonen var deployert (del av section-0-gap-lukkinga tidlegare same dag), men mangla sin påkravde `RESEND_API_KEY`-secret — sendinga feila med "RESEND_API_KEY ikkje satt i secrets". Brukar lokaliserte og oppga ein gyldig Resend-nøkkel frå kontoen sin (stadfesta mot domenet verifisert for `vibeverk.no`); sett via `npx supabase secrets set RESEND_API_KEY=... --project-ref nzgibflxodcwuhtaprrs`. Retesta: sendinga lukkast (`crm_comms`-rad med `type: "email_sent"` oppretta), og brukar stadfesta sjølv reell mottak i eigen innboks — ekte ende-til-ende-prov, ikkje berre eit feilfritt API-svar. Ein mindre, allereie kode-dokumentert biverknad vart observert (`resendMessageId` kom attende `null` — påverkar berre framtidig tråd-matching for akkurat denne e-posten, ikkje sjølve sendinga) men vart ikkje følgt vidare opp denne runda. Alle testrader sletta etterpå.
+
 ## 0.63.0 — 2026-07-19
 
 ### Chat-heartbeaten skreiv aldri til databasen — admin sin "Online"-knapp har vore ein illusjon
