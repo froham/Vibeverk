@@ -34,13 +34,23 @@ Internal superadmin surface for Vibeverk operators. Used to manage customer conf
 
 **Supabase CLI / Edge Functions:** Supabase CLI is installed locally as a development dependency and invoked with `npx supabase`. The working copy can be linked to the customer project and deploy version-controlled Edge Functions from `supabase/functions/`, but every remote deploy still requires explicit user approval.
 
-**SQL / schema:** `supabase/migration.sql` and the standalone `supabase/hotfix_*.sql` files are not timestamped files under `supabase/migrations/`, so `supabase db push` does not discover or deploy them. Until the SQL workflow is deliberately converted to standard CLI migrations, these files must still be run manually in the Supabase Dashboard SQL Editor. After any `CREATE OR REPLACE FUNCTION`, run `NOTIFY pgrst, 'reload schema';`.
+**SQL / schema:** `supabase/migrations/` is the real, CLI-deployable source of schema truth, since 2026-07-07 (baseline `20260707000001_baseline_schema.sql`; 19 migration files as of 2026-07-19). New changes go in a new timestamped file there (`npx supabase migration new <name>`), deployed via `npx supabase db push --linked` (or `--db-url` for a non-linked project such as `vibeverk-staging` or `supabase-control/`). `supabase/migration.sql` and the standalone `supabase/hotfix_*.sql` files are a **superseded, frozen snapshot** as of that same baseline — historical only, not updated further and not the deploy path. After any `CREATE OR REPLACE FUNCTION`, run `NOTIFY pgrst, 'reload schema';`.
 
 **No automated deployment:** No `git push`, Supabase SQL, or production action may happen without explicit user approval.
 
 ## Tenant isolation
 
 One Supabase project per customer. Complete database-level isolation — each customer's data is in a separate PostgreSQL database. There is no shared multi-tenant database. The `store` table retains a `tenant_id` column for backward compatibility, but all other tables are single-tenant by design.
+
+`vibeverk-staging` (ref `syqnyfeponexmkdvnsga`) is a dedicated, non-tenant Supabase project mirroring production's schema, used to test new migrations before they touch a real customer project — not itself a tenant.
+
+## Storage
+
+Two Supabase Storage buckets: the public **`media`** bucket (images, general public-facing attachments, no signed URLs needed) and the private **`crm-documents`** bucket (CRM document attachments — short-lived signed URLs, admin/editor only). A per-visitor daily quota on anonymous uploads is enforced via the `anon-media-upload-token` Edge Function.
+
+## Edge Functions beyond `manage-user`
+
+The data-plane project (`supabase/functions/`) also has `send-reply` (outbound transactional email via Resend), `inbound-email` (inbound email → Kontakt lead / CRM timeline entry, DKIM/SPF-verified), and `anon-media-upload-token` (anonymous upload quota token). The control-plane project (`supabase-control/supabase/functions/`) has its own separate set: `tenant-admin` (onboarding/provisioning), `broker` (Console's day-to-day config read/write), and `broker-ping` (mechanism-proof only).
 
 ## Four key files
 
@@ -63,9 +73,7 @@ productMode is read exclusively from the `superconfig` key in the Supabase `stor
 
 ## CI
 
-GitHub Actions runs `node test.js` (jsdom harness for public site) and `node test-workspace.js` (jsdom harness for Workspace, renamed 2026-07-07 from `test-intranet.js`) on every push to any branch. Both must pass before merge. Two tests are currently known-failing (pre-existing, unrelated to active development):
-- `"henvendelses-fanen heter «Kontakt»"`
-- `"sammenslåings-avhukingsbokser finst på kunderadene"`
+GitHub Actions runs `node test.js` (jsdom harness for public site) and `node test-workspace.js` (jsdom harness for Workspace, renamed 2026-07-07 from `test-intranet.js`) on every push to any branch. Both suites are fully green (0 FEIL) as of 2026-07-19 — the two long-standing known-failing tests (a stale exact-match assertion that never accounted for an unread-count badge, and a test of a route renamed away in the Fase 10 `customModules` work) were both fixed the same day. See `CLAUDE.md`'s Testing section for detail.
 
 ## Known limitations
 
@@ -73,4 +81,3 @@ GitHub Actions runs `node test.js` (jsdom harness for public site) and `node tes
 - **localStorage is not a security boundary:** It is a working copy. All security enforcement happens server-side via Supabase RLS and SECURITY DEFINER functions.
 - **anonKey is in config.js:** This is intentional (PostgREST pattern). The anonKey is not a secret — security depends on RLS, not key secrecy.
 - **Web admin password is in config.js:** Static password, committed to git, served publicly. This is a known design constraint. Authentication is purely client-side for the web admin surface.
-- **No automated SQL migration:** All schema changes are applied manually.

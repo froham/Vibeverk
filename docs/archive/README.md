@@ -11,3 +11,5 @@ Files are kept here (not deleted) so historical context and reasoning are not lo
 | File | Superseded by |
 |---|---|
 | `roadmap-2026-07-01.md` | [`docs/project/CURRENT_STATE.md`](../project/CURRENT_STATE.md) (what's done) and [`docs/roadmap/ROADMAP.md`](../roadmap/ROADMAP.md) (what's planned) |
+| `current-state-history-2026-07-19.md` | [`docs/project/CURRENT_STATE.md`](../project/CURRENT_STATE.md) — the pre-2026-07-19 dated-entry body of that file, moved here verbatim when it was rewritten into a concise current-state summary |
+| `roadmap-history-2026-07-19.md` | [`docs/roadmap/ROADMAP.md`](../roadmap/ROADMAP.md) — the pre-2026-07-19 "Status YYYY-MM-DD" narrative embedded in that file's Next/Later items, moved here verbatim when it was rewritten into a concise Current focus / Next / Later structure |
