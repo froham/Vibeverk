@@ -454,7 +454,7 @@
               '<span style="font-size:.88rem;font-weight:600">' + C.esc(entry.name) + '</span>' +
               '<div style="display:flex;gap:.5rem;align-items:center">' +
                 '<a href="' + C.esc(src) + '" download="' + C.esc(entry.name) + '" class="btn btn--ghost btn--sm"><i class="ti ti-download"></i> Last ned</a>' +
-                '<button class="wsp-media-card__btn" id="wsp-lb-close" aria-label="Lukk" style="font-size:1.3rem">&times;</button>' +
+                '<button class="wsp-media-card__btn" id="wsp-lb-close" aria-label="Lukk" style="font-size:1.3rem;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
               '</div>' +
             '</div>' +
             '<img class="wsp-img-modal__img" src="' + C.esc(src) + '" alt="' + C.esc(entry.name) + '">' +

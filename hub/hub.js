@@ -119,7 +119,7 @@
       '<div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:1.75rem;width:min(500px,100%);max-height:90vh;overflow-y:auto">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">' +
           '<div style="font-size:1rem;font-weight:700;color:#f8fafc">' + title + '</div>' +
-          '<button id="m-close" aria-label="Lukk" style="background:none;border:0;color:#64748b;font-size:1.4rem;cursor:pointer;line-height:1">&times;</button>' +
+          '<button id="m-close" aria-label="Lukk" style="background:none;border:0;color:#64748b;font-size:1.4rem;cursor:pointer;line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
         '</div>' +
         '<div style="display:grid;gap:.85rem">' + body + '</div>' +
         '<div style="display:flex;gap:.6rem;margin-top:1.4rem">' +

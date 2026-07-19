@@ -454,7 +454,7 @@
             'placeholder="Tittelaus…" ' +
             'style="flex:1;font:inherit;font-family:var(--font-display);font-size:1.05rem;font-weight:700;border:0;background:transparent;color:var(--color-text);outline:none;min-width:0">' +
         '</div>' +
-        '<button id="nm-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;margin-left:.5rem" title="Lukk">&times;</button>' +
+        '<button id="nm-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;margin-left:.5rem;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center" title="Lukk">&times;</button>' +
       '</div>' +
 
       '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;flex:1">' +

@@ -403,6 +403,8 @@
     .i-drawer__close {
       background: none; border: 0; cursor: pointer;
       font-size: 1.3rem; color: var(--color-muted); line-height: 1;
+      min-width: 36px; min-height: 36px;
+      display: inline-flex; align-items: center; justify-content: center;
     }
     .i-drawer__body { padding: 1.2rem; overflow-y: auto; flex: 1; display: grid; gap: .9rem; }
     .i-drawer__foot {
@@ -576,7 +578,8 @@
       display: none;
       background: none; border: 0; cursor: pointer;
       font-size: 1.4rem; color: var(--color-text); line-height: 1;
-      padding: .3rem;
+      min-width: 40px; min-height: 40px;
+      align-items: center; justify-content: center;
     }
     .i-sidebar-overlay {
       display: none;
@@ -628,27 +631,27 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="../config.js?v=11"></script>
   <script src="../components.js?v=18"></script>
-  <script src="../core.js?v=69"></script>
+  <script src="../core.js?v=70"></script>
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
 
   <!-- Workspace-motor og moduler -->
   <script src="workspace-core.js?v=21"></script>
-  <script src="module-announcements.js?v=10"></script>
+  <script src="module-announcements.js?v=11"></script>
   <script src="module-settings.js?v=12"></script>
-  <script src="module-tasks.js?v=10"></script>
-  <script src="module-notes.js?v=3"></script>
-  <script src="module-mediabank-internal.js?v=4"></script>
+  <script src="module-tasks.js?v=11"></script>
+  <script src="module-notes.js?v=4"></script>
+  <script src="module-mediabank-internal.js?v=5"></script>
   <script src="module-kb.js?v=8"></script>
   <script src="module-links.js?v=6"></script>
   <script src="module-orgdrift.js?v=4"></script>
-  <script src="module-contact.js?v=7"></script>
+  <script src="module-contact.js?v=8"></script>
   <script src="../module-chat.js?v=19"></script>
-  <script src="../module-crm.js?v=30"></script>
+  <script src="../module-crm.js?v=31"></script>
   <script src="module-users.js?v=5"></script>
-  <script src="module-booking.js?v=9"></script>
-  <script src="module-quote.js?v=9"></script>
+  <script src="module-booking.js?v=10"></script>
+  <script src="module-quote.js?v=10"></script>
   <script src="module-dashboard.js?v=5"></script>
   <script src="module-workspaceship.js?v=2"></script>
 </body>

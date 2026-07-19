@@ -325,7 +325,7 @@
           '<strong style="font-size:1rem">' + C.esc(item.title) + '</strong>' +
           '<span style="font-size:.78rem;color:var(--color-muted);margin-left:.6rem">' + formatDate(item.created_at || item.published_at) + '</span>' +
         '</div>' +
-        '<button id="ann-reader-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+        '<button id="ann-reader-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
       '</div>' +
       '<div style="padding:1.2rem 1.4rem">' +
         (img && img.src
@@ -361,7 +361,7 @@
       '<div style="border:1.5px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);margin-bottom:1.5rem;overflow:hidden">' +
         '<div style="padding:.85rem 1.2rem;border-bottom:1.5px solid var(--color-border);display:flex;align-items:center;justify-content:space-between">' +
           '<h4 style="margin:0;font-size:.97rem;font-weight:700">' + (item ? "Rediger sak" : "Ny sak") + '</h4>' +
-          '<button id="ann-cancel" style="background:none;border:0;font-size:1.3rem;cursor:pointer;color:var(--color-muted);line-height:1;padding:.2rem" aria-label="Avbryt">&times;</button>' +
+          '<button id="ann-cancel" style="background:none;border:0;font-size:1.3rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center" aria-label="Avbryt">&times;</button>' +
         '</div>' +
         '<div style="padding:1.2rem;display:grid;gap:1.1rem">' +
           '<div class="i-field">' +

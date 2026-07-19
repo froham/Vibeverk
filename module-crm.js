@@ -691,7 +691,7 @@
     dl.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.2rem .8rem;border-bottom:1px solid var(--color-border,#e5e7eb)'+(opts.fullscreen?';flex-shrink:0':'')+'">' +
         '<strong style="font-size:1rem">'+esc(opts.title||"")+'</strong>' +
-        '<button class="crm-dlg-close" aria-label="Lukk" style="background:none;border:0;cursor:pointer;font-size:1.3rem;color:var(--color-muted,#6b7280);padding:.2rem;line-height:1">&times;</button>' +
+        '<button class="crm-dlg-close" aria-label="Lukk" style="background:none;border:0;cursor:pointer;font-size:1.3rem;color:var(--color-muted,#6b7280);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
       '</div>' +
       '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;'+(opts.fullscreen?'flex:1;overflow-y:auto':'max-height:75vh;overflow-y:auto')+'">'+(opts.bodyHtml||"")+'</div>' +
       (opts.footHtml?'<div style="padding:.8rem 1.2rem 1rem;display:flex;gap:.5rem;border-top:1px solid var(--color-border,#e5e7eb)'+(opts.fullscreen?';flex-shrink:0':'')+'">'+opts.footHtml+'</div>':"");
@@ -1480,7 +1480,7 @@
     // «Vil du verifisere denne avsendaren?»-stadfesting, sidan ein rein
     // informasjonsbadge kan verke forvirrande/statisk for ikkje-tekniske
     // brukarar. data-verify-comm bind i bindTimelineActions().
-    if (item.autoCreated) tagBadge+=' <button type="button" data-verify-comm="'+esc(item.id)+'" title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno. Klikk for å verifisere." style="font:inherit;font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#E8833A 14%,transparent);color:#E8833A;border:0;cursor:pointer"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</button>';
+    if (item.autoCreated) tagBadge+=' <button type="button" data-verify-comm="'+esc(item.id)+'" title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno. Klikk for å verifisere." style="font:inherit;font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#A8551A 14%,transparent);color:#A8551A;border:0;cursor:pointer"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</button>';
     return '<div data-tl-item="'+esc(item.id)+'" class="crm-tl-row" tabindex="0" role="button" style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid var(--color-border,#e5e7eb);cursor:pointer">' +
       '<div style="flex-shrink:0;margin-top:.1rem"><div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,'+conf.color+' 13%,white);border:1.5px solid color-mix(in srgb,'+conf.color+' 28%,transparent)"><i class="ti ti-'+conf.icon+'" style="font-size:.78rem;color:'+conf.color+'"></i></div></div>' +
       '<div style="flex:1;min-width:0">' +
@@ -1489,7 +1489,7 @@
           '<div style="display:flex;align-items:center;gap:.4rem;flex-shrink:0">' +
             (item.type==="task"&&!item.done&&isComm?'<button data-task-toggle="'+esc(item.id)+'" class="crm-tl-btn" style="font-size:.72rem;padding:.32rem .6rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Fullfør</button>':'') +
             (isEmail&&isComm?'<button data-reply-email="'+esc(item.id)+'" class="crm-tl-btn" style="font-size:.72rem;padding:.32rem .6rem;border:1.5px solid var(--color-border);border-radius:6px;background:none;cursor:pointer;color:var(--color-muted)">Svar</button>':'') +
-            (isComm&&!isWorkspaceMember()?'<button data-del-comm="'+esc(item.id)+'" class="crm-tl-del" style="background:none;border:0;cursor:pointer;color:var(--color-muted);padding:.1rem;line-height:1;font-size:.85rem" title="Fjern"><i class="ti ti-x"></i></button>':'') +
+            (isComm&&!isWorkspaceMember()?'<button data-del-comm="'+esc(item.id)+'" class="crm-tl-del" aria-label="Fjern" style="background:none;border:0;cursor:pointer;color:var(--color-muted);line-height:1;font-size:.85rem;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center" title="Fjern"><i class="ti ti-x"></i></button>':'') +
             '<span style="font-size:.7rem;color:var(--color-muted);white-space:nowrap">'+esc(time)+'</span>' +
           '</div>' +
         '</div>' +

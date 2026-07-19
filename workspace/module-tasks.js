@@ -432,7 +432,7 @@
     modal.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border)">' +
         '<strong>' + (isNew ? "Ny oppgave" : "Rediger oppgave") + '</strong>' +
-        '<button id="tm-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+        '<button id="tm-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
       '</div>' +
       '<div style="padding:1.2rem;display:grid;gap:.9rem">' +
         (restrictedMember ? '<p style="font-size:.78rem;color:var(--color-muted);margin:0"><i class="ti ti-lock"></i> Denne oppgaven er tildelt deg av noen andre — du kan endre beskrivelse og status, men ikke tittel eller tildeling.</p>' : '') +
