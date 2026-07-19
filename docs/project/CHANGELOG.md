@@ -102,6 +102,19 @@ Den siste attverande posten frå Batch 2 (0.51.0/0.52.0): den offentlege `media`
 - Regresjonstest lagt til i `test.js` (575/1, opp frå 573/1 — 2 nye assertions).
 
 **IKKJE fullført denne runda, per Arkitekten sitt eige, eksplisitte åtvaring**: den gamle, opne `media_insert_anon_attachments`-RLS-policyen (som framleis tillèt anon å laste opp direkte via `.upload()` under `files/%`, heilt utanom det nye kvote-gatet) er MEDVITE ikkje fjerna enno. Å fjerne han no, før den nye signert-token-vegen er stadfesta å fungere ende-til-ende mot ein ekte Supabase-instans, kunne brote heile Tilbod-vedleggsfunksjonen blindt. Kvoten er difor i dag reint eit VEDLEGG til den eksisterande opne vegen, ikkje enno ei reell sperre — ein scripta åtakar kunne framleis kalle `.upload()` direkte og omgå heile mekanismen. **Attverande steg, i rekkefølgje**: (1) deploy migrasjon + funksjon til staging, (2) ein ekte opplastingstest gjennom det faktiske Tilbod-skjemaet for å stadfeste `x-forwarded-for`-antakinga og heile flyten, (3) FØRST DA, i ein eigen, seinare migrasjon: fjern/innsnevr `media_insert_anon_attachments` slik at anon-opplasting til `files/%` krev eit gyldig signert token.
+## (dokumentasjon, ingen versjonsbump) — 2026-07-19
+
+### WCAG/Lighthouse-revisjon (ROADMAP Steg 9, andre halvdel) — kjørt, éin ny reell finding dokumentert
+
+Kjørte `npx lighthouse` mot ein lokal statisk kopi av heimesida (ekte produksjons-Supabase-prosjekt bak `config.js`, sidan denne kodebasen ikkje har ein separat "demo-modus"). Resultat: **Accessibility 100**, Best Practices 96, SEO 91, Performance 56.
+
+- **Performance-talet er truleg skeivt av sandkasse-miljøet sin nettverksveg til det ekte, eksterne Supabase-prosjektet** (LCP ~31s, driven av mange små sekvensielle REST-kall) — ikkje nødvendigvis representativt for verkelege besøkjande på ekte produksjonsinfrastruktur. Krev ein ekte køyring frå normale nettverksforhold (t.d. PageSpeed Insights mot den faktiske live-URL-en) for eit truverdig tal.
+- **Éin reell, ny funn oppdaga via nettverksloggen**: `module-crm.js` hentar `crm_bedrifter`/`crm_customers`/`crm_comms` ubetinga ved kvar offentleg sidelasting, sjølv for anonyme besøkjande — tre alltid-til-stades `401`-kall (RLS avviser korrekt, men kalla er reint sløseri). Rotårsak og kvifor ein naiv fiks (berre hoppe over lastinga når ikkje innlogga) kunne bryte GDPR-slette-boksen sitt datagrunnlag i ein reell brukssituasjon, er dokumentert i `docs/project/CURRENT_STATE.md` "Known limitations" — IKKJE fiksa denne runda, treng sin eigen, meir gjennomtenkte oppfølgingsrunde.
+- **Éin funn synte seg IKKJE vere ein bug**: manglande `<meta name="description">`. Koden (`core.js:938-941`) set han korrekt frå `config.company.metaDescription` når feltet er fylt inn — demo-/lokal-`config.js` ship berre med det tomt. Lagt til som eit nytt punkt i `docs/compliance/customer-go-live-checklist.md` sin "Technical readiness"-seksjon.
+- Dei attverande Lighthouse "manual check needed"-kategoriane (fokus-fellar, logisk tab-rekkefølgje, landemerke m.m.) vart IKKJE handverifiserte i denne runda — dei krev ekte skjermlesar-/tastatur-brukartesting, eit større, eige tiltak.
+
+Reint dokumentasjonsarbeid denne runda (funna er logga, ikkje fiksa) — ingen kodeendring, difor ingen versjonsbump.
+
 ## 0.52.0 — 2026-07-19
 
 ### Full kodebase-gjennomgang — Batch 5 (breiare feilhandtering) og Batch 6 (UX/tilgjenge) fiksa

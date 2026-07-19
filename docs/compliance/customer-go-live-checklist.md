@@ -111,6 +111,9 @@ Mark each item as required (R) or recommended (Anbefalt/A) based on the column. 
 - [ ] **(A) Feature flags in config.js (and superconfig) are configured to enable only the features the customer will actually use.**
   - Disabling unused modules reduces the data collection surface and simplifies the privacy notice.
 
+- [ ] **(A) SEO meta description (`company.metaDescription` in Console) has been filled in for this customer.**
+  - Not a privacy item, but caught by a 2026-07-19 Lighthouse audit: the field and the code that renders it (`core.js`, `<meta name="description">`/`og:description`/`twitter:description`) already exist and work correctly — it just ships blank until a Console operator sets it. Left blank, Lighthouse (and real search engines) flag the page as missing a description.
+
 ---
 
 ## Customer awareness
