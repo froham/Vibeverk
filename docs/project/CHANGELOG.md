@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.65.0 — 2026-07-19
+
+### CRM sin E-post/Svar-dialog sende literal "{dato}"/"{melding}"-tekst til ekte kundar
+
+Funne under sluttverifisering av 0.64.1-fiksen (fjerde ekte send+svar-runde mot produksjon, denne gongen med rett Resend-inngåande-adresse): den mottekne testmeldinga viste literal, ufylt `"Mottatt: {dato}"` og tom `{melding}` i svarteksten.
+
+**Rotårsak**: `module-crm.js` sin `openEmailDialog()` (CRM sin eigen "E-post"/"Svar"-knapp) sende `defaultTemplate: ""` til den delte `App.openReplyModal()` (`core.js`). Der er fallback-logikken `opts.defaultTemplate || DEFAULT_REPLY_TEMPLATE` — sidan `""` er falsy, trigga fallback-en alltid til `DEFAULT_REPLY_TEMPLATE`, som inneheld `{dato}`/`{melding}`-plasshaldarar meint for LEAD-svar-flyten (som faktisk fyller desse frå den opphavlege henvendinga sin dato/tekst). CRM sin eigen `vars`-objekt gjev aldri `dato`/`melding`, og `fillTemplate()` let med vilje ukjende plasshaldarar stå urørt (dokumentert, testa åtferd) — så dei vart sende bokstaveleg til kunden.
+
+- **`module-crm.js`**: ny `CRM_DEFAULT_TEMPLATE` (berre `{navn}`, som CRM sin `vars`-objekt faktisk gjev), sendt eksplisitt i staden for tom streng. Det opphavlege meldingsinnhaldet (ved svar på ei eksisterande henvending) vert alt vist separat via `previewHtml` — malen treng difor ikkje sitere det på nytt.
+
+`test.js`: 576 OK / 0 FEIL. `test-workspace.js`: 162 OK / 0 FEIL.
+
 ## 0.64.1 — 2026-07-19
 
 ### Retting av 0.64.0: Resend bevarer IKKJE ein sjølvvald Message-ID-header — den ekte verdien må hentast, ikkje mynta

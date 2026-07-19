@@ -1824,6 +1824,19 @@
      E-POST (delt openReplyModal — respekterer crmFull identisk med
      Kontakt/Booking/Tilbud, sjå docs/decisions/ADR-0002 og arkitektnotat 2026-07-01)
      ====================================================================== */
+  // CRM sin eigen standardmal for E-post/Svar-dialogen. IKKJE tom streng --
+  // openReplyModal() (core.js) sin fallback er `opts.defaultTemplate ||
+  // DEFAULT_REPLY_TEMPLATE`, og DEFAULT_REPLY_TEMPLATE inneheld {dato}/
+  // {melding} (meint for lead-svar, som fyller desse frå den faktiske
+  // henvendinga). openEmailDialog() sin vars-objekt gjev ALDRI dato/melding
+  // -- {} er falsy, men "" (tom streng, som denne funksjonen tidlegare
+  // sende) er OGSÅ falsy, så fallback-en trigga uansett. Konsekvens,
+  // stadfesta live 2026-07-19: literal, ufylt "{dato}"/"{melding}"-tekst
+  // vart sendt til ein ekte kunde. Den faktiske opphavlege meldinga (viss
+  // isReply) vert alt vist separat via previewHtml -- denne malen treng
+  // difor ikkje sitere ho på nytt.
+  var CRM_DEFAULT_TEMPLATE = "Hei {navn},\n\n\n\nMed vennlig hilsen";
+
   function openEmailDialog(c, refresh, replyToComm) {
     var isReply  = !!replyToComm;
     var threadId = isReply ? (replyToComm.threadId || newThreadId()) : newThreadId();
@@ -1834,7 +1847,7 @@
       name: c.name, email: c.email,
       subject: subject,
       templateKey: "crm",
-      defaultTemplate: "",
+      defaultTemplate: CRM_DEFAULT_TEMPLATE,
       previewHtml: isReply ? (replyToComm.html || (replyToComm.body ? esc(replyToComm.body) : "")) : "",
       templateOptions: s.templates || [],
       signatureOptions: { company: s.signatureCompany || "", personal: s.signaturePersonal || "" },
