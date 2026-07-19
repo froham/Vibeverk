@@ -3,6 +3,16 @@
 Status: planning document, written 2026-07-19. Not code. Design-only — no
 Playwright scripts were written or changed as part of producing this.
 
+**Same-day corrections (2026-07-19)**: two facts this document originally
+carried forward as still-open have since been closed/corrected, both noted
+inline at the relevant section rather than silently rewritten:
+- Section 0 (Sunnvask-demo's migration/function gap) — confirmed exactly as
+  inferred, then closed (9 migrations + 3 Edge Functions deployed).
+- Section B6/B6.2 (`features.sidebygger`) — the claim that it was off
+  everywhere was never directly queried and was wrong; it's actually `true`
+  on both real tenants, caught by the user spotting the module live in
+  their own admin panel.
+
 ## Purpose and scope
 
 A single, reusable test matrix for the quality/launch-readiness round
@@ -62,23 +72,16 @@ Storage object/console log to check, not "form shows a green tick."
 
 ---
 
-## 0. Prerequisite gate — Sunnvask-demo's actual state (blocks section D)
+## 0. Prerequisite gate — Sunnvask-demo's actual state — CLEARED 2026-07-19
 
-Before any Sunnvask-demo-specific testing below is meaningful, its real
-migration state must be confirmed, per the verified-facts file: it is
-**directly confirmed** missing `send-reply`, `inbound-email`, and
-`anon-media-upload-token` (Edge Functions API query, no DB password needed),
-and only **inferred** (not confirmed) to be stuck around migration
-`20260714133000`, missing the 9 migrations listed there.
-
-| # | Test | Coverage | Pass = |
-|---|---|---|---|
-| 0.1 | Query `supabase_migrations.schema_migrations` directly against Sunnvask-demo (needs its DB pooler connection string, not currently available per verified-facts) | Manual only (external verification — needs a credential this session doesn't have) | The returned migration list matches or doesn't match the repo's 19 `supabase/migrations/` files; record exactly which are missing, replacing the inference with fact |
-| 0.2 | Decide: close the gap (`npx supabase db push --db-url <sunnvask-demo-url>`) before running section D, or knowingly test D against the current, gapped state | Manual decision — **needs the user**, see "Open decisions" | N/A — this is a decision gate, not a test |
-
-Running section D tests before 0.1/0.2 will surface **known deployment
-debt** (see verified-facts "Concrete, code-verified consequences") as if it
-were new bugs. Treat that distinction deliberately when triaging D failures.
+**Closed.** The inferred migration gap was confirmed exactly as predicted
+(Sunnvask-demo was stuck at `20260714133000`, missing all 9 later
+migrations) via a direct query once its DB pooler connection string was
+obtained, then closed: `npx supabase db push` applied the 9 missing
+migrations, and the 3 missing Edge Functions (`send-reply`, `inbound-email`,
+`anon-media-upload-token`) were deployed. Re-verified directly afterward —
+Sunnvask-demo now matches production/staging's schema and Edge Function set
+exactly. Section D testing is no longer blocked.
 
 ---
 
@@ -155,8 +158,7 @@ days as available), not an error message, if `get_taken_booking_slots()`
 | # | Test | Tenant(s) | Coverage | Pass = |
 |---|---|---|---|---|
 | B4.1 | Anon booking calendar correctly excludes already-taken slots | Vibeverk | New flow needed — sketch: create a real booking for a known slot (SQL arrange on staging-equivalent, or a real UI booking + cleanup on Vibeverk itself only with extreme care given the no-production-writes-without-approval rule), then load the public booking calendar anonymously and assert that slot is NOT offered | The taken slot does not appear as bookable; `get_taken_booking_slots()` RPC call in Network tab succeeds (200, not a caught/logged error) |
-| B4.2 | Same test against Sunnvask-demo BEFORE the migration gap is closed — expected to demonstrate the exact silent-regression bug described in verified-facts | Sunnvask-demo | New flow needed (same sketch as B4.1); **expected result if run before closing the gap: the taken slot DOES appear as bookable** — this is not a new bug, it's the known deployment debt from section 0, being reproduced on purpose to confirm the diagnosis, not to "discover" it fresh | Console log shows the RPC error (module-booking.js's anon branch logs and falls back to `_bookings = []`); the taken slot incorrectly shows as available |
-| B4.3 | Re-run B4.2 AFTER closing the Sunnvask-demo migration gap (section 0) | Sunnvask-demo | Same new flow as B4.1/B4.2, re-run | Now matches B4.1's pass condition — taken slot correctly excluded |
+| B4.2 | Same test against Sunnvask-demo | Sunnvask-demo | New flow needed (same sketch as B4.1) — section 0's migration gap (which would have caused this exact silent-regression bug) was confirmed and closed 2026-07-19, so this should now behave identically to B4.1, not demonstrate the old bug | Same pass condition as B4.1 — taken slot correctly excluded, no RPC error logged |
 | B4.4 | Booking form validation, date/time picker basic rendering | jsdom-coverable — check `test.js` for existing `module-booking.js` assertions; extend if thin | Existing/extended jsdom assertions |
 
 ### B5. Chat widget
@@ -175,16 +177,19 @@ it maps it onto the two real tenants:
 
 ### B6. Web-admin and the design-editing module ("sidebygger")
 
-Per project memory, `features.sidebygger` is `false` everywhere in
-production config today — so this module is currently **dark** on both real
-tenants. Testing it live on either tenant would require deliberately
-enabling a feature flag that is off by design, which is a scope decision,
-not a test-writing decision.
+**Correction 2026-07-19**: an earlier version of this matrix (and of
+`docs/project/CURRENT_STATE.md`) claimed `features.sidebygger` was `false`
+everywhere — that claim was never directly queried, only carried forward
+from stale project memory, and was wrong. Directly queried against
+`store.superconfig` on both real tenants: **`features.sidebygger` is `true`
+on both Vibeverk production and Sunnvask-demo.** The module is live and in
+active use, not dormant — B6.2 below is fully testable live today, not
+blocked on a scope decision.
 
 | # | Test | Tenant(s) | Coverage | Pass = |
 |---|---|---|---|---|
 | B6.1 | Web-admin login (`#admin`, `loginWebAdmin()` pattern already in `runner.js` lines 198–211) | Both (existing flow logs into staging only today) | Existing flow: `backup-restore` already exercises `loginWebAdmin()` — reusable as a building block for any new Web-admin flow, not a standalone new flow | Lands on `.admin-catbar`/`.tabs`, no login-form fallback |
-| B6.2 | Design/sidebygger module (5 sub-tabs, tagline/SEO editing per project memory) | Both | Not currently testable live — flag as **blocked on a scope decision**: is `features.sidebygger` staying off for both real tenants through launch, or does one of them need it validated live before then? | N/A until that decision is made |
+| B6.2 | Design/sidebygger module (template switch, tagline/SEO/colours/fonts/logo editing) — live on both real tenants | Both | New flow needed — sketch: log into Web-admin, open Design tab, switch template sub-tab, save, confirm the public site reflects the change | Correct template renders on the public page after save; `store.superconfig.design`/template fields match what was selected in the UI |
 | B6.3 | Backup export button + real download (existing) | Both (existing flow: staging only) | **Existing flow: `backup-restore`**, part A of that flow (SKILL.md row, `runner.js` lines 401–422) | Already verified live PASS 2026-07-18; re-run is regression coverage, not new design work |
 
 ### B7. CRM and CRM documents (private bucket)
@@ -192,8 +197,8 @@ not a test-writing decision.
 | # | Test | Tenant(s) | Coverage | Pass = |
 |---|---|---|---|---|
 | B7.1 | CRM customer create/edit via Workspace UI, real Supabase write | Both | Partially covered as a byproduct of the existing `crm-documents` flow (creates a throwaway customer as setup, `runner.js` lines 533–547) — not a standalone assertion of CRM write correctness beyond that | A `crm_customers` row exists with the submitted fields, matches what the UI displayed |
-| B7.2 | CRM document upload to the private `crm-documents` bucket, `crmdoc:`-prefixed reference, signed-URL resolve-on-click | Vibeverk (bucket migration present); Sunnvask-demo **only after** the section-0 gap is confirmed/closed (migration `20260718113648`) | **Existing flow: `crm-documents`** (SKILL.md row, `runner.js` lines 530–641) — currently only runs against staging via the config-swap; would need either (a) a Sunnvask-demo-targeted config-swap variant, or (b) accept staging as a proxy since the bucket migration is present there too | Already verified live PASS 2026-07-18 on staging; for Sunnvask-demo specifically, re-run only makes sense post-gap-closure (pre-closure it would fail for the *expected*, already-known reason — bucket doesn't exist yet — not a new finding) |
-| B7.3 | CRM "Svar" reply (outbound email via `send-reply`) | Vibeverk only (confirmed present; absent on staging AND Sunnvask-demo) | Manual only, production — same named tension as B5.2 | A real outbound email is sent and received at a real inbox |
+| B7.2 | CRM document upload to the private `crm-documents` bucket, `crmdoc:`-prefixed reference, signed-URL resolve-on-click | Both — bucket migration `20260718113648` now present on all three of production/staging/Sunnvask-demo since the section-0 gap closed 2026-07-19 | **Existing flow: `crm-documents`** (SKILL.md row, `runner.js` lines 530–641) — currently only runs against staging via the config-swap; a Sunnvask-demo-targeted config-swap variant would be needed to run it there directly | Already verified live PASS 2026-07-18 on staging; Sunnvask-demo now has the bucket too, so a run there should pass the same way, not fail for a known-gap reason anymore |
+| B7.3 | CRM "Svar" reply (outbound email via `send-reply`) | Vibeverk and Sunnvask-demo now both have `send-reply` (staging still doesn't, since 2026-07-19's gap closure) | Manual only — same named tension as B5.2, though Sunnvask-demo now lowers the blast radius vs. testing only against Vibeverk's real business | A real outbound email is sent and received at a real inbox |
 
 ### B8. Workspace: roles (admin/editor/member), tasks, user administration
 
@@ -224,14 +229,15 @@ applicable to a demo tenant.
 
 ## D. Sunnvask-demo-specific tests (presentable-demo concerns)
 
-Blocked on section 0 (confirm/close the migration+function gap) before these
-are meaningful as anything other than "confirming known debt."
+Section 0's migration+function gap is closed (2026-07-19) — these tests are
+now meaningful as genuine demo-readiness checks, not just "confirming known
+debt."
 
 | # | Test | Coverage | Pass = |
 |---|---|---|---|
 | D.1 | No leftover test/dev data visible anywhere a prospective customer would see during a live demo (CRM customer list, bookings calendar, chat history, references section) | Manual only — inherently a presentability/visual judgement call | A walkthrough of every customer-facing and admin-facing list shows only intentionally-curated demo content, nothing that reads as "test123" or an abandoned experiment |
 | D.2 | Demo content (services, references, FAQ, media) is coherent and complete, not placeholder text | Manual only | Same as D.1 — human judgement, good candidate for `vibeverk-ux-mobile-reviewer` |
-| D.3 | Stability: no console errors on a full click-through of the public site + Workspace login, especially the specific silent-failure paths this migration gap would trigger (booking RPC error per B4.2, CRM-doc upload failure per B7.2's pre-closure state, quote-attachment-blocks-submission per B3.3) | Combination of the flows above (B3.3, B4.2/B4.3, B7.2) once pointed at Sunnvask-demo, plus a `run-vibeverk`-style anonymous click-through for the rest | Zero unexpected console errors outside the three known, already-diagnosed gaps; those three should either be fixed (section 0 closed) or explicitly accepted as known-and-scheduled before any live demo |
+| D.3 | Stability: no console errors on a full click-through of the public site + Workspace login (the specific silent-failure paths a migration gap would have triggered — booking RPC, CRM-doc upload, quote-attachment submission — should no longer reproduce now that section 0 is closed; if any of them DO still appear, that's now a genuine new finding, not known debt) | Combination of the flows above (B3.3, B4.2, B7.2) once pointed at Sunnvask-demo, plus a `run-vibeverk`-style anonymous click-through for the rest | Zero unexpected console errors |
 | D.4 | Sunnvask-demo hostname resolves correctly (see A.2) — a demo is worthless if it accidentally serves the wrong tenant's data to a prospect watching over someone's shoulder | Same as A.2 | Same pass condition as A.2 |
 
 ---
@@ -280,37 +286,30 @@ unambiguous; flagged here only so it isn't silently assumed.
 These are surfaced explicitly, per the task brief, not silently routed
 around:
 
-1. **Staging is missing `send-reply` and `inbound-email`; production is the
-   only place either can be exercised today.** This directly conflicts with
-   the standing "never destructive-test against production" posture that
-   governs everything else in `smoke-vibeverk`. Three real options, not
-   evaluated further here since the choice is the user's:
-   - Deploy both functions to `vibeverk-staging` first (mirrors production
-     exactly, lets B5.2/B7.3/C.2/C.3 move into the normal staging-safe
-     suite), or
-   - Accept that email testing stays production-only, with extra care
-     (clearly-tagged test content, manual execution, no Playwright
-     automation against production ever), or
-   - Once Sunnvask-demo's migration gap (section 0) is closed AND
-     `send-reply`/`inbound-email` are deployed there too, use Sunnvask-demo
-     instead of production for this pair of tests — it's a real tenant but
-     not the live business, lowering the blast radius of a testing mistake.
+1. **RESOLVED 2026-07-19**: Sunnvask-demo now also has `send-reply` and
+   `inbound-email` deployed (see item 2 below), so email flows can be
+   exercised there instead of only on production — a real tenant but not
+   the live business, lowering the blast radius of a testing mistake.
+   `vibeverk-staging` still lacks both functions. Still an open call: deploy
+   them to staging too (mirrors production exactly, lets B5.2/B7.3/C.2/C.3
+   move into the normal staging-safe suite), or treat Sunnvask-demo as the
+   standing answer to this tension and leave staging as-is.
 
-2. **Sunnvask-demo's actual migration state (section 0) needs to be
-   confirmed before section D testing is meaningful.** The three specific
-   missing-function consequences (booking calendar silently over-booking,
-   CRM document upload failing, quote-attachment submissions being blocked
-   entirely) are code-verified certainties if the inferred migration gap is
-   real, but the gap itself is inference, not fact, per the verified-facts
-   file. Needs either the DB pooler connection string (to query directly)
-   or a decision to just run `npx supabase db push --db-url
-   <sunnvask-demo-url>` and let that be the confirmation-by-fixing.
+2. **RESOLVED 2026-07-19**: Sunnvask-demo's migration state was confirmed
+   directly (pooler connection string obtained) — it was genuinely 9
+   migrations behind, exactly as inferred (stuck at `20260714133000`). Both
+   the migrations and the 3 missing Edge Functions have been deployed and
+   re-verified; Sunnvask-demo now matches production/staging exactly.
+   Section 0's prerequisite gate is cleared — section D testing is no
+   longer blocked.
 
-3. **B6.2 (design/sidebygger module) is untestable live on either real
-   tenant today** since `features.sidebygger` is off everywhere in
-   production config. Needs a scope decision: validate it live before
-   launch (requires deliberately flipping the flag on one tenant, then
-   flipping it back), or leave it as jsdom/local-only coverage for now.
+3. **RESOLVED 2026-07-19 — was based on a stale, never-directly-queried
+   claim.** `features.sidebygger` is actually `true` on both real tenants
+   (confirmed by direct query against `store.superconfig`, after the user
+   spotted the module live in their own admin panel and questioned the
+   earlier claim). B6.2 is fully testable live today — no scope decision
+   needed, it was simply a documentation error, not an actual gap. See the
+   correction note under section B6 above.
 
 4. **B8.1/B8.2 (role-gated UI for a real non-admin session)** — no flow in
    `smoke-vibeverk` today ever completes a real login as an invited member;
