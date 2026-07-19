@@ -243,7 +243,7 @@
           e.stopPropagation();
           var id   = btn.getAttribute("data-ann-del");
           var item = _items.find(function (a) { return a.id === id; });
-          if (!confirm('Slett "' + (item ? item.title : "") + '"?')) return;
+          if (!confirm('Slette kunngjeringa "' + (item ? item.title : "") + '"? Kan ikkje angrast.')) return;
           deleteItem(id, function () { renderList(root, ctx); renderBanner(); });
         });
       });
@@ -325,7 +325,7 @@
           '<strong style="font-size:1rem">' + C.esc(item.title) + '</strong>' +
           '<span style="font-size:.78rem;color:var(--color-muted);margin-left:.6rem">' + formatDate(item.created_at || item.published_at) + '</span>' +
         '</div>' +
-        '<button id="ann-reader-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+        '<button id="ann-reader-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
       '</div>' +
       '<div style="padding:1.2rem 1.4rem">' +
         (img && img.src

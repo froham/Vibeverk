@@ -4286,7 +4286,7 @@ window.App = (function () {
         '<div style="'+replyBoxStyle+'">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.3rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
             '<strong style="font-size:1rem">Svar til ' + C.esc(opts.name || opts.email) + '</strong>' +
-            '<button data-reply-close style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+            '<button data-reply-close aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
           '</div>' +
           '<div style="padding:.9rem 1.3rem;border-bottom:1px solid var(--color-border)">' +
             '<p style="margin:0;font-size:.88rem"><strong>Til:</strong> &lt;<a href="mailto:' + C.esc(opts.email) + '" style="color:var(--color-primary)">' + C.esc(opts.email) + '</a>&gt;</p>' +
@@ -4582,7 +4582,7 @@ window.App = (function () {
       attachList.innerHTML = _attachments.map(function (a, i) {
         return '<span style="display:inline-flex;align-items:center;gap:.25rem;background:var(--color-alt);border:1px solid var(--color-border);border-radius:6px;padding:.2rem .5rem;font-size:.78rem">' +
           C.esc(a.filename) +
-          ' <button type="button" data-rm="' + i + '" style="background:none;border:0;cursor:pointer;color:var(--color-muted);font-size:1rem;line-height:1;padding:0">&times;</button>' +
+          ' <button type="button" data-rm="' + i + '" aria-label="Fjern vedlegg" style="background:none;border:0;cursor:pointer;color:var(--color-muted);font-size:1rem;line-height:1;padding:0">&times;</button>' +
           '</span>';
       }).join("");
       attachList.querySelectorAll("[data-rm]").forEach(function (btn) {

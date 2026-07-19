@@ -380,7 +380,7 @@
     if (admin) {
       root.querySelector("#kb-edit-btn").addEventListener("click", function () { openEditor(root, art, ctx); });
       root.querySelector("#kb-del-btn").addEventListener("click", function () {
-        if (!confirm('Slett "' + art.title + '"?')) return;
+        if (!confirm('Slette kunnskapsbase-artikkelen "' + art.title + '"? Kan ikkje angrast.')) return;
         deleteArticle(id, function () { Intranet.navigate("kb"); renderHome(root, ctx); });
       });
     }

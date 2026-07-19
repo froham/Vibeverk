@@ -454,7 +454,7 @@
               '<span style="font-size:.88rem;font-weight:600">' + C.esc(entry.name) + '</span>' +
               '<div style="display:flex;gap:.5rem;align-items:center">' +
                 '<a href="' + C.esc(src) + '" download="' + C.esc(entry.name) + '" class="btn btn--ghost btn--sm"><i class="ti ti-download"></i> Last ned</a>' +
-                '<button class="wsp-media-card__btn" id="wsp-lb-close" style="font-size:1.3rem">&times;</button>' +
+                '<button class="wsp-media-card__btn" id="wsp-lb-close" aria-label="Lukk" style="font-size:1.3rem">&times;</button>' +
               '</div>' +
             '</div>' +
             '<img class="wsp-img-modal__img" src="' + C.esc(src) + '" alt="' + C.esc(entry.name) + '">' +
@@ -493,7 +493,7 @@
         if (isMemberRole()) return;
         var id    = btn.getAttribute("data-wsp-del");
         var entry = getIndex().find(function (f) { return f.id === id; });
-        if (!confirm('Slett "' + (entry ? entry.name : "filen") + '"?')) return;
+        if (!confirm('Slette fila "' + (entry ? entry.name : "filen") + '" for godt? Kan ikkje angrast.')) return;
         deleteFile(id);
         var card = btn.closest(".wsp-media-card");
         if (card) card.remove();

@@ -1742,7 +1742,11 @@
        dekkjer normalt dette live, men polling er den eksplisitte fallback-
        garantien når Realtime er nede. */
     function pollTick() {
-      if (!document.body.contains(container)) { clearInterval(container._pollId); return; }
+      if (!document.body.contains(container)) {
+        clearInterval(container._pollId);
+        if (container._rtCh) { _sb.removeChannel(container._rtCh); container._rtCh = null; }
+        return;
+      }
       if (showSettings) return;
       if (_sb) {
         _sb.from("chat_conversations").select("*").order("last_at", { ascending: false, nullsFirst: false })

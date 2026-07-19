@@ -490,7 +490,7 @@
     return w.length===1 ? w[0].charAt(0).toUpperCase() : (w[0].charAt(0)+w[w.length-1].charAt(0)).toUpperCase();
   }
   function avatarColor(name) {
-    var cols = ["#15616D","#E8833A","#7B5EA7","#2A7A2A","#C0392B","#2980B9","#8E6B3E"];
+    var cols = ["#15616D","#A8551A","#7B5EA7","#2A7A2A","#C0392B","#2980B9","#8E6B3E"];
     var sum = 0; for (var i=0; i<(name||"").length; i++) sum += (name||"").charCodeAt(i);
     return cols[sum%cols.length];
   }
@@ -817,13 +817,13 @@
         '<div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-bottom:.1rem">' +
           '<strong style="font-size:.9rem">'+esc(c.name||"(ukjent)")+'</strong>' +
           (bed?'<span style="font-size:.72rem;color:var(--color-primary);font-weight:600">'+esc(bed.name)+'</span>':'') +
-          (isUnverifiedCustomer(c)?'<span title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno" style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#E8833A 14%,transparent);color:#E8833A"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</span>':'') +
+          (isUnverifiedCustomer(c)?'<span title="Automatisk oppretta frå ein e-post me ikkje kunne matche mot ein eksisterande tråd — ikkje stadfesta av eit menneske enno" style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#A8551A 14%,transparent);color:#A8551A"><i class="ti ti-alert-triangle" style="font-size:.65rem"></i> Ikkje verifisert</span>':'') +
           (pills.length?pills.join('<span style="opacity:.3;margin:0 .1rem">·</span>'):'') +
         '</div>' +
         '<div style="font-size:.78rem;color:var(--color-muted)">'+esc(c.email||"")+(c.phone?" · "+esc(c.phone):"")+(total?" · "+total+" aktivitet":"")+'</div>' +
       '</div>' +
       '<div style="display:flex;gap:.3rem;flex-shrink:0" onclick="event.stopPropagation()">' +
-        '<button type="button" class="crm-merge-check" data-merge-id="'+esc(c.id)+'" style="padding:.55rem .7rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:6px;background:transparent;font:inherit;font-size:.72rem;font-weight:600;color:var(--color-muted);cursor:pointer">Merk</button>' +
+        (isWorkspaceMember()?'':'<button type="button" class="crm-merge-check" data-merge-id="'+esc(c.id)+'" style="padding:.55rem .7rem;border:1.5px solid var(--color-border,#d1d5db);border-radius:6px;background:transparent;font:inherit;font-size:.72rem;font-weight:600;color:var(--color-muted);cursor:pointer">Merk</button>') +
         C.button({label:"Åpne",variant:"ghost",attrs:'data-crm-open="'+esc(c.id)+'" style="font-size:.78rem"'}) +
         (isWorkspaceMember()?'':C.button({label:"Slett",variant:"ghost",attrs:'data-crm-del="'+esc(c.id)+'" style="font-size:.78rem;border-color:#c0392b;color:#c0392b"'})) +
       '</div>' +
@@ -855,7 +855,7 @@
         e.stopPropagation();
         if (isWorkspaceMember()) return;
         var id=btn.getAttribute("data-crm-del"), c=getCustomers().find(function(x){return x.id===id;});
-        if (!c||!confirm("Slett ALL data for "+c.email+"?")) return;
+        if (!c||!confirm("Slett kunden "+c.email+", inkludert alle henvendelser/tilbod, bookingar, kommunikasjonshistorikk og chatsamtalar knytt til e-postadressa? Kan ikkje angrast.")) return;
         deleteAllForEmail(customerEmails(c)); deleteCustomer(id);
         renderAdmin(body);
       });
@@ -873,6 +873,7 @@
     });
     var bdb=container.querySelector("[data-crm-bulkdel-btn]");
     if (bdb) bdb.addEventListener("click",function(){
+      if (isWorkspaceMember()) return;
       var ids=[].slice.call(container.querySelectorAll(".crm-merge-check[data-active='1']")).map(function(btn){return btn.getAttribute("data-merge-id");});
       if (!ids.length) return;
       // Re-sjekk isUnverifiedCustomer() HER, ikkje berre stole på kva som var
@@ -890,6 +891,7 @@
     });
     var mb=container.querySelector("[data-crm-merge-btn]");
     if (mb) mb.addEventListener("click",function(){
+      if (isWorkspaceMember()) return;
       var ids=[].slice.call(container.querySelectorAll(".crm-merge-check[data-active='1']")).map(function(btn){return btn.getAttribute("data-merge-id");});
       if (ids.length<2) return;
       var toMerge=getCustomers().filter(function(c){return ids.indexOf(c.id)>-1;});
@@ -1227,7 +1229,17 @@
 
   function bindTimelineActions(scope, body, c, tl, refresh) {
     bindAttachmentChips(scope);
-    scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();if(isWorkspaceMember())return;if(!confirm("Fjern hendelse?"))return;deleteComm(btn.getAttribute("data-del-comm"));refresh();});});
+    scope.querySelectorAll("[data-del-comm]").forEach(function(btn){btn.addEventListener("click",function(e){
+      e.stopPropagation();
+      if(isWorkspaceMember())return;
+      var id=btn.getAttribute("data-del-comm");
+      var item=_comms.find(function(x){return x.id===id;});
+      var msg=(item&&item.type==="document"&&item.attachment)
+        ?"Slette dette dokumentet? Den opplasta fila blir fjerna for godt, ikkje berre listeoppføringa. Kan ikkje angrast."
+        :"Fjerne denne hendinga frå historikken? Kan ikkje angrast.";
+      if(!confirm(msg))return;
+      deleteComm(id);refresh();
+    });});
     scope.querySelectorAll("[data-task-toggle]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();updateComm(btn.getAttribute("data-task-toggle"),{done:true});refresh();});});
     scope.querySelectorAll("[data-reply-email]").forEach(function(btn){btn.addEventListener("click",function(e){e.stopPropagation();var orig=getComms().find(function(x){return x.id===btn.getAttribute("data-reply-email");});openEmailDialog(c,refresh,orig);});});
     scope.querySelectorAll("[data-verify-comm]").forEach(function(btn){btn.addEventListener("click",function(e){
@@ -1455,7 +1467,7 @@
     // backstop C.sanitizeRichHtml's own design comment describes.
     var bodyHtml=C.sanitizeRichHtml(item.html||item.noteHtml||"");
     var tagBadge="";
-    if (item.type==="internal_note"&&item.tag&&item.tag!=="normal"){var tc={important:"var(--color-primary,#2980B9)",followup:"#E8833A"},tl2={important:"Viktig",followup:"Oppfølging"};tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,'+(tc[item.tag]||"#999")+' 13%,transparent);color:'+(tc[item.tag]||"#999")+'">'+esc(tl2[item.tag]||item.tag)+'</span>';}
+    if (item.type==="internal_note"&&item.tag&&item.tag!=="normal"){var tc={important:"var(--color-primary,#2980B9)",followup:"#A8551A"},tl2={important:"Viktig",followup:"Oppfølging"};tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,'+(tc[item.tag]||"#999")+' 13%,transparent);color:'+(tc[item.tag]||"#999")+'">'+esc(tl2[item.tag]||item.tag)+'</span>';}
     if (item.type==="task"&&item.done) tagBadge=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#27AE60 12%,transparent);color:#27AE60">Ferdig ✓</span>';
     if (threadCount>1) tagBadge+=' <span style="font-size:.67rem;font-weight:700;padding:.1rem .38rem;border-radius:999px;background:color-mix(in srgb,#2980B9 12%,transparent);color:#2980B9">'+threadCount+' i tråd</span>';
     if (item.source==="legacy"&&item.status) tagBadge+=' <span class="stat-badge stat-badge--'+esc(item.status)+'">'+({"ny":"Ny","lest":"Lest","løst":"Løst"}[item.status]||esc(item.status))+'</span>';
@@ -1513,7 +1525,8 @@
               '</div>' +
             '</label>';
           }).join("") +
-        '</div>',
+        '</div>' +
+        '<p class="form__status" id="dlg-merge-status" style="margin:.6rem 0 0;font-size:.85rem"></p>',
       footHtml: C.button({label:"Slå sammen",variant:"primary",attrs:'id="dlg-merge-ok"'})+C.button({label:"Avbryt",variant:"ghost",attrs:'id="dlg-merge-cancel"'}),
       onMount:function(dl){
         function closeDlg() { try{dl.close();}catch(e){} if(dl.parentNode)dl.remove(); }
@@ -1531,7 +1544,17 @@
         dl.querySelector("#dlg-merge-ok").addEventListener("click",function(){
           var sel=dl.querySelector("input[name='merge-primary']:checked");
           if (!sel) return;
-          doMerge(toMerge,sel.value,function(){ closeDlg(); renderAdmin(body); });
+          var okBtn=dl.querySelector("#dlg-merge-ok"), st=dl.querySelector("#dlg-merge-status");
+          okBtn.disabled=true;
+          doMerge(toMerge,sel.value,function(err){
+            if (err) {
+              okBtn.disabled=false;
+              st.textContent="Kunne ikke slå sammen: "+(err.message||"ukjent feil")+". Prøv igjen.";
+              st.className="form__status is-err";
+              return;
+            }
+            closeDlg(); renderAdmin(body);
+          });
         });
       }
     });
@@ -1570,7 +1593,7 @@
       return;
     }
     _sb.rpc("merge_crm_customers", { p_ids: ids, p_primary_id: primaryId }).then(function (r) {
-      if (r.error || !r.data) { cb && cb(); return; }
+      if (r.error || !r.data) { cb && cb(r.error || new Error("Ingen data returnert")); return; }
       var merged = dbCustomerToJs(r.data);
       _customers = _customers.filter(function (c) { return ids.indexOf(c.id) === -1 || c.id === merged.id; });
       var idx = _customers.findIndex(function (c) { return c.id === merged.id; });
@@ -1673,7 +1696,7 @@
     var nyBtn=c.querySelector("#crms-ny-mal");
     if (nyBtn) nyBtn.addEventListener("click",function(){crmsRenderMaler(c,"new");});
     c.querySelectorAll("[data-edit-mal]").forEach(function(b){b.addEventListener("click",function(){crmsRenderMaler(c,b.getAttribute("data-edit-mal"));});});
-    c.querySelectorAll("[data-del-mal]").forEach(function(b){b.addEventListener("click",function(){if(!confirm("Slett denne malen?"))return;deleteTemplate(b.getAttribute("data-del-mal"));crmsRenderMaler(c);});});
+    c.querySelectorAll("[data-del-mal]").forEach(function(b){b.addEventListener("click",function(){if(!confirm("Slette denne e-postmalen? Kan ikkje angrast."))return;deleteTemplate(b.getAttribute("data-del-mal"));crmsRenderMaler(c);});});
     if (editing!==null) {
       c.querySelector("#crms-mal-cancel").addEventListener("click",function(){crmsRenderMaler(c);});
       c.querySelector("#crms-mal-save").addEventListener("click",function(){
@@ -1722,7 +1745,7 @@
     var nyBtn=c.querySelector("#crms-ny-sn");
     if (nyBtn) nyBtn.addEventListener("click",function(){crmsRenderTekster(c,"new");});
     c.querySelectorAll("[data-edit-sn]").forEach(function(b){b.addEventListener("click",function(){crmsRenderTekster(c,b.getAttribute("data-edit-sn"));});});
-    c.querySelectorAll("[data-del-sn]").forEach(function(b){b.addEventListener("click",function(){if(!confirm("Slett denne standardteksten?"))return;deleteSnippet(b.getAttribute("data-del-sn"));crmsRenderTekster(c);});});
+    c.querySelectorAll("[data-del-sn]").forEach(function(b){b.addEventListener("click",function(){if(!confirm("Slette denne standardteksten? Kan ikkje angrast."))return;deleteSnippet(b.getAttribute("data-del-sn"));crmsRenderTekster(c);});});
     if (editing!==null) {
       c.querySelector("#crms-sn-cancel").addEventListener("click",function(){crmsRenderTekster(c);});
       c.querySelector("#crms-sn-save").addEventListener("click",function(){
@@ -1806,7 +1829,7 @@
      NOTAT-DIALOG
      ====================================================================== */
   function openNoteDialog(c, refresh, existing) {
-    var TAGS=[{id:"normal",label:"Normal",color:"var(--color-primary,#2980B9)"},{id:"important",label:"Viktig",color:"var(--color-primary,#2980B9)"},{id:"followup",label:"Oppfølging",color:"#E8833A"}];
+    var TAGS=[{id:"normal",label:"Normal",color:"var(--color-primary,#2980B9)"},{id:"important",label:"Viktig",color:"var(--color-primary,#2980B9)"},{id:"followup",label:"Oppfølging",color:"#A8551A"}];
     openDialog({
       title:existing?"Rediger internt notat":"Internt notat",
       bodyHtml:
