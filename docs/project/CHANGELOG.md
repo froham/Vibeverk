@@ -30,6 +30,26 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.52.0 — 2026-07-19
+
+### Full kodebase-gjennomgang — Batch 5 (breiare feilhandtering) og Batch 6 (UX/tilgjenge) fiksa
+
+Held fram frå 0.51.0 sin reconsilierte fiksplan (`docs/project/CHANGELOG.md` 0.51.0-oppføringa, sjå og plan-fila referert der). Console-responsivitet (Batch 6 punkt 21) held fram som eige, seinare spora punkt slik det alt var avklart — ikkje del av denne runda.
+
+**Batch 5**:
+- Chat-admin-panelet sin Realtime-kanal (`_rtCh`) vart ALDRI avmeldt når admin forlét "Chat"-fana — berre poll-intervallet vart rydda opp (via ein alt eksisterande `document.body.contains(container)`-sjekk). No vert kanalen fjerna (`_sb.removeChannel(...)`) i same sjekkepunkt, som hindrar ubunden vekst av opne Realtime-abonnement gjennom ein arbeidsdag.
+- CRM sin "Slå saman kontakter"-dialog: knappane for merking/samanslåing/bulk-sletting av uverifiserte kontaktar var synlege og klikkbare for rolla "member" sjølv om RPC-en (`merge_crm_customers`) alt avviste kallet server-side — no skjult for member, matchande det eksisterande mønsteret for Slett-knappen. `doMerge()` svelgde og RPC-feil heilt stille (dialogen lukka seg som om alt hadde gått bra) — no vert feilen synt i dialogen, og brukaren kan prøve på nytt.
+- Workspace sine oppgåver (`updateTask`/`deleteTask`): begge muterte den lokale cachen FØR nettverkskallet var stadfesta, og sjekka aldri `r.error` — ein RLS-avvist endring/sletting synte som vellukka i UI-et heilt til neste sideoppdatering. No vert lokal tilstand rulla attende ved feil, og feilmeldinga vert synt i oppgåve-dialogen/lista i staden for å late att som suksess.
+- `restore_backup_tables()` sitt kjende `UNIQUE`-indeks-kantfall (smal 2026-07-13–07-17-tidslinje) er no eksplisitt dokumentert i `docs/project/CURRENT_STATE.md` sine "Known limitations" som eit medvite ikkje-fiksa avvik, i staden for eit ope spørsmål.
+
+**Batch 6**:
+- 11 "nakne" `confirm()`-dialogar (CRM-mal/standardtekst-sletting, CRM-hendingssletting, Workspace-oppføring/kunngjering/KB-artikkel/lenke/fil/notat/oppgåve-sletting) mangla omfangs-/angreforklaring per stilguiden sitt Nivå B-krav — alle no utvida til å seie kva som vert påverka og at det ikkje kan angrast. CRM sin kunde-kjapp-slett-knapp (lista-visning) hadde ei kortare, mindre presis tekst enn kunde-detalj-visninga sin slett-knapp for SAME handling — no identisk. CRM-dokumentsletting (via den delte hendings-slett-knappen) seier no eksplisitt at sjølve den opplasta fila vert fjerna for godt, ikkje berre tidslinje-oppføringa.
+- WCAG-kontrastfunn for `#E8833A` (kvit tekst/initialar på oransje bakgrunn, ~2,7:1, stryk AA) retta for dei tre TEKST-bruka (avatar-initialar, "Ikkje verifisert"-merket, "Oppfølging"-merket/tagg-knappen) til ein mørkare `#A8551A` (~5,3:1, går AA) — dei reint dekorative ikon-bruka (dokument-/tilbods-tidslinjeikon) er urørte, som avklart i planen.
+- 10 lukk-knappar med berre eit "×"-teiknikon og ingen tilgjengeleg tekst (skjermlesarar fekk ingen forklaring) fekk `aria-label="Lukk"` (eller "Fjern vedlegg" for vedleggs-fjern-knappen i e-postsvar-editoren) — Web-admin/Workspace sine kontakt-/booking-/tilbod-/oppgåve-/kunngjerings-/notat-/mediebank-lysbilete-detaljruter, hub-modalen.
+- Web-admin sin brukartabell (`.vwu-table`) mangla sin eigen horisontal-scroll-wrapper — drog heile panelet sidelengs på smale skjermar i staden for berre tabellen. Lagt til `overflow-x:auto`-wrapper.
+
+Touch-target-storleik og resten av UX-agenten sitt funn er ikkje del av denne runda (ville trengt visuell nettlesar-verifisering av faktiske knapp-mål, ikkje berre kodeendring).
+
 ## (dokumentasjon, ingen versjonsbump) — 2026-07-19
 
 ### B-6/B-7-utkast korrigert etter ekstern Codex-gjennomgang

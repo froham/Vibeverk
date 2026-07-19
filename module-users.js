@@ -170,9 +170,9 @@
           container.innerHTML =
             '<div class="vwu">' +
               '<h3 style="margin:0 0 .9rem;font-size:1rem">Brukarar (' + users.length + ')</h3>' +
-              '<table class="vwu-table"><thead><tr>' +
+              '<div style="overflow-x:auto"><table class="vwu-table"><thead><tr>' +
                 '<th>Namn</th><th>E-post</th><th>Rolle</th><th></th>' +
-              '</tr></thead><tbody>' + rows + '</tbody></table>' +
+              '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
               inviteHtml +
             '</div>';
 

@@ -182,7 +182,7 @@
           e.preventDefault();
           var id   = btn.getAttribute("data-link-del");
           var link = _links.find(function (l) { return l.id === id; });
-          if (!confirm('Slett "' + (link ? link.title : "") + '"?')) return;
+          if (!confirm('Slette lenka "' + (link ? link.title : "") + '"? Kan ikkje angrast.')) return;
           deleteLink(id, function () { renderPage(root, ctx); });
         });
       });

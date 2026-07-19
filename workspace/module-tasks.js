@@ -117,6 +117,7 @@
     if (changes.assigned_to !== undefined) row.assigned_to = changes.assigned_to;
 
     var idx = _tasks.findIndex(function (t) { return t.id === id; });
+    var prev = idx >= 0 ? Object.assign({}, _tasks[idx]) : null;
     if (idx >= 0) Object.assign(_tasks[idx], row, { updated_at: new Date().toISOString() });
 
     if (!_sb) {
@@ -124,15 +125,28 @@
       cb && cb();
       return;
     }
-    _sb.from("tasks").update(row).eq("id", id).then(function () { cb && cb(); });
+    _sb.from("tasks").update(row).eq("id", id).then(function (r) {
+      if (r.error) { if (idx >= 0) _tasks[idx] = prev; cb && cb(r.error); return; }
+      cb && cb();
+    });
   }
 
   function deleteTask(id, cb) {
-    var task = _tasks.find(function (t) { return t.id === id; });
-    _tasks = _tasks.filter(function (t) { return t.id !== id; });
-    Intranet.logActivity({ type: "task_deleted", label: "Slettet oppgave: " + (task ? task.title : "") });
-    if (!_sb) { App.store.set(STORE_KEY, _tasks); cb && cb(); return; }
-    _sb.from("tasks").delete().eq("id", id).then(function () { cb && cb(); });
+    var idx = _tasks.findIndex(function (t) { return t.id === id; });
+    if (idx < 0) { cb && cb(); return; }
+    var task = _tasks[idx];
+    _tasks.splice(idx, 1);
+    if (!_sb) {
+      App.store.set(STORE_KEY, _tasks);
+      Intranet.logActivity({ type: "task_deleted", label: "Slettet oppgave: " + task.title });
+      cb && cb();
+      return;
+    }
+    _sb.from("tasks").delete().eq("id", id).then(function (r) {
+      if (r.error) { _tasks.splice(idx, 0, task); cb && cb(r.error); return; }
+      Intranet.logActivity({ type: "task_deleted", label: "Slettet oppgave: " + task.title });
+      cb && cb();
+    });
   }
 
   /* =========================================================================
@@ -317,8 +331,10 @@
       var status = sel.value;
       var task   = _tasks.find(function (t) { return t.id === id; });
       if (!task) return;
-      updateTask(id, { status: status }, function () {});
-      Intranet.logActivity({ type: "task_status", label: task.title + " → " + STATUS_LABELS[status] });
+      updateTask(id, { status: status }, function (err) {
+        if (err) { renderList(root); return; }
+        Intranet.logActivity({ type: "task_status", label: task.title + " → " + STATUS_LABELS[status] });
+      });
       renderList(root);
     });
 
@@ -416,7 +432,7 @@
     modal.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border)">' +
         '<strong>' + (isNew ? "Ny oppgave" : "Rediger oppgave") + '</strong>' +
-        '<button id="tm-close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
+        '<button id="tm-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1">&times;</button>' +
       '</div>' +
       '<div style="padding:1.2rem;display:grid;gap:.9rem">' +
         (restrictedMember ? '<p style="font-size:.78rem;color:var(--color-muted);margin:0"><i class="ti ti-lock"></i> Denne oppgaven er tildelt deg av noen andre — du kan endre beskrivelse og status, men ikke tittel eller tildeling.</p>' : '') +
@@ -481,7 +497,8 @@
           if (root) renderList(root);
         });
       } else {
-        updateTask(id, { title: title, body: body, status: status, assigned_to: assigned_to }, function () {
+        updateTask(id, { title: title, body: body, status: status, assigned_to: assigned_to }, function (err) {
+          if (err) { msg.textContent = "Kunne ikke lagre: " + (err.message || "ukjent feil") + ". Prøv igjen."; msg.className = "form__status is-err"; return; }
           Intranet.logActivity({ type: "task_updated", label: "Oppdatert: " + title });
           closeModal();
           if (root) renderList(root);
@@ -492,8 +509,10 @@
     var delBtn = modal.querySelector("#tm-delete");
     if (delBtn) {
       delBtn.addEventListener("click", function () {
-        if (!confirm('Slett oppgaven "' + (task ? task.title : "") + '"?')) return;
-        deleteTask(id, function () {
+        if (!confirm('Slette oppgaven "' + (task ? task.title : "") + '"? Kan ikke angres.')) return;
+        var msg = modal.querySelector("#tm-status-msg");
+        deleteTask(id, function (err) {
+          if (err) { msg.textContent = "Kunne ikke slette: " + (err.message || "ukjent feil") + ". Prøv igjen."; msg.className = "form__status is-err"; return; }
           closeModal();
           if (root) renderList(root);
         });

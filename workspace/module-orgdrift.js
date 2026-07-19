@@ -755,7 +755,7 @@
         e.stopPropagation();
         if (!isAdminRole()) return;
         var parts = btn.getAttribute("data-od-del").split(":");
-        if (!confirm("Slette denne oppføringen?")) return;
+        if (!confirm("Slette denne oppføringen? Kan ikke angres.")) return;
         var data = getData();
         data[parts[0]] = data[parts[0]].filter(function (x) { return x.id !== parts[1]; });
         setData(data);
