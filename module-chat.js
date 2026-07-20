@@ -1055,6 +1055,22 @@
         dragging = false;
         btn.classList.remove("is-dragging");
       });
+
+      // Held knappen innanfor synleg flate viss ho alt er dratt vekk frå
+      // standardhjørna, og vindauget/synleg flate seinare vert mindre --
+      // nettlesar-zoom endrar window.innerWidth/innerHeight (i CSS-piksel)
+      // akkurat som ei faktisk vindaugs-endring gjer, og fyrer same
+      // resize-hendinga. Utan dette kunne ein alt-dratt knapp hamne
+      // utanfor skjermen etter innzooming, med ingen måte å nå han på att
+      // utan å zoome ut igjen (stadfesta av brukar).
+      window.addEventListener("resize", function () {
+        if (!btn.style.left) return; // framleis i standard bottom/right-hjørna, ingenting å avgrense
+        var w = btn.offsetWidth, h = btn.offsetHeight;
+        var l = parseFloat(btn.style.left) || 0;
+        var t = parseFloat(btn.style.top)  || 0;
+        btn.style.left = Math.max(0, Math.min(window.innerWidth  - w, l)) + "px";
+        btn.style.top  = Math.max(0, Math.min(window.innerHeight - h, t)) + "px";
+      });
     })();
 
     btn.addEventListener("click", function () {

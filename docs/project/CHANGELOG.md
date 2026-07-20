@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.71.1 — 2026-07-20
+
+### To buggar frå 0.71.0-runden retta same dag: chat-knapp utanfor skjerm etter zoom, video-beskjering dekte heile skjermen
+
+Begge funne av brukar rett etter å ha teke 0.71.0 i bruk:
+
+1. **Chat-lanseringsknappen kunne hamne utanfor synleg flate etter nettlesar-zoom**: knappen sin dra-og-slepp-avgrensing (`window.innerWidth`/`innerHeight`) vart berre sjekka MEDAN eit drag pågjekk -- viss brukaren zooma inn/ut ETTERPÅ (som endrar CSS-piksel-viewportet og fyrer ei `resize`-hending, akkurat som ei faktisk vindaugsendring), vart knappen sin lagra `left`/`top` aldri på nytt avgrensa til det nye, mindre viewportet. Fiks: ny `resize`-lyttar i `module-chat.js` som klemmer knappen attende innanfor gjeldande vindaugsgrenser viss ho alt er dratt vekk frå standardhjørna.
+2. **Video-fokuspunkt-beskjeringsboksen (ny i 0.70.0) dekte heile skjermen for ståande video**: `bindVideoCroppers()` sin `layout()` i `module-carousel.js` sette ALDRI ei eiga storleiksavgrensing på sjølve førehandsvisingsboksen -- ulikt `core.js` sin eksisterande, fungerande `bindImageFields()`, som eksplisitt avgrensar til `maxH=340px` via `aspectRatio`+`width`. Utan denne avgrensinga fall boksen attende til videoen sine RÅ pikseldimensjonar (t.d. 1080×1920 for ein ståande mobilvideo), som i praksis dekte heile skjermen og kravde kraftig nedzooming for å nå heile beskjeringsverktøyet. Fiks: same `maxH=340`-mønster som biletefeltet kopiert inn i video-croppar-en sin eigen `layout()`.
+
+587/587 + 162/162 OK. Begge stadfesta direkte i nettlesar: chat-knapp-avgrensinga testa med simulert zoom (mocka `window.innerWidth`/`innerHeight` + dispatcha `resize`-hending, sidan verktøyet sin eigen vindaugs-endre-funksjon ikkje påverka det rapporterte viewportet i dette miljøet), video-croppar-boksen si nye storleiksavgrensing stadfesta med simulert 1080×1920-video (191×340px i staden for å dekkje skjermen).
+
+---
+
 ## 0.71.0 — 2026-07-20
 
 ### Karusell sin lyd-knapp flytta+redesigna, chat-boblen er no drabar
