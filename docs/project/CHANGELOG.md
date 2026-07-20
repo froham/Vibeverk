@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.69.1 — 2026-07-20
+
+### Retting: karusell-bilde synte seg aldri (CSS-høgd-bug)
+
+Brukar rapporterte at ei ny karusell med to bilde-slides synte seg tom -- berre tittel/brødtekst (kviit på kvitt, usynleg) og piler/prikkar, ingen bilde. Stadfesta live på vibeverk.no: begge `<img>`-elementa hadde faktisk gyldig `src` og lasta OK (`complete:true`, verkeleg breidde/høgd), men var usynlege sidan `.crsl-viewport` sin utrekna høgd var `0px`.
+
+**Rotårsak**: `.crsl-viewport{height:100%}` i `module-carousel.js` sin `injectStyles()` var relativ til `.crsl-section`, som berre set `min-height` (via inline stil i `renderCarousel()`), ikkje `height`. Prosentbaserte høgder reknar berre ut frå ein forelder med EKSPLISITT `height` -- `min-height` tel ikkje, så prosenten fell attende til `auto`. Sidan `.crsl-viewport` sitt einaste innhald er absolutt-posisjonerte slides (bidrar ikkje til normal flyt-høgd), vart `auto`-høgda `0`.
+
+**Fiks**: `.crsl-viewport` endra frå `position:relative;width:100%;height:100%` til `position:absolute;inset:0` -- fyller `.crsl-section` (som alt er `position:relative`) direkte, uavhengig av korleis section sin høgd vart utrekna. Ingen endring i sjølve slide-posisjoneringa (framleis `position:absolute;inset:0` relativt til viewport). 587/587 + 162/162 OK.
+
+---
+
 ## 0.69.0 — 2026-07-20
 
 ### Retting: fjerna Console sin separate "Banner"-brytar frå Modular-fana

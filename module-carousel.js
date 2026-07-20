@@ -59,7 +59,7 @@
     s.id  = "carousel-styles";
     s.textContent = [
       ".crsl-section{position:relative;width:100%;overflow:hidden}",
-      ".crsl-viewport{position:relative;width:100%;height:100%}",
+      ".crsl-viewport{position:absolute;inset:0}",
       ".crsl-slide{position:absolute;inset:0;opacity:0;transition:opacity .6s ease;pointer-events:none;display:flex;align-items:center;justify-content:center}",
       ".crsl-slide.is-active{opacity:1;pointer-events:auto}",
       "@media (prefers-reduced-motion: reduce){.crsl-slide{transition:none}}",
