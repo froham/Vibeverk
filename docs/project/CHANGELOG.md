@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.67.0 — 2026-07-20
+
+### Retting: scrollbanner og karusell ligg no under Design-modulen, ikkje bak eigne separate brytarar
+
+Same-dags korrigering av 0.66.0: brukar presiserte at BÅDE scrollbanner (`module-scrollbanner.js`) OG karusell (`module-carousel.js`) skulle liggje under Design-modulen ("sidebygger") og verte aktivert samla når kunden har Design-modulen på i Console — ikkje bak sine eigne separate flagg, slik 0.66.0 sitt utkast bygde det (og slik scrollbanner alltid har fungert, heilt sidan det vart bygd, uavhengig av sidebygger).
+
+**Endring**: begge modulane sin feature-gate er bytt frå sine eigne separate flagg (`features.scrollbanner`/`features.carousel`) til å krevje `features.sidebygger === true` -- same flagg som sjølve Design-modulen. `features.carousel` er fjerna heilt frå `config.js` (var berre i bruk éin dag). `features.scrollbanner`-linja er også fjerna frå `config.js` sidan ho ikkje lenger er lesen av koden.
+
+**Praktisk konsekvens**: scrollbanner, som tidlegare var på som standard for alle kundar (uavhengig av Design-modulen), krev no at kunden har Design-modulen aktivert. For den eine eksisterande kunden (nordpunkt/Vibeverk sjølv) er dette usynleg -- `features.sidebygger` var alt sett til `true` i produksjonens `superconfig`-rad frå tidlegare. For framtidige kundar utan Design-modulen vil scrollbanner no vere av som standard, saman med karusell.
+
+**Produksjon**: `features.carousel`-nøkkelen (sett direkte via SQL tidlegare same dag, før denne retting vart klar) er fjerna att frå produksjonens `superconfig`-rad sidan koden ikkje lenger les han. `features.sidebygger: true` stod alt der frå før -- ingen ny produksjonsverdi trengst for at retting skal virke for denne kunden.
+
+**Testa**: `node test.js` (587/587 OK, karusell-testblokka patcha til å setje `sidebygger: true` i staden for det no fjerna `carousel`-flagget) og `node test-workspace.js` (162/162 OK, uendra).
+
 ## 0.66.0 — 2026-07-20
 
 ### Ny modul: bilde/film-karusell (`module-carousel.js`), av som standard
