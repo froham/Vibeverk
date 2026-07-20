@@ -675,7 +675,7 @@
     render:    function () { return ""; },
     admin: {
       label:    "Karusell",
-      category: "innhold",
+      category: "design",
       render:   function () { return '<div data-crsl-admin-root></div>'; },
       mount:    function (body) {
         renderAdminRoot(body.querySelector("[data-crsl-admin-root]") || body);

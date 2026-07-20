@@ -360,7 +360,7 @@
     render:    function () { return ""; },
     admin: {
       label:    "Banner",
-      category: "innhold",
+      category: "design",
       render:   function () { return '<div data-sb-admin-root></div>'; },
       mount:    function (body) {
         renderAdminRoot(body.querySelector("[data-sb-admin-root]") || body);

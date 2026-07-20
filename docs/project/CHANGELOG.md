@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.68.0 — 2026-07-20
+
+### Retting: Banner og Karusell si admin-CRUD-skjerm ligg no under "Design"-kategorien, ikkje "Innhold"
+
+Oppfølging av 0.67.0 same dag: brukar sjekka produksjon direkte og fann at Banner (`module-scrollbanner.js`) og Karusell (`module-carousel.js`) sine admin-skjermar framleis låg som underfaner av "Innhold"-kategorien i Web-admin, sjølv om aktiverings-*flagget* (`features.sidebygger`) alt var korrekt sett -- feature-gaten frå 0.67.0 fungerte altså som tiltenkt (begge synte seg, sidan sidebygger var sant), men dei synte seg feil STAD.
+
+**Endring**: begge sine `admin.category`-felt endra frå `"innhold"` til `"design"` (same kategori-streng som `design-mal`/`design-firma`/`design-seo`/`design-fargar`/`design-fontar` i core.js). Sidan "Design"-kategorien i seg sjølv berre er synleg når `feat("sidebygger")` er sant (`allowedCategoriesForRole()`, core.js), er dette ei trygg samlokalisering -- same flagg styrer no både om kategorien finst OG om Banner/Karusell-fanene inni han finst.
+
+**Testa**: `node test.js` (587/587 OK) og `node test-workspace.js` (162/162 OK) -- ingen eksisterande test hardkoda kategori-plasseringa, så ingen testendring var naudsynt utover det som alt var gjort i 0.67.0.
+
 ## 0.67.0 — 2026-07-20
 
 ### Retting: scrollbanner og karusell ligg no under Design-modulen, ikkje bak eigne separate brytarar
