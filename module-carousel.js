@@ -625,6 +625,14 @@
           var outAspect = parseFloat(box.getAttribute("data-aspect")) || (16 / 9);
           var vw = video.videoWidth, vh = video.videoHeight;
           var vidAspect = (vw && vh) ? (vw / vh) : outAspect;
+          // Same maxH-avgrensing som core.js sin bindImageFields() sitt eige
+          // layout() -- utan denne fell boksen attende til videoen sine RÅ
+          // pikseldimensjonar (t.d. 1080×1920 for ein ståande mobilvideo),
+          // som dekkjer heile skjermen og krev kraftig nedzooming for å
+          // rekke rundt heile beskjeringsverktøyet.
+          var maxH = 340;
+          box.style.aspectRatio = String(vidAspect);
+          box.style.width = "min(100%, " + Math.round(maxH * vidAspect) + "px)";
           var ww = 100, wh = 100;
           if (vidAspect > outAspect) { wh = 100; ww = (outAspect / vidAspect) * 100; }
           else { ww = 100; wh = (vidAspect / outAspect) * 100; }
