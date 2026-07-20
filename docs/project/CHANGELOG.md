@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.71.0 — 2026-07-20
+
+### Karusell sin lyd-knapp flytta+redesigna, chat-boblen er no drabar
+
+To oppfølgingar same dag, begge frå direkte brukartilbakemelding etter 0.70.0:
+
+1. **Lyd-knappen (`module-carousel.js`)**: flytta frå nede-til-høgre til OPPE til høgre på slidet -- kolliderte visuelt med chat-boblen, som ligg fast nede til høgre på sida uavhengig av scroll. Redesigna frå ein rein ikon-sirkel til ei pille med ikon+tekst ("Slå på lyd"/"Skru av lyd") -- ein sirkel åleine drukna lett mot mørkt/rotete videoinnhald.
+2. **Chat-lanseringsknappen (`module-chat.js`, `#vw-btn`) er no drabar**: løyser at knappen sjølv kan liggje i vegen for anna innhald. Peikar-basert dra (mus OG touch, via `touch-action:none`), med ein liten terskel (6px) for å skilje eit ekte drag frå eit vanleg klikk -- eit fullført drag undertrykkjer den påfølgjande klikk-hendinga slik at panelet ikkje opnar/lukkar seg utilsikta. **Økt-basert, ikkje lagra mellom besøk** (medvite val, sjå nedanfor) -- posisjonen nullstillast ved sideinnlasting. Sjølve chat-panelet held fram med å opne frå den opphavlege hjørna, ikkje der knappen vart dratt til.
+
+**Ikkje gjort**: persistert (localStorage) posisjon for chat-knappen -- vurdert, men medvite utsett då brukar ba om det enklaste fyrste steget. Mobil/desktop-spesifikke fokuspunkt for karusell-video (frå 0.70.0-runden) er også framleis uløyst av same grunn.
+
+587/587 + 162/162 OK. Verifisert direkte i nettlesar (lokal statisk server): lyd-knappen sin nye pille-stil stadfesta visuelt, chat-drag stadfesta med faktiske peikar-hendingar (flytta knappen, stadfesta at panelet IKKJE opna seg etter draget, stadfesta at eit ekte klikk etterpå framleis opnar det).
+
+---
+
 ## 0.70.0 — 2026-07-20
 
 ### Karusell: lyd-av/på for video, valfri fyllmodus, fokuspunkt for video

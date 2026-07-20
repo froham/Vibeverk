@@ -80,9 +80,13 @@
       ".crsl-dot::before{content:'';position:absolute;inset:-12px}", /* usynleg utvida treffflate */
       ".crsl-dot.is-active{background:#fff}",
       /* Lyd-av/på for video-slides -- autoplay må alltid starte muted (nettlesarkrav),
-         denne knappen let besøkande sjølv skru på lyden med eit ekte klikk */
-      ".crsl-sound-btn{position:absolute;bottom:.8rem;right:.8rem;z-index:2;width:40px;height:40px;border:0;border-radius:999px;background:rgba(0,0,0,.45);color:#fff;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}",
-      ".crsl-sound-btn:hover{background:rgba(0,0,0,.65)}",
+         denne knappen let besøkande sjølv skru på lyden med eit ekte klikk. Øvst til
+         høgre (IKKJE nede til høgre) -- kolliderer elles visuelt med den flytande
+         chat-boblen, som ligg fast nede til høgre på sida uavhengig av scroll. Pille
+         med ikon+tekst i staden for eit reint ikon -- ein sirkel åleine drukna lett
+         mot mørkt/rotete videoinnhald (tilbakemelding etter første versjon). */
+      ".crsl-sound-btn{position:absolute;top:.8rem;right:.8rem;z-index:2;display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .9rem;border:0;border-radius:999px;background:rgba(0,0,0,.6);color:#fff;font-size:.85rem;font-weight:600;white-space:nowrap;cursor:pointer;transition:background .15s}",
+      ".crsl-sound-btn:hover{background:rgba(0,0,0,.75)}",
 
       /* Admin */
       ".crsl-adm-row{display:flex;align-items:center;gap:.65rem;padding:.7rem .9rem;background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;margin-bottom:.45rem}",
@@ -141,7 +145,9 @@
       // lyden med eit ekte klikk, som IKKJE er underlagt den avgrensinga.
       mediaHtml = '<video class="crsl-media" style="' + fitStyle + '" src="' + esc(sl.video.src) + '"' + posterAttr +
         ' muted loop playsinline preload="metadata" aria-label="' + esc(sl.video.alt || "") + '"></video>' +
-        '<button type="button" class="crsl-sound-btn" data-crsl-sound aria-label="Skru på lyd" aria-pressed="false">' + C.icon("volume-off") + '</button>';
+        '<button type="button" class="crsl-sound-btn" data-crsl-sound aria-label="Slå på lyd" aria-pressed="false">' +
+          C.icon("volume-off") + '<span class="crsl-sound-btn__label">Slå på lyd</span>' +
+        '</button>';
     } else {
       var img = App.media.resolveImage(sl.image);
       mediaHtml = img.src
@@ -294,9 +300,10 @@
       if (!video) return;
       btn.addEventListener("click", function () {
         video.muted = !video.muted;
+        var label = video.muted ? "Slå på lyd" : "Skru av lyd";
         btn.setAttribute("aria-pressed", String(!video.muted));
-        btn.setAttribute("aria-label", video.muted ? "Skru på lyd" : "Skru av lyd");
-        btn.innerHTML = C.icon(video.muted ? "volume-off" : "volume-2");
+        btn.setAttribute("aria-label", label);
+        btn.innerHTML = C.icon(video.muted ? "volume-off" : "volume-2") + '<span class="crsl-sound-btn__label">' + label + '</span>';
       });
     });
   }

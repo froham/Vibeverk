@@ -465,10 +465,11 @@
     var style = document.createElement("style");
     style.textContent = [
       "#vw-btn{position:fixed;bottom:1.4rem;"+pos+";z-index:9990;width:54px;height:54px;",
-        "border-radius:50%;background:"+btnColor+";border:0;cursor:pointer;",
+        "border-radius:50%;background:"+btnColor+";border:0;cursor:grab;touch-action:none;",
         "box-shadow:0 4px 18px rgba(0,0,0,.25);display:flex;align-items:center;",
         "justify-content:center;transition:transform .18s,box-shadow .18s;color:#fff;font-size:1.5rem}",
       "#vw-btn:hover{transform:scale(1.08);box-shadow:0 6px 24px rgba(0,0,0,.3)}",
+      "#vw-btn.is-dragging{cursor:grabbing;transition:none}",
       "#vw-btn.is-online::after{content:'';position:absolute;bottom:3px;right:3px;width:11px;height:11px;background:#22c55e;border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}",
       "#vw-badge{position:absolute;top:-2px;right:-2px;background:#e74c3c;color:#fff;",
         "border-radius:999px;font-size:.68rem;font-weight:700;padding:.1rem .38rem;",
@@ -1010,7 +1011,56 @@
       badge = document.getElementById("vw-badge");
     }
 
-    btn.addEventListener("click", function () { isOpen ? closePanel() : openPanel(); });
+    /* ── DRA-OG-SLEPP (økt-basert, IKKJE lagra mellom besøk) ──
+       Let besøkande flytte sjølve lanseringsknappen vekk viss ho ligg i vegen
+       for anna innhald (tilbakemelding: kolliderte med karusellen sin nye
+       lyd-knapp, sjå CHANGELOG). Nullstillast ved sideinnlasting -- bevisst
+       ingen persistert posisjon enno (sjå CHANGELOG for kvifor: enklare
+       fyrste steg, kan utvidast til localStorage seinare om ønska).
+       Panelet opnar framleis frå den opphavlege hjørna (bottom+pos), IKKJE
+       der knappen vart dratt til -- eit stort panel midt på skjermen ville
+       ofte ikkje hatt plass, og dette held draget enkelt. */
+    var dragMoved = false;
+    (function bindDrag() {
+      var DRAG_THRESHOLD = 6;
+      var dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+
+      btn.addEventListener("pointerdown", function (e) {
+        if (e.button !== undefined && e.button > 0) return; // berre primærklikk/touch/penn
+        var r = btn.getBoundingClientRect();
+        startLeft = r.left; startTop = r.top;
+        startX = e.clientX; startY = e.clientY;
+        dragging = true; dragMoved = false;
+      });
+      window.addEventListener("pointermove", function (e) {
+        if (!dragging) return;
+        var dx = e.clientX - startX, dy = e.clientY - startY;
+        if (!dragMoved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        if (!dragMoved) {
+          dragMoved = true;
+          btn.classList.add("is-dragging");
+          // Byt frå bottom/right-basert plassering til fri left/top --
+          // startLeft/startTop er alt målt frå det faktiske DOM-et, så
+          // knappen hoppar ikkje ved overgangen.
+          btn.style.left = startLeft + "px";
+          btn.style.top  = startTop + "px";
+          btn.style.right = "auto";
+          btn.style.bottom = "auto";
+        }
+        var w = btn.offsetWidth, h = btn.offsetHeight;
+        btn.style.left = Math.max(0, Math.min(window.innerWidth  - w, startLeft + dx)) + "px";
+        btn.style.top  = Math.max(0, Math.min(window.innerHeight - h, startTop  + dy)) + "px";
+      });
+      window.addEventListener("pointerup", function () {
+        dragging = false;
+        btn.classList.remove("is-dragging");
+      });
+    })();
+
+    btn.addEventListener("click", function () {
+      if (dragMoved) { dragMoved = false; return; } // undertrykk opne/lukke rett etter eit ekte drag
+      isOpen ? closePanel() : openPanel();
+    });
     panel.querySelector("#vw-min-btn").addEventListener("click", closePanel);
     panel.querySelector("#vw-end-btn").addEventListener("click", function () {
       if (!convId || !Chat.getConv(convId)) return;
