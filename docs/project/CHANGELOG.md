@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.69.0 — 2026-07-20
+
+### Retting: fjerna Console sin separate "Banner"-brytar frå Modular-fana
+
+Tredje same-dags oppfølging: brukar viste eit skjermbilde av Console sin "Modular"-fane, der "Banner" framleis stod som sin eigen, sjølvstendig checkbox ved sida av "Design" -- misvisande sidan 0.67.0 sin endring alt gjer scrollbanner (og karusell) styrt UTELUKKANDE av `features.sidebygger`. Denne checkboxen gjorde difor ingenting lenger; av/på hadde ingen verknad på om Banner faktisk synte seg.
+
+**Endring**: `scrollbanner` fjerna frå `FEAT_LABELS`/`FEAT_HELP` i `console/console-core.js` (var aldri noka eiga rad for `carousel` her i utgangspunktet). "Design"-checkboxen sin hjelpetekst utvida til å nemne at han no også styrer Banner- og Karusell-seksjonane, ikkje berre sjølve designmal-valet.
+
+Ingen kodeendring i sjølve gaten (0.67.0 sin `features.sidebygger`-sjekk i `module-scrollbanner.js`/`module-carousel.js` er urørt) -- dette er reint ei Console-UI-opprydding for å fjerne ein daud, misvisande brytar.
+
 ## 0.68.0 — 2026-07-20
 
 ### Retting: Banner og Karusell si admin-CRUD-skjerm ligg no under "Design"-kategorien, ikkje "Innhold"

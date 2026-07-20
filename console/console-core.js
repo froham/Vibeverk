@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.68.0";
+  var VIBEVERK_VERSION = "0.69.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -398,7 +398,7 @@ window.VwConsole = (function () {
     newsArchive:"Aktuelt", search:"Arkivsøk", attachments:"Vedlegg",
     social:"Sosiale lenker", contactForm:"Kontaktskjema", booking:"Booking", quote:"Tilbud",
     references:"Referansar", faq:"FAQ", siteSearch:"Søk i toppmeny",
-    crm:"Kunder", crmFull:"Native e-post", mediabank:"Mediebank", scrollbanner:"Banner", chat:"Chat",
+    crm:"Kunder", crmFull:"Native e-post", mediabank:"Mediebank", chat:"Chat",
     sidebygger:"Design"
   };
   // Kva kvar bryter faktisk gjer -- rendrast som ein helpIcon() ved sida av
@@ -419,9 +419,8 @@ window.VwConsole = (function () {
     crm:         "Aktiverer kundehandtering (CRM) i Web-admin.",
     crmFull:     "Sender e-post direkte frå systemet i staden for å opne kunden sin eigen e-postklient (Outlook e.l.) ved svar til kundar.",
     mediabank:   "Aktiverer eit bildegalleri synleg for besøkjande på nettsida.",
-    scrollbanner:"Viser eit rullande biletbanner (t.d. på framsida).",
     chat:        "Aktiverer live chat-widgeten for besøkjande.",
-    sidebygger:  "Gjev kunden ein eigen «Design»-fane i Web-admin, der dei sjølv kan velje mellom fleire designmalar for heile nettsida — eit betalt tillegg."
+    sidebygger:  "Gjev kunden ein eigen «Design»-fane i Web-admin, der dei sjølv kan velje mellom fleire designmalar for heile nettsida, i tillegg til Banner- og Karusell-seksjonar — eit betalt tillegg."
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
