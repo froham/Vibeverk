@@ -2467,15 +2467,17 @@ const __asyncTests = (async () => {
   })();
 
   // --- Karusell (module-carousel.js) ---------------------------------------
-  // features.carousel er eksplisitt false som standard (config.js) -- eiga,
-  // separat DOM med flagget patcha til true, sidan App.ready() sin gate vert
-  // avgjort éin gong ved skriptlasting, ikkje reevaluert seinare i den same,
-  // alt-lasta konteksten (same mønster som test-workspace.js sine Z/AA-
-  // seksjonar for intranettFeatures.kb/customModules). Frøplantar karusell-
-  // data via localStorage FØR modulen lastar, sidan syncModules() køyrer
-  // synkront ved skriptlasting i denne harnessen -- ingen admin-CRUD-skjema
-  // vert simulert her (scrollbanner sjølv har heller ingen CRUD-testdekning
-  // i denne fila i dag, sjå launch-readiness-runda 2026-07-19).
+  // Karusellen ligg under Design-modulen (features.sidebygger, 2026-07-20) --
+  // same flagg som sjølve sidebygger-funksjonen, eksplisitt false som
+  // standard (config.js). Eiga, separat DOM med flagget patcha til true,
+  // sidan App.ready() sin gate vert avgjort éin gong ved skriptlasting, ikkje
+  // reevaluert seinare i den same, alt-lasta konteksten (same mønster som
+  // test-workspace.js sine Z/AA-seksjonar for intranettFeatures.kb/
+  // customModules). Frøplantar karusell-data via localStorage FØR modulen
+  // lastar, sidan syncModules() køyrer synkront ved skriptlasting i denne
+  // harnessen -- ingen admin-CRUD-skjema vert simulert her (scrollbanner
+  // sjølv har heller ingen CRUD-testdekning i denne fila i dag, sjå
+  // launch-readiness-runda 2026-07-19).
   console.log("\n— Karusell —");
   (function () {
     var html2 = fs.readFileSync("index.html", "utf8");
@@ -2518,7 +2520,7 @@ const __asyncTests = (async () => {
 
     ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-carousel.js"].forEach(function (f) {
       var src = fs.readFileSync(f, "utf8");
-      if (f === "config.js") src = src.replace(/carousel:\s*false/, "carousel: true");
+      if (f === "config.js") src = src.replace(/sidebygger:\s*false/, "sidebygger: true");
       window2.eval(src);
     });
     window2.document.dispatchEvent(new window2.Event("DOMContentLoaded", { bubbles: true }));
@@ -2590,7 +2592,7 @@ const __asyncTests = (async () => {
 
     ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-carousel.js"].forEach(function (f) {
       var src = fs.readFileSync(f, "utf8");
-      if (f === "config.js") src = src.replace(/carousel:\s*false/, "carousel: true");
+      if (f === "config.js") src = src.replace(/sidebygger:\s*false/, "sidebygger: true");
       window3.eval(src);
     });
     window3.document.dispatchEvent(new window3.Event("DOMContentLoaded", { bubbles: true }));

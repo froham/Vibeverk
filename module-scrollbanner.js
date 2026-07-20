@@ -13,6 +13,11 @@
 
    Kvar banner = eigen registrert modul, vises i Navigasjon-fanen men
    IKKJE i toppmeny (navHidden:true).
+
+   Feature-flag: features.sidebygger (2026-07-20) — scrollbanner ligg no
+   under Design-modulen saman med module-carousel.js, ikkje som eit eige,
+   alltid-på standardflagg. MÅ vere eksplisitt TRUE, same flagg som
+   Design-modulen sjølv (sjå config.js/core.js sin feat("sidebygger")).
    ========================================================================== */
 (function () {
   "use strict";
@@ -22,7 +27,7 @@
   if (!App || !C) return;
 
   App.ready(function (CFG) {
-  if (CFG.features && CFG.features.scrollbanner === false) return;
+  if (!(CFG.features && CFG.features.sidebygger === true)) return;
 
   var esc       = C.esc;
   var STORE_KEY = "scrollbanners";

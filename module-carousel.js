@@ -21,10 +21,11 @@
    supabase/migrations/20260719224831_carousel_video_bucket.sql for kvifor
    dette er ein eigen bucket, ikkje ei utviding av den delte media-bucketen.
 
-   Feature-flag: features.carousel — MÅ vere eksplisitt TRUE (motsett av
-   scrollbanner sitt "på med mindre eksplisitt false"-mønster, sjå config.js).
-   Ny, uprøvd rulle-/videokode med ein reell ny lagringskostnad, skrudd av
-   som standard akkurat som sidebygger.
+   Feature-flag: gjenbrukar features.sidebygger (same "MÅ vere eksplisitt
+   TRUE"-flagg som Design-modulen sjølv, sjå config.js) — karusellen ligg
+   under Design-modulen, ikkje bak sin eigen separate brytar. Same gate
+   gjeld no også module-scrollbanner.js (sjå der) — begge vert aktiverte
+   samla når kunden har Design-modulen på i Console.
    ========================================================================== */
 (function () {
   "use strict";
@@ -34,7 +35,7 @@
   if (!App || !C) return;
 
   App.ready(function (CFG) {
-  if (!(CFG.features && CFG.features.carousel === true)) return;
+  if (!(CFG.features && CFG.features.sidebygger === true)) return;
 
   var esc       = C.esc;
   var STORE_KEY = "carousels";
