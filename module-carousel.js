@@ -79,6 +79,10 @@
       ".crsl-dot{position:relative;width:10px;height:10px;border-radius:999px;border:0;background:rgba(255,255,255,.5);cursor:pointer;padding:0}",
       ".crsl-dot::before{content:'';position:absolute;inset:-12px}", /* usynleg utvida treffflate */
       ".crsl-dot.is-active{background:#fff}",
+      /* Lyd-av/på for video-slides -- autoplay må alltid starte muted (nettlesarkrav),
+         denne knappen let besøkande sjølv skru på lyden med eit ekte klikk */
+      ".crsl-sound-btn{position:absolute;bottom:.8rem;right:.8rem;z-index:2;width:40px;height:40px;border:0;border-radius:999px;background:rgba(0,0,0,.45);color:#fff;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}",
+      ".crsl-sound-btn:hover{background:rgba(0,0,0,.65)}",
 
       /* Admin */
       ".crsl-adm-row{display:flex;align-items:center;gap:.65rem;padding:.7rem .9rem;background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;margin-bottom:.45rem}",
@@ -120,8 +124,24 @@
       var posterAttr = sl.video.poster && App.media.resolveImage(sl.video.poster).src
         ? ' poster="' + esc(App.media.resolveImage(sl.video.poster).src) + '"'
         : "";
-      mediaHtml = '<video class="crsl-media" src="' + esc(sl.video.src) + '"' + posterAttr +
-        ' muted loop playsinline preload="metadata" aria-label="' + esc(sl.video.alt || "") + '"></video>';
+      // Fyllmodus: "cover" (standard, kuttar kantane) eller "contain" (viser heile
+      // filmen, med ei bakgrunnsfarge i stolpane) -- sistnemnde er eit medvite val
+      // admin gjer per video-slide, IKKJE standard, sidan liggjande video normalt
+      // ser best ut med cover (sjå slideRowHtml() sin hjelpetekst i editoren).
+      var fit = sl.video.fit === "contain" ? "contain" : "cover";
+      // Fokuspunkt (dra-valt i admin) er berre meiningsfullt i cover-modus --
+      // i contain vises alt uansett, så ei lagra, ikkje-sentrert posisjon ville
+      // berre flytta sjølve filmen litt vekk frå midten inni boksen sin, utan
+      // å endre kva som faktisk er synleg.
+      var posStyle = fit === "cover" ? (";object-position:" + esc(sl.video.pos || "50% 50%")) : "";
+      var fitStyle = "object-fit:" + fit + posStyle + (fit === "contain" ? ";background:" + esc(sl.video.fitBg || "#000000") : "");
+      // muted er alltid til stades på sjølve elementet -- nettlesarar blokkerer
+      // autoplay av video MED lyd så godt som alltid utan tidlegare brukar-
+      // interaksjon på domenet. Lyd-knappen under let besøkande sjølv skru på
+      // lyden med eit ekte klikk, som IKKJE er underlagt den avgrensinga.
+      mediaHtml = '<video class="crsl-media" style="' + fitStyle + '" src="' + esc(sl.video.src) + '"' + posterAttr +
+        ' muted loop playsinline preload="metadata" aria-label="' + esc(sl.video.alt || "") + '"></video>' +
+        '<button type="button" class="crsl-sound-btn" data-crsl-sound aria-label="Skru på lyd" aria-pressed="false">' + C.icon("volume-off") + '</button>';
     } else {
       var img = App.media.resolveImage(sl.image);
       mediaHtml = img.src
@@ -170,6 +190,7 @@
   function mountCarousel(main, c) {
     var section = main.querySelector("#" + (window.CSS && window.CSS.escape ? window.CSS.escape(c.id) : c.id));
     if (!section) return;
+    bindSoundButtons(section); // uavhengig av slide-tal -- òg éin-slide-karusellar treng lyd-knappen
     var viewport = section.querySelector("[data-crsl-viewport]");
     var slideEls = Array.prototype.slice.call(section.querySelectorAll("[data-crsl-slide]"));
     if (!viewport || slideEls.length < 2) {
@@ -257,6 +278,26 @@
       var isActive = v.closest(".crsl-slide") && v.closest(".crsl-slide").classList.contains("is-active");
       if (isActive) { v.play().catch(function () {}); }
       else { v.pause(); }
+    });
+  }
+
+  // Bind lyd-av/på-knappane éin gong per mount() -- video-elementet startar
+  // alltid muted (nettlesar-autoplay-krav), knappen berre speglar/vekslar
+  // videoen sin eigen .muted-eigenskap ved eit ekte klikk (krev ikkje eit nytt
+  // brukar-gesture-gate sidan play() alt vart innvilga muted tidlegare).
+  function bindSoundButtons(section) {
+    Array.prototype.slice.call(section.querySelectorAll("[data-crsl-sound]")).forEach(function (btn) {
+      if (btn._crslBound) return; // unngår dobbel-binding ved re-mount
+      btn._crslBound = true;
+      var slide = btn.closest(".crsl-slide");
+      var video = slide && slide.querySelector("video.crsl-media");
+      if (!video) return;
+      btn.addEventListener("click", function () {
+        video.muted = !video.muted;
+        btn.setAttribute("aria-pressed", String(!video.muted));
+        btn.setAttribute("aria-label", video.muted ? "Skru på lyd" : "Skru av lyd");
+        btn.innerHTML = C.icon(video.muted ? "volume-off" : "volume-2");
+      });
     });
   }
 
@@ -440,6 +481,11 @@
           var wrap = preview.closest("[data-imgfield]");
           if (wrap) wrap.dispatchEvent(new Event("imgfield:relayout"));
         });
+        // .imgfield__preview-lykka over sette alt ny data-aspect på video-
+        // cropperen (han deler klassen) -- berre relayout-hendinga manglar.
+        ed.querySelectorAll("[data-crsl-video-cropper]").forEach(function (box) {
+          box.dispatchEvent(new Event("crsl:video-relayout"));
+        });
       });
 
       ed.querySelector("[data-crsl-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
@@ -467,6 +513,7 @@
       listEl.innerHTML = slides.map(function (sl, i) { return slideRowHtml(sl, i, aspect); }).join("");
 
       App.ui.bindImageFields(listEl);
+      bindVideoCroppers(listEl);
 
       // Dra-og-slipp-omsortering — same mønster som module-mediabank.js, MEN
       // draggable="true" sit her berre på handtaket (.crsl-draghandle), IKKJE
@@ -532,6 +579,96 @@
           });
         });
       });
+      listEl.querySelectorAll("[data-crsl-fit-select]").forEach(function (sel) {
+        sel.addEventListener("change", function () {
+          var slideId = sel.getAttribute("data-crsl-fit-select");
+          var bgWrap  = listEl.querySelector('[data-crsl-fitbg-wrap="' + slideId + '"]');
+          var posWrap = listEl.querySelector('[data-crsl-videopos-wrap="' + slideId + '"]');
+          if (bgWrap)  bgWrap.style.display  = sel.value === "contain" ? "" : "none";
+          if (posWrap) posWrap.style.display = sel.value === "contain" ? "none" : "";
+        });
+      });
+    }
+
+    // Fokuspunkt-dragar for video-slides (kun meiningsfull i "cover"-modus) --
+    // same drag-/piltast-matematikk som core.js sin bindImageFields(), men
+    // driven av video.videoWidth/videoHeight i staden for eit <img> sitt
+    // naturalWidth/naturalHeight, og skriv rett til sl.video.pos (ingen
+    // separat hidden-input/sync-steg, sidan `sl` alt er ein levande referanse
+    // inn i det redigerande `slides`-arrayet).
+    function bindVideoCroppers(listEl) {
+      Array.prototype.slice.call(listEl.querySelectorAll("[data-crsl-video-cropper]")).forEach(function (box) {
+        var slideId = box.getAttribute("data-crsl-video-cropper");
+        var sl = slides.find(function (x) { return x.id === slideId; });
+        var video = box.querySelector("video");
+        var win = box.querySelector("[data-crop-window]");
+        if (!sl || !video || !win) return;
+        sl.video = sl.video || {};
+        var crop = null;
+
+        function parsePos(p) { var m = String(p).split(/\s+/); return [parseFloat(m[0]) || 50, parseFloat(m[1]) || 50]; }
+        function currentPos() { return parsePos(sl.video.pos || "50% 50%"); }
+        function placeWindow() {
+          if (!crop) return;
+          var p = currentPos();
+          win.style.left = (p[0] * (100 - crop.ww) / 100) + "%";
+          win.style.top  = (p[1] * (100 - crop.wh) / 100) + "%";
+        }
+        function layout() {
+          var outAspect = parseFloat(box.getAttribute("data-aspect")) || (16 / 9);
+          var vw = video.videoWidth, vh = video.videoHeight;
+          var vidAspect = (vw && vh) ? (vw / vh) : outAspect;
+          var ww = 100, wh = 100;
+          if (vidAspect > outAspect) { wh = 100; ww = (outAspect / vidAspect) * 100; }
+          else { ww = 100; wh = (vidAspect / outAspect) * 100; }
+          crop = { ww: ww, wh: wh };
+          win.style.width = ww + "%"; win.style.height = wh + "%";
+          placeWindow();
+        }
+        if (video.readyState >= 1 && video.videoWidth) layout();
+        else video.addEventListener("loadedmetadata", layout);
+        // Utløyst frå #crsl-height sin change-lyttar (aspect endra seg) --
+        // same rolle som imgfield:relayout speler for vanlege biletefelt.
+        box.addEventListener("crsl:video-relayout", layout);
+
+        var dragging = false, sx = 0, sy = 0, swl = 0, swt = 0;
+        box.addEventListener("pointerdown", function (e) {
+          if (!crop) return;
+          e.preventDefault();
+          dragging = true; sx = e.clientX; sy = e.clientY;
+          var p = currentPos();
+          swl = p[0] * (100 - crop.ww) / 100; swt = p[1] * (100 - crop.wh) / 100;
+          box.classList.add("is-grabbing");
+          if (box.setPointerCapture && e.pointerId != null) { try { box.setPointerCapture(e.pointerId); } catch (_) {} }
+        });
+        box.addEventListener("pointermove", function (e) {
+          if (!dragging || !crop) return;
+          var r = box.getBoundingClientRect();
+          var maxL = 100 - crop.ww, maxT = 100 - crop.wh;
+          var nl = Math.max(0, Math.min(maxL, swl + (e.clientX - sx) / (r.width || 1) * 100));
+          var nt = Math.max(0, Math.min(maxT, swt + (e.clientY - sy) / (r.height || 1) * 100));
+          var cur = currentPos();
+          var nx = maxL > 0 ? Math.round(nl / maxL * 100) : cur[0];
+          var ny = maxT > 0 ? Math.round(nt / maxT * 100) : cur[1];
+          sl.video.pos = nx + "% " + ny + "%";
+          win.style.left = nl + "%"; win.style.top = nt + "%";
+        });
+        box.addEventListener("pointerup", function () { if (dragging) { dragging = false; box.classList.remove("is-grabbing"); } });
+        box.addEventListener("keydown", function (e) {
+          if (!crop) return;
+          var STEP = 5;
+          var maxL = 100 - crop.ww, maxT = 100 - crop.wh;
+          var dx = (maxL > 0 && e.key === "ArrowLeft") ? -STEP : (maxL > 0 && e.key === "ArrowRight") ? STEP : 0;
+          var dy = (maxT > 0 && e.key === "ArrowUp")   ? -STEP : (maxT > 0 && e.key === "ArrowDown")  ? STEP : 0;
+          if (!dx && !dy) return;
+          e.preventDefault();
+          var p = currentPos();
+          var nx = Math.max(0, Math.min(100, p[0] + dx));
+          var ny = Math.max(0, Math.min(100, p[1] + dy));
+          sl.video.pos = Math.round(nx) + "% " + Math.round(ny) + "%";
+          placeWindow();
+        });
+      });
     }
 
     function slideRowHtml(sl, i, aspect) {
@@ -539,12 +676,46 @@
       var body;
       if (sl.kind === "video") {
         var v = sl.video || {};
+        var fit = v.fit === "contain" ? "contain" : "cover";
         body = (v.src ? '<video class="crsl-video-preview" src="' + esc(v.src) + '" controls muted></video>' : "") +
           '<div class="field" style="margin-top:.5rem"><label>Videoklipp (MP4, maks ' + App.media.MAX_VIDEO_MB + ' MB)</label>' +
             '<input type="file" accept="video/mp4" data-crsl-video-input="' + esc(sl.id) + '"></div>' +
           '<p class="form__status" data-crsl-video-status="' + esc(sl.id) + '"></p>' +
           C.field({ id:"crsl-slide-alt-" + sl.id, label:"Alt-tekst", value: v.alt || "" }) +
-          App.ui.imageField("crsl-slide-poster-" + sl.id, "Poster-bilde (valgfritt, vises før avspilling)", v.poster, aspect);
+          App.ui.imageField("crsl-slide-poster-" + sl.id, "Poster-bilde (valgfritt, vises før avspilling)", v.poster, aspect) +
+          '<div class="field"><label for="crsl-fit-' + sl.id + '">Hvordan videoen vises</label>' +
+            '<select id="crsl-fit-' + sl.id + '" data-crsl-fit-select="' + esc(sl.id) + '">' +
+              '<option value="cover"' + (fit !== "contain" ? " selected" : "") + '>Fyll hele boksen (beskjærer filmen)</option>' +
+              '<option value="contain"' + (fit === "contain" ? " selected" : "") + '>Vis hele filmen (kan gi striper på sidene)</option>' +
+            '</select>' +
+            '<p style="font-size:.76rem;color:var(--color-muted);margin:.2rem 0 0">Stående videoer blir ofte kraftig beskåret på brede skjermer med «Fyll hele boksen». Velg «Vis hele filmen» for å vise alt, uten beskjæring.</p>' +
+          '</div>' +
+          // Fokuspunkt-dragar, berre meiningsfullt i "cover"-modus (i "contain"
+          // vises heile filmen uansett, ingen beskjering å styre) -- attgjenbrukar
+          // dei GLOBALE .imgfield__preview/.cropper__window-klassane frå
+          // admin/index.html sitt <style> (same visuelle språk som bilete-
+          // fokuspunkt), men er ein eigen, enkel video-variant scoped til denne
+          // fila -- rører ikkje core.js sin delte bindImageFields()/imgField().
+          '<div class="field" data-crsl-videopos-wrap="' + esc(sl.id) + '" style="' + (fit === "contain" ? "display:none" : "") + '">' +
+            '<label>Hva som vises av videoen</label>' +
+            (v.src
+              // autoplay+preload="auto" (ikkje berre "metadata") -- admin treng
+              // eit ekte, synleg bilete å dra utsnittet mot, og speler faktisk
+              // av (muted+loop+playsinline tilfredsstiller autoplay-krava) --
+              // syner same WYSIWYG-innhald som sjølve den offentlege sida.
+              // Éin gong per opna editor, ikkje eit ytingsproblem slik det ville
+              // vore for kvar besøkande på den offentlege sida.
+              ? '<div class="imgfield__preview is-set" data-crsl-video-cropper="' + esc(sl.id) + '" data-aspect="' + aspect + '" tabindex="0" role="slider" aria-label="Fokuspunkt i videoen">' +
+                  '<video muted loop playsinline autoplay preload="auto" src="' + esc(v.src) + '" style="width:100%;height:100%;object-fit:cover;pointer-events:none"></video>' +
+                  '<div class="cropper__window" data-crop-window></div>' +
+                '</div>'
+              : '<div class="imgfield__preview"><span class="imgfield__empty">' + C.icon("video") + ' Last opp en video først</span></div>') +
+            '<p class="imgfield__hint">Dra det lyse utsnittet for å velge hva som vises på siden, eller bruk piltastene når feltet er fokusert.</p>' +
+          '</div>' +
+          '<div class="field" data-crsl-fitbg-wrap="' + esc(sl.id) + '" style="' + (fit === "contain" ? "" : "display:none") + '">' +
+            '<label for="crsl-fitbg-' + sl.id + '">Farge på stripene ved siden av filmen</label>' +
+            '<input type="color" id="crsl-fitbg-' + sl.id + '" value="' + esc(v.fitBg || "#000000") + '">' +
+          '</div>';
       } else {
         body = App.ui.imageField("crsl-slide-image-" + sl.id, "Bilde", sl.image, aspect);
       }
@@ -591,6 +762,10 @@
           var altEl = ed.querySelector("#crsl-slide-alt-" + sl.id);
           if (altEl) sl.video.alt = altEl.value.trim();
           sl.video.poster = App.ui.readImageField(ed, "crsl-slide-poster-" + sl.id);
+          var fitEl = ed.querySelector("#crsl-fit-" + sl.id);
+          if (fitEl) sl.video.fit = fitEl.value;
+          var fitBgEl = ed.querySelector("#crsl-fitbg-" + sl.id);
+          if (fitBgEl) sl.video.fitBg = fitBgEl.value;
         } else {
           sl.image = App.ui.readImageField(ed, "crsl-slide-image-" + sl.id);
         }
