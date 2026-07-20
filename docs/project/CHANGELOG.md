@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.70.0 — 2026-07-20
+
+### Karusell: lyd-av/på for video, valfri fyllmodus, fokuspunkt for video
+
+Oppfølging same dag som 0.69.1-fiksen -- brukar ba om tre konkrete forbetringar til video-slides i `module-carousel.js`, etter ein kort utforskande runde om lyd-autoplay og stående-video-på-brei-skjerm-problemet:
+
+1. **Lyd-av/på-knapp**: video-slides autoplayar framleis alltid muted (nettlesarar blokkerer autoplay MED lyd så godt som alltid utan tidlegare brukar-interaksjon på domenet) -- men no med ein liten knapp (nede til høgre på slidet) som let besøkande sjølv skru på lyden med eit ekte klikk. `bindSoundButtons()`, kalla frå `mountCarousel()` uavhengig av slide-tal.
+2. **Fyllmodus, valfri per video-slide**: nytt `sl.video.fit` ("cover" standard, uendra åtferd, eller "contain") + `sl.video.fitBg` (bakgrunnsfarge for stolpane i contain-modus). Løyser eit tilbakevendande problem -- ein ståande video ser fin ut på mobil, men vert kraftig beskoren på brei skjerm med cover. IKKJE gjort til ny standard (liggjande video fungerer best med cover på begge flater, stadfesta av brukar).
+3. **Fokuspunkt for video** (nytt `sl.video.pos`, berre brukt i cover-modus): ein dra-/piltast-styrt utsnitt-veljar i editoren, visuelt gjenbruk av dei globale `.imgfield__preview`/`.cropper__window`-klassane frå `admin/index.html`, men implementert som ein eigen, enkel `bindVideoCroppers()` i `module-carousel.js` sjølv (rører ikkje `core.js` sin delte `bindImageFields()`) -- video hadde tidlegare ingen beskjeringskontroll i det heile. Mobil/desktop-spesifikke fokuspunkt vart vurdert og medvite utsett (større, cross-module-endring som ville trengt ein Arkitekt-runde) -- brukar ba om det enkle steget først.
+
+587/587 + 162/162 OK.
+
+---
+
 ## 0.69.1 — 2026-07-20
 
 ### Retting: karusell-bilde synte seg aldri (CSS-høgd-bug)
