@@ -303,6 +303,21 @@ assert(!!doc.querySelector("[data-theme]")||true, "p1: dark mode CSS (visuell sj
 App.store.set("wsp-prefs",{theme:"dark",density:"compact"});
 assert(App.store.get("wsp-prefs",{}).theme==="dark", "p2: dark theme lagra");
 
+/* --- P2) THEME-COLOR-META FØLGJER LYST/MØRKT MODUS (2026-07-25-funnet) ---- */
+// iOS Safari gjettar sjølv fargen rundt status-/adresselinja utan denne taggen,
+// upåliteleg ved SPA-navigering -- må difor haldast i takt med #intranet sin
+// eigen data-theme, ikkje berre setjast statisk éin gong.
+nav("#/settings");
+assert(!!doc.querySelector('meta[name="theme-color"]'), "p3: theme-color-meta finst i <head>");
+var darkBtn = doc.querySelector('.pref-theme-btn[data-theme-val="dark"]');
+assert(!!darkBtn, "p4: «Mørkt»-knappen finst i Innstillingar");
+darkBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(doc.getElementById("intranet").getAttribute("data-theme") === "dark", "p5: data-theme sett til dark ved klikk");
+assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#0f172a", "p6: theme-color-meta følgjer med til mørk bakgrunnsfarge");
+var lightBtn = doc.querySelector('.pref-theme-btn[data-theme-val="light"]');
+lightBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#f1f5f9", "p7: theme-color-meta følgjer tilbake til lys bakgrunnsfarge");
+
 /* --- R) CRM: AKTIV ROT-FIL (IKKJE DAUD intranet/module-crm.js) ------------ */
 nav("#/notes"); nav("#/crm");
 assert(navIds.includes("crm") || !!doc.querySelector('[data-inav="crm"]'), "r1: CRM i Workspace-nav (registrert av rot-module-crm.js sin Intranet.registerModule-gren)");

@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Utan denne gjettar iOS Safari sjølv på fargen rundt status-/adresselinja
+       (upåliteleg ved SPA-navigering) -- oppdatert dynamisk av module-settings.js
+       sin applyPrefs() når lyst/mørkt modus vert valt, sjå --color-bg der. -->
+  <meta name="theme-color" content="#f1f5f9">
   <title>Arbeidsområde — laster…</title>
 
   <meta name="robots" content="noindex, nofollow">
@@ -662,7 +666,7 @@
   <!-- Workspace-motor og moduler -->
   <script src="workspace-core.js?v=23"></script>
   <script src="module-announcements.js?v=12"></script>
-  <script src="module-settings.js?v=13"></script>
+  <script src="module-settings.js?v=14"></script>
   <script src="module-tasks.js?v=12"></script>
   <script src="module-notes.js?v=4"></script>
   <script src="module-mediabank-internal.js?v=5"></script>
