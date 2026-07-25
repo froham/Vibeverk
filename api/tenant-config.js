@@ -25,6 +25,8 @@
 // Never touches vibeverk.no -- deployed only to a disposable test/canary
 // Vercel project per Phase 6's design, same as middleware.js today.
 
+import { resolveTenantByHostname } from "./_lib/resolve-tenant.js";
+
 export const config = { runtime: "edge" };
 
 var FALLBACK_JS =
@@ -40,25 +42,13 @@ export default async function handler(request) {
   }
 
   var hostHeader = request.headers.get("host") || "";
-  var host = hostHeader.toLowerCase().split(":")[0];
-  if (!host) {
+  if (!hostHeader.split(":")[0]) {
     return new Response(FALLBACK_JS, { status: 400, headers: { "Content-Type": "application/javascript" } });
   }
 
   var tenant;
   try {
-    var resp = await fetch(controlUrl + "/rest/v1/rpc/resolve_tenant_by_hostname", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: controlAnonKey,
-        Authorization: "Bearer " + controlAnonKey,
-      },
-      body: JSON.stringify({ p_hostname: host }),
-    });
-    if (!resp.ok) throw new Error("resolve_tenant_by_hostname HTTP " + resp.status);
-    var rows = await resp.json();
-    tenant = Array.isArray(rows) ? rows[0] : null;
+    tenant = await resolveTenantByHostname(hostHeader);
   } catch (e) {
     console.error("[tenant-config] resolve_tenant_by_hostname feila", e);
     return new Response(FALLBACK_JS, { status: 502, headers: { "Content-Type": "application/javascript" } });

@@ -2028,6 +2028,14 @@ const __asyncTests = (async () => {
   assert(doc.querySelector('meta[property="og:image"]')?.getAttribute("content") === "https://nordpunkt.no/del-bilde.jpg", "og:image satt i <head>");
   assert(doc.querySelector('meta[name="twitter:card"]')?.getAttribute("content") === "summary_large_image", "twitter:card satt korrekt");
   assert(doc.querySelector('link[rel="icon"]')?.getAttribute("href") === "https://nordpunkt.no/favicon.png", "favicon-lenke satt i <head>");
+  assert(doc.querySelector('link[rel="apple-touch-icon"]')?.getAttribute("href") === "https://nordpunkt.no/favicon.png", "apple-touch-icon bruker favicon når han er satt (iOS «Legg til på Heimskjerm» les ikkje manifest.json)");
+  window.App.store.remove("superconfig");
+  window.App.reloadConfig();
+  // applySuperConfig() slår berre saman (Object.assign), nullstiller aldri --
+  // favicon frå forrige steg må difor eksplisitt tømmast her, ikkje berre utelatast.
+  window.App.store.set("superconfig", { company: { favicon: "", logoUrl: "https://nordpunkt.no/logo.png" } });
+  window.App.reloadConfig();
+  assert(doc.querySelector('link[rel="apple-touch-icon"]')?.getAttribute("href") === "https://nordpunkt.no/logo.png", "apple-touch-icon fell tilbake til logoUrl når favicon ikkje er satt");
   window.App.store.remove("superconfig");
   window.App.reloadConfig();
 
