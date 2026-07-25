@@ -4100,12 +4100,18 @@ window.App = (function () {
         '<div style="max-width:380px;display:grid;gap:1rem">' +
           '<div class="field">' +
             '<label for="mk-pass1">Nytt passord</label>' +
-            '<input id="mk-pass1" type="password" class="admin-input" placeholder="Minst 8 teikn" autocomplete="new-password" style="font:inherit;padding:.65rem .9rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;font-size:.95rem">' +
+            '<div class="pw-field">' +
+              '<input id="mk-pass1" type="password" class="admin-input" placeholder="Minst 8 teikn" autocomplete="new-password" style="font:inherit;padding:.65rem 2.6rem .65rem .9rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;font-size:.95rem">' +
+              C.passwordToggle() +
+            '</div>' +
           '</div>' +
           '<div id="mk-strength" style="display:grid;gap:.3rem;padding:.7rem 1rem;background:var(--color-alt);border-radius:10px;font-size:.82rem"></div>' +
           '<div class="field">' +
             '<label for="mk-pass2">Gjenta passord</label>' +
-            '<input id="mk-pass2" type="password" class="admin-input" placeholder="" autocomplete="new-password" style="font:inherit;padding:.65rem .9rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;font-size:.95rem">' +
+            '<div class="pw-field">' +
+              '<input id="mk-pass2" type="password" class="admin-input" placeholder="" autocomplete="new-password" style="font:inherit;padding:.65rem 2.6rem .65rem .9rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;font-size:.95rem">' +
+              C.passwordToggle() +
+            '</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:.8rem">' +
             C.button({ label: "Endre passord", variant: "primary", size: "sm", attrs: 'id="mk-save"' }) +
@@ -4796,6 +4802,7 @@ window.App = (function () {
       started = true;
       bindGlobalNav();
       bindHelpIcons();
+      bindPasswordToggles();
       window.addEventListener("hashchange", handleRoute);
       handleRoute();
     }
@@ -4818,6 +4825,24 @@ window.App = (function () {
         if (h !== btn) h.classList.remove("is-open");
       });
       if (btn) btn.classList.toggle("is-open");
+    });
+  }
+
+  // Delegert klikk-handtering for "vis passord"-knappar (C.passwordToggle,
+  // .pw-field) — bindes én gang globalt, same document nås av core.js,
+  // console-core.js og workspace-core.js sidan alle lastar core.js.
+  function bindPasswordToggles() {
+    document.addEventListener("click", function (e) {
+      const btn = e.target && e.target.closest ? e.target.closest("[data-pw-toggle]") : null;
+      if (!btn) return;
+      const input = btn.parentElement && btn.parentElement.querySelector("input");
+      if (!input) return;
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      btn.setAttribute("aria-label", showing ? "Vis passord" : "Skjul passord");
+      btn.setAttribute("aria-pressed", showing ? "false" : "true");
+      const i = btn.querySelector("i");
+      if (i) i.className = "ti " + (showing ? "ti-eye" : "ti-eye-off");
     });
   }
 
@@ -5142,6 +5167,7 @@ window.App = (function () {
       readRichTextField: readRichTextField,           // (scope, id) → sanert HTML-streng
       textToRichHtml: textToRichHtml,                 // ren tekst (\n\n avsnitt) → trygg HTML, for migrering av gammel plain-text inn i rik-tekst-felt
       bindHelpIcons: bindHelpIcons,                   // C.helpIcon()-klikk-toggle — kall ÉIN gong per side (delegert på document), Web-admin gjer dette sjølv via init()
+      bindPasswordToggles: bindPasswordToggles,       // C.passwordToggle()/.pw-field-klikk-toggle — same mønster, kalt frå boot()
       hydrateFromSupabase: hydrateFromSupabase        // kall ved innlogging (6b) for cross-device sync
     },
     supabase: _sb                                     // delt Supabase-klient (Workspace brukar same instans)

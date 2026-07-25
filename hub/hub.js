@@ -52,10 +52,29 @@
         }).join("") + '</select>';
     } else if (type === "textarea") {
       inp = '<textarea id="' + id + '" rows="3" style="' + IS + ';resize:vertical">' + esc(val) + '</textarea>';
+    } else if (type === "password") {
+      inp = '<div style="position:relative">' +
+        '<input id="' + id + '" type="password" value="' + esc(val || "") + '" style="' + IS + ';padding-right:3.2rem">' +
+        '<button type="button" id="' + id + '-toggle" aria-label="Vis passord" aria-pressed="false" ' +
+          'style="position:absolute;right:.15rem;top:50%;transform:translateY(-50%);background:none;border:0;color:#94a3b8;font:inherit;font-size:.72rem;font-weight:600;cursor:pointer;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">Vis</button>' +
+      '</div>';
     } else {
       inp = '<input id="' + id + '" type="' + type + '" value="' + esc(val || "") + '" style="' + IS + '">';
     }
     return '<div><label for="' + id + '" style="font-size:.76rem;font-weight:600;color:#94a3b8;display:block;margin-bottom:.35rem">' + esc(label) + '</label>' + inp + '</div>';
+  }
+
+  function bindPasswordToggle(id) {
+    var btn = $(id + "-toggle");
+    var inp = $(id);
+    if (!btn || !inp) return;
+    btn.addEventListener("click", function () {
+      var showing = inp.type === "text";
+      inp.type = showing ? "password" : "text";
+      btn.textContent = showing ? "Vis" : "Skjul";
+      btn.setAttribute("aria-label", showing ? "Vis passord" : "Skjul passord");
+      btn.setAttribute("aria-pressed", showing ? "false" : "true");
+    });
   }
 
   function linkBtn(label, href) {
@@ -265,6 +284,7 @@
       '</div>';
 
     $("h-pass").addEventListener("keydown", function(e) { if (e.key === "Enter") $("h-login").click(); });
+    bindPasswordToggle("h-pass");
     $("h-login").addEventListener("click", function() {
       if ($("h-pass").value === CFG.password) {
         setAuthed();

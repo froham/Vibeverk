@@ -9,11 +9,14 @@
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; }
     input:focus, select:focus, textarea:focus { border-color: #6366f1 !important; outline: none; }
+    /* Skjul nettlesaren sin eigen (native) passord-ikon, som elles dobbeltar seg opp med den eigenbygde vis/skjul-knappen */
+    input::-ms-reveal, input::-ms-clear { display: none; }
+    input::-webkit-credentials-auto-fill-button { visibility: hidden; }
   </style>
 </head>
 <body>
   <div id="app"></div>
   <script src="tenants.js?v=1"></script>
-  <script src="hub.js?v=3"></script>
+  <script src="hub.js?v=4"></script>
 </body>
 </html>

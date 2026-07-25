@@ -98,6 +98,20 @@
       border-radius: 10px; border: 1.5px solid var(--color-border);
       background: var(--color-surface); cursor: pointer;
     }
+    /* "Vis passord"-veksling */
+    .pw-field { position: relative; }
+    .field .pw-field input:not([type="color"]) { padding-right: 2.75rem; }
+    .pw-toggle {
+      position: absolute; top: 50%; right: .15rem; transform: translateY(-50%);
+      display: flex; align-items: center; justify-content: center;
+      min-width: 40px; min-height: 40px; padding: 0; border: 0; background: none;
+      color: var(--color-muted); font-size: 1.1rem; cursor: pointer; border-radius: 8px;
+    }
+    .pw-toggle:hover { color: var(--color-text); }
+    .pw-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+    /* Skjul nettlesaren sin eigen (native) passord-ikon, som elles dobbeltar seg opp med .pw-toggle */
+    input::-ms-reveal, input::-ms-clear { display: none; }
+    input::-webkit-credentials-auto-fill-button { visibility: hidden; }
     .form__status { margin: 0; font-size: .9rem; min-height: 1.2em; }
     .form__status.is-ok    { color: #16a34a; }
     .form__status.is-error { color: #c0392b; }
@@ -346,11 +360,11 @@
        pinna til éin major versjon for stabilitet. -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="../config.js?v=12"></script>
-  <script src="../components.js?v=18"></script>
-  <script src="../core.js?v=73"></script>
+  <script src="../components.js?v=19"></script>
+  <script src="../core.js?v=74"></script>
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=170"></script>
+  <script src="console-core.js?v=172"></script>
 </body>
 </html>
