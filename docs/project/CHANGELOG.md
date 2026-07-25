@@ -30,6 +30,30 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.74.1 — 2026-07-25
+
+### Retta: gråfelt øvst på Workspace-mobilskjermbilete etter navigering
+
+Brukar viste to skjermbilete der eit felt øvst (bak iOS-statuslinja) skifta til ein
+umatchande gråfarge etter eit menyval. Rotårsak: **ingen `theme-color`-meta-tag finst
+nokon stad i heile kodebasen**. iOS Safari (16.4+) fargelegg området rundt status-/
+adresselinja basert på denne taggen — utan han prøver Safari å GJETTE fargen sjølv ved
+å sample sida, ei gjetting som er upåliteleg spesielt ved SPA-navigering (Workspace sin
+`#/`-baserte rute-mekanisme, ingen full sideinnlasting).
+
+Fiks: statisk `<meta name="theme-color" content="#f1f5f9">` i `workspace/index.html`
+(Workspace sin faste, ikkje-tenant-tilpassa lyse standardbakgrunn), og `applyPrefs()`
+i `module-settings.js` utvida til å oppdatere same tag sin `content` til `#0f172a` når
+brukaren vel mørkt modus — same stad `data-theme` alt vert sett, held dei i takt.
+Avgrensa til Workspace (ingen arkitektur-konsekvens, ingen Arkitekt-konsultasjon
+nødvendig denne gongen).
+
+Stadfesta med Playwright: `#f1f5f9` ved lasting, byter til `#0f172a` ved klikk på
+«Mørkt», tilbake til `#f1f5f9` ved «Lyst». 4 nye assertions i `test-workspace.js`
+(p3-p7-serien). 595/595 + 171/171 OK.
+
+---
+
 ## 0.74.0 — 2026-07-25
 
 ### Workspace optimalisert som installerbar web-app, per-tenant app-ikon

@@ -31,8 +31,14 @@
   function applyPrefs(prefs) {
     var root = document.getElementById("intranet");
     if (!root) return;
-    root.setAttribute("data-theme",   prefs.theme   || "light");
+    var theme = prefs.theme || "light";
+    root.setAttribute("data-theme",   theme);
     root.setAttribute("data-density", prefs.density || "normal");
+    // Held iOS Safari sin status-/adresselinje-farge i takt med #intranet sin
+    // eigen --color-bg (sjå workspace/index.html) -- utan dette gjettar Safari
+    // sjølv, upåliteleg ved SPA-navigering (2026-07-25-funnet).
+    var themeColorTag = document.querySelector('meta[name="theme-color"]');
+    if (themeColorTag) themeColorTag.setAttribute("content", theme === "dark" ? "#0f172a" : "#f1f5f9");
   }
 
   // Bruk lagra preferansar ved oppstart
