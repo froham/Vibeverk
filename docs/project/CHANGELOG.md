@@ -30,6 +30,119 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.73.0 — 2026-07-25
+
+### Retta: mobil-overflow i Oppgaver/banner, og "viktig"-banner no per brukarkonto
+
+Brukar rapporterte eit skjermbilete av Workspace på mobil der «Oppgaver»-lista sine
+status-merke ("Å gjøre"/"Pågår") og "viktig"-banneret sin "Les mer"/"1 til" var avskorne
+heilt utanfor skjermen — ikkje berre trongt, men fysisk uråkeleg.
+
+**Rotårsak 1 (Oppgaver-lista)**: `.task-group__list` i `workspace/module-tasks.js` er
+`display:grid` utan eksplisitt kolonnebreidde. CSS Grid sin standard gjer då at den
+implisitte kolonnen (og dermed kvar `.task-row`) breiddebestemmast av det breiaste
+UBROTNE tittel/skildring-teksten i heile lista (ein kjend Grid-fallgruve — `white-space:
+nowrap`-ellipse-mønsteret på `.task-row__title`/`.task-row__body` aukar min-content-
+breidda til heile den ubrotne tekstlengda). Fiks: `min-width:0` på `.task-row` +
+`grid-template-columns:1fr` på `.task-group__list` — to eigenskapar, løyser overflowen
+på alle breidder utan noko brotpunkt.
+
+**Rotårsak 2 (banneret)**: banner-tittelen (`<strong>`) i `workspace-core.js` har
+`flex-shrink:0` og batt ikkje inn moglegheit for line-brot — på ein lang/viktig tittel
+tok ho difor all plassen på ein smal skjerm og dytta resten (melding, "1 til", "Les mer",
+×) ut av det synlege området, som så vart klipt av `#intranet`/`.i-body` sin
+`overflow:hidden` (ikkje ein scrollbar — reint usynleg). Fiks: `flex-wrap:wrap` på
+banner-boksen (trygt òg på desktop, endrar ingenting med mindre innhald faktisk ikkje
+får plass) + ein ny `@media(max-width:700px)`-regel som gjev meldingsteksten
+`flex-basis:100% !important` slik at ho tek eiga line i staden for å verte klemt inn i
+ein smal, fleirlinja kolonne ved sida av tittelen.
+
+### Banneret dukka opp igjen sjølv om ein hadde lese saka
+
+Brukar spurde kva som styrer at "viktig"-banneret vert vist på nytt. Fann to separate
+årsaker i `workspace/module-announcements.js`: (1) lest-status vart lagra i
+`localStorage`, per nettlesar/eining — ikkje kopla til brukarkontoen, så same brukar på
+ein annan PC/mobil/nettlesar (eller etter tømt nettlesardata) såg banneret på nytt.
+(2) **"Les mer"-knappen kalla aldri lest-markeringa i det heile** — berre eit eksplisitt
+klikk på det vesle ×-krysset gjorde det, så sjølv på SAME eining kunne ein lese heile
+saka og framleis sjå banneret att neste gong.
+
+Fiks: ny migrasjon `20260725123445_announcement_reads.sql` — `read_by uuid[]`-kolonne
+på `announcements`, og ein ny `mark_announcement_read(p_id)`-funksjon
+(`SECURITY DEFINER`, brukar `auth.uid()` frå den innlogga si eiga økt, kan ikkje markere
+lest for nokon andre; `REVOKE ... FROM PUBLIC, anon` + eksplisitt
+`GRANT EXECUTE ... TO authenticated`). Klientkoden i `module-announcements.js` bruker no
+`read_by` (kjem gratis med det eksisterande `select("*")`-kallet) i staden for
+`localStorage` når Supabase er tilkopla, og kallar den nye funksjonen frå **både** ×
+**og** "Les mer" — lest-status følgjer no brukarkontoen, ikkje eininga, og å faktisk lese
+saka tel som lest. `localStorage`-sporet er framleis der som fallback for lokal/offline-
+modus (same mønster som resten av modulen).
+
+**Ikkje deployert**: migrasjonen er skriven og lagt i `supabase/migrations/`, men
+**ikkje køyrd** mot noko Supabase-prosjekt — krev eksplisitt godkjenning per den
+standande deployment-safeguarden, og Security Auditor bør sjå på den nye
+`SECURITY DEFINER`-funksjonen fyrst.
+
+Testdekning: 6 nye assertions i `test-workspace.js` (l5-l8-serien) for banner-fiksen sin
+lokale/offline-fallback-sti (det einaste testbare sporet i jsdom, same grunngjeving som
+0.72.0 sin runde) — stadfestar at "Les mer" no faktisk skjuler banneret, ikkje berre ×.
+Begge CSS-fiksane stadfesta direkte i nettlesar (Playwright, 390px mobilbreidde, seeda
+lokale testdata som reproduserte brukaren sitt eige skjermbilete) — ingen horisontal
+overflow att (`scrollWidth === clientWidth` for både Oppgaver-sida og banneret).
+
+593/593 + 166/166 OK, ingen regresjonar.
+
+---
+
+## 0.72.0 — 2026-07-25
+
+### "Vis passord"-knapp på alle passordfelt (innlogging og nytt-passord)
+
+Bygd på brukarforespørsel om ein synleg auge-ikon-veksling på alle stader ein skriv inn eller
+lagar eit passord, på tvers av alle overflater. Kartla åtte passordfelt fordelt på fem filer:
+
+- **Skriv inn passord**: `admin-pass` (Web-admin-innlogging, `core.js`), `intranet-pass`
+  (Workspace-innlogging, `workspace-core.js`), `h-pass` (Hub-operatørinnlogging, `hub/hub.js`)
+- **Lag nytt passord**: `mk-pass1`/`mk-pass2` (Web-admin «Min konto», `core.js`),
+  `sp-pass1`/`sp-pass2` (Workspace invitasjon/set-passord, `workspace-core.js`),
+  `settings-pass1`/`settings-pass2` (Workspace «Innstillingar», `module-settings.js`)
+
+Arkitektonisk løysing: sidan `core.js`/`components.js` vert lasta av alle fire overflater
+(offentleg side, Web-admin, Workspace, Console), fekk den delte `field()`-hjelpefunksjonen i
+`components.js` ein ny `C.passwordToggle()`-knapp for `type: "password"`-felt, og éin ny
+delegert klikk-handsamar `bindPasswordToggles()` i `core.js` (same mønster som den eksisterande
+`bindHelpIcons()`), kalla éin gong frå `boot()`. Dette dekte automatisk `admin-pass`, `mk-pass1/2`,
+og — som ein naturleg biverknad av den delte komponenten — Console sine `kd-srvkey`/
+`kd-migrate-connstr`-felt (service_role-nøkkel/tilkoplingsstreng, same maskerings-logikk). Dei
+resterande rå-HTML-felta i `workspace-core.js`/`module-settings.js` fekk same `.pw-field`-
+wrapper-markup manuelt — treng ingen eigen JS, sidan same delegerte handsamar på `document`
+fangar dei óg. **Hub** (`hub/hub.js`) er eit heilt fritståande dokument utan Tabler-ikonfont —
+fekk sin eigen, enkle tekst-baserte "Vis"/"Skjul"-knapp i staden for ikon.
+
+Testdekning avgrensa av jsdom-miljøet sin eksisterande, dokumenterte grense: berre `admin-pass`
+er reelt testbar i `test.js` (via ADR-0003 sitt lokale passord-fallback-spor, sidan
+`window.supabase`-SDK-en aldri vert lasta i jsdom) — lagt til ny assertion der (byte
+type password↔text + aria-label). Dei sju andre felta krev ekte Supabase-autentisering for å
+i det heile rendrast, akkurat som verken innloggingsskjerm, endre-passord eller
+sett-passord-skjermane har vore testbare i denne suiten tidlegare. Verifisert i staden direkte
+i nettlesar (lokal statisk server + Playwright-skjermbilete) for Web-admin-, Workspace- og
+Hub-innloggingsskjermane: auge-ikonet/tekst-knappen byter faktisk `type` og viser passordet
+som klartekst, ikonet byter til `ti-eye-off`, aria-label oppdaterer seg.
+
+593/593 + 162/162 OK (test.js fekk 6 nye assertions for vis-passord-veksling på `admin-pass`,
+ingen regresjonar).
+
+**To fiksar frå UX/Mobile Reviewer-gjennomgangen, same runde**: (1) nettlesarens eigen native
+passord-avslør-ikon (Edge sin `::-ms-reveal`, Chromium sin `::-webkit-credentials-auto-fill-button`)
+vart aldri undertrykt, som ville dobla seg opp saman med den nye knappen på akkurat dei felta
+denne funksjonen gjeld — no skjult via CSS i alle fem HTML-filene. (2) Hub sin eigenbygde
+tekst-knapp («Vis»/«Skjul») mangla minste klikkflate (36×36px, Hub sin eigen eksisterande
+konvensjon for `#m-close`) i motsetnad til dei andre fire overflatene sin 40px-konvensjon —
+retta i `hub/hub.js`. Stadfesta på nytt med Playwright-skjermbilete og full testkøyring
+(593/593 + 162/162, uendra).
+
+---
+
 ## 0.71.1 — 2026-07-20
 
 ### To buggar frå 0.71.0-runden retta same dag: chat-knapp utanfor skjerm etter zoom, video-beskjering dekte heile skjermen

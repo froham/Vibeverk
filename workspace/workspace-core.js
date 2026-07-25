@@ -251,7 +251,7 @@ window.Intranet = (function () {
           '</button>' +
           '<span class="i-topbar__title" id="intranet-topbar-title">Arbeidsområde</span>' +
         '</div>' +
-        '<div id="wsp-ann-banner" style="display:none;background:var(--color-primary);color:#fff;padding:.65rem 1.4rem;align-items:center;gap:.8rem;font-size:.88rem;line-height:1.4;flex-shrink:0"></div>' +
+        '<div id="wsp-ann-banner" style="display:none;background:var(--color-primary);color:#fff;padding:.65rem 1.4rem;align-items:center;flex-wrap:wrap;gap:.4rem .8rem;font-size:.88rem;line-height:1.4;flex-shrink:0"></div>' +
         '<main class="i-main" id="intranet-main"></main>' +
       '</div>';
 
@@ -520,7 +520,10 @@ window.Intranet = (function () {
                 '<label for="intranet-pass" style="font-size:.85rem;font-weight:600">Passord</label>' +
                 (_sb ? '<button id="intranet-forgot" type="button" style="background:none;border:0;cursor:pointer;font:inherit;font-size:.82rem;color:var(--color-primary);padding:0;text-decoration:underline">Glemt passord?</button>' : '') +
               '</div>' +
-              '<input id="intranet-pass" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="current-password">' +
+              '<div class="pw-field">' +
+                '<input id="intranet-pass" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem 2.6rem .7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="current-password">' +
+                C.passwordToggle() +
+              '</div>' +
             '</div>' +
             '<label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem;cursor:pointer;user-select:none">' +
               '<input id="intranet-remember" type="checkbox" style="width:16px;height:16px;accent-color:var(--color-primary);cursor:pointer;flex-shrink:0">' +
@@ -651,9 +654,9 @@ window.Intranet = (function () {
           '</div>' +
           '<div style="display:grid;gap:.9rem">' +
             '<div style="display:grid;gap:.35rem"><label for="sp-pass1" style="font-size:.85rem;font-weight:600">Passord</label>' +
-            '<input id="sp-pass1" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="new-password" placeholder="Minst 8 teikn"></div>' +
+            '<div class="pw-field"><input id="sp-pass1" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem 2.6rem .7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="new-password" placeholder="Minst 8 teikn">' + C.passwordToggle() + '</div></div>' +
             '<div style="display:grid;gap:.35rem"><label for="sp-pass2" style="font-size:.85rem;font-weight:600">Gjenta passord</label>' +
-            '<input id="sp-pass2" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="new-password"></div>' +
+            '<div class="pw-field"><input id="sp-pass2" type="password" style="width:100%;font:inherit;font-size:.95rem;padding:.7rem 2.6rem .7rem .9rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text)" autocomplete="new-password">' + C.passwordToggle() + '</div></div>' +
             '<button id="sp-submit" class="btn btn--primary" style="width:100%;padding:.8rem;font-size:.95rem">Sett passord</button>' +
             '<p id="sp-status" style="font-size:.85rem;margin:0;min-height:1.2rem;text-align:center"></p>' +
           '</div>' +

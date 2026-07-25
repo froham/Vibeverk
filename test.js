@@ -126,6 +126,19 @@ window.SITE_CONFIG.supabase = { url: "", anonKey: "" };
 window.App.openAdmin();
 let loginForm = doc.querySelector("[data-login]");
 assert(!!loginForm, "admin krever innlogging");
+
+// 7b) "Vis passord"-knapp for admin-innlogging
+var pwField = doc.querySelector("#admin-pass");
+var pwToggle = pwField.closest(".pw-field").querySelector("[data-pw-toggle]");
+assert(pwField.type === "password", "admin-pass er skjult som standard");
+assert(!!pwToggle, "vis-passord-knapp finst ved sida av admin-pass");
+pwToggle.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(pwField.type === "text", "klikk på vis-passord-knappen viser passordet som klartekst");
+assert(pwToggle.getAttribute("aria-label") === "Skjul passord", "aria-label byter til «Skjul passord» når vist");
+pwToggle.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(pwField.type === "password", "nytt klikk skjuler passordet att");
+assert(pwToggle.getAttribute("aria-label") === "Vis passord", "aria-label byter attende til «Vis passord»");
+
 doc.querySelector("#admin-pass").value = "feil";
 loginForm.dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
 assert(!!doc.querySelector("[data-login]"), "feil passord avvist");

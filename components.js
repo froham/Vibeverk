@@ -295,13 +295,23 @@ window.Components = (function () {
       </div>`;
   }
 
+  // Knapp som veksler eit passordfelt mellom skjult og vist tekst. Bindes
+  // delegert, ein gong globalt, i core.js sin bindPasswordToggles().
+  function passwordToggle() {
+    return `<button type="button" class="pw-toggle" data-pw-toggle aria-label="Vis passord" aria-pressed="false">
+      <i class="ti ti-eye" aria-hidden="true"></i>
+    </button>`;
+  }
+
   // Generelt skjemafelt (brukes både på kontaktskjema og i admin).
   function field(opts) {
     const o = opts || {};
     const id = esc(o.id);
+    const isPassword = !o.multiline && o.type === "password";
+    const input = `<input id="${id}" name="${id}" type="${o.type || "text"}" ${o.required ? "required" : ""} placeholder="${esc(o.placeholder || "")}" value="${esc(o.value || "")}">`;
     const control = o.multiline
       ? `<textarea id="${id}" name="${id}" rows="${o.rows || 5}" ${o.required ? "required" : ""} placeholder="${esc(o.placeholder || "")}">${esc(o.value || "")}</textarea>`
-      : `<input id="${id}" name="${id}" type="${o.type || "text"}" ${o.required ? "required" : ""} placeholder="${esc(o.placeholder || "")}" value="${esc(o.value || "")}">`;
+      : (isPassword ? `<div class="pw-field">${input}${passwordToggle()}</div>` : input);
     return `<div class="field">
       <label for="${id}">${esc(o.label)}${o.help ? " " + helpIcon(o.help) : ""}</label>
       ${control}
@@ -712,7 +722,7 @@ window.Components = (function () {
 
   /* --- Eksport -------------------------------------------------------------- */
   return {
-    esc, icon, button, eyebrow, field, termsField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
+    esc, icon, button, eyebrow, field, passwordToggle, termsField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
     contact, footer, modal, tabbar

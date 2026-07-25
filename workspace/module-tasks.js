@@ -182,14 +182,14 @@
     var s = document.createElement("style");
     s.id = "tasks-styles";
     s.textContent = [
-      ".task-row{background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:.7rem 1rem;display:flex;align-items:flex-start;gap:.75rem;cursor:pointer}",
+      ".task-row{background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:.7rem 1rem;display:flex;align-items:flex-start;gap:.75rem;cursor:pointer;min-width:0}",
       ".task-row__main{flex:1;min-width:0}",
       ".task-row__title{font-weight:600;font-size:.92rem;margin-bottom:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".task-row__body{font-size:.8rem;color:var(--color-muted);margin-bottom:.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".task-row__meta{font-size:.75rem;color:var(--color-muted);display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}",
       ".task-row__actions{display:flex;align-items:center;gap:.4rem;flex-shrink:0}",
       ".task-group{margin-bottom:1.2rem}",
-      ".task-group__list{display:grid;gap:.5rem}",
+      ".task-group__list{display:grid;grid-template-columns:1fr;gap:.5rem}",
       ".task-done-toggle{background:none;border:0;cursor:pointer;font:inherit;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--color-muted);display:flex;align-items:center;gap:.4rem;padding:.3rem 0;margin-bottom:.5rem}",
       ".i-badge--todo{background:color-mix(in srgb,var(--color-text) 10%,transparent);color:var(--color-text)}",
       ".i-badge--progress{background:color-mix(in srgb,#e67e22 15%,transparent);color:#e67e22}",

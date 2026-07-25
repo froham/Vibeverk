@@ -303,11 +303,13 @@
      HJELPERE
      ====================================================================== */
   function field(id, label, value, type, placeholder, hint) {
+    var input = '<input id="' + C.esc(id) + '" type="' + C.esc(type || "text") + '"' +
+        ' value="' + C.esc(value || "") + '"' +
+        ' placeholder="' + C.esc(placeholder || "") + '">';
+    var control = type === "password" ? '<div class="pw-field">' + input + C.passwordToggle() + '</div>' : input;
     return '<div class="i-field">' +
       '<label for="' + C.esc(id) + '">' + C.esc(label) + '</label>' +
-      '<input id="' + C.esc(id) + '" type="' + C.esc(type || "text") + '"' +
-        ' value="' + C.esc(value || "") + '"' +
-        ' placeholder="' + C.esc(placeholder || "") + '">' +
+      control +
       (hint ? '<p class="i-hint">' + C.esc(hint) + '</p>' : '') +
     '</div>';
   }

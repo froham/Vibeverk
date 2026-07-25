@@ -243,6 +243,18 @@ const ann = App.store.get("wsp-announcements",[]);
 assert(ann.length===1,         "l3: melding lagra");
 assert(ann[0].important===true,"l4: viktig-flagg");
 
+// l5-l8: "vis passord"-runden sin banner-fiks -- "Les mer" skal telje som lest,
+// ikkje berre eit eksplisitt klikk på ×-krysset (2026-07-25-fiksen)
+nav("#/dashboard");
+const bannerEl = doc.getElementById("wsp-ann-banner");
+assert(!!bannerEl && bannerEl.style.display !== "none", "l5: viktig-banner vises for ei ulest viktig melding");
+const lesMerBtn = doc.getElementById("wsp-ann-lesmer");
+assert(!!lesMerBtn, "l6: «Les mer»-knapp finst i banneret");
+lesMerBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!!doc.getElementById("ann-reader-bd"), "l7: «Les mer» opnar lese-popup-en");
+assert(bannerEl.style.display === "none", "l8: banneret er skjult ETTER «Les mer» -- å lese saka tel no som lest, ikkje berre ×");
+doc.getElementById("ann-reader-bd").remove();
+
 /* --- M) LENKER ------------------------------------------------------------ */
 nav("#/links");
 assert(!!doc.querySelector("#links-root"),    "m1: links-root");

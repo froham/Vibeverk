@@ -133,7 +133,12 @@
   }
 
   /* =========================================================================
-     BANNER  —  dismissed-IDar lagrast i localStorage per namespace
+     BANNER  —  lest-status
+     -----------------------------------------------------------------------------
+     Med Supabase: read_by (uuid[] på announcements-rada, sjå migrasjonen
+     20260725123445_announcement_reads.sql) — knytt til BRUKARKONTOEN, ikkje
+     eininga/nettlesaren. Utan Supabase (lokal/offline-modus): localStorage
+     per namespace, same avgrensing som resten av modulen sin !_sb-fallback.
      ====================================================================== */
   var DISMISSED_KEY = (CFG.storageKey || "site") + ":ann-dismissed";
 
@@ -149,12 +154,30 @@
     try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(list)); } catch (e) {}
   }
 
+  function isRead(a) {
+    if (_sb) return !!(a.read_by || []).length && a.read_by.indexOf(uid()) !== -1;
+    return getDismissed().indexOf(String(a.id)) !== -1;
+  }
+
+  // Kalla frå BÅDE ×-knappen OG "Les mer" -- å faktisk lese saka skal telje
+  // som lest, ikkje berre eit eksplisitt klikk på lukk-krysset.
+  function markRead(a, cb) {
+    if (!_sb) { dismissBanner(a.id); cb && cb(); return; }
+    var myId = uid();
+    if (!myId || (a.read_by || []).indexOf(myId) !== -1) { cb && cb(); return; }
+    _sb.rpc("mark_announcement_read", { p_id: a.id }).then(function (r) {
+      if (!r.error) {
+        a.read_by = (a.read_by || []).concat([myId]);
+      }
+      cb && cb();
+    });
+  }
+
   function renderBanner() {
     var banner = document.getElementById("wsp-ann-banner");
     if (!banner) return;
-    var dismissed = getDismissed();
     var unread = _items.filter(function (a) {
-      return a.important && dismissed.indexOf(String(a.id)) === -1;
+      return a.important && !isRead(a);
     });
     if (!unread.length) { banner.style.display = "none"; return; }
     var ann = unread[0];
@@ -162,7 +185,7 @@
     banner.innerHTML =
       '<i class="ti ti-speakerphone" style="font-size:1.1rem;flex-shrink:0"></i>' +
       '<strong style="flex-shrink:0">' + C.esc(ann.title) + '</strong>' +
-      '<span style="flex:1;opacity:.92">' + (function () {
+      '<span class="wsp-ann-banner__msg" style="flex:1;min-width:0;opacity:.92">' + (function () {
         var plain = C.stripHtml(ann.content || "");
         return C.esc(plain.slice(0, 120) + (plain.length > 120 ? "…" : ""));
       })() + '</span>' +
@@ -173,11 +196,13 @@
       '<button id="wsp-ann-close" style="background:none;border:0;color:#fff;cursor:pointer;font-size:1.2rem;line-height:1;padding:.2rem .3rem;opacity:.8" aria-label="Lukk">&times;</button>';
 
     var lesMer = banner.querySelector("#wsp-ann-lesmer");
-    if (lesMer) lesMer.addEventListener("click", function () { openReaderModal(ann); });
+    if (lesMer) lesMer.addEventListener("click", function () {
+      openReaderModal(ann);
+      markRead(ann, renderBanner);
+    });
     var closeBtn = banner.querySelector("#wsp-ann-close");
     if (closeBtn) closeBtn.addEventListener("click", function () {
-      dismissBanner(ann.id);
-      renderBanner();
+      markRead(ann, renderBanner);
     });
   }
 
