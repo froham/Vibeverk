@@ -41,6 +41,7 @@ export const config = {
     "/config.js",
     "/workspace",
     "/workspace/",
+    "/workspace/manifest.json",
     "/console",
     "/console/",
     "/admin",
@@ -86,6 +87,10 @@ export default async function middleware(request) {
 
   if (url.pathname === "/config.js") {
     return rewrite(new URL("/api/tenant-config", request.url));
+  }
+
+  if (url.pathname === "/workspace/manifest.json") {
+    return rewrite(new URL("/api/workspace-manifest", request.url));
   }
 
   const controlUrl = process.env.VIBEVERK_CONTROL_URL;

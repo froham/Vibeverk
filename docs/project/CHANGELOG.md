@@ -30,6 +30,63 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.74.0 — 2026-07-25
+
+### Workspace optimalisert som installerbar web-app, per-tenant app-ikon
+
+Brukar spurde om å optimalisere Workspace som web-app og bruke logo-ikonet som app-ikon.
+Fann at INGEN av dei fire flatene hadde noko PWA-manifest, favicon eller apple-touch-icon
+i det heile — nettlesarfana viste standard blank ikon overalt. Konsulterte Arkitekten
+før implementasjon (kryssar multi-tenant hosting-arkitekturen, sjå ADR-0007) sidan
+`resolve_tenant_by_hostname()` (kontrollplanet) medvite ikkje ber med seg
+firmanamn/logo — det ligg i kvar tenant sitt EIGE Supabase-prosjekt (`store.superconfig`),
+og eit dynamisk per-tenant-ikon krev difor eit ekstra nettverkshopp som ikkje fanst
+nokon stad i kodebasen frå før.
+
+To delar, begge brukargodkjende eksplisitt før implementasjon:
+
+**Del A — `apple-touch-icon`, delt `core.js`, alle fire flater**: iOS Safari sin
+"Legg til på Heimskjerm" ignorerer manifest.json heilt og les BERRE denne taggen.
+`applyMeta()` sette alt favicon dynamisk frå `company.favicon` (eit felt ingen reell
+tenant har fylt ut enno) — utvida same funksjon til å setje `apple-touch-icon` òg, med
+fallback til `company.logoUrl` (som derimot ER sett for alle reelle tenants).
+
+**Del B — dynamisk `/workspace/manifest.json`, ny Vercel-funksjon**: `middleware.js`
+skriv om `/workspace/manifest.json` til ny `api/workspace-manifest.js`, som gjer to
+nettverkshopp — kontrollplan → tenanten sitt eige `store`-oppslag (`tenant_id=eq.<
+storageKey>&key=eq.superconfig`, filtrert nøyaktig som `core.js` sin eigen
+`hydrateFromSupabase()` alt gjer client-side for kvar anonym besøkjande — ikkje ei ny
+tryggleiksgrense). Returnerer alltid 200 med eit beste-forsøk-manifest, aldri ei
+feilside, sjølv om eitt eller begge hopp feilar. **Ingen Vibeverk-logo-fallback for
+uinnstilte tenants** (medvite brukarval) — ein tenant utan eige `logoUrl`/`favicon` får
+eit installerbart-men-ikonlaust manifest i staden for å utilsikta bere Vibeverk sin
+eigen logo. `theme_color` prioriterer `workspace.accentColor` framfor `colors.primary`
+sidan Workspace visuelt overstyrer nettsida sin hovudfarge (stadfesta i
+`applyWorkspaceTheme()`). Cacha 1t/24t (`Cache-Control`) — manifest.json vert henta
+sjeldan (sideinnlasting/installasjon, ikkje polling), og nettlesarar er uansett
+notorisk trege til å oppdatere eit alt-installert ikon.
+
+Ekstrahert `api/_lib/resolve-tenant.js` — delt hjelpar for
+`resolve_tenant_by_hostname()`-oppslaget, sidan tredje kopi av same fetch-logikk
+(etter `middleware.js` og `api/tenant-config.js`) var punktet der det var verdt det.
+`api/tenant-config.js` refaktorert til å bruke han — **åtferd verifisert uendra** via
+eit sjølvstendig mock-baserte skript (24 assertions, alle statuskodar 200/400/404/500/502
+stadfesta identiske før/etter refaktorering), sidan denne funksjonen alt er live i
+produksjon og tidlegare sikkerheitsgjennomgått (H2-funnet i ADR-0007).
+
+**Ikkje testbart i jsdom** (Vercel Functions er utanfor begge test-harnessa sitt
+omfang, same kjende grense som `api/tenant-config.js` alt hadde) — verifisert i staden
+via eit frittståande Node-skript som mockar `fetch()` for begge hopp og dekker
+full-suksess, ukjend hostname, og feil i kvart av dei to hoppa (24/24 OK).
+`test.js` fekk 2 nye assertions for apple-touch-icon-fallback-logikken (595/595 OK).
+
+595/595 + 166/166 OK. Manifest-funksjonen sjølv må stadfestast med ein ekte `curl` mot
+ein reell tenant-hostname etter deploy (same rutine som `api/tenant-config.js` sjølv
+kravde ved sin eigen fyrste deploy, ADR-0007) — ikkje anteke å fungere berre fordi
+mock-testen går grønt.
+
+---
+
 ## 0.73.0 — 2026-07-25
 
 ### Retta: mobil-overflow i Oppgaver/banner, og "viktig"-banner no per brukarkonto
