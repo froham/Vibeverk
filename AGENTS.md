@@ -85,7 +85,7 @@ Do not propose changes that cause new test failures. The two known-failing tests
 
 ## AI agent workflow
 
-- Run **Vibeverk Security Auditor** before considering security-sensitive changes ready for merge or deployment.
+- Run the **Security Auditor** (`.claude/agents/vibeverk-security-auditor.md`) before considering security-sensitive changes ready for merge or deployment — deliberately independent from Codex's own separate security auditor, never a substitute for it; it must not read or anchor on Codex's prior findings.
 - Run **Privacy and Compliance Advisor** before launch of any feature that collects, stores, shares, analyses or exposes personal data.
 - Run **UX and Mobile Reviewer** after meaningful UI, module, modal, layout or responsive changes.
 - Invoke the **Architect** before major architecture, data-model or cross-module changes.
