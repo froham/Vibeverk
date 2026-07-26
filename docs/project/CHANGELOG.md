@@ -30,6 +30,44 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.74.3 — 2026-07-26
+
+### Rett rotårsak nummer to: manifest.json bak site-lock-passordet blokkerte heim-skjerm-app-installasjon (Android Chrome)
+
+Brukar stadfesta at 0.74.2 sin diagnose òg var feil for det faktiske problemet: gråfeltet
+var KONSTANT på alle sider (ikkje kopla til hamburgarmenyen), og synte seg BERRE i den
+installerte heim-skjerm-appen på Android Chrome — ikkje i ei vanleg Chrome-fane til same
+adresse. Desse to faktane saman peika mot éin ting: sjølve `/workspace/manifest.json`.
+
+Rotårsak: `middleware.js` sitt mellombelse utviklingsfase-passord (`SITE_LOCK_PASSWORD`,
+Basic Auth) sperra `/workspace/manifest.json` saman med alt anna. Ei vanleg fane cachar
+Basic Auth-akkreditiv for heile økta etter fyrste interaktive innlogging, så sida sjølv
+og alle vanlege sub-ressursar (`<script src="config.js">` osv.) fungerer fint — men
+Chrome/Android sin EIGEN, separate bakgrunns-installerbarheits-sjekk (som hentar
+`manifest.json` for å byggje "Legg til på Startskjerm"-opplevinga) ber ikkje med seg
+fana sine cacha akkreditiv. Manifest-henting feila difor alltid (401) for installerte
+app-ar, uansett kva `api/workspace-manifest.js` (0.74.0) faktisk ville ha generert —
+Chrome fall tilbake til generisk grå fargelegging, konstant, på kvar einaste side.
+
+Fiks: flytta `/workspace/manifest.json`-omskrivinga i `middleware.js` til å skje FØR
+`checkSiteLock()`-sjekken, som eit eksplisitt unntak. Ingen reell tryggleiksrisiko —
+manifestet inneheld berre offentleg brukbar merkevarebygging (namn/logo/fargar), ikkje
+hemmelegheiter, og skal uansett vere fritt tilgjengeleg for at "Legg til på
+Startskjerm" skal fungere i det heile, føre eller etter at sperra vert fjerna.
+
+**Merk til brukar**: ein heim-skjerm-app som alt vart installert MEDAN manifestet var
+utilgjengeleg, har truleg cacha den mislykka/generiske tilstanden permanent — fjern og
+legg til appen på nytt etter denne fiksen er deployert, for at Chrome skal hente det no
+tilgjengelege manifestet på nytt.
+
+Stadfesta med eit sjølvstendig mock-skript: manifest.json sleppast gjennom utan Basic
+Auth, medan alle andre sider framleis krev det som før (uendra åtferd der). Ingen
+jsdom-testdekning mogleg (Vercel Routing Middleware, same kjende grense som
+`api/tenant-config.js`/`api/workspace-manifest.js`). 595/595 + 176/176 OK (uendra,
+ingen jsdom-testbar kode endra).
+
+---
+
 ## 0.74.2 — 2026-07-26
 
 ### Retta (rett rotårsak denne gongen): mørkt felt øvst når mobil-hamburgarmenyen opnar

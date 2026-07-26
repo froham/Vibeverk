@@ -78,6 +78,21 @@ function checkSiteLock(request) {
 export default async function middleware(request) {
   const url = new URL(request.url);
 
+  // manifest.json vert henta av Chrome/Android sin eigen bakgrunns-
+  // installerbarheits-sjekk ved "Legg til på Startskjerm", ikkje som ein
+  // vanleg side-førespurnad frå brukaren sin fane -- ho ber IKKJE med seg
+  // fana sitt mellombels site-lock-passord (Basic Auth vert normalt berre
+  // cacha for interaktive sidenavigeringar/sub-ressursar i same fane, ikkje
+  // Chrome sin eigen separate manifest-hentar). Utan dette unntaket feilar
+  // manifest-henting alltid (401) for installerte heim-skjerm-appar, og
+  // Chrome fell tilbake til generisk grå fargelegging heile tida --
+  // stadfesta 2026-07-26 (brukar sitt Android-heim-skjerm-app-skjermbilete).
+  // Ingen reell tryggleiksrisiko å unnta -- manifestet inneheld berre
+  // offentleg brukbar merkevarebygging (namn/logo/fargar), ikkje hemmelegheiter.
+  if (url.pathname === "/workspace/manifest.json") {
+    return rewrite(new URL("/api/workspace-manifest", request.url));
+  }
+
   if (!checkSiteLock(request)) {
     return new Response("Autentisering kravd.", {
       status: 401,
@@ -87,10 +102,6 @@ export default async function middleware(request) {
 
   if (url.pathname === "/config.js") {
     return rewrite(new URL("/api/tenant-config", request.url));
-  }
-
-  if (url.pathname === "/workspace/manifest.json") {
-    return rewrite(new URL("/api/workspace-manifest", request.url));
   }
 
   const controlUrl = process.env.VIBEVERK_CONTROL_URL;
