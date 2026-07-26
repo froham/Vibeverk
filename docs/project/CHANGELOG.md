@@ -30,6 +30,42 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.75.0 — 2026-07-26
+
+### PWA-manifest fullført på dei tre siste flatene (offentleg side, Web-admin, Console)
+
+Fullfører PWA-arbeidet frå 0.74.0 (som berre dekte Workspace). Ekstraherte det delte
+to-hopps-mønsteret (kontrollplan → tenanten sitt eige Supabase) frå
+`api/workspace-manifest.js` til ny `api/_lib/tenant-manifest.js`, sidan tredje/fjerde
+kopi av same logikk var punktet der det var verdt det:
+
+- **`/manifest.json`** (offentleg side, ny `api/site-manifest.js`) og
+  **`/admin/manifest.json`** (Web-admin, ny `api/admin-manifest.js`) — begge dynamiske
+  per tenant, same trygleiksgrense som Workspace sin (ingen ny grense — les same
+  offentleg-lesbare `superconfig` som nettlesaren alt gjer). `theme_color` bruker
+  `colors.primary` direkte (IKKJE `workspace.accentColor`, som berre gjeld inni
+  Workspace sin eigen `applyWorkspaceTheme()`-overstyring).
+- **`console/manifest.json`** — **statisk**, medvite IKKJE bygd på det dynamiske
+  mønsteret. Console er Vibeverk sitt eige interne operatørverktøy, aldri
+  kunde-merkevarebygd uansett kva hostname han vert nådd via — bruker Vibeverk sin
+  eigen faktiske logo/fargar (`#15616D`), ikkje ein generisk fallback, sidan det her
+  faktisk ER Vibeverk sjølv som eig sida.
+- `middleware.js`: `/manifest.json` og `/admin/manifest.json` lagt til matcher-lista og
+  unnateke site-lock-sperra (0.74.3 sin fiks), same grunngjeving — Chrome/Android sin
+  bakgrunns-installerbarheits-sjekk ber ikkje med seg fana sine cacha akkreditiv.
+  `console/manifest.json` treng ikkje unntaket — han er ei rein statisk fil utanfor
+  matcher-lista, når difor aldri middleware i det heile.
+
+Stadfesta med eit sjølvstendig mock-skript (12 assertions): refaktorert
+`workspace-manifest.js` uendra åtferd, begge nye funksjonane rett start_url/scope/
+theme_color-val, generisk (ikkje Vibeverk-) fallback for ukjende tenants, alle tre
+manifest-stiar unnateke site-lock medan vanlege sider framleis krev han. Ingen
+jsdom-testdekning mogleg (Vercel Routing Middleware/Functions, same kjende grense som
+resten av denne familien funksjonar). 595/595 + 176/176 OK (uendra, ingen
+jsdom-testbar kode rørt).
+
+---
+
 ## 0.74.3 — 2026-07-26
 
 ### Rett rotårsak nummer to: manifest.json bak site-lock-passordet blokkerte heim-skjerm-app-installasjon (Android Chrome)
