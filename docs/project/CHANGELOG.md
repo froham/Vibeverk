@@ -30,6 +30,38 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.74.2 — 2026-07-26
+
+### Retta (rett rotårsak denne gongen): mørkt felt øvst når mobil-hamburgarmenyen opnar
+
+0.74.1 sin diagnose var feil — brukar viste eit nytt skjermbilete som stadfesta at det
+mørke feltet dukkar opp NØYAKTIG når hamburgarmenyen (`#intranet-hamburger`) opnar, ikkje
+ved vanleg SPA-navigering. Rotårsak: `.i-sidebar-overlay` dekker heile skjermen
+(`position:fixed;inset:0;background:rgba(0,0,0,.45)`) for å mørkleggje resten av sida
+medan menyen er open — denne dim-effekten syner gjennom heilt opp i iOS sitt status-
+linje-område, men `theme-color`-meta-taggen (lagt til i 0.74.1) vart ALDRI oppdatert til
+å reflektere det, så statuslinja vart verande i den vanlege lyse fargen medan resten av
+skjermen mørkna — nøyaktig det synlege avviket i skjermbiletet. `#858789`/`#080d17` er
+45 % svart matematisk blanda over høvesvis lyst (`#f1f5f9`) og mørkt (`#0f172a`)
+`--color-bg` — stemmer nøyaktig med gråtonen i brukaren sitt skjermbilete.
+
+Fiks: `openSidebar()`/`closeSidebar()` i `workspace-core.js` oppdaterer no
+`theme-color`-meta-taggen til den blanda fargen når menyen opnar, og attende til vanleg
+farge når han lukkar — same enkle mønster som 0.74.1 sin lyst/mørkt-synkronisering.
+
+**Ikkje gjort, flagga for brukar**: same `position:fixed;inset:0;background:rgba(0,0,0,…)`-
+mønster finst identisk i 6 andre modalar (`module-tasks.js`, `module-announcements.js`,
+`module-contact.js`, `module-booking.js`, `module-notes.js`, `module-quote.js`) — alle
+ville i teorien ha same status-linje-avvik når dei opnar på mobil. Ikkje retta denne
+runden, sidan berre hamburgarmenyen var rapportert; brukar må stadfeste om dei andre
+faktisk syner problemet på ein ekte iOS-eining før ein evt. gjer same fiks der.
+
+Stadfesta med Playwright (meta-verdi programmatisk lesen — sjølve iOS-statuslinja kan
+ikkje simulerast i ein vanleg Chromium-nettlesar) og 5 nye assertions i
+`test-workspace.js` (p8-p12). 595/595 + 176/176 OK.
+
+---
+
 ## 0.74.1 — 2026-07-25
 
 ### Retta: gråfelt øvst på Workspace-mobilskjermbilete etter navigering

@@ -318,6 +318,21 @@ var lightBtn = doc.querySelector('.pref-theme-btn[data-theme-val="light"]');
 lightBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
 assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#f1f5f9", "p7: theme-color-meta følgjer tilbake til lys bakgrunnsfarge");
 
+/* --- P3) MOBIL-HAMBURGARMENY SITT DIM-OVERLAY (2026-07-26-funnet) ---------
+   .i-sidebar-overlay dekker heile skjermen (inset:0) med rgba(0,0,0,.45) --
+   utan å oppdatere theme-color medan menyen er open, vert iOS sitt status-
+   linje-område verande i den vanlege (lyse) fargen medan resten av skjermen
+   er mørklagt -- eit synleg avvik brukar rapporterte 2026-07-26. */
+var hamburgerBtn = doc.getElementById("intranet-hamburger");
+var sidebarOverlay = doc.getElementById("intranet-overlay");
+assert(!!hamburgerBtn && !!sidebarOverlay, "p8: hamburgar-knapp og overlay finst");
+hamburgerBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(sidebarOverlay.classList.contains("is-open"), "p9: overlay opnar ved klikk på hamburgar");
+assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#858789", "p10: theme-color-meta mørknar til blanda farge (45% svart over lys bakgrunn) medan menyen er open");
+sidebarOverlay.dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!sidebarOverlay.classList.contains("is-open"), "p11: overlay lukkar ved klikk på sjølve overlayen");
+assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#f1f5f9", "p12: theme-color-meta går tilbake til vanleg lys farge når menyen lukkast");
+
 /* --- R) CRM: AKTIV ROT-FIL (IKKJE DAUD intranet/module-crm.js) ------------ */
 nav("#/notes"); nav("#/crm");
 assert(navIds.includes("crm") || !!doc.querySelector('[data-inav="crm"]'), "r1: CRM i Workspace-nav (registrert av rot-module-crm.js sin Intranet.registerModule-gren)");
