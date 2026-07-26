@@ -38,6 +38,7 @@ import { next, rewrite } from "@vercel/functions";
 export const config = {
   matcher: [
     "/",
+    "/manifest.json",
     "/config.js",
     "/workspace",
     "/workspace/",
@@ -46,6 +47,7 @@ export const config = {
     "/console/",
     "/admin",
     "/admin/",
+    "/admin/manifest.json",
   ],
 };
 
@@ -89,8 +91,18 @@ export default async function middleware(request) {
   // stadfesta 2026-07-26 (brukar sitt Android-heim-skjerm-app-skjermbilete).
   // Ingen reell tryggleiksrisiko å unnta -- manifestet inneheld berre
   // offentleg brukbar merkevarebygging (namn/logo/fargar), ikkje hemmelegheiter.
+  // Same unntak gjeld no /manifest.json (offentleg side) og
+  // /admin/manifest.json (Web-admin), 2026-07-26 -- console/manifest.json
+  // treng ikkje dette då han er ei statisk fil utanfor matcher-lista over,
+  // og difor aldri når denne funksjonen i det heile.
   if (url.pathname === "/workspace/manifest.json") {
     return rewrite(new URL("/api/workspace-manifest", request.url));
+  }
+  if (url.pathname === "/manifest.json") {
+    return rewrite(new URL("/api/site-manifest", request.url));
+  }
+  if (url.pathname === "/admin/manifest.json") {
+    return rewrite(new URL("/api/admin-manifest", request.url));
   }
 
   if (!checkSiteLock(request)) {

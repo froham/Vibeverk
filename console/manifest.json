@@ -1,0 +1,16 @@
+{
+  "name": "Vibeverk Console",
+  "short_name": "Console",
+  "start_url": "/console/",
+  "scope": "/console/",
+  "display": "standalone",
+  "background_color": "#FBFAF8",
+  "theme_color": "#15616D",
+  "icons": [
+    {
+      "src": "https://github.com/froham/Vibeverk/blob/main/asset/Logo%20Icon.png?raw=true",
+      "sizes": "any",
+      "type": "image/png"
+    }
+  ]
+}
