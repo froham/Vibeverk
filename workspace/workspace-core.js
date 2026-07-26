@@ -262,13 +262,29 @@ window.Intranet = (function () {
     var overlay  = document.getElementById("intranet-overlay");
     var hamburger = document.getElementById("intranet-hamburger");
 
+    // Mobil-menyen sin dim-overlay (.i-sidebar-overlay, rgba(0,0,0,.45)) dekker
+    // heile skjermen (inset:0) og syner difor gjennom heilt opp i iOS sitt
+    // status-linje-område -- utan dette vert statuslinja verande i den vanlege
+    // (lyse) fargen medan resten av skjermen er mørklagt, eit synleg avvik.
+    // #858789/#080d17 = 45% svart blanda over høvesvis lyst/mørkt --color-bg
+    // (2026-07-26-funnet, sjå CHANGELOG for utrekninga).
+    function setThemeColorMeta(hex) {
+      var tag = document.querySelector('meta[name="theme-color"]');
+      if (tag) tag.setAttribute("content", hex);
+    }
+    function isDarkTheme() {
+      var root = document.getElementById("intranet");
+      return !!root && root.getAttribute("data-theme") === "dark";
+    }
     function openSidebar() {
       if (sidebar)  sidebar.classList.add("is-open");
       if (overlay)  overlay.classList.add("is-open");
+      setThemeColorMeta(isDarkTheme() ? "#080d17" : "#858789");
     }
     function closeSidebar() {
       if (sidebar)  sidebar.classList.remove("is-open");
       if (overlay)  overlay.classList.remove("is-open");
+      setThemeColorMeta(isDarkTheme() ? "#0f172a" : "#f1f5f9");
     }
     if (hamburger) hamburger.addEventListener("click", openSidebar);
     if (overlay)   overlay.addEventListener("click", closeSidebar);
