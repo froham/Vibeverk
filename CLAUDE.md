@@ -59,7 +59,7 @@ Bump `?v=N` on the script tag in `index.html` for every file you change. Only bu
 - The Builder (this session) owns first-pass documentation updates: for meaningful completed changes, update the relevant docs and include a "Documentation impact" section in the completion summary.
 - Never update roadmap priorities (`docs/roadmap/ROADMAP.md`) unless explicitly instructed. Never record an ADR without confirmed decision evidence — a code pattern existing is not, by itself, evidence of a decision.
 - The **Project Historian** (`.claude/agents/vibeverk-project-historian.md`) is the documentation-consistency and change-history gate — invoke it after meaningful changes to verify docs actually match code/decisions, not just to have "something" updated.
-- Auditors and reviewers (Codex Reviewer, Security Auditor, Privacy/Compliance Advisor, UX/Mobile Reviewer) must always inspect the Git diff and actual code first — never accept a documentation claim as proof that code or remote configuration is secure, correct, or compliant.
+- Auditors and reviewers (Codex Reviewer, Codex's own Security Auditor, the Claude **Security Auditor** (`.claude/agents/vibeverk-security-auditor.md`), Privacy/Compliance Advisor, UX/Mobile Reviewer) must always inspect the Git diff and actual code first — never accept a documentation claim as proof that code or remote configuration is secure, correct, or compliant. The two security auditors (Codex's and Claude's) are deliberately independent, run from different vendors as a cross-check — the Claude one must never read Codex's prior findings before forming its own (see the agent file's own "Independence" section); do not merge them into one step or treat one as a substitute for the other.
 - Invoke the **Architect** (`.claude/agents/vibeverk-architect.md`) before major architecture, data-model or cross-module changes, in addition to the existing "before any medium or large feature" trigger.
 - Use the reusable `vibeverk-handoff` skill after meaningful completed work (not after every tiny CSS or text tweak) to classify the change, confirm docs were updated, and route to the right review path.
 
@@ -97,7 +97,7 @@ CI runs both on every push. Both suites must be fully green (0 FEIL) — the two
 
 ## AI agent workflow
 
-- Run **Vibeverk Security Auditor** before considering security-sensitive changes ready for merge or deployment.
+- Run the **Security Auditor** (`.claude/agents/vibeverk-security-auditor.md`) before considering security-sensitive changes ready for merge or deployment. This is a Claude-native agent, deliberately independent from — and never a substitute for — Codex's own separate security auditor: it must never read or anchor on Codex's prior findings, so the two remain a genuine cross-check rather than one echoing the other.
 - Run **Privacy and Compliance Advisor** before launch of any feature that collects, stores, shares, analyses or exposes personal data.
 - Run **UX and Mobile Reviewer** after meaningful UI, module, modal, layout or responsive changes — its checklist includes checking new/changed user-facing text against `docs/architecture/copy-style-guide.md`, not just visual/responsive quality.
 - Security-sensitive changes include: authentication, roles, permissions, superadmin access, Supabase RLS, storage, file sharing, APIs, webhooks, third-party integrations, payment-related integrations and customer data.
