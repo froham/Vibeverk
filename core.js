@@ -2589,7 +2589,7 @@ window.App = (function () {
         C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
         '<p class="form__status" data-design-seo-status role="status" aria-live="polite"></p>' +
       '</form>' +
-      '<div data-nettsidehelse style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--color-border)">' +
+      '<div class="admin-group" data-nettsidehelse style="margin-top:1rem">' +
         renderNettsidehelseSection() +
       '</div>';
 

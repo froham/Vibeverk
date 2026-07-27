@@ -58,6 +58,18 @@ statisk utsnitt (Console sitt eige CSS + ekte `renderNettsidehelseSection()`-
 utdata) på både mobil- og skrivebordsbreidde, sidan ein reell innlogga
 gjennomgang framleis krev OTP mot kontrollplanet.
 
+**Same sjekk på Web-admin (brukar bad om det direkte etterpå)**: Web-admin sin
+`admin/index.html` HAR alt `.an-*`-klassane (der `renderNettsidehelseSection()`
+opphavleg vart bygd), så enkeltkorta synte seg korrekt med ramme — men sjølve
+seksjonen låg som ein `<div>` med berre ei tynn topp-linje (`border-top`) under
+SEO-skjemaet, i staden for i sin eigen boks slik meta-beskrivelse/favicon-felta
+over alt ligg (`.admin-group`). Same brot på det bokserte mønsteret, berre
+mindre synleg enn i Console sidan korta sjølv var stila. Fiksa i `core.js` sin
+`adminDesignSeo()`: `data-nettsidehelse`-behaldaren fekk `class="admin-group"`
+i staden for `border-top`-separatoren, uendra elles. Verifisert med same
+Playwright-screenshot-teknikk (Web-admin sitt eige CSS + ekte
+`renderNettsidehelseSection()`-utdata).
+
 ## 0.77.0 — 2026-07-27
 
 ### Nytt: Nettsidehelse i Console (operatør kan no køyre helsesjekk for kva tenant som helst)
