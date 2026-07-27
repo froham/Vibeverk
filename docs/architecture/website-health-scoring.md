@@ -65,7 +65,20 @@ The top 5 *failing* checks with a `tip`, sorted by `weight` descending. Since th
 
 - **JSON-LD/LocalBusiness schema**: ships in a degraded form using only fields that already exist (name/address/phone/logo) rather than blocking on adding business-hours/category/geo-coordinate fields first. The health check itself can later recommend adding hours as a content improvement, once/if that becomes a real field.
 - **Canonical URL**: no new customer-editable field — the check only confirms the site's one real root URL is indexable, since a manual override has little meaning for a single-URL site.
-- **Console-wide overview**: out of scope for this version. Web-admin owns the score (it's the customer's own tool, for the customer's own site); Console does not duplicate the scoring logic. An operator-facing cross-tenant view, if wanted later, should call the same scoring function rather than reimplement it — avoiding the same two-places-to-edit problem that already exists for `metaDescription`/`ogImage`/`favicon` between `core.js`'s `adminDesignSeo()` and Console's own SEO tab.
+
+## Console support (added 2026-07-27)
+
+The user later asked whether the customer/consultant model this feature is built around ("a customer without the design module doesn't see this; Vibeverk can offer it as a paid consulting service instead") should be completed with an operator-facing view — approved narrowly ("Ja, ordne console-visning"), with CWV/JSON-LD-hours/AI extensions explicitly still deferred.
+
+`computeWebsiteHealth()`, `renderNettsidehelseSection()` and `wchCollectImages()`/`wchCollectImagesFrom()` were refactored to accept an optional `opts` object (`superconfig`, `content`, `enabledModules`, `faqItems`, `refItems`, `privacyText`), falling back to the existing closure-based Web-admin state when `opts` is omitted — zero behavior change for the existing no-args call site. Both functions are exposed on `window.App`.
+
+Console's `renderWeb()` (the combined Firma/SEO/Fargar/Fontar tab) now fetches `content`/`faq-items`/`ref-items` for whichever tenant is currently selected via the existing generic `getStoreKey()` (a direct, anon-key read against that tenant's own Supabase project — the same mechanism `getSC()` already used for `superconfig`), and renders the health section into the "SEO og deling" fieldset, in the same "right below the metadata fields" position used in Web-admin. This works **regardless of whether that tenant has `feat("sidebygger")`** — Console is not gated by the customer's own paid-module status, which is the entire point (an operator can run this as a consulting deliverable for a customer who hasn't bought the design module).
+
+The three extra async reads are guarded by the same `_renderGen` generation-counter pattern Console's own tab dispatcher already uses, captured fresh at the top of `renderWeb()` and checked before the result is written into `#cs-nettsidehelse` — so a stale response can't land in a DOM node that now belongs to a different tenant/tab (the operator switched away while the reads were in flight).
+
+`enabledModules.faq`/`.referanser` are derived from `sc.features.faq`/`sc.features.references` directly (module registration itself — `App.registerModule()` — only happens in a real page render, which Console doesn't do), matching the same opt-out-by-default semantics as `module-faq.js`/`module-references.js` (enabled unless explicitly `=== false`).
+
+Console has no jsdom test harness (unlike `test.js`/`test-workspace.js`), and a real logged-in browser walkthrough wasn't performed (Console requires OTP auth against the control plane). Verified instead via `node test.js`/`node test-workspace.js` (no regressions in the refactored `core.js` functions) plus a standalone smoke script calling `renderNettsidehelseSection(opts)` directly with a brand-new-tenant-shaped `content` object (the actual shape `getStoreKey()`'s `{}` fallback produces) to confirm no crash on the empty case.
 
 ## Extensibility for AI (later, not v1)
 

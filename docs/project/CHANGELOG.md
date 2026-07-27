@@ -30,6 +30,50 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.77.0 — 2026-07-27
+
+### Nytt: Nettsidehelse i Console (operatør kan no køyre helsesjekk for kva tenant som helst)
+
+Følgjer opp 0.76.1: brukar spurde om helsesjekken burde utvidast (fleire sjekkar,
+vente på ein KI-motor), og fekk tilrådinga om i staden å fullføre konsulent-modellen
+0.76.1 sjølv innførte — ein operatør skal kunne køyre helsesjekken for EIN KVAR
+tenant, heilt uavhengig av om DEN tenanten sjølv har `feat("sidebygger")` (sidan
+Console ikkje er gata av kunden sin eigen designmodul-status). Brukar godkjente
+berre denne konkrete biten («Ja, ordne console-visning») — CWV/JSON-LD-timar/KI
+er framleis medvite utsett, ikkje del av denne endringa.
+
+`core.js` sin `computeWebsiteHealth()`/`renderNettsidehelseSection()`/
+`wchCollectImages()` vart refaktorert til å ta eit valfritt `opts`-objekt
+(`superconfig`, `content`, `enabledModules`, `faqItems`, `refItems`,
+`privacyText`) med fallback til det gamle, lukke-baserte oppsettet når `opts`
+ikkje er gjeve — null åtferdsendring for Web-admin sitt eige, eksisterande kall.
+Begge funksjonane er no eksponert på `window.App` slik at Console kan bruke dei.
+
+`console/console-core.js` sin `renderWeb()` (den kombinerte Firma/SEO/Fargar/
+Fontar-fana) hentar no `content`/`faq-items`/`ref-items` for den valde tenanten
+via det allereie eksisterande, generiske `getStoreKey()` (direkte mot tenanten
+sitt eige Supabase-prosjekt, same mønster som `getSC()`), og rendrar helsesjekken
+inn i eit eige `#cs-nettsidehelse`-felt rett under metadata-felta i "SEO og
+deling"-seksjonen — same plassering ("under metadatateksten") som Web-admin sin
+eigen versjon. Dei tre ekstra, asynkrone kalla er verna av same
+`_renderGen`-vaktmønster som resten av Console sin fane-dispatcher, slik at eit
+seint svar ikkje skriv inn i eit `#cs-nettsidehelse` som no høyrer til ein heilt
+annan tenant/fane (operatøren rakk å byte medan kalla stod ustengt).
+
+Ingen ny automatisert testdekning for sjølve Console-UI-et (Console har ingen
+eigen jsdom-testhamn, i motsetnad til `test.js`/`test-workspace.js`, og krev
+reell OTP-innlogging mot kontrollplanet som ikkje er tilgjengeleg i denne økta
+for ein full nettlesar-gjennomgang). I staden: `node test.js` (610/610 OK) og
+`node test-workspace.js` (180/180 OK) stadfestar at core.js sin refaktorering
+ikkje endra Web-admin sin eksisterande åtferd, og eit eige smoke-script kalla
+`window.App.renderNettsidehelseSection(opts)` direkte med tre case (tom tenant
+utan lagra data, godt utfylt tenant, faq/referanser slått av) — inkludert
+tilfellet der `content` manglar `hero`/`about`/`contact`/`footer` heilt (den
+faktiske forma Console sin `getStoreKey()`-fallback gjev for ein splitter ny
+tenant), som ville krasja utan default-samanslåinga i `renderWeb()`. Ein reell
+innlogga gjennomgang i nettlesar er ikkje gjort og bør skje før dette vert stole
+på i produksjon.
+
 ## 0.76.1 — 2026-07-27
 
 ### Retta: Nettsidehelse flytta inn i Design → SEO (var feilaktig open for alle)
