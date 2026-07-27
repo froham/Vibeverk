@@ -30,6 +30,29 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.75.3 — 2026-07-27
+
+### `robots.txt` — hindrar Google frå å crawle admin/Workspace/Console/Hub
+
+Brukar spurde om `sitemap.xml` var eit reelt hol etter ein tidlegare "kva manglar"-
+samtale. Undersøkte nærare før implementasjon og fann at anbefalinga var bygd på feil
+grunnlag: Vibeverk sine offentlege sider bruker hash-navigering (`#tjenester`,
+`#om-oss`, ikkje eigne URL-ar), så Google ser uansett berre éi ekte side per kunde —
+ei sitemap ville i praksis berre innehalde éin URL, låg reell verdi.
+
+Det faktisk manglande, meir konkret nyttige holet: **`robots.txt` fanst heller ikkje
+nokon stad**. Utan han er det ingenting som hindrar t.d. ein kunde sitt
+`/admin/`-innloggingsside eller heile `/workspace/`/`/console/`/`/hub/` frå å dukke
+opp i Google-søk. Ny statisk `robots.txt` (repo-rot) disallowar `/admin/`,
+`/workspace/`, `/console/`, `/hub/`, `/api/` — same for alle tenants (stigane er
+identiske uansett kunde), difor ingen dynamisk per-tenant-funksjon nødvendig, ulikt
+manifest.json-familien. Utanfor `middleware.js` sin matcher-liste, serverast difor
+direkte som statisk fil, ingen site-lock-interaksjon.
+
+595/595 + 180/180 + 37/37 OK (uendra — reint statisk fil, ingen logikk endra).
+
+---
+
 ## 0.75.2 — 2026-07-27
 
 ### Tre tiltak frå ein ekstern marknads-/tryggleiksbrief (27. juli 2026)
