@@ -30,6 +30,30 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.77.2 — 2026-07-27
+
+### Retta: Nettsidehelse i Console hadde annan overskriftstype og feil padding enn systerfanene
+
+Brukar peika på eit nytt skjermbilete rett etter 0.77.1: boksen rundt
+Nettsidehelse hadde no ei ramme (0.77.1 sin fiks), men "Nettsidehelse"-
+overskrifta var eit vanleg fetstilt `<h4>` inni boksen, medan "Firma"/
+"SEO og deling"/"Fargar"/"Fontar" alle brukar ekte `<fieldset><legend>`,
+der `<legend>` automatisk sit PÅ sjølve rammelinja (nettlesaren sin eigen
+notch-i-kanten-oppførsel for ekte fieldset/legend-par). Ulik
+overskriftstype ga også synleg meir luft over "Nettsidehelse" enn over
+dei ekte legend-overskriftene.
+
+Fiks: `console-core.js` sin `#cs-nettsidehelse` får no ein ekte
+`<legend>Nettsidehelse</legend>` som fyrste barn, akkurat som
+systerfanene. Sidan `renderNettsidehelseSection()` sjølv alt rendrar sin
+eigen `<h4 class="an-heading">Nettsidehelse</h4>` som fyrste linje --
+som ville dobla opp tittelen saman med den nye legenden -- fekk
+funksjonen (i `core.js`) eit nytt, valfritt `opts.skipHeading`-flagg som
+utelet denne interne overskrifta. Console sender no `skipHeading: true`;
+Web-admin sitt eige kall er uendra (framleis ein vanleg `<div>`-boks utan
+eigen legend, treng difor framleis den interne overskrifta). Verifisert
+med same Playwright-screenshot-teknikk som 0.77.1.
+
 ## 0.77.1 — 2026-07-27
 
 ### Retta: Nettsidehelse i Console synte seg utan ramme rundt seg (braut det bokserte designet)

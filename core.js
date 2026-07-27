@@ -3694,12 +3694,17 @@ window.App = (function () {
   // ei eiga fane -- sjå fil-kommentaren ved sida av "Nettsidehelse-fane" øvst
   // om kvifor (krev feat("sidebygger"), same sperre som resten av Design).
   // opts vidareførast direkte til computeWebsiteHealth() -- sjå den
-  // funksjonen sin eigen kommentar (Console-bruk, 2026-07-27).
+  // funksjonen sin eigen kommentar (Console-bruk, 2026-07-27). opts.skipHeading
+  // -- Console (2026-07-27) legg sjølv til ein ekte <fieldset><legend> rundt
+  // heile seksjonen (same mønster som sysken-fana sine), difor ville den
+  // interne <h4> her doble opp tittelen -- Web-admin sin plain <div>-boks har
+  // ingen eigen legend/heading og treng difor framleis <h4>-en.
   function renderNettsidehelseSection(opts) {
+    opts = opts || {};
     var result = computeWebsiteHealth(opts);
 
     return (
-      '<h4 class="an-heading">Nettsidehelse</h4>' +
+      (opts.skipHeading ? "" : '<h4 class="an-heading">Nettsidehelse</h4>') +
       '<p class="prose prose--muted">Ein enkel, regelbasert helsesjekk av nettsida — ingen KI involvert. Viser kva som alt er i orden, og kva som er verdt å forbetre.</p>' +
       '<div class="an-cards">' +
         '<div class="an-card" style="text-align:center">' +
