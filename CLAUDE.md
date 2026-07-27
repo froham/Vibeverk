@@ -19,9 +19,12 @@ supabase/
   hotfix_*.sql       Historical targeted fixes, all folded into the baseline migration — new fixes go in migrations/
   chat-tests.js      Browser-based chat integration tests (run in console while admin is logged in)
 supabase-control/    SEPARATE Supabase project (control plane, ref jxoglthrnshabqmdmnui) — tenant registry + operators, see ADR-0008. Sibling to supabase/, own supabase/migrations/ history. Never linked via `supabase link` (would collide with supabase/'s link to clzczbyklgdtdhgjphup) — always pass --db-url (pooler connection string) for db push/db query, --project-ref jxoglthrnshabqmdmnui for functions deploy.
+middleware.js        Vercel Routing Middleware — per-tenant hostname resolution + the temporary SITE_LOCK_PASSWORD dev-phase gate (Phase 6, ADR-0007)
+api/                 Vercel Functions: tenant-config.js (dynamic /config.js), *-manifest.js (dynamic PWA manifests per surface), _lib/ shared helpers (resolve-tenant.js, tenant-manifest.js) — tested by test-api.js, not jsdom
 test.js              jsdom harness for public site
 test-workspace.js    jsdom harness for Workspace (renamed 2026-07-07 from test-intranet.js)
-.github/workflows/   CI: node test.js + node test-workspace.js on every push
+test-api.js          plain-Node harness for api/*.js + middleware.js (added 2026-07-27) — mocks fetch(), no DOM involved
+.github/workflows/   CI: node test.js + node test-workspace.js + node test-api.js on every push
 ```
 
 ## User-facing text
@@ -69,9 +72,12 @@ Bump `?v=N` on the script tag in `index.html` for every file you change. Only bu
 npm install        # installs jsdom (dev dep only)
 node test.js       # public site — must pass
 node test-workspace.js  # Workspace — must pass
+node test-api.js   # api/*.js Vercel Functions + middleware.js — must pass
 ```
 
-CI runs both on every push. Both suites must be fully green (0 FEIL) — the two long-standing known-failing tests (`"henvendelses-fanen heter «Kontakt»"` in `test.js`, `"o3: workspaceship via direkterute"` in `test-workspace.js`) were fixed 2026-07-19: the first was a stale exact-match assertion that never accounted for the `.tab-badge` unread-count span `setTabBadge()` injects into the same button (a real feature, not a bug — the assertion now strips the badge text before comparing); the second tested a route (`#/workspaceship`) that no longer exists after the Fase 10 `customModules` rename to `spaceship` — removed as genuinely redundant, since the AA section's `aa2` already covers the same behavior correctly under the current name/config. Do not silently remove or skip failing tests going forward — if a new one appears, fix it or get explicit sign-off before treating it as an accepted baseline.
+`test-api.js` (added 2026-07-27) is a plain-Node harness, not jsdom — `api/*.js`/`middleware.js` are pure Request/Response functions (Vercel Edge Runtime), tested by mocking `global.fetch()` and calling the handlers directly. No known-failing tests here; a clean run means 0 FEIL, not a tolerated baseline.
+
+CI runs all three on every push. `test.js`/`test-workspace.js` must be fully green (0 FEIL) — the two long-standing known-failing tests (`"henvendelses-fanen heter «Kontakt»"` in `test.js`, `"o3: workspaceship via direkterute"` in `test-workspace.js`) were fixed 2026-07-19: the first was a stale exact-match assertion that never accounted for the `.tab-badge` unread-count span `setTabBadge()` injects into the same button (a real feature, not a bug — the assertion now strips the badge text before comparing); the second tested a route (`#/workspaceship`) that no longer exists after the Fase 10 `customModules` rename to `spaceship` — removed as genuinely redundant, since the AA section's `aa2` already covers the same behavior correctly under the current name/config. Do not silently remove or skip failing tests going forward — if a new one appears, fix it or get explicit sign-off before treating it as an accepted baseline.
 
 ## Supabase rules
 

@@ -18,8 +18,11 @@ module-*.js          IIFEs: booking, chat, crm, faq, mediabank, quote, reference
 index.html           Script load order + cache-bust ?v=N on every changed file
 workspace/           Separate Workspace SPA — workspace-core.js + workspace/module-*.js (renamed 2026-07-07 from intranet/ — internal window.Intranet JS object name and intranettFeatures config key unchanged, deferred)
 supabase/migrations/     Real numbered migrations (since 2026-07-07) — deployable via `supabase db push`; supabase/migration.sql is a superseded, frozen snapshot
+middleware.js        Vercel Routing Middleware — per-tenant hostname resolution + temporary SITE_LOCK_PASSWORD gate
+api/                 Vercel Functions (tenant-config.js, *-manifest.js, _lib/) — tested by test-api.js, not jsdom
 test.js              jsdom harness: node test.js
 test-workspace.js    jsdom harness: node test-workspace.js (renamed 2026-07-07 from test-intranet.js)
+test-api.js          plain-Node harness for api/*.js + middleware.js: node test-api.js (added 2026-07-27)
 ```
 
 ## Coding conventions
@@ -64,13 +67,12 @@ Flag these explicitly before proposing any change that touches:
 
 ```
 npm install
-node test.js          # must pass (two known pre-existing failures are acceptable)
-node test-workspace.js # must pass
+node test.js          # must pass, 0 FEIL
+node test-workspace.js # must pass, 0 FEIL
+node test-api.js       # api/*.js + middleware.js, must pass, 0 FEIL
 ```
 
-Do not propose changes that cause new test failures. The two known-failing tests are:
-- `"henvendelses-fanen heter «Kontakt»"` (test.js)
-- `"o3: workspaceship via direkterute"` (test-workspace.js)
+The two long-standing known-failing tests (`"henvendelses-fanen heter «Kontakt»"` in test.js, `"o3: workspaceship via direkterute"` in test-workspace.js) were fixed 2026-07-19 — see CLAUDE.md's Testing section for the detail. All three suites must be fully green; do not propose changes that cause new test failures.
 
 ## Documentation workflow
 
