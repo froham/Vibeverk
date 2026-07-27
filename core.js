@@ -3565,24 +3565,40 @@ window.App = (function () {
 
   // Samlar alle redigerbare bilete på tvers av forside/tenester/aktuelt, sidan
   // alt-tekst-dekning skal gjelde heile nettsida, ikkje berre éin seksjon.
-  function wchCollectImages() {
+  function wchCollectImagesFrom(ct) {
     var imgs = [];
     function add(v) { if (v && (typeof v === "string" ? v : v.src)) imgs.push(Media.norm(v)); }
-    add(content.hero.image);
-    add(content.about.image);
-    (content.services || []).forEach(function (s) { add(s.image); });
-    (content.news || []).forEach(function (n) { add(n.image); });
+    add(ct.hero.image);
+    add(ct.about.image);
+    (ct.services || []).forEach(function (s) { add(s.image); });
+    (ct.news || []).forEach(function (n) { add(n.image); });
     return imgs;
   }
+  function wchCollectImages() { return wchCollectImagesFrom(content); }
 
-  function computeWebsiteHealth() {
-    var sc  = getSuperConfig();
+  // opts (valfritt) let denne funksjonen brukast for ein ANNAN tenant enn
+  // sida sjølv er lasta for -- naudsynt for Console (2026-07-27), som må
+  // kunne køyre helsesjekken for kva som helst tenant operatøren har valt,
+  // henta direkte frå DEN tenanten sitt eige Supabase-prosjekt (sjå
+  // console-core.js sin getStoreKey()), ikkje frå denne sida sin eigen
+  // CFG/content. Utan opts (Web-admin sin vanlege bruk) fell alt tilbake
+  // til nøyaktig same kjelder som før -- uendra åtferd.
+  //   opts.superconfig, opts.content, opts.enabledModules ({faq, referanser}),
+  //   opts.faqItems, opts.refItems, opts.privacyText
+  function computeWebsiteHealth(opts) {
+    opts = opts || {};
+    var sc  = opts.superconfig || getSuperConfig();
     var com = Object.assign({ name: "", tagline: "", ogImage: "", metaDescription: "" }, sc.company || {});
     var col = Object.assign({ primary: "#1a7a6e", text: "#1B1B1F", background: "#fbfaf8" }, sc.colors || {});
-    var cf  = content.footer || {};
+    var ct  = opts.content || content;
+    var cf  = ct.footer || {};
     // hasModule() er alt definert lokalt to andre stader (adminAnalyse,
     // adminMinKonto) -- ikkje delt/toppnivå, difor same vesle duplikat her.
     function hasModule(id) { return modules.some(function (m) { return m.id === id; }); }
+    var enabledModules = opts.enabledModules || { faq: hasModule("faq"), referanser: hasModule("referanser") };
+    var faqItems = opts.faqItems !== undefined ? opts.faqItems : (Store.get("faq-items", []) || []);
+    var refItems = opts.refItems !== undefined ? opts.refItems : (Store.get("ref-items", []) || []);
+    var privacyText = opts.privacyText !== undefined ? opts.privacyText : ((CFG.privacy && CFG.privacy.text) || "");
 
     var checks = []; // { category, label, pass, tip, weight }
     function check(category, label, pass, tip, weight) {
@@ -3596,42 +3612,42 @@ window.App = (function () {
     var descLen = (com.metaDescription || "").trim().length;
     check("seo", "Meta-beskrivelse er fylt ut og i rett lengd", descLen >= 50 && descLen <= 160,
       "Legg til ei meta-beskrivelse på 50–160 teikn ovanfor (teksten som vises under tittelen i Google-søk).", 3);
-    check("seo", "Hovudoverskrift (H1) er fylt ut", !!(content.hero.title || "").trim(),
+    check("seo", "Hovudoverskrift (H1) er fylt ut", !!(ct.hero.title || "").trim(),
       "Fyll ut hovudoverskrifta på forsida i Innhald.", 3);
     check("seo", "Delingsbilde (Open Graph) er sett", !!(com.ogImage || "").trim(),
       "Legg til eit delingsbilde ovanfor, så lenker ser bra ut når dei vert delte på sosiale medium.", 2);
     check("seo", "Nettsida kan vise firmainfo direkte i Google-søk",
-      !!((com.name || "").trim() && (content.contact.address || "").trim() && (content.contact.phone || "").trim()),
+      !!((com.name || "").trim() && (ct.contact.address || "").trim() && (ct.contact.phone || "").trim()),
       "Fyll ut firmanamn, adresse og telefon, så kan Google vise namn, adresse og telefon direkte i søkeresultatet.", 2);
-    var wchImgs = wchCollectImages();
+    var wchImgs = opts.content ? wchCollectImagesFrom(ct) : wchCollectImages();
     var wchImgsWithAlt = wchImgs.filter(function (i) { return !!(i.alt || "").trim(); });
     check("seo", "Alt-tekst på alle bilete", wchImgs.length === 0 || wchImgsWithAlt.length === wchImgs.length,
       "Legg til alt-tekst på bileta som manglar det (" + wchImgsWithAlt.length + " av " + wchImgs.length + " har det i dag).", 2);
     check("seo", "robots.txt hindrar Google frå å crawle interne sider", true, "");
 
     /* --- Innhald --- */
-    var wordCount = wchCountWords([content.about.text, content.hero.subtitle]
-      .concat((content.services || []).map(function (s) { return s.text; })).join(" "));
+    var wordCount = wchCountWords([ct.about.text, ct.hero.subtitle]
+      .concat((ct.services || []).map(function (s) { return s.text; })).join(" "));
     check("innhald", "Nok tekstinnhald til at Google kan vurdere sida", wordCount >= 100,
       "Utvid Om oss- og tenestetekstane — veldig tynt innhald er vanskeleg for Google å rangere.", 2);
     check("innhald", "Tydeleg oppfordring til handling (CTA) på forsida",
-      !!(content.hero.ctaLabel || "").trim() && !!(content.hero.ctaTarget || "").trim(),
+      !!(ct.hero.ctaLabel || "").trim() && !!(ct.hero.ctaTarget || "").trim(),
       "Legg til ein CTA-knapp (t.d. «Ta kontakt») i Innhald → Forside.", 3);
     check("innhald", "Kontaktinformasjon er komplett",
-      !!(content.contact.email || "").trim() && !!(content.contact.phone || "").trim() && !!(content.contact.address || "").trim(),
+      !!(ct.contact.email || "").trim() && !!(ct.contact.phone || "").trim() && !!(ct.contact.address || "").trim(),
       "Fyll ut e-post, telefon og adresse i Innhald → Kontaktinfo.", 3);
-    if (hasModule("faq")) {
-      check("innhald", "FAQ har minst eitt spørsmål", (Store.get("faq-items", []) || []).length > 0,
+    if (enabledModules.faq) {
+      check("innhald", "FAQ har minst eitt spørsmål", (faqItems || []).length > 0,
         "Legg til minst eitt spørsmål i FAQ-fana.", 1);
     }
 
     /* --- Tillit --- */
     check("tillit", "Organisasjonsnummer er fylt ut", !!(cf.orgNr || "").trim(),
       "Legg til org.nr i Innhald → Footer — styrkar tillit og er ofte forventa av besøkjande.", 2);
-    check("tillit", "Personvernerklæring er skriven", !!(CFG.privacy && CFG.privacy.text || "").trim(),
+    check("tillit", "Personvernerklæring er skriven", !!(privacyText || "").trim(),
       "Skriv ei personvernerklæring (eit forslag kan genererast automatisk ut frå kva modular sida bruker).", 2);
-    if (hasModule("referanser")) {
-      check("tillit", "Kundeanmeldingar/referansar er lagt til", (Store.get("ref-items", []) || []).length > 0,
+    if (enabledModules.referanser) {
+      check("tillit", "Kundeanmeldingar/referansar er lagt til", (refItems || []).length > 0,
         "Legg til minst éin kundereferanse eller -anmelding.", 2);
     }
 
@@ -3677,8 +3693,10 @@ window.App = (function () {
   // vert bygd inn i SEO-fana (adminDesignSeo) sitt eige skjema, ikkje vist som
   // ei eiga fane -- sjå fil-kommentaren ved sida av "Nettsidehelse-fane" øvst
   // om kvifor (krev feat("sidebygger"), same sperre som resten av Design).
-  function renderNettsidehelseSection() {
-    var result = computeWebsiteHealth();
+  // opts vidareførast direkte til computeWebsiteHealth() -- sjå den
+  // funksjonen sin eigen kommentar (Console-bruk, 2026-07-27).
+  function renderNettsidehelseSection(opts) {
+    var result = computeWebsiteHealth(opts);
 
     return (
       '<h4 class="an-heading">Nettsidehelse</h4>' +
@@ -5341,6 +5359,12 @@ window.App = (function () {
     buildTemplateOptions: buildTemplateOptions,   // kombinerer kontekstmalar + CRM-malar for openReplyModal sin malvelgar
     buildSignatureOptions: buildSignatureOptions, // delte signaturar (Kunder → CRM-innstillingar) for openReplyModal sine «Sett inn»-knappar
     computeDefaultPrivacyText: computeDefaultPrivacyText,
+    // Nettsidehelse (2026-07-27) -- reine, opts-parameteriserte funksjonar
+    // slik at Console kan køyre same helsesjekk for KVA SOM HELST tenant
+    // operatøren har valt, ikkje berre denne sida sin eigen CFG/content.
+    // Sjå computeWebsiteHealth() sin eigen kommentar for opts-forma.
+    computeWebsiteHealth: computeWebsiteHealth,
+    renderNettsidehelseSection: renderNettsidehelseSection,
     applySuperConfig: applySuperConfig,
     reloadConfig: function () { applySuperConfig(); applyTheme(); render(); },
     downloadBlob: downloadBlob,

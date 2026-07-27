@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.76.1";
+  var VIBEVERK_VERSION = "0.77.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -861,6 +861,15 @@ window.VwConsole = (function () {
   }
 
   function renderWeb(sc, wrap) {
+    // Fanga NO -- same _renderGen-vaktmønster som renderSection() sitt eige
+    // getSC()-kall (sjå kommentaren ved _renderGen), men her for DEI TRE
+    // ekstra, asynkrone getStoreKey()-kalla Nettsidehelse-seksjonen under
+    // treng (content/faq-items/ref-items). Utan denne vaktar ein operatør
+    // som rekk å byte tenant/fane FØR desse kalla svarer, elles risikere at
+    // svaret vert skrive inn i eit #cs-nettsidehelse som no høyrer til ein
+    // heilt annan seksjon (same element-id vert attbrukt).
+    var webRenderGen = _renderGen;
+
     // Ikkje CFG.colors/company/fonts som fallback -- sjå notatet i
     // renderProdukt. Nøytrale standardverdiar for ein tenant som ikkje har
     // lagra noko enno.
@@ -906,6 +915,7 @@ window.VwConsole = (function () {
           C.field({ id:"cs-favicon", label:"Favicon-URL", value: com.favicon || "", placeholder:"https://…",
             help:"Det vesle ikonet som vises i nettlesar-fana og bokmerke." }) +
         '</fieldset>' +
+        '<div id="cs-nettsidehelse" style="margin:0 0 1.5rem"><p class="prose prose--muted" style="font-size:.85rem">Lastar nettsidehelse …</p></div>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<div style="margin:0 0 .9rem">' +
             '<button type="button" class="btn btn--ghost btn--sm" id="cs-palette-generate">🎨 Generer fargepalett</button>' +
@@ -1108,6 +1118,41 @@ window.VwConsole = (function () {
         statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Endringane er aktive ved neste sideopplasting.", true);
       });
     });
+
+    // Nettsidehelse (2026-07-27) -- same regelbaserte sjekk som Web-admin sin
+    // Design → SEO-fane (core.js sin computeWebsiteHealth()/
+    // renderNettsidehelseSection()), no attbrukt her slik at ein operatør kan
+    // køyre han for KVA SOM HELST tenant uavhengig av om DEN tenanten sjølv
+    // har feat("sidebygger") -- sjå docs/architecture/website-health-scoring.md.
+    // superconfig (sc) er alt henta synkront av kallaren; content/faq-items/
+    // ref-items må hentast ekstra her, tenant-skopa via getStoreKey().
+    (function () {
+      var pending = 3;
+      var fetched = { content: {}, faqItems: [], refItems: [] };
+      function done() {
+        pending--;
+        if (pending > 0) return;
+        if (webRenderGen !== _renderGen) return; // sjå notatet ved webRenderGen over
+        var target = wrap.querySelector("#cs-nettsidehelse");
+        if (!target) return;
+        var ct = Object.assign({ hero: {}, about: {}, contact: {}, footer: {}, services: [] }, fetched.content);
+        var enabledModules = {
+          faq:        !(sc.features && sc.features.faq        === false),
+          referanser: !(sc.features && sc.features.references === false)
+        };
+        target.innerHTML = window.App.renderNettsidehelseSection({
+          superconfig:    sc,
+          content:        ct,
+          enabledModules: enabledModules,
+          faqItems:       fetched.faqItems,
+          refItems:       fetched.refItems,
+          privacyText:    (sc.privacy && sc.privacy.text) || ""
+        });
+      }
+      getStoreKey("content", function (v) { fetched.content = v || {}; done(); });
+      getStoreKey("faq-items", function (v) { fetched.faqItems = (v && v.length !== undefined) ? v : []; done(); });
+      getStoreKey("ref-items", function (v) { fetched.refItems = (v && v.length !== undefined) ? v : []; done(); });
+    })();
   }
 
   function renderWorkspace(sc, wrap) {
