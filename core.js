@@ -1501,8 +1501,7 @@ window.App = (function () {
       { id: "design-seo",    label: "SEO",    category: "design" },
       { id: "design-fargar", label: "Fargar", category: "design" },
       { id: "design-fontar", label: "Fontar", category: "design" },
-      { id: "analyse",        label: "Analyse",        category: "innstillinger" },
-      { id: "nettsidehelse",  label: "Nettsidehelse",  category: "innstillinger" },
+      { id: "analyse",    label: "Analyse",    category: "innstillinger" },
       { id: "navigasjon", label: "Navigasjon", category: "innstillinger" },
       { id: "innhold",    label: "Innhold",    category: "innhold" },
       { id: "tjenester",  label: "Tjenester",  category: "innhold" },
@@ -1789,7 +1788,6 @@ window.App = (function () {
     if (activeTab === "aktuelt")    return adminNews(body);
     if (activeTab === "navigasjon") return adminNavigation(body);
     if (activeTab === "analyse")    return adminAnalyse(body);
-    if (activeTab === "nettsidehelse") return adminNettsidehelse(body);
     if (activeTab === "leads")      return adminLeads(body);
     if (activeTab === "chat-admin" && window.VwChatAdmin) {
       body.innerHTML = "";
@@ -2590,7 +2588,10 @@ window.App = (function () {
         '</div>' +
         C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
         '<p class="form__status" data-design-seo-status role="status" aria-live="polite"></p>' +
-      '</form>';
+      '</form>' +
+      '<div data-nettsidehelse style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--color-border)">' +
+        renderNettsidehelseSection() +
+      '</div>';
 
     (function () {
       var ogField = body.querySelector("#cs-d-ogimage");
@@ -2616,6 +2617,9 @@ window.App = (function () {
       applyTheme();
       render();
       setStatus(body.querySelector("[data-design-seo-status]"), "Lagret.", "ok");
+      // Oppdater helsesjekken med det som nett vart lagra, utan å måtte
+      // forlate og kome attende til fana.
+      body.querySelector("[data-nettsidehelse]").innerHTML = renderNettsidehelseSection();
     });
   }
 
@@ -3591,11 +3595,11 @@ window.App = (function () {
       "Sidetittelen bør vere mellom 10 og 60 teikn for å visast heilt i Google-søk.", 2);
     var descLen = (com.metaDescription || "").trim().length;
     check("seo", "Meta-beskrivelse er fylt ut og i rett lengd", descLen >= 50 && descLen <= 160,
-      "Legg til ei meta-beskrivelse på 50–160 teikn i Design → SEO (teksten som vises under tittelen i Google-søk).", 3);
+      "Legg til ei meta-beskrivelse på 50–160 teikn ovanfor (teksten som vises under tittelen i Google-søk).", 3);
     check("seo", "Hovudoverskrift (H1) er fylt ut", !!(content.hero.title || "").trim(),
       "Fyll ut hovudoverskrifta på forsida i Innhald.", 3);
     check("seo", "Delingsbilde (Open Graph) er sett", !!(com.ogImage || "").trim(),
-      "Legg til eit delingsbilde i Design → SEO, så lenker ser bra ut når dei vert delte på sosiale medium.", 2);
+      "Legg til eit delingsbilde ovanfor, så lenker ser bra ut når dei vert delte på sosiale medium.", 2);
     check("seo", "Nettsida kan vise firmainfo direkte i Google-søk",
       !!((com.name || "").trim() && (content.contact.address || "").trim() && (content.contact.phone || "").trim()),
       "Fyll ut firmanamn, adresse og telefon, så kan Google vise namn, adresse og telefon direkte i søkeresultatet.", 2);
@@ -3669,10 +3673,15 @@ window.App = (function () {
 
   function wchLight(score) { return score >= 80 ? "🟢" : score >= 50 ? "🟡" : "🔴"; }
 
-  function adminNettsidehelse(body) {
+  // Returnerer HTML-tekst (ikkje body.innerHTML direkte) sidan denne seksjonen
+  // vert bygd inn i SEO-fana (adminDesignSeo) sitt eige skjema, ikkje vist som
+  // ei eiga fane -- sjå fil-kommentaren ved sida av "Nettsidehelse-fane" øvst
+  // om kvifor (krev feat("sidebygger"), same sperre som resten av Design).
+  function renderNettsidehelseSection() {
     var result = computeWebsiteHealth();
 
-    body.innerHTML =
+    return (
+      '<h4 class="an-heading">Nettsidehelse</h4>' +
       '<p class="prose prose--muted">Ein enkel, regelbasert helsesjekk av nettsida — ingen KI involvert. Viser kva som alt er i orden, og kva som er verdt å forbetre.</p>' +
       '<div class="an-cards">' +
         '<div class="an-card" style="text-align:center">' +
@@ -3704,7 +3713,8 @@ window.App = (function () {
             }).join("") +
           '</ul>' +
         '</details>';
-      }).join("");
+      }).join("")
+    );
   }
 
   /* ===========================================================================
