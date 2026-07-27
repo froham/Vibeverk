@@ -364,6 +364,7 @@
 
     bd.appendChild(modal);
     document.body.appendChild(bd);
+    Intranet.wrapDimmedOverlay(bd);
 
     function close() { bd.remove(); document.removeEventListener("keydown", escH); }
     function escH(e) { if (e.key === "Escape") close(); }

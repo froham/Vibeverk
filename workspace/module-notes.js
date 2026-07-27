@@ -489,6 +489,7 @@
 
     bd.appendChild(modal);
     document.body.appendChild(bd);
+    Intranet.wrapDimmedOverlay(bd);
     App.ui.bindRichTextFields(modal);
 
     var selectedColor = activeColor;
