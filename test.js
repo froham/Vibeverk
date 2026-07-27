@@ -189,36 +189,66 @@ assert(tabLabelsHenv.indexOf("Kontakt") > -1 && tabLabelsHenv.indexOf("Leads") =
 clickCat("innstillinger"); clickTab("analyse");
 var tabLabelsInnst = [...doc.querySelectorAll(".tab")].map(t => t.textContent);
 assert(tabLabelsInnst.indexOf("Analyse") === 0, "Analyse-fanen er først i Innstillinger-kategorien");
-assert(tabLabelsInnst.indexOf("Nettsidehelse") === 1, "Nettsidehelse-fanen kjem rett etter Analyse");
 assert(tabLabelsInnst.indexOf("Sikkerhetskopi") === tabLabelsInnst.length - 1, "Sikkerhetskopi-fanen er sist i Innstillinger-kategorien");
 
 // --- Nettsidehelse (2026-07-27, regelbasert helsesjekk, ingen KI) ----------
-clickTab("nettsidehelse");
+// Ligg INNI Design → SEO (2026-07-27, retta etter brukar sitt funn): fyrste
+// versjonen hadde denne som ei EIGA fane i Innstillinger, synleg for ALLE
+// admin-kundar -- men sjekkane sine eigne tips peika til "Design → SEO" og
+// "Design → Fargar", faner som berre finst med feat("sidebygger") (betalt
+// designmodul). Ein kunde utan designmodul ville sett fana, men blitt bedt
+// om å gå til faner dei ikkje har tilgang til. Retta ved å leggje sjekken
+// INNI SEO-fana sjølv -- då gjeld same feat("sidebygger")-sperre automatisk,
+// og tipsa treng ikkje lenger peike til andre faner for SEO-felta.
+assert(!doc.querySelector('[data-admin-cat="design"]'), "nsh0: Design-kategorien (og dermed Nettsidehelse) er skjult utan designmodul (config.js sin ekte standard: sidebygger:false)");
+
+window.App.store.set("superconfig", Object.assign({}, window.App.store.get("superconfig", {}), { features: Object.assign({}, (window.App.store.get("superconfig", {}).features || {}), { sidebygger: true }) }));
+window.App.reloadConfig();
+// Kategori-baren i eit alt-ope adminpanel les ikkje allowedCategoriesForRole()
+// på nytt av seg sjølv berre fordi konfigurasjonen endra seg -- eit klikk på
+// ein kategori som alt fanst utløyser den faktiske gjenoppbygginga.
+clickCat("innhold"); clickTab("innhold");
+clickCat("design"); clickTab("design-seo");
+assert(!!doc.querySelector('[data-admin-cat="design"]'), "nsh0b: Design-kategorien vises MED designmodul");
 var nshCards = [...doc.querySelectorAll(".an-card__label")].map(l => l.textContent);
-assert(nshCards.includes("Totalskår"), "nsh1: totalskår-kort vises");
+assert(nshCards.includes("Totalskår"), "nsh1: totalskår-kort vises inni SEO-fana");
 ["Synlegheit (SEO)", "Innhald", "Tillit", "Tilgjenge"].forEach(function (cat) {
   assert(nshCards.includes(cat), "nsh2: kategori-kort «" + cat + "» vises");
 });
+assert(!!doc.querySelector("#cs-d-metadesc"), "nsh2b: dei vanlege SEO-felta (meta-beskrivelse) finst framleis i same fane");
 var nshTotalTxt = doc.querySelector(".an-card__val").textContent;
 assert(/\d+/.test(nshTotalTxt), "nsh3: totalskår inneheld eit tal: " + nshTotalTxt);
 assert(/🟢|🟡|🔴/.test(nshTotalTxt), "nsh4: totalskår har eit trafikklys-ikon: " + nshTotalTxt);
+assert(!doc.body.textContent.includes("Design → SEO"), "nsh4b: tipsa peikar ikkje lenger til «Design → SEO» (ville vore sjølvreferensielt no som sjekken ligg der sjølv)");
 
 // Før/etter-flyt: fjern org.nr via Innhald-fana, stadfest at Nettsidehelse
 // fangar det opp, fyll det ut att, stadfest at det tel som løyst.
 clickCat("innhold"); clickTab("innhold");
 doc.querySelector("#f-ft-orgnr").value = "";
 doc.querySelector("[data-content]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
-clickCat("innstillinger"); clickTab("nettsidehelse");
+clickCat("design"); clickTab("design-seo");
 assert(doc.body.textContent.includes("Organisasjonsnummer er fylt ut"), "nsh5: org.nr-sjekkpunktet finst i detaljlista");
 assert(!!doc.querySelector("ol"), "nsh6: «Prioriterte forbetringar»-lista vises når minst eitt sjekkpunkt feilar (org.nr no tomt)");
 
 clickCat("innhold"); clickTab("innhold");
 doc.querySelector("#f-ft-orgnr").value = "999 888 777";
 doc.querySelector("[data-content]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
-clickCat("innstillinger"); clickTab("nettsidehelse");
+clickCat("design"); clickTab("design-seo");
 var orgnrLi = [...doc.querySelectorAll("li")].find(function (li) { return li.textContent.includes("Organisasjonsnummer er fylt ut"); });
 assert(!!orgnrLi && orgnrLi.textContent.startsWith("✅"), "nsh7: org.nr-sjekkpunktet er ✅ etter at feltet er fylt ut");
 
+// Live oppdatering: lagring av SEO-skjemaet sjølv skal oppdatere helsesjekken
+// UTAN å måtte forlate og kome attende til fana.
+doc.querySelector("#cs-d-metadesc").value = "En kort og god meta-beskrivelse mellom femti og eitt hundre og seksti teikn for testen her, akkurat passe lang no.";
+doc.querySelector("[data-design-seo]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+var metaLi = [...doc.querySelectorAll("li")].find(function (li) { return li.textContent.includes("Meta-beskrivelse er fylt ut og i rett lengd"); });
+assert(!!metaLi && metaLi.textContent.startsWith("✅"), "nsh8: helsesjekken oppdaterer seg live etter lagring, utan fane-byte");
+
+// Rydd opp att -- sidebygger skal vere av igjen for resten av testsuiten.
+var scReset = window.App.store.get("superconfig", {});
+if (scReset.features) delete scReset.features.sidebygger;
+window.App.store.set("superconfig", scReset);
+window.App.reloadConfig();
 clickCat("innhold"); clickTab("innhold");
 
 // 8) Admin: redigere hero og lagre oppdaterer siden

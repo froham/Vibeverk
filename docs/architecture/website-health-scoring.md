@@ -1,8 +1,10 @@
 # Nettsidehelse — scoring rubric
 
-`adminNettsidehelse()`/`computeWebsiteHealth()` in `core.js` (Web-admin, category `innstillinger`, tab id `nettsidehelse`) is a rule-based (no AI in v1) health check for a customer's own public site. It reads data already loaded in the admin session (`superconfig`, `content`, module state) — no new Supabase table, no new RPC, no external API call.
+`renderNettsidehelseSection()`/`computeWebsiteHealth()` in `core.js` is a rule-based (no AI in v1) health check for a customer's own public site. It reads data already loaded in the admin session (`superconfig`, `content`, module state) — no new Supabase table, no new RPC, no external API call.
 
 Built 2026-07-27, originating from a Codex-generated proposal that a Claude Code session reviewed critically (not applied raw) and then had the Vibeverk Architect sanity-check before implementation. See `docs/project/CHANGELOG.md`'s 2026-07-27 entry for the full history.
+
+**Placement, corrected same day**: the first version shipped as its own standalone Web-admin tab (category `innstillinger`), visible to every admin customer regardless of whether they'd bought the design module ("sidebygger") — but its own tips referenced `Design → SEO`/`Design → Fargar`, tabs that only exist behind `feat("sidebygger")`. A customer without the design module would see the tab but be told to go to tabs they didn't have. Fixed the same day: the section now renders *inside* `adminDesignSeo()` (Design → SEO), below the existing meta-description/OG-image/favicon form, so it automatically inherits the same `feat("sidebygger")` gate as the rest of Design — no separate tab, no separate gating logic to keep in sync. This also matches the intended business model: a customer without the design module doesn't see it at all (Vibeverk can offer the health check as a paid consulting service instead); a customer with the design module gets full self-service access, consistent with the rest of Design. The section re-renders in place immediately after the SEO form is saved, without requiring the customer to leave and re-enter the tab.
 
 ## Why several of the originally-proposed checks are absent
 

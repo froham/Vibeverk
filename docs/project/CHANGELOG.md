@@ -30,6 +30,41 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.76.1 — 2026-07-27
+
+### Retta: Nettsidehelse flytta inn i Design → SEO (var feilaktig open for alle)
+
+Brukar peika på ein reell bug rett etter 0.76.0 vart deploya: "Nettsidehelse" låg i
+kategorien `innstillinger`, synleg for ALLE admin-kundar heilt uavhengig av om dei
+hadde kjøpt designmodulen (`feat("sidebygger")`) — men sjekkane sine eigne tips peika
+konkret til "Design → SEO" og "Design → Fargar", faner som BERRE finst med
+designmodulen. Ein kunde utan designmodul ville sett fana, men blitt bedt om å gå til
+faner dei ikkje hadde tilgang til.
+
+Fiks (brukar sitt eige forslag, stadfesta før implementasjon): fjerna den frittståande
+fana heilt. Helsesjekken ligg no INNI Design → SEO-fana, rett under dei eksisterande
+meta-beskrivelse/OG-bilde/favicon-felta — arva difor same `feat("sidebygger")`-sperre
+automatisk, ingen eigen synleggjeringslogikk å halde synkronisert. Matchar samstundes
+den tiltenkte forretningsmodellen: kunde utan designmodul ser han ikkje i det heile
+(Vibeverk kan tilby helsesjekken som ei betalt konsulent-teneste i staden), kunde MED
+designmodulen får full sjølvbetening, konsekvent med resten av Design. Tekstane som
+peika til "Design → SEO" for meta-felta vart samstundes retta til berre "ovanfor",
+sidan dei no ville vore sjølvreferensielle. Seksjonen oppdaterer seg sjølv live etter
+lagring av SEO-skjemaet, utan å måtte forlate og kome attende til fana.
+
+**Stadfesta bevisst**: `editor`-rolla får no tilgang til Nettsidehelse (via Design-
+kategorien), noko rolla ikkje hadde i 0.76.0 (som berre viste han til `admin` via
+`innstillinger`-kategorien). Brukar stadfesta dette er ønska, ikkje ein utilsikta
+biverknad.
+
+5 nye/endra assertions i `test.js` (nsh0/nsh0b for sjølve sperra, resten flytta til å
+navigere via Design → SEO i staden for den no-fjerna eigne fana; ny nsh8 for live-
+oppdatering etter lagring). Stadfesta visuelt med Playwright (design-modulen
+mellombels aktivert via ei server-sides omskriving av `config.js` for testinga, sidan
+den ekte demo-standarden har `sidebygger: false`). 610/610 + 180/180 + 37/37 OK.
+
+---
+
 ## 0.76.0 — 2026-07-27
 
 ### Ny modul: "Nettsidehelse" — regelbasert helsesjekk av kunden sin nettside
