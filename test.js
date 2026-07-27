@@ -189,7 +189,36 @@ assert(tabLabelsHenv.indexOf("Kontakt") > -1 && tabLabelsHenv.indexOf("Leads") =
 clickCat("innstillinger"); clickTab("analyse");
 var tabLabelsInnst = [...doc.querySelectorAll(".tab")].map(t => t.textContent);
 assert(tabLabelsInnst.indexOf("Analyse") === 0, "Analyse-fanen er først i Innstillinger-kategorien");
+assert(tabLabelsInnst.indexOf("Nettsidehelse") === 1, "Nettsidehelse-fanen kjem rett etter Analyse");
 assert(tabLabelsInnst.indexOf("Sikkerhetskopi") === tabLabelsInnst.length - 1, "Sikkerhetskopi-fanen er sist i Innstillinger-kategorien");
+
+// --- Nettsidehelse (2026-07-27, regelbasert helsesjekk, ingen KI) ----------
+clickTab("nettsidehelse");
+var nshCards = [...doc.querySelectorAll(".an-card__label")].map(l => l.textContent);
+assert(nshCards.includes("Totalskår"), "nsh1: totalskår-kort vises");
+["Synlegheit (SEO)", "Innhald", "Tillit", "Tilgjenge"].forEach(function (cat) {
+  assert(nshCards.includes(cat), "nsh2: kategori-kort «" + cat + "» vises");
+});
+var nshTotalTxt = doc.querySelector(".an-card__val").textContent;
+assert(/\d+/.test(nshTotalTxt), "nsh3: totalskår inneheld eit tal: " + nshTotalTxt);
+assert(/🟢|🟡|🔴/.test(nshTotalTxt), "nsh4: totalskår har eit trafikklys-ikon: " + nshTotalTxt);
+
+// Før/etter-flyt: fjern org.nr via Innhald-fana, stadfest at Nettsidehelse
+// fangar det opp, fyll det ut att, stadfest at det tel som løyst.
+clickCat("innhold"); clickTab("innhold");
+doc.querySelector("#f-ft-orgnr").value = "";
+doc.querySelector("[data-content]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+clickCat("innstillinger"); clickTab("nettsidehelse");
+assert(doc.body.textContent.includes("Organisasjonsnummer er fylt ut"), "nsh5: org.nr-sjekkpunktet finst i detaljlista");
+assert(!!doc.querySelector("ol"), "nsh6: «Prioriterte forbetringar»-lista vises når minst eitt sjekkpunkt feilar (org.nr no tomt)");
+
+clickCat("innhold"); clickTab("innhold");
+doc.querySelector("#f-ft-orgnr").value = "999 888 777";
+doc.querySelector("[data-content]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+clickCat("innstillinger"); clickTab("nettsidehelse");
+var orgnrLi = [...doc.querySelectorAll("li")].find(function (li) { return li.textContent.includes("Organisasjonsnummer er fylt ut"); });
+assert(!!orgnrLi && orgnrLi.textContent.startsWith("✅"), "nsh7: org.nr-sjekkpunktet er ✅ etter at feltet er fylt ut");
+
 clickCat("innhold"); clickTab("innhold");
 
 // 8) Admin: redigere hero og lagre oppdaterer siden

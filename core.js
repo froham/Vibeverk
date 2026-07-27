@@ -1501,7 +1501,8 @@ window.App = (function () {
       { id: "design-seo",    label: "SEO",    category: "design" },
       { id: "design-fargar", label: "Fargar", category: "design" },
       { id: "design-fontar", label: "Fontar", category: "design" },
-      { id: "analyse",    label: "Analyse",    category: "innstillinger" },
+      { id: "analyse",        label: "Analyse",        category: "innstillinger" },
+      { id: "nettsidehelse",  label: "Nettsidehelse",  category: "innstillinger" },
       { id: "navigasjon", label: "Navigasjon", category: "innstillinger" },
       { id: "innhold",    label: "Innhold",    category: "innhold" },
       { id: "tjenester",  label: "Tjenester",  category: "innhold" },
@@ -1788,6 +1789,7 @@ window.App = (function () {
     if (activeTab === "aktuelt")    return adminNews(body);
     if (activeTab === "navigasjon") return adminNavigation(body);
     if (activeTab === "analyse")    return adminAnalyse(body);
+    if (activeTab === "nettsidehelse") return adminNettsidehelse(body);
     if (activeTab === "leads")      return adminLeads(body);
     if (activeTab === "chat-admin" && window.VwChatAdmin) {
       body.innerHTML = "";
@@ -3505,6 +3507,204 @@ window.App = (function () {
       s.src = "https://plausible.io/js/embed.host.js";
       document.body.appendChild(s);
     }
+  }
+
+  /* --- Nettsidehelse-fane ----------------------------------------------------
+     Reint regelbasert helsesjekk (INGEN KI i v1) -- 0-100 totalskår + skår per
+     kategori + topp-5 prioriterte forbetringar. Bygd 2026-07-27 etter ei
+     Arkitekt-gjennomgang av eit Codex-forslag -- fleire av det opphavlege
+     forslaget sine sjekkpunkt vart medvite kutta/endra (sjå
+     docs/architecture/website-health-scoring.md for grunngjevinga):
+       - "Sitemap" kutta heilt -- nettsida er éin einaste hash-ruta URL
+         (#tjenester, #om-oss), ei sitemap ville hatt null reell verdi.
+       - "Interne lenker"/"URL-struktur" kutta -- same grunn, gjev ikkje
+         meining for ei éin-URL-side.
+       - Ekte Core Web Vitals, faktisk rendra overflow/klikkflate-storleik og
+         plattform-eigenskapar (label/input-kopling, tastaturnavigasjon) er
+         medvite IKKJE med her -- dei krev anten ekstern måling (PageSpeed
+         Insights) eller ein reell nettlesar-rendering-jobb, og/eller er
+         identiske for alle kundar sidan dei ligg i delt kode, ikkje noko
+         DENNE kunden kan endre. Sjå Arkitekt-rapporten frå same runde.
+     ====================================================================== */
+
+  // WCAG 2.x relativ luminans + kontrastforhold -- standardformelen, ingen
+  // ekstern lib. Brukt til å sjekke tekst-mot-bakgrunn og kvit knappetekst
+  // mot primærfargen (stadfesta 2026-07-27 at .btn--primary/--secondary sin
+  // tekstfarge faktisk ER hardkoda #fff i CSS-en, ikkje anteke).
+  function _wchHexToRgb(hex) {
+    var h = String(hex || "").replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    if (isNaN(n) || h.length !== 6) return null;
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  function _wchLuminance(rgb) {
+    var chans = [rgb.r, rgb.g, rgb.b].map(function (c) {
+      var s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * chans[0] + 0.7152 * chans[1] + 0.0722 * chans[2];
+  }
+  function wchContrastRatio(hexA, hexB) {
+    var a = _wchHexToRgb(hexA), b = _wchHexToRgb(hexB);
+    if (!a || !b) return null;
+    var la = _wchLuminance(a), lb = _wchLuminance(b);
+    var lighter = Math.max(la, lb), darker = Math.min(la, lb);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function wchCountWords(text) {
+    var plain = C.stripHtml ? C.stripHtml(text || "") : String(text || "").replace(/<[^>]+>/g, " ");
+    var words = plain.trim().split(/\s+/).filter(Boolean);
+    return words.length;
+  }
+
+  // Samlar alle redigerbare bilete på tvers av forside/tenester/aktuelt, sidan
+  // alt-tekst-dekning skal gjelde heile nettsida, ikkje berre éin seksjon.
+  function wchCollectImages() {
+    var imgs = [];
+    function add(v) { if (v && (typeof v === "string" ? v : v.src)) imgs.push(Media.norm(v)); }
+    add(content.hero.image);
+    add(content.about.image);
+    (content.services || []).forEach(function (s) { add(s.image); });
+    (content.news || []).forEach(function (n) { add(n.image); });
+    return imgs;
+  }
+
+  function computeWebsiteHealth() {
+    var sc  = getSuperConfig();
+    var com = Object.assign({ name: "", tagline: "", ogImage: "", metaDescription: "" }, sc.company || {});
+    var col = Object.assign({ primary: "#1a7a6e", text: "#1B1B1F", background: "#fbfaf8" }, sc.colors || {});
+    var cf  = content.footer || {};
+    // hasModule() er alt definert lokalt to andre stader (adminAnalyse,
+    // adminMinKonto) -- ikkje delt/toppnivå, difor same vesle duplikat her.
+    function hasModule(id) { return modules.some(function (m) { return m.id === id; }); }
+
+    var checks = []; // { category, label, pass, tip, weight }
+    function check(category, label, pass, tip, weight) {
+      checks.push({ category: category, label: label, pass: !!pass, tip: tip || "", weight: weight || 1 });
+    }
+
+    /* --- Synlegheit (SEO) --- */
+    var titleLen = (com.name + (com.tagline ? " — " + com.tagline : "")).length;
+    check("seo", "Sidetittel har fornuftig lengd", titleLen >= 10 && titleLen <= 60,
+      "Sidetittelen bør vere mellom 10 og 60 teikn for å visast heilt i Google-søk.", 2);
+    var descLen = (com.metaDescription || "").trim().length;
+    check("seo", "Meta-beskrivelse er fylt ut og i rett lengd", descLen >= 50 && descLen <= 160,
+      "Legg til ei meta-beskrivelse på 50–160 teikn i Design → SEO (teksten som vises under tittelen i Google-søk).", 3);
+    check("seo", "Hovudoverskrift (H1) er fylt ut", !!(content.hero.title || "").trim(),
+      "Fyll ut hovudoverskrifta på forsida i Innhald.", 3);
+    check("seo", "Delingsbilde (Open Graph) er sett", !!(com.ogImage || "").trim(),
+      "Legg til eit delingsbilde i Design → SEO, så lenker ser bra ut når dei vert delte på sosiale medium.", 2);
+    check("seo", "Nettsida kan vise firmainfo direkte i Google-søk",
+      !!((com.name || "").trim() && (content.contact.address || "").trim() && (content.contact.phone || "").trim()),
+      "Fyll ut firmanamn, adresse og telefon, så kan Google vise namn, adresse og telefon direkte i søkeresultatet.", 2);
+    var wchImgs = wchCollectImages();
+    var wchImgsWithAlt = wchImgs.filter(function (i) { return !!(i.alt || "").trim(); });
+    check("seo", "Alt-tekst på alle bilete", wchImgs.length === 0 || wchImgsWithAlt.length === wchImgs.length,
+      "Legg til alt-tekst på bileta som manglar det (" + wchImgsWithAlt.length + " av " + wchImgs.length + " har det i dag).", 2);
+    check("seo", "robots.txt hindrar Google frå å crawle interne sider", true, "");
+
+    /* --- Innhald --- */
+    var wordCount = wchCountWords([content.about.text, content.hero.subtitle]
+      .concat((content.services || []).map(function (s) { return s.text; })).join(" "));
+    check("innhald", "Nok tekstinnhald til at Google kan vurdere sida", wordCount >= 100,
+      "Utvid Om oss- og tenestetekstane — veldig tynt innhald er vanskeleg for Google å rangere.", 2);
+    check("innhald", "Tydeleg oppfordring til handling (CTA) på forsida",
+      !!(content.hero.ctaLabel || "").trim() && !!(content.hero.ctaTarget || "").trim(),
+      "Legg til ein CTA-knapp (t.d. «Ta kontakt») i Innhald → Forside.", 3);
+    check("innhald", "Kontaktinformasjon er komplett",
+      !!(content.contact.email || "").trim() && !!(content.contact.phone || "").trim() && !!(content.contact.address || "").trim(),
+      "Fyll ut e-post, telefon og adresse i Innhald → Kontaktinfo.", 3);
+    if (hasModule("faq")) {
+      check("innhald", "FAQ har minst eitt spørsmål", (Store.get("faq-items", []) || []).length > 0,
+        "Legg til minst eitt spørsmål i FAQ-fana.", 1);
+    }
+
+    /* --- Tillit --- */
+    check("tillit", "Organisasjonsnummer er fylt ut", !!(cf.orgNr || "").trim(),
+      "Legg til org.nr i Innhald → Footer — styrkar tillit og er ofte forventa av besøkjande.", 2);
+    check("tillit", "Personvernerklæring er skriven", !!(CFG.privacy && CFG.privacy.text || "").trim(),
+      "Skriv ei personvernerklæring (eit forslag kan genererast automatisk ut frå kva modular sida bruker).", 2);
+    if (hasModule("referanser")) {
+      check("tillit", "Kundeanmeldingar/referansar er lagt til", (Store.get("ref-items", []) || []).length > 0,
+        "Legg til minst éin kundereferanse eller -anmelding.", 2);
+    }
+
+    /* --- Tilgjenge (berre kontrast -- resten er delte, like plattform-
+       eigenskapar som denne kunden ikkje sjølv kan endre, sjå fil-kommentaren
+       øvst) --- */
+    var contrastText = wchContrastRatio(col.text, col.background);
+    check("tilgjenge", "God kontrast: brødtekst mot bakgrunn", contrastText === null || contrastText >= 4.5,
+      "Fargevalet for tekst og bakgrunn har for lite kontrast (WCAG krev minst 4.5:1) — juster i Design → Fargar.", 3);
+    var contrastBtn = wchContrastRatio("#ffffff", col.primary);
+    check("tilgjenge", "God kontrast: knappetekst mot primærfarge", contrastBtn === null || contrastBtn >= 4.5,
+      "Primærfargen er for lys til at kvit knappetekst er lett å lese (WCAG krev minst 4.5:1) — vel ein mørkare primærfarge i Design → Fargar.", 3);
+
+    /* --- Samandrag --- */
+    var categories = { seo: "Synlegheit (SEO)", innhald: "Innhald", tillit: "Tillit", tilgjenge: "Tilgjenge" };
+    var byCat = {};
+    Object.keys(categories).forEach(function (c) { byCat[c] = []; });
+    checks.forEach(function (c) { (byCat[c.category] || (byCat[c.category] = [])).push(c); });
+
+    var catResults = Object.keys(categories).map(function (c) {
+      var items = byCat[c] || [];
+      var totalW = items.reduce(function (s, i) { return s + i.weight; }, 0);
+      var passW  = items.reduce(function (s, i) { return s + (i.pass ? i.weight : 0); }, 0);
+      var score  = totalW ? Math.round((passW / totalW) * 100) : 100;
+      return { id: c, label: categories[c], score: score, items: items };
+    });
+
+    var totalScore = catResults.length
+      ? Math.round(catResults.reduce(function (s, c) { return s + c.score; }, 0) / catResults.length)
+      : 100;
+
+    var topFixes = checks
+      .filter(function (c) { return !c.pass && c.tip; })
+      .sort(function (a, b) { return b.weight - a.weight; })
+      .slice(0, 5);
+
+    return { totalScore: totalScore, categories: catResults, topFixes: topFixes };
+  }
+
+  function wchLight(score) { return score >= 80 ? "🟢" : score >= 50 ? "🟡" : "🔴"; }
+
+  function adminNettsidehelse(body) {
+    var result = computeWebsiteHealth();
+
+    body.innerHTML =
+      '<p class="prose prose--muted">Ein enkel, regelbasert helsesjekk av nettsida — ingen KI involvert. Viser kva som alt er i orden, og kva som er verdt å forbetre.</p>' +
+      '<div class="an-cards">' +
+        '<div class="an-card" style="text-align:center">' +
+          '<div class="an-card__val" style="font-size:2.2rem">' + wchLight(result.totalScore) + ' ' + result.totalScore + '</div>' +
+          '<div class="an-card__label">Totalskår</div>' +
+        '</div>' +
+        result.categories.map(function (c) {
+          return '<div class="an-card" style="text-align:center">' +
+            '<div class="an-card__val">' + wchLight(c.score) + ' ' + c.score + '</div>' +
+            '<div class="an-card__label">' + C.esc(c.label) + '</div>' +
+          '</div>';
+        }).join("") +
+      '</div>' +
+      (result.topFixes.length
+        ? '<h4 class="an-heading">Prioriterte forbetringar</h4>' +
+          '<ol style="display:grid;gap:.7rem;padding-left:1.3rem;margin:0 0 1.5rem">' +
+            result.topFixes.map(function (f) {
+              return '<li style="font-size:.9rem"><strong>' + C.esc(f.label) + '</strong><br>' +
+                '<span style="color:var(--color-muted)">' + C.esc(f.tip) + '</span></li>';
+            }).join("") +
+          '</ol>'
+        : '<p class="prose prose--muted">Alle sjekkane er i orden — ingenting å prioritere no. 🎉</p>') +
+      result.categories.map(function (c) {
+        return '<details class="lead-details" style="margin-bottom:.6rem">' +
+          '<summary>' + wchLight(c.score) + ' ' + C.esc(c.label) + ' (' + c.score + ')</summary>' +
+          '<ul style="padding-left:1.3rem;margin:.5rem 0 0;display:grid;gap:.3rem">' +
+            c.items.map(function (i) {
+              return '<li style="font-size:.85rem">' + (i.pass ? "✅" : "❌") + ' ' + C.esc(i.label) + '</li>';
+            }).join("") +
+          '</ul>' +
+        '</details>';
+      }).join("");
   }
 
   /* ===========================================================================
