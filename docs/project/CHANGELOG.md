@@ -30,6 +30,46 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.77.1 — 2026-07-27
+
+### Retta: Nettsidehelse i Console synte seg utan ramme rundt seg (braut det bokserte designet)
+
+Brukar sendte skjermbilete rett etter 0.77.0: Nettsidehelse-seksjonen synte seg
+som flytande, uramma tekst/tal direkte på sidebakgrunnen, medan alle andre
+seksjonar i Console (Firma/SEO/Fargar/Fontar) ligg i bokser med ramme og
+avrunda hjørne (`fieldset.admin-group`).
+
+Rotårsak: `renderNettsidehelseSection()` sitt HTML-utdata brukar CSS-klassane
+`.an-heading`/`.an-cards`/`.an-card*` (og `.prose`/`.lead-details`) — klassar
+som alt fanst i Web-admin sin `admin/index.html` (der funksjonen først vart
+bygd), men som Console si `console/index.html` aldri hadde definert, sidan
+Console aldri før hadde rendra dette innhaldet. Korta/tal synte seg difor med
+nettlesaren sine standardstilar (ingen ramme, ingen kortbakgrunn, ingen
+rutenett-oppsett) i staden for Console sitt eige, konsekvente utsjåande.
+
+Fiks: la til dei manglande CSS-reglane i `console/index.html` (same verdiar
+som `admin/index.html` sine, tilpassa Console sine eigne CSS-variablar), og
+endra `#cs-nettsidehelse`-behaldaren i `console/console-core.js` frå ein vanleg
+`<div>` til ein `<fieldset class="admin-group">` utan `<legend>` (unngår å
+doble opp tittelen, sidan `renderNettsidehelseSection()` alt rendrar sin eigen
+`<h4>Nettsidehelse</h4>`) — same boks-stil som resten av fana, uendra
+rekkjefølgje. Verifisert visuelt via ein Playwright-screenshot av eit
+statisk utsnitt (Console sitt eige CSS + ekte `renderNettsidehelseSection()`-
+utdata) på både mobil- og skrivebordsbreidde, sidan ein reell innlogga
+gjennomgang framleis krev OTP mot kontrollplanet.
+
+**Same sjekk på Web-admin (brukar bad om det direkte etterpå)**: Web-admin sin
+`admin/index.html` HAR alt `.an-*`-klassane (der `renderNettsidehelseSection()`
+opphavleg vart bygd), så enkeltkorta synte seg korrekt med ramme — men sjølve
+seksjonen låg som ein `<div>` med berre ei tynn topp-linje (`border-top`) under
+SEO-skjemaet, i staden for i sin eigen boks slik meta-beskrivelse/favicon-felta
+over alt ligg (`.admin-group`). Same brot på det bokserte mønsteret, berre
+mindre synleg enn i Console sidan korta sjølv var stila. Fiksa i `core.js` sin
+`adminDesignSeo()`: `data-nettsidehelse`-behaldaren fekk `class="admin-group"`
+i staden for `border-top`-separatoren, uendra elles. Verifisert med same
+Playwright-screenshot-teknikk (Web-admin sitt eige CSS + ekte
+`renderNettsidehelseSection()`-utdata).
+
 ## 0.77.0 — 2026-07-27
 
 ### Nytt: Nettsidehelse i Console (operatør kan no køyre helsesjekk for kva tenant som helst)
