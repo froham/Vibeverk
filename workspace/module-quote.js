@@ -88,6 +88,7 @@
       '</div>';
     bd.appendChild(modal);
     document.body.appendChild(bd);
+    Intranet.wrapDimmedOverlay(bd);
     modal.querySelector("#lead-detail-close").addEventListener("click", function () { bd.remove(); });
     bd.addEventListener("click", function (e) { if (e.target === bd) bd.remove(); });
     document.addEventListener("keydown", function escH(e) { if (e.key === "Escape") { bd.remove(); document.removeEventListener("keydown", escH); } });

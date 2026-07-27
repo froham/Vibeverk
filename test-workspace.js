@@ -333,6 +333,20 @@ sidebarOverlay.dispatchEvent(new window.Event("click", { bubbles: true }));
 assert(!sidebarOverlay.classList.contains("is-open"), "p11: overlay lukkar ved klikk på sjølve overlayen");
 assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#f1f5f9", "p12: theme-color-meta går tilbake til vanleg lys farge når menyen lukkast");
 
+/* --- P4) SAME DIM-FIKS PÅ DEI SEKS MODAL-DIALOGANE (2026-07-26/27) --------
+   Kvar modal (task/announcement/contact/booking/notes/quote) bruker det same
+   fullskjerm-mørklagde overlay-mønsteret (position:fixed;inset:0;rgba(0,0,0,
+   .45)) som mobil-hamburgarmenyen -- no via delt Intranet.wrapDimmedOverlay(),
+   testa her via oppgåve-modalen som representant (same mekanisme for alle 6). */
+nav("#/tasks");
+doc.querySelector("#tasks-new-btn").dispatchEvent(new window.Event("click", { bubbles: true }));
+var taskModalBd = doc.getElementById("task-modal-bd");
+assert(!!taskModalBd, "p13: oppgåve-modalen opnar");
+assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#858789", "p14: theme-color-meta mørknar når oppgåve-modalen opnar (Intranet.wrapDimmedOverlay)");
+taskModalBd.querySelector("#tm-cancel").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!doc.getElementById("task-modal-bd"), "p15: oppgåve-modalen lukkar ved Avbryt");
+assert(doc.querySelector('meta[name="theme-color"]').getAttribute("content") === "#f1f5f9", "p16: theme-color-meta går tilbake til vanleg når oppgåve-modalen lukkar (uansett kva av dei fleire lukk-vegane som kalla bd.remove())");
+
 /* --- R) CRM: AKTIV ROT-FIL (IKKJE DAUD intranet/module-crm.js) ------------ */
 nav("#/notes"); nav("#/crm");
 assert(navIds.includes("crm") || !!doc.querySelector('[data-inav="crm"]'), "r1: CRM i Workspace-nav (registrert av rot-module-crm.js sin Intranet.registerModule-gren)");

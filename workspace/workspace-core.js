@@ -43,6 +43,47 @@ window.Intranet = (function () {
   // gjennom heile fila ser då den ferske verdien, uendra kode elles.
   App.ready(function (freshCFG) { CFG = freshCFG; });
 
+  /* =========================================================================
+     STATUS-LINJE-FARGE  (2026-07-26-funnet)
+     -----------------------------------------------------------------------------
+     Fleire stader i Workspace viser ein full-skjerm mørklagt overlay
+     (position:fixed;inset:0;background:rgba(0,0,0,.45)) -- mobil-hamburgar-
+     menyen (sjå buildShell() sin openSidebar()/closeSidebar()) og seks
+     modal-dialogar (module-tasks/announcements/contact/booking/notes/quote).
+     Denne mørklegginga syner gjennom heilt opp i iOS/Android sitt status-
+     linje-område, men theme-color-meta-taggen fylgjer ikkje med av seg
+     sjølv -- statuslinja vert verande i den vanlege (lyse/mørke) fargen
+     medan resten av skjermen er mørklagt, eit synleg avvik (stadfesta av
+     brukar i ein installert Android Chrome-heim-skjerm-app).
+     #858789/#080d17 = 45% svart matematisk blanda over høvesvis lyst
+     (--color-bg: #f1f5f9) og mørkt (#0f172a) tema.
+     ====================================================================== */
+  function setThemeColorMeta(hex) {
+    var tag = document.querySelector('meta[name="theme-color"]');
+    if (tag) tag.setAttribute("content", hex);
+  }
+  function isDarkTheme() {
+    var root = document.getElementById("intranet");
+    return !!root && root.getAttribute("data-theme") === "dark";
+  }
+  function dimStatusBar(dimmed) {
+    if (dimmed) setThemeColorMeta(isDarkTheme() ? "#080d17" : "#858789");
+    else        setThemeColorMeta(isDarkTheme() ? "#0f172a" : "#f1f5f9");
+  }
+  // Kalla rett etter ein full-skjerm mørklagt overlay ("bd") vert lagt til i
+  // DOM-et. Pakkar inn bd.remove() slik at ALLE eksisterande lukk-vegar
+  // (×-knapp, klikk utanfor, Escape, etter lagra) automatisk hentar statuslinja
+  // attende til vanleg farge, utan at kvart enkelt module-fil-lukk-call-site
+  // treng eiga tilpassing.
+  function wrapDimmedOverlay(bd) {
+    dimStatusBar(true);
+    var originalRemove = bd.remove.bind(bd);
+    bd.remove = function () {
+      dimStatusBar(false);
+      originalRemove();
+    };
+  }
+
   // Henter sesjon-rolle fra samme nøkkel som core.js bruker.
   // Utvides til Supabase-sesjon uten endring her.
   function getRole() {
@@ -262,29 +303,16 @@ window.Intranet = (function () {
     var overlay  = document.getElementById("intranet-overlay");
     var hamburger = document.getElementById("intranet-hamburger");
 
-    // Mobil-menyen sin dim-overlay (.i-sidebar-overlay, rgba(0,0,0,.45)) dekker
-    // heile skjermen (inset:0) og syner difor gjennom heilt opp i iOS sitt
-    // status-linje-område -- utan dette vert statuslinja verande i den vanlege
-    // (lyse) fargen medan resten av skjermen er mørklagt, eit synleg avvik.
-    // #858789/#080d17 = 45% svart blanda over høvesvis lyst/mørkt --color-bg
-    // (2026-07-26-funnet, sjå CHANGELOG for utrekninga).
-    function setThemeColorMeta(hex) {
-      var tag = document.querySelector('meta[name="theme-color"]');
-      if (tag) tag.setAttribute("content", hex);
-    }
-    function isDarkTheme() {
-      var root = document.getElementById("intranet");
-      return !!root && root.getAttribute("data-theme") === "dark";
-    }
+    // Sjå "STATUS-LINJE-FARGE"-avsnittet øvst i fila for dimStatusBar().
     function openSidebar() {
       if (sidebar)  sidebar.classList.add("is-open");
       if (overlay)  overlay.classList.add("is-open");
-      setThemeColorMeta(isDarkTheme() ? "#080d17" : "#858789");
+      dimStatusBar(true);
     }
     function closeSidebar() {
       if (sidebar)  sidebar.classList.remove("is-open");
       if (overlay)  overlay.classList.remove("is-open");
-      setThemeColorMeta(isDarkTheme() ? "#0f172a" : "#f1f5f9");
+      dimStatusBar(false);
     }
     if (hamburger) hamburger.addEventListener("click", openSidebar);
     if (overlay)   overlay.addEventListener("click", closeSidebar);
@@ -829,7 +857,14 @@ window.Intranet = (function () {
     logActivity:    logActivity,
     getActivity:    getActivity,
     getContext:     getContext,
-    refresh:        refresh
+    refresh:        refresh,
+    // Kall rett etter eit fullskjerm mørklagt overlay ("bd", position:fixed;
+    // inset:0;background:rgba(0,0,0,...)) vert lagt til i DOM-et -- held iOS/
+    // Android sin status-linje-farge i takt med det mørklagde innhaldet, og
+    // hentar han attende automatisk uansett kva av bd sine fleire lukk-vegar
+    // (×-knapp, klikk utanfor, Escape, etter lagra) som faktisk kallar
+    // bd.remove(). Sjå "STATUS-LINJE-FARGE"-avsnittet øvst i fila.
+    wrapDimmedOverlay: wrapDimmedOverlay
   };
 
 })();

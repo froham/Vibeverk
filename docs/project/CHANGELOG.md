@@ -30,6 +30,33 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.75.1 — 2026-07-27
+
+### Status-linje-dim-fiksen (0.74.2) utvida til alle 6 modal-dialogane i Workspace
+
+Etter ein grep-audit av heile kodebasen for same type CSS-fell som Oppgåver-lista
+(0.73.0) og hamburgarmenyen (0.74.2): CSS Grid-fallgruva var isolert til
+`task-group__list` — alle andre grid-lister (notat-kort, media-galleri, lenkjer) bruker
+alt den trygge `grid-template-columns:repeat(auto-fill,minmax(...))`-varianten, ingen
+fleire å fikse der. Men det same fullskjerm-mørklagde overlay-mønsteret
+(`position:fixed;inset:0;background:rgba(0,0,0,.45)`) som hamburgarmenyen hadde, fanst
+identisk i 6 modal-dialogar: oppgåve, kunngjeringslesar, kontakt, booking, notat, tilbod
+— alle ville i teorien ha same status-linje-avvik som brukar rapporterte for menyen.
+
+Refaktorerte `setThemeColorMeta()`/`isDarkTheme()` (private til hamburgarmeny-koden i
+0.74.2) ut til delte toppnivå-funksjonar i `workspace-core.js`, pluss ein ny
+`Intranet.wrapDimmedOverlay(bd)` — kalla rett etter kvar modal sin `bd` vert lagt til i
+DOM-et. Han pakkar inn `bd.remove()` sjølv, slik at ALLE dei fleire eksisterande
+lukk-vegane per modal (×-knapp, klikk utanfor, Escape-tast, og for nokre modalar
+automatisk etter lagra) automatisk hentar statuslinja attende til vanleg farge —
+ingen av dei seks modal-filene treng endre sine eigne lukk-funksjonar, berre éin ny
+linje kvar rett etter `document.body.appendChild(bd)`.
+
+Stadfesta med 4 nye assertions i `test-workspace.js` (p13-p16-serien, oppgåve-modalen
+som representant for mekanismen — identisk kode i alle 6). 595/595 + 180/180 + 37/37 OK.
+
+---
+
 ## 0.75.0 — 2026-07-26
 
 ### PWA-manifest fullført på dei tre siste flatene (offentleg side, Web-admin, Console)

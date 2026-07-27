@@ -464,6 +464,7 @@
 
     bd.appendChild(modal);
     document.body.appendChild(bd);
+    Intranet.wrapDimmedOverlay(bd);
 
     function closeModal() { bd.remove(); Intranet.navigate("tasks"); }
 
