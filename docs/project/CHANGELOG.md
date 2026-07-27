@@ -30,6 +30,36 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.75.2 — 2026-07-27
+
+### Tre tiltak frå ein ekstern marknads-/tryggleiksbrief (27. juli 2026)
+
+Brukar delte ein tredjeparts brief om bransjeutvikling (Duda "vibe coding", Next.js-
+sårbarheiter, Vercel-endringar, Supabase-prising, Microsoft 365-prisauke) og bad om
+vurdering + tiltak. Fann at brevet sitt fyrste prioriterte råd ("oppdater Next.js")
+**ikkje gjeld Vibeverk i det heile** — stadfesta at det ikkje finst nokon Next.js-
+avhengigheit noko stad i kodebasen (vanilla JS/IIFE, ingen rammeverk). Tre andre
+tiltak, omsett til den faktiske stacken, vart gjennomførte:
+
+1. **Pinna eksakte CDN-versjonar**: `@supabase/supabase-js@2` → `@2.110.8`,
+   `marked@12` → `@12.0.2` (begge tidlegare berre hovudversjon-pinna, altså fritt
+   flytande til kva som helst nyare utgåve utan varsel). Stadfesta live med
+   Playwright at begge lastar korrekt etter pinning. Ny regel i CLAUDE.md/AGENTS.md:
+   CDN-avhengigheiter skal alltid pinnast til eksakt versjon, oppgradering er ei
+   medviten handling.
+2. **Fylte ut det tomme "Deployment safeguard"-avsnittet** i
+   `docs/security/security-baseline.md` (fann under uavhengig gjennomgang av same
+   fil — overskrifta fanst, ingen tekst under).
+3. **Nytt avsnitt om Supabase-loggovervaking**: brevet sitt poeng om Supabase sin
+   målte loggprising (frå 1. juli 2026) er reelt og ikkje dekt nokon stad frå før —
+   stadfesta at ingen rutine finst i dag for å sjekke loggvolum/kostnad på tvers av
+   dei fire Supabase-prosjekta. Dokumentert som eit ope, manuelt sjekkpunkt inntil
+   automatisering finst.
+
+Ingen appkode-logikk endra utover CDN-URL-ane sjølve. 595/595 + 180/180 + 37/37 OK.
+
+---
+
 ## 0.75.1 — 2026-07-27
 
 ### Status-linje-dim-fiksen (0.74.2) utvida til alle 6 modal-dialogane i Workspace

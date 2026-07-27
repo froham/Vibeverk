@@ -125,6 +125,20 @@ Required: `C.esc()` on every user-supplied value before it is inserted into an H
 
 All SQL files (`migration.sql`, `hotfix_*.sql`) must be safe to run multiple times. Use `CREATE OR REPLACE`, `IF NOT EXISTS`, and `DROP ... IF EXISTS`. This prevents errors when the same migration is applied to an existing schema.
 
+## Supabase log volume and cost monitoring
+
+Supabase moved existing organisations onto metered log pricing from 2026-07-01: Pro/Team plans include 5 GB of log ingest and 1,000 GB of query volume per month, with overage billed separately per project. This is a genuinely new operational risk, not yet covered anywhere else in this document or `CLAUDE.md` — **no routine currently exists for checking log volume/cost across the four live Supabase projects** (`clzczbyklgdtdhgjphup` production, `syqnyfeponexmkdvnsga` staging, `jxoglthrnshabqmdmnui` control plane, `nzgibflxodcwuhtaprrs` Sunnvask-demo). Confirmed as an actual gap (2026-07-27), not an aspirational best practice already followed.
+
+A verbose logging pattern or an error loop (e.g. a function retried repeatedly by client-side code, or a noisy `console.error` on every request in a hot path) can silently push a project over its included log/query volume well before anyone notices a cost increase. Until an automated check exists, treat this as a manual habit: check each project's Usage tab in the Supabase Dashboard periodically, and specifically after adding a new Edge Function, a new `SECURITY DEFINER` function with logging, or any change to a frequently-called RPC — the kind of change most likely to introduce a new source of log volume.
+
 ## Deployment safeguard
+
+No `git push`, production deployment, or remote Supabase action (schema change, Edge Function deploy, Dashboard SQL, `db push`) may happen without the user's explicit, per-action approval — a standing rule in `CLAUDE.md`/`AGENTS.md`, not a one-time confirmation. Approving one push or one migration does not carry forward to the next one; each remote-affecting action is proposed first and only run after the user confirms that specific command.
+
+This exists because every other safeguard in this document (RLS, `SECURITY DEFINER` validation, explicit `REVOKE`/`GRANT`) only protects the *running* system — none of it stops an agent from directly shipping a mistake to production if it can push/deploy unsupervised. Requiring a human in the loop for every remote action is the backstop for everything above: a bad migration, an over-broad grant, or an unescaped value can be caught by review before it reaches `clzczbyklgdtdhgjphup` or any customer's own project, rather than after.
+
+Applies uniformly regardless of how low-risk a change looks — an additive-only migration (new nullable column, new narrowly-scoped function) still goes through the same propose-then-confirm flow as a destructive one, on the theory that judgment about "how risky is this really" is exactly the kind of call a second party (the user) should get to make, not the agent proposing the change.
+
+Verification discipline is part of the same safeguard, not a separate concern: a clean `db push` exit code, a Dashboard "Success" message, or a passing CI run is not proof that the intended change actually reached the intended project — see `CLAUDE.md`'s Supabase rules for two separate confirmed incidents where a "Success" signal was wrong. Follow every remote action with a direct, targeted check against the actual live object (`pg_proc`, `pg_policy`, `information_schema`, a real `SELECT`/RPC call), not the tool's own reported outcome.
 
 No `git push`, production deployment, Supabase SQL execution, or remote Supabase action may be performed without explicit user approval. The code assistant must propose the command and wait for confirmation before executing.
