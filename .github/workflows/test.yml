@@ -43,3 +43,5 @@ jobs:
             exit 1
           fi
           exit 0
+      - name: node test-api.js (api/*.js + middleware.js, ingen kjende feil)
+        run: node test-api.js
