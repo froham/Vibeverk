@@ -30,6 +30,70 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.76.0 — 2026-07-27
+
+### Ny modul: "Nettsidehelse" — regelbasert helsesjekk av kunden sin nettside
+
+Ny fane i Web-admin (Innstillingar → Nettsidehelse, rett etter Analyse). Brukar delte
+eit Codex-generert forslag ("bygg ein modul med 0–100-skår, kategoriar for SEO/ytelse/
+mobil/tilgjenge/innhald/tillit"), bad om at det IKKJE vart teke rått, men analysert og
+samanstilt med eigne forslag først. Fann fleire premissar i det opphavlege forslaget
+som ikkje stemte med korleis Vibeverk faktisk er bygd — kutta desse før implementasjon:
+
+- **"Sitemap"/"URL-struktur"/"interne lenker" kutta heilt** — nettsida er éin einaste
+  hash-ruta URL, desse sjekkpunkta ville vore meiningslause eller identiske for alle
+  kundar.
+- **Ekte Core Web Vitals og faktisk rendra overflow/klikkflate-storleik kutta** — krev
+  anten Google PageSpeed Insights API eller ein reell nettlesar-rendering-jobb, ikkje
+  "regelbasert" i den forstand forslaget la opp til. Same bug-klasse som vart funne og
+  fiksa i denne kodebasen 2026-07-26/27 (CSS Grid-fallgruve, dim-overlay-status-linje-
+  bleed) — begge vart berre fanga opp ved faktisk å rendre sida i ein ekte nettlesar.
+- **Label/input-kopling, tastaturnavigasjon, generell JS/CSS-praksis kutta** — dette er
+  plattform-eigenskapar i delt `core.js`/`components.js`, identiske for alle kundar,
+  ikkje noko DEN kunden kan endre. Ville vore anten forvirrande eller permanent likt
+  for alle.
+- **"Kart" kutta** — ingen kart-innbyggingsfunksjon finst i kodebasen. **"Cookies"
+  kutta** — Plausible (einaste analytics-val) er dokumentert cookielaust, truleg
+  ingenting å sjekke for.
+
+Send den korrigerte, innsnevra versjonen til Arkitekten for ein eigen sjekk (stadfesta
+via Git-historikk/kodelesing, ikkje anteke) — stadfesta at SEO-felta alt vert redigert
+TO stader (Web-admin + Console) som må haldast synkroniserte, fann at kontrast-sjekken
+kravde direkte stadfesting av `.btn--primary`-fargen sin CSS FØR implementasjon (kunne
+ikkje anta kvit knappetekst), og tilrådde Web-admin (ikkje Console) som eigar av
+funksjonen. Tre opne avgjerder vart stadfesta med brukar: nedgradert JSON-LD-versjon
+no (berre namn/adresse/telefon/logo) i staden for å vente på nye felt, ingen ny
+redigerbar canonical-URL-felt (stadfestar berre at rot-URL-en er indekserbar), og
+Console-omfattande oversikt eksplisitt utsett til seinare.
+
+**Kva som faktisk vart bygd**: `computeWebsiteHealth()` (rein funksjon, ingen DOM) +
+`adminNettsidehelse(body)` i `core.js` — 4 kategoriar (Synlegheit/Innhald/Tillit/
+Tilgjenge), kvar med 3-8 vekta sjekkpunkt, 0-100 totalskår + skår per kategori +
+🟢/🟡/🔴-trafikklys + "Prioriterte forbetringar" (topp 5 feila sjekkpunkt, sortert
+etter vekt). Full rubrikk og grunngjeving for kvart val:
+`docs/architecture/website-health-scoring.md`.
+
+UX/Mobile Reviewer fann og retta tre ting etter fyrste implementasjon: kategori-
+`<details>`-elementa brukte ikkje den eksisterande `.lead-details`-klassen (synte
+nettlesaren sin nakne standard-triangel i staden for den etablerte ▸/▾-chevronen);
+kort-rutenettet sette ein overflødig inline `grid-template-columns` som stille
+overstyrde (i staden for å utvide) `.an-cards` sin delte `@media(max-width:560px)`-
+garanti; "Schema.org" vart introdusert som uforklart fagsjargong, i strid med
+`copy-style-guide.md` og det same-fila sin eigen etablerte klarspråk-mønster
+(`adminDesignSeo()`). Alle tre retta og stadfesta på nytt med Playwright.
+
+Testa med 11 nye assertions i `test.js` (nsh1-nsh7-serien, inkl. ein ekte før/etter-
+flyt: fjern org.nr via Innhald-fana → stadfest raudt i Nettsidehelse → fyll det ut att
+→ stadfest grønt). Stadfesta visuelt med Playwright (måtte kombinere blokkering av
+Supabase-CDN-skriptet OG omskriving av `config.js` sitt tenarsvar for å nå det lokale
+passord-fallback-sporet i ein ekte nettlesar — berre å blokkere CDN-skriptet etter
+sideinnlasting var ikkje nok, sidan ein ekte Supabase-klient alt var oppretta frå den
+ekte konfigurasjonen).
+
+606/606 + 180/180 + 37/37 OK.
+
+---
+
 ## 0.75.3 — 2026-07-27
 
 ### `robots.txt` — hindrar Google frå å crawle admin/Workspace/Console/Hub
