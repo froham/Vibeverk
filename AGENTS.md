@@ -32,6 +32,7 @@ test-api.js          plain-Node harness for api/*.js + middleware.js: node test-
 - localStorage namespace: `window.SITE_CONFIG.storageKey` prefix — currently `"nordpunkt"`
 - Supabase client: `window.App.supabase` (authenticated) or the module-level `_sb` variable
 - Cache busting: bump `?v=N` in `index.html` for every changed module — only bump files that changed
+- External CDN scripts (`@supabase/supabase-js`, `marked`, `@tabler/icons-webfont`, all via `cdn.jsdelivr.net`): always pin the exact version, never a major-version-only range — see CLAUDE.md's "External dependencies (CDN)" section
 
 ## Hard constraints
 

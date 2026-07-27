@@ -46,6 +46,10 @@ All labels, hints, tooltips, placeholders and confirm-dialog text must follow `d
 
 Bump `?v=N` on the script tag in `index.html` for every file you change. Only bump the files that actually changed.
 
+## External dependencies (CDN)
+
+`@supabase/supabase-js`, `marked`, and `@tabler/icons-webfont` are loaded from `cdn.jsdelivr.net`, not bundled via npm. **Always pin the exact version** (e.g. `@supabase/supabase-js@2.110.8`, not `@supabase/supabase-js@2`) — a major-version-only pin means every page load silently gets whatever the newest matching release happens to be, with no changelog review and no way to roll back a bad one. Check the current resolved version before pinning a new one: `curl https://data.jsdelivr.com/v1/packages/npm/<pkg>/resolved?specifier=<range>`. Upgrading is a deliberate act — bump the pinned version number explicitly, note it in `docs/project/CHANGELOG.md`, and re-run the test suites, the same as any other dependency change.
+
 ## Versioning and changelog
 
 - `docs/project/CHANGELOG.md` is the authoritative, repo-visible log of platform changes — one version number for the whole platform (site + Workspace + Console), semver-style `0.MINOR.PATCH` until real production launch (then `1.0.0`).
