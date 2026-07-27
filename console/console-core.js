@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.77.1";
+  var VIBEVERK_VERSION = "0.77.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -915,7 +915,7 @@ window.VwConsole = (function () {
           C.field({ id:"cs-favicon", label:"Favicon-URL", value: com.favicon || "", placeholder:"https://…",
             help:"Det vesle ikonet som vises i nettlesar-fana og bokmerke." }) +
         '</fieldset>' +
-        '<fieldset class="admin-group" id="cs-nettsidehelse"><p class="prose prose--muted" style="font-size:.85rem;margin:0">Lastar nettsidehelse …</p></fieldset>' +
+        '<fieldset class="admin-group" id="cs-nettsidehelse"><legend>Nettsidehelse</legend><p class="prose prose--muted" style="font-size:.85rem;margin:0">Lastar nettsidehelse …</p></fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +
           '<div style="margin:0 0 .9rem">' +
             '<button type="button" class="btn btn--ghost btn--sm" id="cs-palette-generate">🎨 Generer fargepalett</button>' +
@@ -1140,7 +1140,8 @@ window.VwConsole = (function () {
           faq:        !(sc.features && sc.features.faq        === false),
           referanser: !(sc.features && sc.features.references === false)
         };
-        target.innerHTML = window.App.renderNettsidehelseSection({
+        target.innerHTML = "<legend>Nettsidehelse</legend>" + window.App.renderNettsidehelseSection({
+          skipHeading:    true, // legenden over ER tittelen -- sjå notatet ved renderNettsidehelseSection()
           superconfig:    sc,
           content:        ct,
           enabledModules: enabledModules,
