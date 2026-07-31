@@ -30,6 +30,99 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.78.0 — 2026-07-31
+
+### Ny modul: intern, cookiefri sidetelling (Fase 1) -- gratis alternativ til Plausible
+
+Bakgrunn: bruker spurte om Vibeverk kunne bygge tilsvarende funksjon som
+Plausible native. Etter to runder med Arkitekt-vurdering (inkludert
+sammenstilling av et separat ChatGPT-forslag) landet vi på et bevisst
+avgrenset scope: kun offentlig nettside (Workspace uttrykkelig utenfor),
+ingen betalte/eksterne kall (ingen AI-oppsummering, ingen geolokasjon),
+kun sidevisninger, referrer, inngangs-/utgangssider og et lite fast sett
+CTA-klikk (telefon/e-post/kontakt/tilbud/booking).
+
+Ny fil `module-sidetelling.js` (IIFE, `features.sidetelling`-flagg,
+`false` som standard, kjører kun når `analytics.plausible` er tom --
+kunden velger ett av de to). Sender pageview ved sidelast/hash-endring og
+CTA-klikk via ny RPC `insert_analytics_event` til ny tabell
+`analytics_events` (migrasjon
+`20260731103651_add_analytics_events.sql`). Sesjons-ID for å gruppere
+treff til samme besøk lagres i `sessionStorage`, IKKE en cookie --
+forsvinner ved fane-lukking, sendes aldri automatisk til server.
+Inngangs-/utgangssider krever ingen egen fangst-hendelse: de er allerede
+første/siste pageview-rad for en sesjon, en ren spørring i adminpanelet
+(bevisst forkastet et opprinnelig sendBeacon/pagehide-forslag som eneste
+gevinst ville doblet antall skriv per sidevisning for null ny
+informasjon).
+
+Adminpanel vises i eksisterende Analyse-fane i Web-admin (`core.js` sin
+`adminAnalyse()`), i samme boks Plausible-embeden ellers bruker -- ikke en
+egen fane. `computeDefaultPrivacyText()` fikk en ny, presis tredje gren
+for sidetelling (IKKE gjenbruk av Plausible-teksten -- sessionStorage er
+juridisk sett en annen, svakere påstand enn Plausible sin "ingen lagring i
+det hele tatt", forsvarlig via unntaket for ren førsteparts trafikkmåling
+med kort levetid, se ekomloven §3-1).
+
+Test-data til utvikling: `supabase/staging-only/seed_test_pageviews.sql`
+-- bevisst UTENFOR `supabase/migrations/` (som til slutt kjøres mot ethvert
+kundeprosjekt), kjøres manuelt kun mot `vibeverk-staging`. To lag
+beskyttelse: (1) filen finnes aldri i delt migrasjonshistorikk i det hele
+tatt, (2) funksjonen selv nekter å kjøre med mindre en Postgres-GUC
+(`app.settings.is_staging`) er satt manuelt til `'on'` på det spesifikke
+prosjektet -- fail-closed selv om filen skulle havne feil sted ved en
+feil. Web-admin sin "Generer testdata"-knapp er ren kosmetisk
+synlighet (vises kun når `supabase.url` inneholder stagingens
+prosjektref) -- den reelle sperren sitter i databasefunksjonen, ikke i
+knappen.
+
+Eksplisitt utsatt til senere, egne faser (ikke bygget nå): unike
+besøkende, bot-filtrering, geolokasjon, enhet/nettleser/skjerm-metadata,
+rollup-tabell, AI-oppsummering, Workspace-analyse, CMS-per-side-widget,
+konverteringskobling (lead/booking <-> side).
+
+`?v=N`: `config.js` (13), `core.js` (81), `module-sidetelling.js` (1, ny fil).
+
+**Oppfølging samme dag, etter Security Auditor + UX/Mobile Reviewer:**
+Security Auditor fant at `authenticated` manglet et eksplisitt
+`GRANT SELECT` på `analytics_events` -- uten det ville RLS-policyen aldri
+blitt evaluert i det hele tatt (Postgres avviser på privilegienivå FØR
+RLS), så adminpanelet ville feilet i produksjon. Lagt til, sammen med
+`REVOKE ALL ... FROM anon` (defense-in-depth, matcher baseline-migrasjonen
+sitt eget GRANTS-mønster) og en `CHECK`-constraint på `cta_id`. Lagt til
+`.limit(5000)` på adminpanelets spørring, siden `insert_analytics_event`
+ikke er ratebegrenset -- uten et tak kunne et stort antall anon-innsendinger
+gjort adminpanelet ubrukelig (må hente/iterere hele resultatsettet).
+
+UX/Mobile Reviewer fant at "Generer testdata"-knappen aldri viste dataen
+den selv genererte (adminspørringen filtrerte `is_test`-rader ubetinget
+bort, også på staging) -- rettet til å vise dem kun når prosjektet faktisk
+er staging. Fjernet interne tabell-/kolonnenavn (`analytics_events`,
+`is_test=true`, "databasefunksjonen") fra knappens hjelpetekst
+(copy-style-guide-brudd). Byttet "sessionStorage" i personvernsteksten mot
+vanlig språk (samme juridiske poeng, uten fagterminologi mot
+sluttbrukere -- `computeDefaultPrivacyText()` sin sidetelling-gren).
+Lagt til «Prøv igjen»-knapp ved lastefeil, kort datoperiode-tekst under
+stolpediagrammet (touch-tilgjengelighet, `title`-tooltip virker ikke på
+mobil), og en kort hint-tekst under "Inngangssider"/"Utgangssider" for en
+ikke-teknisk bruker. CSS-fiks: `.an-toplist li span` manglet
+`min-width:0`/`flex:1 1 auto`, kunne klippe telletall på smale skjermer
+ved lange sidenavn/henvisninger (fikset i både `index.html` og
+`admin/index.html`).
+
+Alle tre testsuiter grønne etter fiksene (633/180/37, 0 FEIL).
+
+**Deployet til produksjon (clzczbyklgdtdhgjphup) samme dag, etter eksplisitt
+godkjenning:** `npx supabase db push --linked` -- verifisert direkte (ikke
+bare grønn exit-kode): `information_schema.role_table_grants` bekrefter
+`anon` har INGEN rader på `analytics_events` og `authenticated` har SELECT;
+`pg_policies`/`pg_constraint` bekrefter RLS-policy og de to
+CHECK-constraintene; ekte anon-nøkkel-kall mot REST-API-et bekrefter
+`insert_analytics_event` lykkes (204) og direkte SELECT nektes (401,
+"permission denied"). Verifiseringsraden slettet igjen etterpå. `features.
+sidetelling` er fortsatt `false` som standard -- ingen eksisterende kunde
+får denne på uten et eksplisitt valg.
+
 ## 0.77.2 — 2026-07-27
 
 ### Retta: Nettsidehelse i Console hadde annan overskriftstype og feil padding enn systerfanene

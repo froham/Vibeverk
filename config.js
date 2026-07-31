@@ -169,6 +169,10 @@ window.SITE_CONFIG = {
                          //   Utan denne: Outlook (mailto) er einaste svaralternativ, konsistent overalt.
     mediabank:     true,  // ← Mediebank (bildegalleri + grafisk profil). Krever module-mediabank.js
     chat:          true,  // ← Native chat-boble. Krever module-chat.js
+    sidetelling:   false, // ← Intern, cookiefri sidetelling (Fase 1, 2026-07-31). Krever module-sidetelling.js.
+                          //   Alternativ til Plausible -- MÅ vere eksplisitt false som standard (nytt/
+                          //   uprøvd, ikkje aktiver for alle kundar automatisk). Kjører kun når
+                          //   analytics.plausible under er tom (kunden vel eitt av dei to, aldri begge).
     sidebygger:    false  // ← Design-modul ("sidebygger"): kunden vel sjølv designmal i Web-admin sin
                           //   nye "Design"-fane. Betalt tillegg -- MÅ vere eksplisitt false som standard
                           //   (feat() sitt "sant med mindre eksplisitt false"-mønster ville elles vist
@@ -275,6 +279,8 @@ window.SITE_CONFIG = {
 
   /* --- Analyse -------------------------------------------------------------- */
   // Fyll inn domenenavn når det er oppe. Tomt felt = ingenting lastes.
+  // Alternativ: features.sidetelling ovanfor (intern, cookiefri telling) --
+  // brukast kun når plausible under er tom.
   analytics: {
     plausible: ""   // domenenavn, f.eks. "nordpunkt.no"
   },

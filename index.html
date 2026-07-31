@@ -434,6 +434,15 @@
     .an-hint { color: var(--color-muted); font-size: .9rem; margin: 0 0 .7rem; }
     .an-ext-link { display: inline-flex; align-items: center; gap: .3rem; font-size: .9rem; color: var(--color-primary); margin-right: 1rem; }
     @media(max-width:560px) { .an-cards { grid-template-columns: 1fr; } }
+    /* Sidetelling (module-sidetelling.js) */
+    .an-sidetelling h5 { margin: 1.2rem 0 .5rem; font-size: .82rem; font-weight: 600; color: var(--color-text); }
+    .an-bars { display: flex; align-items: flex-end; gap: 2px; height: 64px; padding: 0 .1rem; border-bottom: 1px solid var(--color-border); }
+    .an-bar { flex: 1; min-width: 2px; background: var(--color-primary); border-radius: 2px 2px 0 0; opacity: .85; }
+    .an-toplist ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
+    .an-toplist li { display: flex; justify-content: space-between; gap: .8rem; padding: .5rem .8rem; font-size: .85rem; border-bottom: 1px solid var(--color-border); }
+    .an-toplist li:last-child { border-bottom: none; }
+    .an-toplist li span { color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+    .an-toplist li strong { flex-shrink: 0; }
     .imgfield__btn { white-space: nowrap; }
     .imgfield__url { flex: 1; min-width: 0; }
     .imgfield__clear { flex-shrink: 0; padding: .8rem .9rem; }
@@ -620,9 +629,9 @@
        uten at noen basefil endres.
        ====================================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8/dist/umd/supabase.js"></script>
-  <script src="config.js?v=12"></script>
+  <script src="config.js?v=13"></script>
   <script src="components.js?v=19"></script>
-  <script src="core.js?v=80"></script>
+  <script src="core.js?v=81"></script>
   <script src="template-klassisk.js?v=1"></script>
   <script src="template-panorama.js?v=1"></script>
   <script src="template-scrollstory.js?v=1"></script>
@@ -637,5 +646,6 @@
   <script src="module-mediabank.js?v=6"></script>
   <script src="module-chat.js?v=22"></script>
   <script src="module-users.js?v=15"></script>
+  <script src="module-sidetelling.js?v=1"></script>
 </body>
 </html>
