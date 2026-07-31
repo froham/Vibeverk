@@ -3476,6 +3476,10 @@ window.App = (function () {
     const embedVal = (a.plausibleEmbed   || "");
 
     const plLink = plVal ? `<a class="an-ext-link" href="https://plausible.io/${C.esc(plVal)}" target="_blank" rel="noopener">Åpne Plausible ${C.icon("external-link")}</a>` : "";
+    // Egen sidetelling er et alternativ TIL Plausible, aldri begge samtidig —
+    // se module-sidetelling.js. Panelet fylles asynkront under, siden det
+    // henter data fra Supabase (adminAnalyse() selv er synkron).
+    const sideOn = !plVal && !!(CFG.features && CFG.features.sidetelling === true);
 
     const bits = [];
     if (embedVal) {
@@ -3485,6 +3489,7 @@ window.App = (function () {
       bits.push(`<p style="font-size:.78rem;color:var(--color-muted);margin-top:.5rem">Drevet av <a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a></p>`);
     }
     if (plVal && !embedVal) bits.push(plLink);
+    if (sideOn) bits.push(`<div data-sidetelling-root></div>`);
     const trafficHtml = bits.length ? bits.join("") : `<p class="an-hint">Ingen analyse er satt opp ennå. Vibeverk anbefaler Plausible.io for en enkel, sikker og cookie-free løsning. Ta kontakt med oss, så hjelper vi å sette dette opp.</p>`;
 
     body.innerHTML = `
@@ -3502,6 +3507,13 @@ window.App = (function () {
           ${trafficHtml}
         </div>
       </div>`;
+
+    // Egen sidetelling henter og rendrer sine egne tall asynkront — modulen
+    // eksponerer seg selv på window (samme mønster som VwChatAdmin/CrmAdmin).
+    if (sideOn && window.VwSidetelling) {
+      const stRoot = body.querySelector("[data-sidetelling-root]");
+      if (stRoot) window.VwSidetelling.renderAdminPanel(stRoot);
+    }
 
     // embed.host.js styrer auto-høgde på iframen — injiseres én gang globalt
     if (embedVal && !document.getElementById("_pl-embed-script")) {
@@ -5204,7 +5216,8 @@ window.App = (function () {
     const hasTilbud  = modules.some(function (m) { return m.id === "tilbud"; });
     const hasBooking = modules.some(function (m) { return m.id === "booking"; });
     const an = Store.get("analytics", null) || (CFG.analytics || {});
-    const hasAnalytics = !!(an.plausible || an.plausibleEmbed);
+    const hasAnalytics    = !!(an.plausible || an.plausibleEmbed);
+    const hasSidetelling  = !an.plausible && !!(CFG.features && CFG.features.sidetelling === true);
 
     const collectBits = [];
     if (hasContactForm) collectBits.push("en henvendelse");
@@ -5226,6 +5239,8 @@ window.App = (function () {
 
     const cookieText = hasAnalytics
       ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
+      : hasSidetelling
+      ? "Denne siden bruker ingen cookies. Vi bruker en enkel, intern sidetelling for trafikkstatistikk (sidevisninger, henvisninger og hvilke sider besøkende kommer fra/går til) — en midlertidig kode lagres i nettleseren din (ikke en informasjonskapsel/cookie) for å gruppere sidevisninger til samme besøk, og slettes automatisk når du lukker fanen. Vi lagrer ikke IP-adresse, navn eller annen personidentifiserbar informasjon om deg, og deler ingenting med tredjeparter."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
 
     return "Når du sender oss " + collectPhrase + ", lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +

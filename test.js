@@ -18,7 +18,7 @@ window.URL.createObjectURL = window.URL.createObjectURL || (() => "blob:mock-url
 window.URL.revokeObjectURL = window.URL.revokeObjectURL || (() => {});
 
 // Last filene i samme rekkefølge som index.html
-["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-crm.js", "module-mediabank.js"].forEach(f => {
+["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-crm.js", "module-mediabank.js", "module-sidetelling.js"].forEach(f => {
   const code = fs.readFileSync(f, "utf8");
   window.eval(code);
 });
@@ -31,6 +31,11 @@ const assert = (cond, msg) => { if (!cond) { globalThis.__err=(globalThis.__err|
 // 1) Alle standardseksjoner rendret i riktig rekkefølge
 ["hjem", "om-oss", "tjenester", "aktuelt", "kontakt"].forEach(id =>
   assert(doc.getElementById(id), "seksjon finnes: #" + id));
+
+// 1b) module-sidetelling.js: av som standard (features.sidetelling: false i
+// config.js) -- modulen skal ikke eksponere seg selv i det hele tatt, uansett
+// om Supabase er konfigurert eller ikke i dette miljøet.
+assert(typeof window.VwSidetelling === "undefined", "sidetelling er av som standard -- ingen VwSidetelling eksponert");
 
 // 2) Nav har 5 lenker i rekkefølge
 const navIds = [...doc.querySelectorAll(".nav__link")].map(a => a.getAttribute("data-nav"));
@@ -2300,6 +2305,29 @@ const __asyncTests = (async () => {
     assert(/henvendelse/i.test(textWithForm), "standardtekst nevner henvendelse når kontaktskjema er på (standard)");
   })();
 
+  // --- computeDefaultPrivacyText: egen gren for intern sidetelling (module-
+  // sidetelling.js, 2026-07-31) -- må IKKE gjenbruke Plausible-teksten, sidan
+  // sessionStorage juridisk sett er ein annan, svakare påstand enn Plausible
+  // sin "ingen lagring i det heile" (sjå Arkitekt-vurderinga same dato). ---
+  console.log("\n— Personvern-standardtekst og intern sidetelling —");
+  (function () {
+    window.App.store.set("superconfig", { features: { sidetelling: true } });
+    window.App.reloadConfig();
+    var textSide = window.App.computeDefaultPrivacyText();
+    assert(/midlertidig kode lagres/i.test(textSide), "standardtekst forklarer den midlertidige koden i vanlig språk (ikke teknisk «sessionStorage»-jargong): " + textSide.slice(0, 200));
+    assert(!/Plausible/i.test(textSide), "standardtekst nevner IKKE Plausible når det er sidetelling (ikke Plausible) som er aktiv");
+    assert(!/sessionStorage/i.test(textSide), "standardtekst unngår teknisk fagterminologi («sessionStorage») i tekst rettet mot ikke-tekniske besøkende");
+    assert(/ingen cookies/i.test(textSide), "standardtekst sier eksplisitt at ingen cookies brukes for sidetelling");
+
+    window.App.store.set("superconfig", { features: { sidetelling: false } });
+    window.App.reloadConfig();
+    var textNeither = window.App.computeDefaultPrivacyText();
+    assert(/Nei\. Denne siden bruker ingen cookies/i.test(textNeither), "standardtekst faller tilbake til «ingen analyse»-teksten når verken Plausible eller sidetelling er på");
+
+    window.App.store.remove("superconfig");
+    window.App.reloadConfig();
+  })();
+
   // --- CRM-maler og signatur i den delte openReplyModal (regresjonstest) ---
   console.log("\n— CRM-maler/signatur i openReplyModal —");
   (function () {
@@ -2678,6 +2706,193 @@ const __asyncTests = (async () => {
     window3.document.dispatchEvent(new window3.Event("DOMContentLoaded", { bubbles: true }));
 
     assert(intervalCalls3 === 0, "prefers-reduced-motion:reduce undertrykkjer tidsstyringa heilt, sjølv for ein auto-modus-karusell: " + intervalCalls3);
+  })();
+
+  // --- module-sidetelling.js: pageview/CTA-fangst + adminpanel-rendering ---
+  // Eiga DOM, sidan features.sidetelling er false som standard (config.js) og
+  // App.ready() sin gate vert avgjort éin gong ved skriptlasting (same
+  // sidebygger/karusell-mønster over). App.supabase vert her stubba med ein
+  // enkel, synkron fake-klient FØR modulen lastar (rekkefølgen i .forEach
+  // under sikrar dette), sidan modulen fangar `_sb = App.supabase` som eit
+  // verdi-snapshot inni App.ready()-callbacken sin -- ikkje ei live binding.
+  function makeFakeSb(rpcCalls, fakeRows, opts) {
+    opts = opts || {};
+    var eqCalls = opts.eqCalls || [];
+    var queryChain = {
+      select: function () { return queryChain; },
+      eq:     function (col, val) { eqCalls.push([col, val]); return queryChain; },
+      gte:    function () { return queryChain; },
+      order:  function () { return queryChain; },
+      limit:  function () { return queryChain; },
+      then:   function (cb) { cb(opts.forceError ? { error: { message: "simulert feil" } } : { error: null, data: fakeRows }); }
+    };
+    return {
+      rpc: function (name, params) {
+        rpcCalls.push({ name: name, params: params });
+        return { then: function (cb) { cb({ error: null }); } };
+      },
+      from: function () { return queryChain; }
+    };
+  }
+
+  var FAKE_ROWS = [
+    { type: "pageview", path: "#hjem",      referrer: null,         cta_id: null, session_id: "s1", created_at: "2026-07-01T10:00:00.000Z" },
+    { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "s1", created_at: "2026-07-01T10:01:00.000Z" },
+    { type: "pageview", path: "#tjenester", referrer: null,         cta_id: null, session_id: "s2", created_at: "2026-07-02T09:00:00.000Z" },
+    { type: "cta",      path: "#kontakt",   referrer: null,         cta_id: "tel", session_id: "s2", created_at: "2026-07-02T09:05:00.000Z" }
+  ];
+
+  console.log("\n— Sidetelling: pageview/CTA-fangst —");
+  (function () {
+    var html4 = fs.readFileSync("index.html", "utf8");
+    var dom4 = new JSDOM(html4, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window4 = dom4.window;
+    window4.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window4.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window4.scrollTo = () => {};
+    window4.HTMLElement.prototype.scrollIntoView = () => {};
+    window4.URL.createObjectURL = window4.URL.createObjectURL || (() => "blob:mock-url");
+    window4.URL.revokeObjectURL = window4.URL.revokeObjectURL || (() => {});
+
+    var rpcCalls = [];
+    var eqCalls4 = [];
+    var fakeSb = makeFakeSb(rpcCalls, FAKE_ROWS, { eqCalls: eqCalls4 });
+
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window4.eval(src);
+    });
+    window4.App.supabase = fakeSb; // stubbast ETTER core.js, FØR module-sidetelling.js
+    window4.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window4.document.dispatchEvent(new window4.Event("DOMContentLoaded", { bubbles: true }));
+    var doc4 = window4.document;
+
+    assert(typeof window4.VwSidetelling === "object", "features.sidetelling=true + Supabase konfigurert -- VwSidetelling eksponeres");
+    assert(rpcCalls.length === 1 && rpcCalls[0].name === "insert_analytics_event" && rpcCalls[0].params.p_type === "pageview",
+      "sidevisning sendes automatisk ved sidelast: " + JSON.stringify(rpcCalls[0]));
+
+    var telLink = doc4.createElement("a");
+    telLink.setAttribute("href", "tel:12345678");
+    telLink.textContent = "Ring oss";
+    doc4.body.appendChild(telLink);
+    telLink.dispatchEvent(new window4.MouseEvent("click", { bubbles: true }));
+    assert(rpcCalls.length === 2 && rpcCalls[1].params.p_type === "cta" && rpcCalls[1].params.p_cta_id === "tel",
+      "klikk på tel:-lenke sendes som CTA-hendelse med riktig cta_id: " + JSON.stringify(rpcCalls[1]));
+
+    var panel = doc4.createElement("div");
+    doc4.body.appendChild(panel); // renderAdminPanel sjekker container.ownerDocument.contains(...) før rendering
+    window4.VwSidetelling.renderAdminPanel(panel);
+    var cardVals = [].slice.call(panel.querySelectorAll(".an-card__val")).map(function (el) { return el.textContent; });
+    assert(cardVals[0] === "3", "adminpanel: totalt antall sidevisninger telles korrekt (3 pageview-rader av 4 totalt): " + cardVals.join(","));
+    assert(/Mest besøkte sider[\s\S]*#tjenester/.test(panel.innerHTML), "adminpanel: mest besøkte side (#tjenester, 2 visninger) vises i topplisten");
+    assert(/Inngangssider[\s\S]*#hjem/.test(panel.innerHTML) && /Inngangssider[\s\S]*#tjenester/.test(panel.innerHTML),
+      "adminpanel: inngangssider viser første side i hver av de to øktene (#hjem for s1, #tjenester for s2)");
+    assert(/Utgangssider[\s\S]*#tjenester/.test(panel.innerHTML), "adminpanel: utgangsside (#tjenester, siste i begge økter) vises -- uten egen fangst-hendelse, kun en spørring");
+    assert(/Telefon-klikk/.test(panel.innerHTML), "adminpanel: CTA-tallkort for telefon-klikk vises");
+    assert(!panel.querySelector("[data-sidetelling-seed]"),
+      "test-data-knappen vises IKKE når prosjektets Supabase-URL ikke er vibeverk-staging (produksjonsref i config.js her)");
+    assert(eqCalls4.some(function (c) { return c[0] === "is_test" && c[1] === false; }),
+      "for et ekte kundeprosjekt (ikke staging) filtreres is_test-rader eksplisitt bort i spørringen: " + JSON.stringify(eqCalls4));
+  })();
+
+  // --- module-sidetelling.js: test-data-knapp vises KUN på vibeverk-staging ---
+  console.log("\n— Sidetelling: test-data-knapp gates på staging-URL —");
+  (function () {
+    var html5 = fs.readFileSync("index.html", "utf8");
+    var dom5 = new JSDOM(html5, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window5 = dom5.window;
+    window5.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window5.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window5.scrollTo = () => {};
+    window5.HTMLElement.prototype.scrollIntoView = () => {};
+    window5.URL.createObjectURL = window5.URL.createObjectURL || (() => "blob:mock-url");
+    window5.URL.revokeObjectURL = window5.URL.revokeObjectURL || (() => {});
+
+    var rpcCalls5 = [];
+    var eqCalls5 = [];
+    var fakeSb5 = makeFakeSb(rpcCalls5, FAKE_ROWS, { eqCalls: eqCalls5 });
+
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") {
+        src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+        src = src.replace(/clzczbyklgdtdhgjphup/g, "syqnyfeponexmkdvnsga"); // staging-ref i url
+      }
+      window5.eval(src);
+    });
+    window5.App.supabase = fakeSb5;
+    window5.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window5.document.dispatchEvent(new window5.Event("DOMContentLoaded", { bubbles: true }));
+
+    var panel5 = window5.document.createElement("div");
+    window5.document.body.appendChild(panel5);
+    window5.VwSidetelling.renderAdminPanel(panel5);
+    var seedBtn = panel5.querySelector("[data-sidetelling-seed]");
+    assert(!!seedBtn, "test-data-knappen VISES når Supabase-URL peker mot vibeverk-staging (ref syqnyfeponexmkdvnsga)");
+
+    seedBtn.dispatchEvent(new window5.MouseEvent("click", { bubbles: true }));
+    assert(rpcCalls5.some(function (c) { return c.name === "seed_test_pageviews"; }), "klikk på test-data-knappen kaller seed_test_pageviews()");
+    assert(!eqCalls5.some(function (c) { return c[0] === "is_test"; }),
+      "på staging filtreres IKKE is_test-rader bort (ellers ville test-data-knappen aldri vise dataen den selv genererer): " + JSON.stringify(eqCalls5));
+    assert(!/analytics_events|is_test\s*=\s*true|databasefunksjonen/i.test(panel5.innerHTML),
+      "test-data-knappens hjelpetekst unngår interne tabell-/kolonnenavn og fagsjargong (copy-style-guide)");
+  })();
+
+  // --- module-sidetelling.js: feiltilstand + «Prøv igjen» ------------------
+  console.log("\n— Sidetelling: feiltilstand og «Prøv igjen» —");
+  (function () {
+    var html6 = fs.readFileSync("index.html", "utf8");
+    var dom6 = new JSDOM(html6, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window6 = dom6.window;
+    window6.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window6.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window6.scrollTo = () => {};
+    window6.HTMLElement.prototype.scrollIntoView = () => {};
+    window6.URL.createObjectURL = window6.URL.createObjectURL || (() => "blob:mock-url");
+    window6.URL.revokeObjectURL = window6.URL.revokeObjectURL || (() => {});
+
+    var rpcCalls6 = [];
+    var fakeSb6 = makeFakeSb(rpcCalls6, FAKE_ROWS, { forceError: true });
+
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window6.eval(src);
+    });
+    window6.App.supabase = fakeSb6;
+    window6.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window6.document.dispatchEvent(new window6.Event("DOMContentLoaded", { bubbles: true }));
+
+    var panel6 = window6.document.createElement("div");
+    window6.document.body.appendChild(panel6);
+    window6.VwSidetelling.renderAdminPanel(panel6);
+    assert(/Kunne ikke laste sidetelling/.test(panel6.innerHTML), "feilmelding vises når spørringen feiler");
+    var retryBtn = panel6.querySelector("[data-sidetelling-retry]");
+    assert(!!retryBtn, "«Prøv igjen»-knapp vises ved feil");
+
+    fakeSb6.from = function () {
+      return {
+        select: function () { return this; }, eq: function () { return this; }, gte: function () { return this; },
+        order: function () { return this; }, limit: function () { return this; },
+        then: function (cb) { cb({ error: null, data: FAKE_ROWS }); }
+      };
+    };
+    retryBtn.dispatchEvent(new window6.MouseEvent("click", { bubbles: true }));
+    assert(!panel6.querySelector("[data-sidetelling-retry]") && panel6.querySelectorAll(".an-card__val").length > 0,
+      "klikk på «Prøv igjen» gjør et nytt forsøk og rendrer panelet normalt når det lykkes");
   })();
 
   console.log("\nResultat: OK " + (globalThis.__ok||0) + " / FEIL " + (globalThis.__err||0));
