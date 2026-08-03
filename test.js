@@ -2789,10 +2789,10 @@ const __asyncTests = (async () => {
     window4.VwSidetelling.renderAdminPanel(panel);
     var cardVals = [].slice.call(panel.querySelectorAll(".an-card__val")).map(function (el) { return el.textContent; });
     assert(cardVals[0] === "3", "adminpanel: totalt antall sidevisninger telles korrekt (3 pageview-rader av 4 totalt): " + cardVals.join(","));
-    assert(/Mest besøkte sider[\s\S]*#tjenester/.test(panel.innerHTML), "adminpanel: mest besøkte side (#tjenester, 2 visninger) vises i topplisten");
-    assert(/Inngangssider[\s\S]*#hjem/.test(panel.innerHTML) && /Inngangssider[\s\S]*#tjenester/.test(panel.innerHTML),
-      "adminpanel: inngangssider viser første side i hver av de to øktene (#hjem for s1, #tjenester for s2)");
-    assert(/Utgangssider[\s\S]*#tjenester/.test(panel.innerHTML), "adminpanel: utgangsside (#tjenester, siste i begge økter) vises -- uten egen fangst-hendelse, kun en spørring");
+    assert(/Mest besøkte sider[\s\S]*Tjenester/.test(panel.innerHTML), "adminpanel: mest besøkte side (#tjenester -> «Tjenester», 2 visninger) vises i topplisten");
+    assert(/Inngangssider[\s\S]*Hjem/.test(panel.innerHTML) && /Inngangssider[\s\S]*Tjenester/.test(panel.innerHTML),
+      "adminpanel: inngangssider viser første side i hver av de to øktene (#hjem -> «Hjem» for s1, #tjenester -> «Tjenester» for s2)");
+    assert(/Utgangssider[\s\S]*Tjenester/.test(panel.innerHTML), "adminpanel: utgangsside (#tjenester -> «Tjenester», siste i begge økter) vises -- uten egen fangst-hendelse, kun en spørring");
     assert(/Telefon-klikk/.test(panel.innerHTML), "adminpanel: CTA-tallkort for telefon-klikk vises");
     assert(!panel.querySelector("[data-sidetelling-seed]"),
       "test-data-knappen vises IKKE når prosjektets Supabase-URL ikke er vibeverk-staging (produksjonsref i config.js her)");

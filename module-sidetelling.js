@@ -57,6 +57,28 @@
 
   function currentPath() { return location.hash || "#"; }
 
+  // Kva hash-endringar som faktisk skal telje som EI NY visning. De fleste
+  // seksjonar på framsida (Om oss, Tenester osb.) er mjuk-scroll internt i
+  // core.js sin bindGlobalNav() -- han bruker history.replaceState(), som
+  // ALDRI utløyser 'hashchange', så desse tel aldri som noko nytt (bevisst,
+  // stadfesta av brukar 2026-08-03, sjå CHANGELOG). Problemet var at NOKRE
+  // seksjonar (Referansar/Aktuelt) likevel vart talde -- reint tilfeldig,
+  // fordi bindGlobalNav() sin document.getElementById(id)-sjekk feila (t.d.
+  // seksjonen ikkje rendra enno), og klikket då fall attende til ekte
+  // nettlesar-navigering. I staden for å stole på DEN tilfeldigheita, sjekk
+  // eksplisitt mot dei same unntaka bindGlobalNav() sjølv bruker (id ===
+  // "admin", "sak/"-prefiks, "aktuelt/alle") pluss kjende page:true-modular.
+  // NB: berre "booking" er page:true i dag (module-booking.js) -- ein
+  // framtidig ny page:true-modul må leggjast til her óg, same
+  // vedlikehaldskopling som bindGlobalNav() sjølv alt har.
+  var REAL_PAGE_PATTERNS = [/^#booking(\/|$)/, /^#aktuelt\/alle$/, /^#sak\//];
+  function isRealPage(path) {
+    for (var i = 0; i < REAL_PAGE_PATTERNS.length; i++) {
+      if (REAL_PAGE_PATTERNS[i].test(path)) return true;
+    }
+    return false;
+  }
+
   function send(type, path, ctaId) {
     _sb.rpc("insert_analytics_event", {
       p_session_id: sessionId(),
@@ -90,8 +112,10 @@
     });
   }
 
-  trackPageview();
-  window.addEventListener("hashchange", trackPageview);
+  trackPageview(); // alltid ved fyrste lasting -- dette er inngangssida, uansett hash-verdi
+  window.addEventListener("hashchange", function () {
+    if (isRealPage(currentPath())) trackPageview();
+  });
   bindCtaTracking();
 
   /* =========================================================================
@@ -101,6 +125,34 @@
      ====================================================================== */
   var DAYS_BACK = 30;
   var CTA_LABELS = { tel: "Telefon-klikk", mailto: "E-post-klikk", kontakt: "Kontakt-CTA", tilbud: "Tilbud-CTA", booking: "Booking-CTA" };
+
+  // Lesbare namn for kjende sider/seksjonar -- viser STANDARDNAMNET, ikkje
+  // eit ev. kundetilpassa seksjonsnamn (t.d. ein tilpassa FAQ-overskrift),
+  // sidan adminpanelet ikkje har tilgang til dei tilpassa CMS-tekstane, berre
+  // CFG. Alt anna (skreddarsydde modular, banner-/karusell-id-ar) fell tilbake
+  // til ein generisk formatering under.
+  var PATH_LABELS = {
+    "#":            "Hjem",
+    "#hjem":        "Hjem",
+    "#om-oss":      "Om oss",
+    "#tjenester":   "Tjenester",
+    "#kontakt":     "Kontakt",
+    "#referanser":  "Referanser",
+    "#aktuelt":     "Aktuelt",
+    "#aktuelt/alle": "Aktuelt (arkiv)",
+    "#tilbud":      "Tilbud",
+    "#mediabank":   "Mediebank",
+    "#faq":         "Spørsmål og svar",
+    "#booking":     "Booking",
+    "#admin":       "Admin-innlogging"
+  };
+  function displayPath(path) {
+    if (PATH_LABELS[path]) return PATH_LABELS[path];
+    if (path.indexOf("#sak/") === 0) return "Aktuelt (enkeltsak)";
+    var raw = String(path).replace(/^#/, "").replace(/[\/-]/g, " ").trim();
+    if (!raw) return "Hjem";
+    return raw.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
 
   // Hard tak på antall rader hentet til nettleseren -- uten dette kan et
   // uratebegrenset antall anon-innsendinger (insert_analytics_event har
@@ -139,6 +191,22 @@
       '</ul></div>';
   }
 
+  // Bygger søylegrafen for "N per dag" -- delt mellom sidevisninger og
+  // CTA-klikk, hver med sin egen skala (deling av samme skala ville gjort
+  // CTA-søylene usynlig små, siden CTA-tall normalt er mye lavere).
+  function dayBarsHtml(byDay, days) {
+    if (!days.length) return { bars: "", range: "" };
+    var max = Math.max.apply(null, days.map(function (d) { return byDay[d]; }).concat([1]));
+    var bars = days.map(function (d) {
+      var h = Math.round((byDay[d] / max) * 60) + 4;
+      return '<div class="an-bar" style="height:' + h + 'px" title="' + esc(d + ": " + byDay[d]) + '"></div>';
+    }).join("");
+    // title-tooltip virker ikke på touch -- en synlig datoperiode under grafen
+    // gir i det minste en referanse selv uten hover/mus (funn fra UX-review).
+    var range = '<p class="an-hint" style="margin-top:.3rem">' + esc(days[0]) + ' – ' + esc(days[days.length - 1]) + '</p>';
+    return { bars: bars, range: range };
+  }
+
   function buildPanelHtml(rows) {
     var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
     var ctas      = rows.filter(function (r) { return r.type === "cta"; });
@@ -149,16 +217,15 @@
       byDay[d] = (byDay[d] || 0) + 1;
     });
     var days = Object.keys(byDay).sort();
-    var max = Math.max.apply(null, days.map(function (d) { return byDay[d]; }).concat([1]));
-    var barsHtml = days.map(function (d) {
-      var h = Math.round((byDay[d] / max) * 60) + 4;
-      return '<div class="an-bar" style="height:' + h + 'px" title="' + esc(d + ": " + byDay[d]) + '"></div>';
-    }).join("");
-    // title-tooltip virker ikke på touch -- en synlig datoperiode under grafen
-    // gir i det minste en referanse selv uten hover/mus (funn fra UX-review).
-    var barsRangeHtml = days.length
-      ? '<p class="an-hint" style="margin-top:.3rem">' + esc(days[0]) + ' – ' + esc(days[days.length - 1]) + '</p>'
-      : "";
+    var pageviewBars = dayBarsHtml(byDay, days);
+
+    var byDayCta = {};
+    ctas.forEach(function (r) {
+      var d = String(r.created_at).slice(0, 10);
+      byDayCta[d] = (byDayCta[d] || 0) + 1;
+    });
+    var ctaDays = Object.keys(byDayCta).sort();
+    var ctaBars = dayBarsHtml(byDayCta, ctaDays);
 
     var byPath = {};
     pageviews.forEach(function (r) { byPath[r.path] = (byPath[r.path] || 0) + 1; });
@@ -188,17 +255,31 @@
       return '<div class="an-card"><div class="an-card__val">' + byCta[k] + '</div><div class="an-card__label">' + esc(CTA_LABELS[k] || k) + '</div></div>';
     }).join("");
 
+    var conversionRate = pageviews.length ? Math.round((ctas.length / pageviews.length) * 1000) / 10 : 0;
+
     return '<div class="an-sidetelling">' +
-      '<div class="an-cards"><div class="an-card"><div class="an-card__val">' + pageviews.length + '</div><div class="an-card__label">Sidevisninger, siste ' + DAYS_BACK + ' dager</div></div></div>' +
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:.6rem">' +
+        C.button({ label: "Oppdater", variant: "ghost", attrs: 'type="button" data-sidetelling-refresh' }) +
+      '</div>' +
+      '<div class="an-cards">' +
+        '<div class="an-card"><div class="an-card__val">' + pageviews.length + '</div><div class="an-card__label">Sidevisninger, siste ' + DAYS_BACK + ' dager</div></div>' +
+        '<div class="an-card"><div class="an-card__val">' + conversionRate + '%</div><div class="an-card__label">Konverteringsrate</div></div>' +
+      '</div>' +
+      '<p class="an-hint" style="margin-top:-.4rem">Konverteringsrate = andel sidevisninger som endte med et CTA-klikk (telefon, e-post, kontakt, tilbud eller booking).</p>' +
       '<h5>Sidevisninger per dag</h5>' +
-      '<div class="an-bars" aria-hidden="true">' + (barsHtml || "") + '</div>' +
-      (barsHtml ? barsRangeHtml : '<p class="an-hint">Ingen data ennå.</p>') +
-      toplistHtml("Mest besøkte sider", topPaths, function (i) { return i.key; }) +
-      toplistHtml("Henvisninger", topRefs, function (i) { return i.key; }) +
-      toplistHtml("Inngangssider", topEntry, function (i) { return i.key; }, "Siden en besøkende kom inn på nettsiden") +
-      toplistHtml("Utgangssider", topExit, function (i) { return i.key; }, "Siden en besøkende forlot nettsiden fra") +
-      (ctaCardsHtml ? '<h5>CTA-klikk</h5><div class="an-cards">' + ctaCardsHtml + '</div>' : "") +
-      '<p style="font-size:.78rem;color:var(--color-muted);margin-top:.8rem">Sidetelling fra Vibeverk — cookiefritt, ingen tredjepart involvert.</p>' +
+      '<div class="an-bars" aria-hidden="true">' + (pageviewBars.bars || "") + '</div>' +
+      (pageviewBars.bars ? pageviewBars.range : '<p class="an-hint">Ingen data ennå.</p>') +
+      (ctaBars.bars
+        ? '<h5>CTA-klikk per dag</h5><div class="an-bars" aria-hidden="true">' + ctaBars.bars + '</div>' + ctaBars.range
+        : "") +
+      toplistHtml("Mest besøkte sider", topPaths, function (i) { return displayPath(i.key); }) +
+      toplistHtml("Henvisninger", topRefs, function (i) { return i.key; }, "«Direkte» = besøkende skrev inn adressen selv, brukte et bokmerke, eller kom fra en app.") +
+      toplistHtml("Inngangssider", topEntry, function (i) { return displayPath(i.key); }, "Siden en besøkende kom inn på nettsiden") +
+      toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siden en besøkende forlot nettsiden fra") +
+      (ctaCardsHtml
+        ? '<h5>CTA-klikk</h5><p class="an-hint" style="margin-top:-.2rem">Klikk på telefon-, e-post-, kontakt-, tilbuds- og bookingknapper.</p><div class="an-cards">' + ctaCardsHtml + '</div>'
+        : "") +
+      '<p style="font-size:.78rem;color:var(--color-muted);margin-top:.8rem">Analyse fra Vibeverk — cookiefritt, ingen tredjepart involvert.</p>' +
     '</div>';
   }
 
@@ -228,6 +309,8 @@
       container.innerHTML = buildPanelHtml(rows) + testDataButtonHtml();
       var btn = container.querySelector("[data-sidetelling-seed]");
       if (btn) btn.addEventListener("click", function () { runSeedTestData(container, btn); });
+      var refreshBtn = container.querySelector("[data-sidetelling-refresh]");
+      if (refreshBtn) refreshBtn.addEventListener("click", function () { renderAdminPanel(container); });
     });
   }
 
