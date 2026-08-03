@@ -1698,91 +1698,116 @@ window.App = (function () {
     }, 50);
   }
 
-  // Modulbasert brukerveiledning i Web-admin (2026-08-03) -- statisk,
-  // Vibeverk-skrevet innhold (ikke kunderedigerbart, holder ting enkelt).
-  // Hvert kapittel sin "active"-sjekk gjenbruker nøyaktig samme feature-
-  // flagg-logikk som buildAdminTabs() alt bruker, så listen er automatisk
-  // riktig for hver kunde – ingen egen "hvilke moduler har kunden"-logikk
-  // å vedlikeholde to steder. Moduler kunden IKKE har vises som en kort,
-  // fristende oppsummering nederst i stedet for å utelates helt (brukervalg
-  // 2026-08-03) – kan gjøre kunden nysgjerrig på en oppgradering.
+  // Modulbasert brukerveiledning i Web-admin (2026-08-03, utvida same dag
+  // etter brukartilbakemelding: meir fortellande tekst -- skriven for ein
+  // bedriftseigar utan datakunnskap, ikkje korte stikkord -- pluss ei
+  // breiare, sidebar-basert modal). Statisk, Vibeverk-skrive innhald
+  // (ikkje kunderedigerbart, held ting enkelt). Kvart kapittel sin
+  // "active"-sjekk gjenbruker nøyaktig same feature-flagg-logikk som
+  // buildAdminTabs() alt bruker, så lista er automatisk rett for kvar
+  // kunde -- ingen eigen "kva modular har kunden"-logikk å vedlikehalde
+  // to stader. Modular kunden IKKJE har vert IKKJE utelatne heilt: dei
+  // vises i ei eiga "Fleire moduler tilgjengelig"-liste nedst, med ei
+  // kort, fristande oppsummering (kan gjere kunden nysgjerrig på ei
+  // oppgradering) i staden for full bruksrettleiing.
   var MANUAL_CHAPTERS = [
-    { id: "innhold",  title: "Innhold", active: function () { return true; },
-      body: "Her redigerer du tekstene på forsiden din – forsidetopp, Om oss og Tjenester. Endringene vises på nettsiden så snart du lagrer." },
-    { id: "aktuelt",  title: "Aktuelt", active: function () { return true; },
-      body: "Skriv nyheter og oppdateringer som vises på forsiden og i et eget arkiv. Bruk det til å vise at siden er aktiv – nye produkter, åpningstider eller presseoppslag." },
-    { id: "kontakt",  title: "Kontakt", active: function () { return true; },
-      body: "Her ser du henvendelser som kommer inn fra kontaktskjemaet på nettsiden. Du kan svare direkte, markere som løst, og se historikk per kunde." },
-    { id: "sidebygger", title: "Design", active: function () { return !!(CFG.features && CFG.features.sidebygger === true); },
-      body: "Du kan selv velge mellom flere design-maler for hele nettsiden, og style farger, fonter, logo og SEO-innstillinger.",
-      teaser: "Bytt utseende på hele nettsiden selv, style farger/fonter, og legg til bannere – uten å kontakte oss." },
-    { id: "sidetelling", title: "Analyse", active: function () { return !!(CFG.features && CFG.features.sidetelling === true); },
-      body: "Se hvor mange som besøker nettsiden din, hvilke sider som er mest populære, og om besøk fører til henvendelser – helt uten cookies.",
-      teaser: "Se hvor mange som besøker nettsiden og hva de gjør der – helt uten cookies og uten ekstra kostnad." },
-    { id: "booking",  title: "Booking", active: function () { return feat("booking"); },
-      body: "Besøkende kan reservere tid eller ressurser direkte på nettsiden. Du administrerer ledige tider og ser kommende bookinger her.",
-      teaser: "La kundene dine reservere tid selv, direkte på nettsiden – uten telefon frem og tilbake." },
-    { id: "quote",    title: "Tilbud", active: function () { return feat("quote"); },
-      body: "Besøkende kan sende inn forespørsel om pristilbud, med mulighet for å legge ved bilder. Du finner alle forespørsler her.",
-      teaser: "La besøkende be om pristilbud direkte på nettsiden, med bildevedlegg – nyttig for håndverkere og tjenestebedrifter." },
-    { id: "references", title: "Referanser", active: function () { return feat("references"); },
-      body: "Vis frem tidligere prosjekter eller kundecase på nettsiden. Bygger tillit hos nye besøkende.",
-      teaser: "Vis frem fornøyde kunder og gjennomførte prosjekter – god tillitsbygging for nye besøkende." },
-    { id: "faq",      title: "Spørsmål og svar", active: function () { return feat("faq"); },
-      body: "Legg til vanlige spørsmål og svar. Reduserer antall like henvendelser til deg.",
-      teaser: "En egen spørsmål-og-svar-seksjon kan spare deg for mange like henvendelser." },
-    { id: "mediabank", title: "Mediebank", active: function () { return feat("mediabank"); },
-      body: "Et bildegalleri synlig for besøkende – nyttig for å vise produkter, lokaler eller prosjekter.",
-      teaser: "Få et bildegalleri på nettsiden – fint for å vise frem produkter eller lokaler." },
-    { id: "chat",     title: "Chat", active: function () { return feat("chat"); },
-      body: "En live chat-boble vises for besøkende. Du svarer fra samme sted som andre henvendelser.",
-      teaser: "La besøkende få svar med en gang via live chat – kan øke antall henvendelser betydelig." },
-    { id: "crm",      title: "Kunder", active: function () { return feat("crm"); },
-      body: "Samler henvendelser, tilbud og bookinger per kunde, med historikk og notater – et enkelt kunderegister.",
-      teaser: "Samle all kundehistorikk – henvendelser, tilbud, bookinger – på ett sted." }
+    { id: "innhold", title: "Innhold", icon: "file-text", active: function () { return true; },
+      body: "Dette er hjertet av nettsiden din -- her styrer du det meste av teksten som møter besøkende når de kommer inn på forsiden. Du finner tre deler: Forsidetopp (det aller første besøkende ser -- bilde, overskrift og en «ta kontakt»-knapp), Om oss (historien og presentasjonen av bedriften din) og Tjenester (hva du faktisk tilbyr, gjerne med bilder og korte beskrivelser). Alt du skriver her endres direkte på den ekte nettsiden så snart du trykker Lagre -- ingen webutvikler trengs. Et godt tips: skriv kort og konkret, og bytt gjerne ut bilder med jevne mellomrom for å holde siden fersk." },
+    { id: "aktuelt", title: "Aktuelt", icon: "news", active: function () { return true; },
+      body: "Aktuelt er nettsidens nyhetsside -- et sted hvor du kan dele det som skjer i bedriften: nye produkter, endrede åpningstider, presseoppslag, eller rett og slett noe du er stolt av. Hvert innlegg vises på forsiden og samles i et eget arkiv besøkende kan bla gjennom. Regelmessige oppdateringer her er noe av det mest effektive du kan gjøre for at nettsiden skal virke levende og oppdatert -- både for besøkende og for Google, som liker sider som stadig fornyer seg." },
+    { id: "kontakt", title: "Kontakt", icon: "mail", active: function () { return true; },
+      body: "Her havner alle henvendelser som sendes inn via kontaktskjemaet på nettsiden -- selve livsnerven mellom deg og kundene dine. Du ser navn, e-post, telefon og meldingen de har skrevet, og kan svare direkte derfra uten å bytte til e-postprogrammet ditt. Hver henvendelse kan merkes som «Ny», «Lest» eller «Løst», slik at du alltid har oversikt over hva som faktisk er fulgt opp. Klikker du deg inn på en kunde, ser du også tidligere henvendelser fra samme person -- praktisk om noen tar kontakt flere ganger." },
+    { id: "sidebygger", title: "Design", icon: "palette", active: function () { return !!(CFG.features && CFG.features.sidebygger === true); },
+      body: "Med Design-modulen har du full kontroll over hvordan nettsiden ser ut, uten å måtte kontakte oss for hver eneste endring. Du kan velge mellom flere ferdige designmaler for hele nettsiden, style fargene og skrifttypene slik at de matcher logoen og profilen din, laste opp egen logo, og justere SEO-innstillingene (det som avgjør hvordan siden vises i Google-søk). Her finner du også Banner- og Karusell-seksjoner, om du vil vise frem flere bilder eller budskap på forsiden.",
+      teaser: "Med Design-modulen kan du selv style hele nettsiden -- bytte farger, fonter og designmal, uten å kontakte oss for hver endring. Spør oss om oppgradering hvis dette høres nyttig ut." },
+    { id: "sidetelling", title: "Analyse", icon: "chart-bar", active: function () { return !!(CFG.features && CFG.features.sidetelling === true); },
+      body: "Analyse-fanen viser deg trafikken på nettsiden din -- helt uten cookies eller sporing av enkeltpersoner. Du ser hvor mange som besøker siden per dag, hvilke sider som er mest populære, om folk kommer via Google, Facebook eller direkte, og om besøkene faktisk fører til henvendelser. Du får også automatiske trender som forteller om trafikken går opp eller ned sammenlignet med forrige periode -- nyttig for å se effekten av for eksempel en ny Aktuelt-sak eller en kampanje.",
+      teaser: "Lurer du på hvor mange som faktisk besøker nettsiden din, og hva de gjør der? Den innebygde analysen viser dette helt uten cookies og uten ekstra kostnad." },
+    { id: "booking", title: "Booking", icon: "calendar-event", active: function () { return feat("booking"); },
+      body: "Booking-modulen lar besøkende reservere tid eller ressurser -- for eksempel en time, et bord eller en bil -- direkte på nettsiden, uten å måtte ringe eller sende e-post. Du bestemmer selv hvilke tider som er ledige, og ser en oversikt over alle kommende reservasjoner her. Dette sparer deg for mye frem-og-tilbake, samtidig som kundene dine får bekvemmeligheten av å kunne booke når det passer dem -- også utenfor åpningstid.",
+      teaser: "La kundene dine reservere tid selv, direkte på nettsiden -- døgnet rundt, uten telefon frem og tilbake." },
+    { id: "quote", title: "Tilbud", icon: "file-invoice", active: function () { return feat("quote"); },
+      body: "Tilbud-skjemaet gir besøkende en enkel måte å be om et pristilbud fra deg -- de kan til og med legge ved bilder, for eksempel av noe som skal repareres eller et prosjekt de vil ha gjort. Alle forespørsler samles her, med samme mulighet til å svare direkte og holde oversikt som i Kontakt-fanen. Dette egner seg spesielt godt for håndverkere og andre tjenestebedrifter der prisen varierer fra oppdrag til oppdrag.",
+      teaser: "La besøkende be om pristilbud direkte på nettsiden, med mulighet for bildevedlegg -- nyttig for håndverkere og andre tjenestebedrifter." },
+    { id: "references", title: "Referanser", icon: "star", active: function () { return feat("references"); },
+      body: "Referanser er stedet for å vise frem det du er mest stolt av -- tidligere prosjekter, kundecase eller resultater du har levert. Nye besøkende stoler mer på en bedrift som kan vise til konkrete eksempler enn en som bare påstår at de er gode. Legg gjerne ved bilder og en kort beskrivelse av hva oppdraget gikk ut på.",
+      teaser: "Vis frem fornøyde kunder og gjennomførte prosjekter -- en enkel måte å bygge tillit hos nye besøkende på." },
+    { id: "faq", title: "Spørsmål og svar", icon: "help-circle", active: function () { return feat("faq"); },
+      body: "Spørsmål og svar-seksjonen samler de vanligste spørsmålene kundene dine stiller, med svarene rett under. Dette er en god måte å spare tid på -- jo flere svar du legger inn her, jo færre like henvendelser trenger du å svare på manuelt. Tenk gjennom hva folk ofte spør om på telefon eller e-post, og legg det inn her.",
+      teaser: "En egen spørsmål-og-svar-seksjon kan spare deg for mange like henvendelser hver uke." },
+    { id: "mediabank", title: "Mediebank", icon: "photo", active: function () { return feat("mediabank"); },
+      body: "Mediebank er et bildegalleri synlig for besøkende på nettsiden -- perfekt for å vise frem produkter, lokaler, ansatte eller ferdige prosjekter. Et godt, oppdatert bildegalleri gir et solid førsteinntrykk, og kan være akkurat det som overbeviser en besøkende om å ta kontakt.",
+      teaser: "Få et bildegalleri på nettsiden -- fint for å vise frem produkter, lokaler eller prosjekter." },
+    { id: "chat", title: "Chat", icon: "message-circle", active: function () { return feat("chat"); },
+      body: "Med Chat får nettsiden din en liten chat-boble nederst i hjørnet, hvor besøkende kan skrive til deg direkte mens de er inne på siden. Du svarer fra samme sted som andre henvendelser. Chat er ofte det raskeste kundene kan nå deg på, og kan gjøre stor forskjell for hvor mange som faktisk tar kontakt -- mange kvier seg for å ringe, men skriver gjerne en rask melding.",
+      teaser: "La besøkende få svar med det samme via live chat -- kan øke antall henvendelser betydelig." },
+    { id: "crm", title: "Kunder", icon: "users", active: function () { return feat("crm"); },
+      body: "Kunder-fanen er et enkelt kunderegister som automatisk samler alle henvendelser, tilbud og bookinger på riktig kunde -- du slipper å lete gjennom e-poster for å finne historikken til noen som tar kontakt igjen. Her kan du også legge til egne notater, slik at du husker viktige detaljer til neste gang dere snakkes.",
+      teaser: "Samle all kundehistorikk -- henvendelser, tilbud og bookinger -- på ett sted, automatisk." }
   ];
 
   function buildManualHtml() {
-    var active = MANUAL_CHAPTERS.filter(function (c) { return c.active(); });
-    var inactive = MANUAL_CHAPTERS.filter(function (c) { return !c.active() && c.teaser; });
+    var activeChapters = MANUAL_CHAPTERS.filter(function (c) { return c.active(); });
+    var inactiveChapters = MANUAL_CHAPTERS.filter(function (c) { return !c.active() && c.teaser; });
 
-    var navHtml = '<nav style="margin-bottom:1.2rem;display:flex;flex-wrap:wrap;gap:.5rem">' +
-      active.map(function (c) { return '<a href="#manual-' + c.id + '" style="font-size:.82rem;padding:.3rem .7rem;border:1px solid var(--color-border);border-radius:999px;color:var(--color-text);text-decoration:none">' + C.esc(c.title) + '</a>'; }).join("") +
+    var navHtml = '<nav class="vw-manual__nav">' +
+      '<p class="vw-manual__navlabel">Innhold</p>' +
+      activeChapters.map(function (c) {
+        return '<a href="#manual-' + c.id + '">' + C.icon(c.icon) + '<span>' + C.esc(c.title) + '</span></a>';
+      }).join("") +
+      (inactiveChapters.length ? '<a href="#manual-more" class="vw-manual__navmore">' + C.icon("plus") + '<span>Flere moduler</span></a>' : "") +
       '</nav>';
 
-    var chaptersHtml = active.map(function (c) {
-      return '<section id="manual-' + c.id + '" style="margin-bottom:1.4rem;scroll-margin-top:1rem">' +
-        '<h3 style="margin:0 0 .4rem;font-size:1.02rem">' + C.esc(c.title) + '</h3>' +
-        '<p style="margin:0;font-size:.9rem;color:var(--color-text)">' + C.esc(c.body) + '</p>' +
+    var chaptersHtml = activeChapters.map(function (c) {
+      return '<section id="manual-' + c.id + '" class="vw-manual__chapter">' +
+        '<h3>' + C.icon(c.icon) + '<span>' + C.esc(c.title) + '</span></h3>' +
+        '<p>' + C.esc(c.body) + '</p>' +
       '</section>';
     }).join("");
 
-    var teaserHtml = inactive.length
-      ? '<div style="margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid var(--color-border)">' +
-          '<h3 style="margin:0 0 .6rem;font-size:.95rem;color:var(--color-muted)">Flere moduler tilgjengelig</h3>' +
-          '<p class="an-hint" style="margin:0 0 .8rem">Dette er moduler du ikke har i dag. Ta kontakt med oss hvis noe av dette høres nyttig ut.</p>' +
-          inactive.map(function (c) {
-            return '<p style="margin:0 0 .6rem;font-size:.85rem"><strong>' + C.esc(c.title) + '</strong> -- ' + C.esc(c.teaser) + '</p>';
+    var teaserHtml = inactiveChapters.length
+      ? '<div id="manual-more" class="vw-manual__more">' +
+          '<h3>Flere moduler tilgjengelig</h3>' +
+          '<p class="an-hint">Dette er moduler du ikke har i dag. Ta kontakt med oss hvis noe av dette høres nyttig ut.</p>' +
+          inactiveChapters.map(function (c) {
+            return '<div class="vw-manual__more-item">' + C.icon(c.icon) +
+              '<div><strong>' + C.esc(c.title) + '</strong><p>' + C.esc(c.teaser) + '</p></div></div>';
           }).join("") +
         '</div>'
       : "";
 
-    return navHtml + chaptersHtml + teaserHtml;
+    return '<div class="vw-manual">' + navHtml +
+      '<div class="vw-manual__content">' + chaptersHtml + teaserHtml + '</div></div>';
   }
 
-  function openManualModal() {
+  // Opnar veiledningsmodalen. Klikkar operatøren "?" mens admin-panelet
+  // IKKJE er i fullskjerm, blir fullskjerm slått på samtidig (brukarvalg
+  // 2026-08-03) -- gir meir plass til den no breiare, sidebar-baserte
+  // modalen. adminRoot: elementet renderAdminPanel() sist rendra til,
+  // treng for å kunne re-rendre admin-panelet i fullskjerm FØR sjølve
+  // veiledningsmodalen opnar oppå.
+  function openManualModal(adminRoot) {
     var existing = document.getElementById("manual-modal-root");
     if (existing) { existing.remove(); return; }
+    if (adminRoot && !adminFullscreen) {
+      adminFullscreen = true;
+      Store.set("admin-panel-fullscreen", adminFullscreen);
+      // try/catch: veiledningsmodalen skal opne uansett, sjølv om noko
+      // uventa skulle feile i den aktive fanen sin eigen render-funksjon
+      // ved denne omrenderinga -- ei feil der er ikkje denne funksjonen
+      // sitt ansvar å hindre veiledninga i å visast.
+      try { renderAdminPanel(adminRoot); } catch (e) { if (window.console) console.error("Kunne ikke aktivere fullskjerm automatisk:", e); }
+    }
     var root = document.createElement("div");
     root.id = "manual-modal-root";
     root.innerHTML =
-      '<div style="position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem" data-manual-back>' +
-        '<div style="background:var(--color-bg);border-radius:var(--radius);width:min(640px,100%);max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.3rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
-            '<strong style="font-size:1rem">Brukerveiledning</strong>' +
-            '<button data-manual-close aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
+      '<div class="vw-manual-overlay" data-manual-back>' +
+        '<div class="vw-manual-panel">' +
+          '<div class="vw-manual-head">' +
+            '<strong>Brukerveiledning</strong>' +
+            '<button data-manual-close aria-label="Lukk" class="vw-manual-closebtn">&times;</button>' +
           '</div>' +
-          '<div style="padding:1.2rem 1.3rem">' + buildManualHtml() + '</div>' +
+          '<div class="vw-manual-body">' + buildManualHtml() + '</div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(root);
@@ -1850,7 +1875,7 @@ window.App = (function () {
       renderAdminPanel(root);
     });
     var helpToggleBtn = root.querySelector("[data-modal-help-toggle]");
-    if (helpToggleBtn) helpToggleBtn.addEventListener("click", openManualModal);
+    if (helpToggleBtn) helpToggleBtn.addEventListener("click", function () { openManualModal(root); });
 
     // Kategoriveksling — hopper til første fane i kategorien
     root.querySelectorAll("[data-admin-cat]").forEach(function (btn) {
