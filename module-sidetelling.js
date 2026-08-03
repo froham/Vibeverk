@@ -235,6 +235,88 @@
     return { bars: bars, range: range };
   }
 
+  // Fase 2 (steg 2) -- "Trendar": rein periode-mot-periode-samanlikning,
+  // ingen AI/eksternt kall (same "rule-based"-filosofi som
+  // computeWebsiteHealth(), sjå docs/architecture/website-health-scoring.md).
+  // Talde innanfor dei siste DAYS_BACK dagane fetchStats() alt hentar --
+  // TREND_PERIOD_DAYS*2 (14) er godt innanfor DAYS_BACK (30), så ingen ny
+  // spørring trengst (unngår MAX_ROWS-faren ved å hente to gonger så mykje
+  // data mot same tak -- Arkitekt-notat 2026-08-03).
+  var TREND_PERIOD_DAYS = 7;
+
+  function periodStats(rows) {
+    var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
+    var ctas      = rows.filter(function (r) { return r.type === "cta"; });
+    var byDay = {}, byRef = {}, byPath = {};
+    pageviews.forEach(function (r) {
+      var d = String(r.created_at).slice(0, 10);
+      byDay[d] = (byDay[d] || 0) + 1;
+      var ref = r.referrer || "Direkte";
+      byRef[ref] = (byRef[ref] || 0) + 1;
+      byPath[r.path] = (byPath[r.path] || 0) + 1;
+    });
+    return {
+      pageviews: pageviews.length,
+      ctas: ctas.length,
+      conversionRate: pageviews.length ? (ctas.length / pageviews.length) * 100 : 0,
+      byRef: byRef,
+      bestDay: topN(byDay, 1)[0] || null,
+      topPath: topN(byPath, 1)[0] || null
+    };
+  }
+
+  // null = "ny" (kan ikkje rekne ei prosentendring frå null)
+  function pctChange(now, before) {
+    if (before === 0) return now === 0 ? 0 : null;
+    return Math.round(((now - before) / before) * 1000) / 10;
+  }
+
+  function buildTrendsHtml(pageviews, ctas) {
+    var now = Date.now(), DAY = 86400000;
+    var cutThis = now - TREND_PERIOD_DAYS * DAY;
+    var cutPrev = now - TREND_PERIOD_DAYS * 2 * DAY;
+    function inWindow(r, from, to) { var t = new Date(r.created_at).getTime(); return t >= from && t < to; }
+    var thisRows = pageviews.concat(ctas).filter(function (r) { return inWindow(r, cutThis, now); });
+    var prevRows = pageviews.concat(ctas).filter(function (r) { return inWindow(r, cutPrev, cutThis); });
+    var cur = periodStats(thisRows), prev = periodStats(prevRows);
+    if (cur.pageviews === 0) return "";
+
+    var items = [];
+    var pvChange = pctChange(cur.pageviews, prev.pageviews);
+    items.push(pvChange === null
+      ? "Fyrste periode med nok data -- ingen samanligning enda."
+      : (pvChange >= 0 ? "↑ " : "↓ ") + Math.abs(pvChange) + "% " + (pvChange >= 0 ? "flere" : "færre") + " sidevisninger enn de " + TREND_PERIOD_DAYS + " dagene før.");
+
+    if (cur.bestDay) items.push("Beste dag: " + esc(cur.bestDay.key) + " (" + cur.bestDay.n + " sidevisninger).");
+
+    if (prev.pageviews > 0) {
+      var crChange = Math.round((cur.conversionRate - prev.conversionRate) * 10) / 10;
+      items.push("Konverteringsrate " + (crChange >= 0 ? "opp" : "ned") + " " + Math.abs(crChange) + " prosentpoeng, nå " + (Math.round(cur.conversionRate * 10) / 10) + "%.");
+    }
+
+    var refKeys = {};
+    Object.keys(cur.byRef).forEach(function (k) { refKeys[k] = true; });
+    Object.keys(prev.byRef).forEach(function (k) { refKeys[k] = true; });
+    var biggestRefMove = null;
+    Object.keys(refKeys).forEach(function (k) {
+      var delta = (cur.byRef[k] || 0) - (prev.byRef[k] || 0);
+      if (!biggestRefMove || Math.abs(delta) > Math.abs(biggestRefMove.delta)) biggestRefMove = { key: k, delta: delta };
+    });
+    if (biggestRefMove && biggestRefMove.delta !== 0) {
+      items.push((biggestRefMove.delta > 0 ? "Flere besøk kom fra " : "Færre besøk kom fra ") + esc(biggestRefMove.key) + " enn før (" + (biggestRefMove.delta > 0 ? "+" : "") + biggestRefMove.delta + ").");
+    }
+
+    if (cur.topPath && prev.topPath && displayPath(cur.topPath.key) !== displayPath(prev.topPath.key)) {
+      items.push(esc(displayPath(cur.topPath.key)) + " er nå mest besøkt side (var " + esc(displayPath(prev.topPath.key)) + " forrige periode).");
+    }
+
+    return '<h5>Trender</h5>' +
+      '<p class="an-hint" style="margin-top:-.2rem">Sammenligner de siste ' + TREND_PERIOD_DAYS + ' dagene mot de ' + TREND_PERIOD_DAYS + ' dagene før. Ingen AI -- bare enkel regning på tallene over.</p>' +
+      '<ul style="list-style:none;padding:0;margin:0 0 1.2rem">' +
+        items.map(function (t) { return '<li style="padding:.35rem 0;border-bottom:1px solid var(--color-border);font-size:.88rem">' + t + '</li>'; }).join("") +
+      '</ul>';
+  }
+
   function buildPanelHtml(rows) {
     var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
     var ctas      = rows.filter(function (r) { return r.type === "cta"; });
@@ -300,6 +382,7 @@
         '<div class="an-card"><div class="an-card__val">' + conversionRate + '%</div><div class="an-card__label">Konverteringsrate</div></div>' +
       '</div>' +
       '<p class="an-hint" style="margin-top:-.4rem">Konverteringsrate = andel sidevisninger som endte med et CTA-klikk (telefon, e-post, kontakt, tilbud eller booking).</p>' +
+      buildTrendsHtml(pageviews, ctas) +
       '<h5>Sidevisninger per dag</h5>' +
       '<div class="an-bars" aria-hidden="true">' + (pageviewBars.bars || "") + '</div>' +
       (pageviewBars.bars ? pageviewBars.range : '<p class="an-hint">Ingen data ennå.</p>') +

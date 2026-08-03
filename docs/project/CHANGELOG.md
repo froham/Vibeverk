@@ -30,6 +30,33 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.82.0 — 2026-08-03
+
+### Ny: Fase 2 steg 2 — "Trender" i Analyse
+
+Andre steg i Fase 2. Rein periode-mot-periode-samanlikning (siste 7 dagar
+mot dei 7 dagane før), same "rule-based, ingen AI"-filosofi som
+`computeWebsiteHealth()` (Nettsidehelse) -- ingen ekstern kall, berre
+enkel rekning på tal Analyse-panelet alt hentar.
+
+**Ingen ny spørring, ingen migrasjon**: samanlikningsvindauget (14 dagar
+totalt) er godt innanfor dei 30 dagane `fetchStats()` alt hentar --
+unngår dermed heilt den MAX_ROWS-faren Arkitekten peika på ved
+konsultasjonen (å hente to gonger så mykje data mot same tak kunne gjeve
+ein systematisk skeiv, ikkje berre unøyaktig, trend).
+
+**Fem funn, vist berre når relevant** (t.d. "endra mest populære side"
+vert utelate om ho er uendra): trafikkendring i %, beste dag, endring i
+konverteringsrate (prosentpoeng), størst endring i henvisingskjelde,
+endra mest populære side. Vises ikkje i det heile før det finst
+sidevisningar i den nyaste 7-dagarsperioden (unngår eit tomt/meiningslaust
+"0 % endring"-utsagn for ein heilt fersk kunde).
+
+`?v=N`: `module-sidetelling.js` (4), `console-core.js` (189).
+
+**Neste**: Steg 3 (konverteringskobling mot leads/bookings) -- krev
+migrasjon + Privacy Advisor-gjennomgang før lansering.
+
 ## 0.81.0 — 2026-08-03
 
 ### Ny: Fase 2 steg 1 — einingskategori + bot-filtrering i Analyse
