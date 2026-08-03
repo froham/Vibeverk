@@ -1,6 +1,6 @@
 # Sidetelling / "Analyse" — arkitektur
 
-Intern, cookiefri trafikkmåling for den offentlege nettsida — eit gratis alternativ til Plausible for kundar som ikkje har eige Plausible-konto. `module-sidetelling.js` (offentleg side + Web-admin), styrt av eit Console-brytar-panel i `console/console-core.js`. Bygd i fleire rundar frå 2026-07-31 til 2026-08-03 — sjå `docs/project/CHANGELOG.md` (0.78.0–0.84.0) for full, datert historie. Dette dokumentet er ei samla arkitekturoversikt, ikkje ein endringslogg.
+Intern, cookiefri trafikkmåling for den offentlege nettsida — eit gratis alternativ til Plausible for kundar som ikkje har eige Plausible-konto. `module-sidetelling.js` (offentleg side + Web-admin), styrt av eit Console-brytar-panel i `console/console-core.js`. Bygd i fleire rundar frå 2026-07-31 til 2026-08-03 — sjå `docs/project/CHANGELOG.md` (0.78.0–0.86.0) for full, datert historie. Dette dokumentet er ei samla arkitekturoversikt, ikkje ein endringslogg.
 
 ## Grunnprinsipp (Fase 2, stadfesta av brukar 2026-08-03, gjeld all vidare utvikling)
 
@@ -68,10 +68,18 @@ Deployert til produksjon 2026-08-03 likevel (brukarval) sidan ingen ekte kundar 
 - **Workspace-analyse**: anna bruksområde (intern bruksstatistikk for tilsette), ikkje prioritert.
 - **Seksjon/skrolldjupne ved avreise**: vurdert og avvist 2026-08-03 — krev anten mange fleire skriv per visning eller ein sendBeacon/pagehide-mekanisme (alt forkasta éin gong i Fase 1 av kostnad/nytte-grunnar), og nøyaktigheita er tvilsam på tvers av skjermstorleikar.
 - **"AI-oppsummering"**: bygd som rule-based "Trendar" i staden (sjå Fase 2 steg 2) — ingen ekte AI/eksternt kall, i tråd med prinsipp 2.
+- **"Fase 2.5" — unike besøkjande**: vurdert grundig 2026-08-03 (uavhengig teknisk forslag frå Codex, deretter kritisk gjennomgått av Vibeverk-arkitekten -- same to-stegs mønster som Nettsidehelse-modulen sitt opphav) og **avvist, ikkje berre utsett**. Konklusjon frå begge: teknisk mogleg innanfor dei tre prinsippa (ei privat, aggregert HyperLogLog-skisse, ingen rå IP/UA/besøks-ID lagra), men **uforholdsmessig komplisert for verdien han faktisk gjev Vibeverk sine kundar**. To vesentlege funn:
+  1. Det tidlegare forslaget i denne fila (Postgres sin `inet_client_addr()` + dagleg salta hash) var **stadfesta feil** -- i Supabase/PostgREST-arkitekturen returnerer den funksjonen IP-en til PostgREST/pooler-laget, ikkje den besøkjande sin eigen IP. Rett mønster ville vore `current_setting('request.headers', true)::jsonb ->> 'x-forwarded-for'`, men det spørsmålet vart aldri forfølgt vidare -- sjå punkt 2.
+  2. Sjølve verdien av "unike besøkjande" er tvilsam for Vibeverk sine faktiske kundar (små norske SMB-ar, typisk få hundre besøk/månad): identitets-proxy-feilen (kontor-/skule-/CGNAT-nettverk kan gje opptil 99 % undertelling for ei gruppe, éin person på fleire nettverk kan gje opptil 400 % overtelling) er langt større enn sjølve HLL-algoritmens presisjon (~1,6 %), og kompleksiteten (eigen HLL-implementasjon i rein PL/pgSQL -- Supabase har inga ferdig utviding -- nøkkelrotasjon, `pg_cron`-oppryddingsjobbar, Vault-nøkkelhandtering, ny rapport-RPC) er eit stort steg opp frå resten av kodebasen sin bevisst enkle stil, for eit tal som uansett ville vore eit usikkert estimat, ikkje eit fasitsvar.
+
+  Det enklare alternativet (ein stabil HMAC-signatur i ein privat token-tabell, ~35 dagars levetid) vart òg vurdert og avvist -- det er reelt sett ein server-side cookie-erstattar, og ville undergrave sjølve produktposisjoneringa ("cookiefritt, ingen varig identifikator") som står ordrett i personvernsteksten (`computeDefaultPrivacyText()`, `core.js`).
+
+  **Produktavgjerd (brukar, 2026-08-03)**: Vibeverk sin eigen sidetellingsmodul held fram bevisst enkel og ærleg -- kundar som treng ekte unike-besøkjande-tal (eller anna avansert analyse) vert tilviste til Plausible (alt støtta som eit "premium"/ekstern alternativ, sjå `analytics.plausible`-feltet) eller Google Analytics, i staden for at Vibeverk byggjer ein eigen, kompleks og usikker versjon av same ting. Om reelt høgvolum-behov skulle dukke opp igjen seinare, er HLL framleis den einaste av dei to vurderte tilnærmingane verdt å ta opp att -- men berre med ei ekte Postgres HLL-utviding, ikkje ein eigenskriven algoritme.
+
+  Full avgjerd med grunngjeving: `docs/decisions/ADR-0013-unique-visitors-rejected.md`.
 
 ## Utsett, ikkje avvist
 
-- **Fase 2.5 — unike besøkjande**: teknisk mogleg utan å bryte prinsippa (Postgres sin eigen `inet_client_addr()` + ein dagleg roterande salta hash, aldri lagra rå IP — same metode Plausible sjølv brukar), men krev skjemaendring + justering av personvernsteksten. Eige, seinare delprosjekt, ikkje del av denne Fase 2-runda.
 - **Fase 3**: rollup-tabell (reint teknisk optimalisering, ingen prinsipp-konflikt, berre ikkje urgent med dagens datamengde), CMS-per-side-widget (ingen ny datainnsamling, berre ei anna visning av data som alt finst).
 
 ## `seed_test_pageviews()` — kjent, ikkje-fungerande mekanisme

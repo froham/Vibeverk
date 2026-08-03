@@ -53,3 +53,4 @@ Link to a prior or replacement ADR, if applicable. Omit if not relevant.
 | [ADR-0010](ADR-0010-phase9-semi-automated-onboarding.md) | Semi-automated onboarding v1 (Phase 9) — checklist bookkeeping, hard-gated from go-live | Accepted |
 | [ADR-0011](ADR-0011-backup-export-rpc-scope.md) | `export_backup_tables()` closes the admin-enforcement gap, not the underlying broad-read model | Accepted |
 | [ADR-0012](ADR-0012-single-focus-point-position.md) | Image focus-point stays a single stored position, with multi-context live previews instead of multiple stored positions | Accepted |
+| [ADR-0013](ADR-0013-unique-visitors-rejected.md) | "Unike besøkjande" rejected for the sidetelling module — customers needing it are referred to Plausible/Google Analytics | Accepted |
