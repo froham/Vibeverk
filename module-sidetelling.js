@@ -188,6 +188,34 @@
       .then(function (r) { cb(r.error ? null : (r.data || [])); });
   }
 
+  // Fase 2 (steg 3b) -- konverteringskobling. Egen, tolerant spørring (feiler
+  // IKKE hele panelet om denne feiler -- kun selve konverteringsdelen
+  // uteblir, se renderAdminPanel()). Henter kun analytics_session_id +
+  // tidspunkt fra leads/bookings, aldri navn/e-post/melding -- selve
+  // koblingen (mot pageview-radene) skjer klientsiden i buildPanelHtml().
+  function fetchConversions(cb) {
+    var since = new Date(Date.now() - DAYS_BACK * 86400000).toISOString();
+    // Manuell join-teljar i staden for Promise.all() -- held seg til same
+    // synkron-når-mogleg callback-stil som resten av fila (den falske
+    // Supabase-klienten i test.js svarer synkront; ekte Supabase gjer det
+    // ikkje, men denne teljaren er korrekt uansett rekkjefølgje/timing).
+    var leadsRows = null, bookingsRows = null, pending = 2, failed = false;
+    function maybeDone() {
+      if (--pending > 0) return;
+      if (failed) { cb(null); return; }
+      var rows = (leadsRows || []).concat(bookingsRows || []).filter(function (r) { return r.analytics_session_id; });
+      cb(rows);
+    }
+    _sb.from("leads").select("analytics_session_id,created_at").gte("created_at", since).then(function (r) {
+      if (r.error) failed = true; else leadsRows = r.data || [];
+      maybeDone();
+    });
+    _sb.from("bookings").select("analytics_session_id,created_at").gte("created_at", since).then(function (r) {
+      if (r.error) failed = true; else bookingsRows = r.data || [];
+      maybeDone();
+    });
+  }
+
   function esc(s) { return C.esc(String(s == null ? "" : s)); }
 
   function topN(counts, n) {
@@ -306,7 +334,7 @@
       '</ul>';
   }
 
-  function buildPanelHtml(rows) {
+  function buildPanelHtml(rows, conversions) {
     var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
     var ctas      = rows.filter(function (r) { return r.type === "cta"; });
 
@@ -354,6 +382,20 @@
     var topEntry = topN(entryCount, 5);
     var topExit  = topN(exitCount, 5);
 
+    // Fase 2 (steg 3b) -- match leads/bookings mot sesjonen sin inngangsside.
+    // Kun sesjonar sidetellinga faktisk har sett (bySession) tel med -- ein
+    // konvertering utan matchande pageview-sesjon (t.d. innsending etter at
+    // øktvindauget på DAYS_BACK dagar er ute) vert stille utelate, ikkje feil.
+    var conversionByEntry = {}, conversionCount = 0;
+    (conversions || []).forEach(function (c) {
+      var sessRows = bySession[c.analytics_session_id];
+      if (!sessRows || !sessRows.length) return;
+      var entryPath = sessRows.slice().sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; })[0].path;
+      conversionByEntry[entryPath] = (conversionByEntry[entryPath] || 0) + 1;
+      conversionCount++;
+    });
+    var topConversions = topN(conversionByEntry, 5);
+
     var byCta = {};
     ctas.forEach(function (r) { byCta[r.cta_id] = (byCta[r.cta_id] || 0) + 1; });
     var ctaCardsHtml = Object.keys(byCta).map(function (k) {
@@ -383,6 +425,10 @@
       toplistHtml("Enheter", topDevices, function (i) { return DEVICE_LABELS[i.key] || i.key; }, "Hva slags skjerm besøkende brukte -- mobil, nettbrett eller PC.") +
       toplistHtml("Inngangssider", topEntry, function (i) { return displayPath(i.key); }, "Siden en besøkende kom inn på nettsiden") +
       toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siden en besøkende forlot nettsiden fra") +
+      (conversionCount
+        ? toplistHtml("Henvendelser fra disse sidene", topConversions, function (i) { return displayPath(i.key); },
+            conversionCount + " henvendelse" + (conversionCount === 1 ? "" : "r") + " (kontakt, tilbud eller booking) kan spores til besøk som startet her.")
+        : "") +
       (ctaCardsHtml
         ? '<h5>CTA-klikk</h5><p class="an-hint" style="margin-top:-.2rem">Klikk på telefon-, e-post-, kontakt-, tilbuds- og bookingknapper.</p><div class="an-cards">' + ctaCardsHtml + '</div>'
         : "") +
@@ -413,11 +459,16 @@
         if (retryBtn) retryBtn.addEventListener("click", function () { renderAdminPanel(container); });
         return;
       }
-      container.innerHTML = buildPanelHtml(rows) + testDataButtonHtml();
-      var btn = container.querySelector("[data-sidetelling-seed]");
-      if (btn) btn.addEventListener("click", function () { runSeedTestData(container, btn); });
-      var refreshBtn = container.querySelector("[data-sidetelling-refresh]");
-      if (refreshBtn) refreshBtn.addEventListener("click", function () { renderAdminPanel(container); });
+      // Konverteringskobling hentast tolerant -- feilar denne (t.d. RLS/
+      // nettverk), skal resten av panelet framleis rendrast normalt.
+      fetchConversions(function (conversions) {
+        if (!container.ownerDocument || !container.ownerDocument.contains(container)) return;
+        container.innerHTML = buildPanelHtml(rows, conversions || []) + testDataButtonHtml();
+        var btn = container.querySelector("[data-sidetelling-seed]");
+        if (btn) btn.addEventListener("click", function () { runSeedTestData(container, btn); });
+        var refreshBtn = container.querySelector("[data-sidetelling-refresh]");
+        if (refreshBtn) refreshBtn.addEventListener("click", function () { renderAdminPanel(container); });
+      });
     });
   }
 

@@ -2733,7 +2733,12 @@ const __asyncTests = (async () => {
         rpcCalls.push({ name: name, params: params });
         return { then: function (cb) { cb({ error: null }); } };
       },
-      from: function () { return queryChain; }
+      from: function () { return queryChain; },
+      // No-op -- lar core.js sin egen "if (_sb) { _sb.auth.onAuthStateChange(...) }"
+      // (kjøres synkront ved konstruksjon, se notatet ved window4 sin
+      // window.supabase.createClient-stubbing) feile stille i stedet for å
+      // kaste, uten å late som om noen faktisk er innlogget.
+      auth: { onAuthStateChange: function () {} }
     };
   }
 
@@ -2763,13 +2768,21 @@ const __asyncTests = (async () => {
     var rpcCalls = [];
     var eqCalls4 = [];
     var fakeSb = makeFakeSb(rpcCalls, FAKE_ROWS, { eqCalls: eqCalls4 });
+    // core.js sin egen _sb (brukt av addLead() m.fl.) er en lukket variabel
+    // fanget FØR "App.supabase = ..." kan overstyre den i etterkant -- ulikt
+    // module-sidetelling.js, som leser App.supabase friskt ved egen (senere)
+    // lasting. Må derfor stubbe selve window.supabase.createClient() FØR
+    // core.js evalueres, slik at core.js sin _sb = window.supabase.createClient(...)
+    // faktisk fanger fakeSb (Fase 2 steg 3b -- konverteringskobling-testen
+    // under trenger addLead() sin ekte RPC-vei, ikke den lokale fallbacken).
+    window4.supabase = { createClient: function () { return fakeSb; } };
 
     ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
       var src = fs.readFileSync(f, "utf8");
       if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
       window4.eval(src);
     });
-    window4.App.supabase = fakeSb; // stubbast ETTER core.js, FØR module-sidetelling.js
+    window4.App.supabase = fakeSb; // for module-sidetelling.js, som leser App.supabase friskt ved egen (senere) lasting
     window4.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
     window4.document.dispatchEvent(new window4.Event("DOMContentLoaded", { bubbles: true }));
     var doc4 = window4.document;
@@ -2791,6 +2804,13 @@ const __asyncTests = (async () => {
     assert(typeof window4.App.getAnalyticsSessionId === "function", "App.getAnalyticsSessionId() er eksponert på App (Fase 2 steg 3a)");
     assert(window4.App.getAnalyticsSessionId() === rpcCalls[0].params.p_session_id,
       "App.getAnalyticsSessionId() gir samme session-ID som sidetellingen selv sendte -- éin einaste kjelde til sanning");
+
+    // Fase 2 steg 3b -- konverteringskobling: ei anonym Kontakt-innsending
+    // skal sende med samme session-ID sidetellingen alt bruker.
+    window4.App.addLead({ kind: "kontakt", name: "Test Testesen", email: "test@example.test", message: "Hei" });
+    var leadRpc = rpcCalls[rpcCalls.length - 1];
+    assert(leadRpc.name === "insert_anon_lead" && leadRpc.params.p_analytics_session_id === rpcCalls[0].params.p_session_id,
+      "addLead() sender p_analytics_session_id = samme session-ID som sidetellingen: " + JSON.stringify(leadRpc.params));
 
     var panel = doc4.createElement("div");
     doc4.body.appendChild(panel); // renderAdminPanel sjekker container.ownerDocument.contains(...) før rendering
@@ -2868,6 +2888,73 @@ const __asyncTests = (async () => {
       "endring i mest populære side vises (Tjenester denne perioden, Hjem forrige)");
     assert(/google\.com/.test(panel6.innerHTML.match(/Trender[\s\S]*?Sidevisninger per dag/)[0]),
       "størst endring i henvisningskilde (google.com, ny denne perioden) vises i selve Trender-seksjonen");
+  })();
+
+  // --- module-sidetelling.js: konverteringskobling (Fase 2 steg 3b) ---
+  console.log("\n— Sidetelling: konverteringskobling (leads/bookings -> inngangsside) —");
+  (function () {
+    var ANALYTICS_ROWS = [
+      { type: "pageview", path: "#tjenester", referrer: null, cta_id: null, session_id: "conv-1", device_type: "pc", created_at: "2026-08-01T10:00:00.000Z" },
+      { type: "pageview", path: "#",          referrer: null, cta_id: null, session_id: "conv-2", device_type: "pc", created_at: "2026-08-01T11:00:00.000Z" },
+      { type: "pageview", path: "#om-oss",    referrer: null, cta_id: null, session_id: "ukoblet", device_type: "pc", created_at: "2026-08-01T12:00:00.000Z" }
+    ];
+    var LEADS_ROWS = [
+      { analytics_session_id: "conv-1", created_at: "2026-08-01T10:05:00.000Z" },
+      // Peikar på ein session_id sidetellinga ALDRI har sett -- skal stille
+      // utelatast frå koblinga, ikkje krasje eller telje feil.
+      { analytics_session_id: "ukjent-session", created_at: "2026-08-01T10:06:00.000Z" }
+    ];
+    var BOOKINGS_ROWS = [
+      { analytics_session_id: "conv-2", created_at: "2026-08-01T11:05:00.000Z" }
+    ];
+
+    function makeMultiTableFakeSb() {
+      function chainFor(rows) {
+        var q = {
+          select: function () { return q; }, eq: function () { return q; }, gte: function () { return q; },
+          order: function () { return q; }, limit: function () { return q; },
+          then: function (cb) { cb({ error: null, data: rows }); }
+        };
+        return q;
+      }
+      return {
+        rpc: function () { return { then: function (cb) { cb({ error: null }); } }; },
+        from: function (table) {
+          if (table === "leads") return chainFor(LEADS_ROWS);
+          if (table === "bookings") return chainFor(BOOKINGS_ROWS);
+          return chainFor(ANALYTICS_ROWS);
+        }
+      };
+    }
+
+    var html7 = fs.readFileSync("index.html", "utf8");
+    var dom7 = new JSDOM(html7, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window7 = dom7.window;
+    window7.IntersectionObserver = class { constructor(cb){this.cb=cb;} observe(el){this.cb([{isIntersecting:true,target:el}]);} unobserve(){} disconnect(){} };
+    window7.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window7.scrollTo = () => {};
+    window7.HTMLElement.prototype.scrollIntoView = () => {};
+    window7.URL.createObjectURL = window7.URL.createObjectURL || (() => "blob:mock-url");
+    window7.URL.revokeObjectURL = window7.URL.revokeObjectURL || (() => {});
+
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window7.eval(src);
+    });
+    window7.App.supabase = makeMultiTableFakeSb();
+    window7.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window7.document.dispatchEvent(new window7.Event("DOMContentLoaded", { bubbles: true }));
+
+    var panel7 = window7.document.createElement("div");
+    window7.document.body.appendChild(panel7);
+    window7.VwSidetelling.renderAdminPanel(panel7);
+
+    assert(/Henvendelser fra disse sidene/.test(panel7.innerHTML), "konverteringsseksjonen vises når leads/bookings har matchande analytics_session_id");
+    assert(/Henvendelser fra disse sidene[\s\S]*Tjenester/.test(panel7.innerHTML) && /Henvendelser fra disse sidene[\s\S]*Hjem/.test(panel7.innerHTML),
+      "kobler lead til Tjenester (conv-1 sin inngangsside) og booking til Hjem (conv-2 sin inngangsside)");
+    assert(/2 henvendelser[^<]*kan spores/.test(panel7.innerHTML),
+      "totalt 2 koblede henvendelser vises (den urelaterte \"ukjent-session\"-raden er stille utelatt): " + (panel7.innerHTML.match(/\d+ henvendelser?[^<]*kan spores[^<]*/) || ["(ikke funnet)"])[0]);
   })();
 
   // --- module-sidetelling.js: test-data-knapp vises KUN på vibeverk-staging ---

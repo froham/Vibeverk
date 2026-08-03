@@ -874,7 +874,10 @@ window.App = (function () {
         // Eigarskaps-token for chat-opphavne leads (sjå
         // supabase/migrations/20260717140000_dedup_anon_lead_chat_id.sql) --
         // null for vanlege Kontakt/Tilbud-leads utan chatId, uendra åtferd.
-        p_visitor_id: lead.visitorId || null
+        p_visitor_id: lead.visitorId || null,
+        // Konverteringskobling (Fase 2 steg 3b) -- null når features.sidetelling
+        // er av, sjå getAnalyticsSessionId() sin eigen kommentar.
+        p_analytics_session_id: getAnalyticsSessionId()
       }).then(function (r) {
         if (r.error) { logWriteError("opprette anonym henvendelse", r.error); return Promise.reject(r.error); }
         return newLead;

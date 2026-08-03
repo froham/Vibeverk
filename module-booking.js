@@ -138,7 +138,10 @@
     return _sb.rpc("insert_anon_booking", {
       p_id: b.id, p_asset_id: b.assetId, p_date: b.date, p_time: b.time,
       p_name: b.name, p_email: b.email, p_phone: b.phone, p_message: b.message,
-      p_reference_number: b.referenceNumber
+      p_reference_number: b.referenceNumber,
+      // Konverteringskobling (Fase 2 steg 3b) -- null når features.sidetelling
+      // er av, sjå App.getAnalyticsSessionId() sin eigen kommentar i core.js.
+      p_analytics_session_id: App.getAnalyticsSessionId()
     }).then(function (r) {
       if (r.error) return Promise.reject(r.error);
       return b;
