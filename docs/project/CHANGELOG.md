@@ -30,6 +30,57 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.86.1 — 2026-08-03
+
+### Avgjerd: "unike besøkjande" AVVIST for sidetellinga, ikkje berre utsett
+
+Ingen kode endra -- rein avgjerds-/dokumentasjonsrunde. Brukar bad Codex
+(uavhengig AI-verktøy) om eit sjølvstendig teknisk forslag for korleis
+"unike besøkjande siste 30 dagar" kunne reknast ut innanfor sidetellinga
+sine tre grunnprinsipp (native/gratis, ingen API-kall, cookiefritt).
+Forslaget (ei privat, aggregert HyperLogLog-skisse, HMAC via pgcrypto,
+roterande nøkkelgenerasjonar, `pg_cron`-oppdrydding) vart deretter teke
+til Vibeverk-arkitekten for ei uavhengig, kritisk vurdering -- same
+to-stegs mønster som Nettsidehelse-modulen sitt opphav (Codex-forslag →
+Arkitekt-gjennomgang).
+
+**Viktig funn undervegs**: det tidlegare forslaget i
+`docs/architecture/sidetelling.md` (Postgres sin `inet_client_addr()` +
+dagleg salta hash, notert som "teknisk mogleg" i Fase 2-avslutninga
+same dag) var **stadfesta feil** av både Codex og Arkitekten --
+`inet_client_addr()` returnerer i Supabase/PostgREST-arkitekturen IP-en
+til PostgREST/pooler-laget, ikkje den besøkjande sin eigen IP. Retta i
+same runde.
+
+**Konklusjon (Claude + Arkitekt, samstemte, uavhengig utleia)**: teknisk
+mogleg innanfor prinsippa, men uforholdsmessig komplisert (eigen HLL i
+rein PL/pgSQL, Supabase har inga ferdig utviding) for verdien han gjev
+Vibeverk sine faktiske kundar (små SMB-ar, typisk få hundre besøk/
+månad) -- identitets-proxy-feilen frå delte IP-ar/nettverk (kontor,
+skule, CGNAT) kan gje opptil 400 % feil i begge retningar, langt større
+enn sjølve HLL-presisjonen (~1,6 %). Det enklare alternativet (ein
+privat token-tabell med 35 dagars levetid) vart òg avvist -- reelt sett
+ein server-side cookie-erstattar, i strid med produktposisjoneringa.
+
+**Produktavgjerd (brukar)**: Vibeverk sin eigen sidetellingsmodul held
+fram bevisst enkel og ærleg. Kundar som treng ekte unike-besøkjande-tal
+vert tilviste til Plausible (alt støtta) eller Google Analytics som
+eksternt/"premium" alternativ, i staden for at Vibeverk byggjer ein
+eigen, kompleks og usikker versjon. Neste fokus: polere/optimalisere
+sidetellingsmodulen slik han er i dag, ikkje utvide omfanget.
+
+**Dokumentasjon oppdatert i same runde**: `docs/architecture/
+sidetelling.md` ("Bevisst ikkje bygd"-avsnittet utvida med full
+grunngjeving, den feilaktige `inet_client_addr()`-skissa fjerna),
+`docs/roadmap/ROADMAP.md` ("Later"-avsnittet), `docs/project/
+CURRENT_STATE.md` (den gamle "Fase 2 ... not started"-setninga var
+forelda etter at Fase 2 faktisk vart bygd v0.81.0-0.84.0, retta av
+Project Historian same runde), og eit nytt
+`docs/decisions/ADR-0013-unique-visitors-rejected.md` -- dette er ei
+reell, stadfesta produktavgjerd (eksplisitt brukarval, grunngjeve av to
+uavhengige kjelder) meint å vare, ikkje berre eit kodemønster, så ho
+oppfyller ADR-kriteria i `docs/decisions/README.md`.
+
 ## 0.86.0 — 2026-08-03
 
 ### Retta: favicon (nettlesar-fana) fell no tilbake til Logo-URL
