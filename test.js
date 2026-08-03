@@ -36,6 +36,8 @@ const assert = (cond, msg) => { if (!cond) { globalThis.__err=(globalThis.__err|
 // config.js) -- modulen skal ikke eksponere seg selv i det hele tatt, uansett
 // om Supabase er konfigurert eller ikke i dette miljøet.
 assert(typeof window.VwSidetelling === "undefined", "sidetelling er av som standard -- ingen VwSidetelling eksponert");
+assert(window.App.getAnalyticsSessionId() === null,
+  "App.getAnalyticsSessionId() returnerer null når features.sidetelling er av (Fase 2 steg 3a) -- Kontakt-/Tilbod-/Booking-skjema skal fungere uendra uten den");
 
 // 2) Nav har 5 lenker i rekkefølge
 const navIds = [...doc.querySelectorAll(".nav__link")].map(a => a.getAttribute("data-nav"));
@@ -2785,6 +2787,10 @@ const __asyncTests = (async () => {
     telLink.dispatchEvent(new window4.MouseEvent("click", { bubbles: true }));
     assert(rpcCalls.length === 2 && rpcCalls[1].params.p_type === "cta" && rpcCalls[1].params.p_cta_id === "tel",
       "klikk på tel:-lenke sendes som CTA-hendelse med riktig cta_id: " + JSON.stringify(rpcCalls[1]));
+
+    assert(typeof window4.App.getAnalyticsSessionId === "function", "App.getAnalyticsSessionId() er eksponert på App (Fase 2 steg 3a)");
+    assert(window4.App.getAnalyticsSessionId() === rpcCalls[0].params.p_session_id,
+      "App.getAnalyticsSessionId() gir samme session-ID som sidetellingen selv sendte -- éin einaste kjelde til sanning");
 
     var panel = doc4.createElement("div");
     doc4.body.appendChild(panel); // renderAdminPanel sjekker container.ownerDocument.contains(...) før rendering

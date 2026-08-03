@@ -34,20 +34,9 @@
   var _sb = App.supabase;
   if (!_sb) return; // krever Supabase -- ingen lokal fallback for anon-skriving
 
-  var SESSION_KEY = "vw-sidetelling-session";
-
-  function sessionId() {
-    try {
-      var id = sessionStorage.getItem(SESSION_KEY);
-      if (!id) {
-        id = (window.crypto && window.crypto.randomUUID)
-          ? window.crypto.randomUUID()
-          : (String(Date.now()) + "-" + Math.random().toString(36).slice(2));
-        sessionStorage.setItem(SESSION_KEY, id);
-      }
-      return id;
-    } catch (e) { return "no-session-storage"; }
-  }
+  // Session-ID-generering flytta til App.getAnalyticsSessionId() i core.js
+  // (Fase 2, steg 3a) -- delt med Kontakt-/Tilbod-/Booking-skjemaa for
+  // konverteringskobling. Sjå notatet ved definisjonen i core.js.
 
   function strippedReferrer() {
     var r = document.referrer;
@@ -103,7 +92,7 @@
 
   function send(type, path, ctaId) {
     _sb.rpc("insert_analytics_event", {
-      p_session_id: sessionId(),
+      p_session_id: App.getAnalyticsSessionId(),
       p_type: type,
       p_path: path,
       p_referrer: type === "pageview" ? strippedReferrer() : null,

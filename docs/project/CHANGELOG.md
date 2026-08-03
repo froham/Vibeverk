@@ -30,6 +30,37 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.83.0 — 2026-08-03
+
+### Refaktor: Fase 2 steg 3a — delt session-ID (`App.getAnalyticsSessionId()`)
+
+Førebuande steg for konverteringskobling (steg 3b). Session-ID-
+generering flytta frå `module-sidetelling.js` sin private `sessionId()`
+til ein ny, delt `App.getAnalyticsSessionId()` i `core.js` -- Arkitekt-
+tilråding frå konsultasjonen 2026-08-03: heile `module-sidetelling.js`
+køyrer inni `App.ready(function (CFG) { if (!CFG.features.sidetelling)
+return; ... })`, så ei eksponering INNI modulen ville vore utilgjengeleg
+akkurat når Kontakt-/Tilbod-/Booking-skjemaa (som fungerer heilt
+uavhengig av om sidetelling er på/av) treng ho i steg 3b.
+
+`getAnalyticsSessionId()` returnerer `null` når `features.sidetelling`
+er av (nytt -- gjer det trygt for skjemaa å kalle henne ubetinga, utan
+eigne `typeof`-sjekkar mot ein modul dei ikkje skal kjenne til), elles
+same åtferd/fallback (`"no-session-storage"` viss sessionStorage kastar)
+som den opphavlege funksjonen alltid har hatt. `module-sidetelling.js`
+sin eigen `send()` kallar no `App.getAnalyticsSessionId()` i staden --
+éin einaste kjelde til sanning for `sessionStorage`-nøkkelen
+`vw-sidetelling-session`.
+
+Ingen synleg åtferdsendring for sluttbrukar i dette steget -- reint
+internt refaktor, klar grunnmur for steg 3b.
+
+`?v=N`: `core.js` (82 i index.html/admin, 81 i console/workspace),
+`module-sidetelling.js` (5), `console-core.js` (190).
+
+**Neste**: Steg 3b (konverteringskobling mot leads/bookings, ny
+migrasjon) + Privacy Advisor-gjennomgang før lansering.
+
 ## 0.82.0 — 2026-08-03
 
 ### Ny: Fase 2 steg 2 — "Trender" i Analyse

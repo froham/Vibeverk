@@ -5208,6 +5208,31 @@ window.App = (function () {
 
   const SUPER_KEY  = "superconfig";
 
+  // Fase 2 (steg 3a) -- delt session-ID for å kople sidetellinga (Analyse)
+  // saman med ekte lead-/booking-innsendingar (konverteringskobling, steg
+  // 3b). Må vere HER, ikkje i module-sidetelling.js sjølv, sidan Kontakt-/
+  // Tilbod-/Booking-skjemaa fungerer HEILT uavhengig av om
+  // features.sidetelling er på/av eller om modulen i det heile er lasta --
+  // ei eksponering inni sidetellings-modulen ville vore utilgjengeleg
+  // akkurat når desse skjemaa treng ho (Arkitekt-notat 2026-08-03, sjå
+  // docs/project/CHANGELOG.md). Éin einaste kjelde til sanning for
+  // sessionStorage-nøkkelen "vw-sidetelling-session" -- module-sidetelling.js
+  // sin eigen, lokale sessionId()-funksjon vart fjerna, kallar denne no.
+  const ANALYTICS_SESSION_KEY = "vw-sidetelling-session";
+  function getAnalyticsSessionId() {
+    if (!(CFG.features && CFG.features.sidetelling === true)) return null;
+    try {
+      var id = sessionStorage.getItem(ANALYTICS_SESSION_KEY);
+      if (!id) {
+        id = (window.crypto && window.crypto.randomUUID)
+          ? window.crypto.randomUUID()
+          : (String(Date.now()) + "-" + Math.random().toString(36).slice(2));
+        sessionStorage.setItem(ANALYTICS_SESSION_KEY, id);
+      }
+      return id;
+    } catch (e) { return "no-session-storage"; } // uendra fallback frå den opprinnelege sessionId() i module-sidetelling.js
+  }
+
   // Sett saman eit forslag til personvernerklæring basert på kva modular/
   // funksjonar som faktisk er aktive. Brukes som startpunkt ved første oppstart
   // (før noe er lagra). Kan kallast frå Konsollen for å generere eit nytt forslag.
@@ -5379,6 +5404,7 @@ window.App = (function () {
     buildTemplateOptions: buildTemplateOptions,   // kombinerer kontekstmalar + CRM-malar for openReplyModal sin malvelgar
     buildSignatureOptions: buildSignatureOptions, // delte signaturar (Kunder → CRM-innstillingar) for openReplyModal sine «Sett inn»-knappar
     computeDefaultPrivacyText: computeDefaultPrivacyText,
+    getAnalyticsSessionId: getAnalyticsSessionId, // sjå notatet ved definisjonen -- delt session-ID for konverteringskobling
     // Nettsidehelse (2026-07-27) -- reine, opts-parameteriserte funksjonar
     // slik at Console kan køyre same helsesjekk for KVA SOM HELST tenant
     // operatøren har valt, ikkje berre denne sida sin eigen CFG/content.
