@@ -153,9 +153,11 @@ doc.querySelector("#admin-pass").value = "test";
 doc.querySelector("[data-login]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
 assert(!!doc.querySelector(".tabs"), "riktig passord åpner panelet");
 window.SITE_CONFIG.supabase = realSupabaseCfg;
-assert(!!doc.querySelector(".admin-catbar"), "admin-panelet har en kategori-bar (eier ser alle tre kategorier)");
+assert(!!doc.querySelector(".admin-catbar"), "admin-panelet har en kategori-bar (eier ser alle fire kategorier)");
 var catLabels = [...doc.querySelectorAll(".admin-cat")].map(c => c.textContent);
-assert(JSON.stringify(catLabels) === JSON.stringify(["Innhold","Henvendelser","Innstillinger"]), "tre kategorier i riktig rekkefølge: " + catLabels.join(","));
+// Innsikt-runden (2026-08-03): ny fjerde kategori mellom Henvendelser og
+// Innstillinger (var "Analyse" som underfane i Innstillinger).
+assert(JSON.stringify(catLabels) === JSON.stringify(["Innhold","Henvendelser","Innsikt","Innstillinger"]), "fire kategorier i riktig rekkefølge: " + catLabels.join(","));
 
 // 7d) Modulbasert brukerveiledning (2026-08-03) -- "?"-knapp i modal__head,
 // dynamisk innhold basert på faktisk aktive feature-flagg (config.js sin
@@ -223,9 +225,16 @@ assert(tabLabelsHenv.indexOf("Kontakt") > -1 && tabLabelsHenv.indexOf("Leads") =
   assert(window.__xssFired !== true, "injisert skript i referansenummer køyrer IKKJE (2026-07-18-tryggleiksfiks)");
 })();
 
-clickCat("innstillinger"); clickTab("analyse");
+// Innsikt-runden (2026-08-03): "Analyse" flyttet til egen "Innsikt"-toppnivå-
+// kategori (var underfane i Innstillinger sammen med Navigasjon), se
+// ADMIN_CATEGORIES/allowedCategoriesForRole()/buildAdminTabs() i core.js.
+clickCat("innsikt"); clickTab("analyse");
+var tabLabelsInnsikt = [...doc.querySelectorAll(".tab")].map(t => t.textContent);
+assert(tabLabelsInnsikt.length === 1 && tabLabelsInnsikt[0] === "Innsikt", "Innsikt-kategorien har kun sin egen fane, med riktig label «Innsikt»");
+
+clickCat("innstillinger"); clickTab("navigasjon");
 var tabLabelsInnst = [...doc.querySelectorAll(".tab")].map(t => t.textContent);
-assert(tabLabelsInnst.indexOf("Analyse") === 0, "Analyse-fanen er først i Innstillinger-kategorien");
+assert(tabLabelsInnst.indexOf("Navigasjon") === 0, "Navigasjon-fanen er først i Innstillinger-kategorien (Analyse flyttet ut til egen Innsikt-kategori)");
 assert(tabLabelsInnst.indexOf("Sikkerhetskopi") === tabLabelsInnst.length - 1, "Sikkerhetskopi-fanen er sist i Innstillinger-kategorien");
 
 // --- Nettsidehelse (2026-07-27, regelbasert helsesjekk, ingen KI) ----------
@@ -478,7 +487,7 @@ const __asyncTests = (async () => {
     innhold: "innhold", tjenester: "innhold", aktuelt: "innhold",
     "mod-referanser": "innhold", "mod-faq": "innhold", "mod-mediabank": "innhold",
     leads: "henvendelser", "mod-tilbud": "henvendelser", "mod-booking": "henvendelser", "mod-crm": "henvendelser",
-    analyse: "innstillinger", navigasjon: "innstillinger", sikkerhetskopi: "innstillinger"
+    analyse: "innsikt", navigasjon: "innstillinger", sikkerhetskopi: "innstillinger"
   };
   function clickAdminTab(id) {
     var cat = ADMIN_TAB_CATEGORY[id];
@@ -1104,7 +1113,10 @@ const __asyncTests = (async () => {
 
   // Status-fordeling (åpne/løst) og modul-bevisste innholdstal
   var anHeadings = [].slice.call(doc.querySelectorAll(".an-heading")).map(function (h) { return h.textContent; });
-  assert(anHeadings.indexOf("Status (åpne/løst)") > -1, "egen seksjon for status (åpne/løst)");
+  // Overskriften har no ein inline forklarende merknad rett ved sida
+  // ("åpne er hovedtallet ..."), sjå core.js sin redesigna statusCard() --
+  // startsWith i staden for eksakt treff.
+  assert(anHeadings.some(function (h) { return h.indexOf("Status (åpne/løst)") === 0; }), "egen seksjon for status (åpne/løst)");
   assert(anHeadings.indexOf("Innhold") > -1, "egen seksjon for innhold (referanser/faq/mediebank/crm)");
   var anCardTexts = [].slice.call(doc.querySelectorAll(".an-card")).map(function (c) { return c.textContent; });
   assert(anCardTexts.some(function (t) { return /Sanntidsbooking/.test(t); }), "booking sanntid vs. forespørsel vises (booking-modul aktiv)");
@@ -2773,11 +2785,18 @@ const __asyncTests = (async () => {
     };
   }
 
+  // Relative datoar (ikkje faste "2026-07-xx"-strengar) -- Innsikt-runden
+  // (2026-08-03) la til reell periode-slicing klientside (sliceRowsToPeriod(),
+  // sjå module-sidetelling.js), som filtrerer VISNINGA på faktisk avstand frå
+  // Date.now(). Faste datoar ville sakte drive utanfor standardperioden
+  // (30 dagar) berre av at testen køyrer ein seinare dag enn dei vart skrivne.
+  var DAY_MS = 86400000;
+  function daysAgoIso(n) { return new Date(Date.now() - n * DAY_MS).toISOString(); }
   var FAKE_ROWS = [
-    { type: "pageview", path: "#hjem",      referrer: null,         cta_id: null, session_id: "s1", device_type: "pc",    created_at: "2026-07-01T10:00:00.000Z" },
-    { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "s1", device_type: "mobil", created_at: "2026-07-01T10:01:00.000Z" },
-    { type: "pageview", path: "#tjenester", referrer: null,         cta_id: null, session_id: "s2", device_type: "pc",    created_at: "2026-07-02T09:00:00.000Z" },
-    { type: "cta",      path: "#kontakt",   referrer: null,         cta_id: "tel", session_id: "s2", device_type: "pc",   created_at: "2026-07-02T09:05:00.000Z" }
+    { type: "pageview", path: "#hjem",      referrer: null,         cta_id: null, session_id: "s1", device_type: "pc",    created_at: daysAgoIso(2) },
+    { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "s1", device_type: "mobil", created_at: daysAgoIso(2) },
+    { type: "pageview", path: "#tjenester", referrer: null,         cta_id: null, session_id: "s2", device_type: "pc",    created_at: daysAgoIso(1) },
+    { type: "cta",      path: "#kontakt",   referrer: null,         cta_id: "tel", session_id: "s2", device_type: "pc",   created_at: daysAgoIso(1) }
   ];
 
   console.log("\n— Sidetelling: pageview/CTA-fangst —");
@@ -2861,8 +2880,52 @@ const __asyncTests = (async () => {
       "is_bot-rader filtreres alltid bort i spørringen, uavhengig av staging/produksjon: " + JSON.stringify(eqCalls4));
     assert(/Enheter[\s\S]*Mobil/.test(panel.innerHTML) && /Enheter[\s\S]*PC/.test(panel.innerHTML),
       "adminpanel: enhetsfordeling (Mobil/PC) vises i topplisten");
-    assert(!/Trender/.test(panel.innerHTML),
-      "Trender-seksjonen vises IKKE når all data er eldre enn samanlikningsvindauget (FAKE_ROWS er frå juli, godt utanfor siste 7 dagar)");
+    // "Trender vises IKKE for gammel data" flyttet til en egen, dedikert
+    // sjekk under (FAKE_ROWS er nå relativt daterte for å overleve reelt
+    // periodevalg -- se daysAgoIso() -- så den gamle absolutt-daterte
+    // antakelsen her passer ikke lenger for DENNE fixturen).
+  })();
+
+  // --- module-sidetelling.js: Trender vises IKKE når inneværende halvdel
+  // av perioden ikke har noen sidevisninger i det hele tatt (buildTrendsHtml()
+  // sin `if (cur.pageviews === 0) return "";`-vakt) -- egen, dedikert fixture
+  // med en bevisst uråd-gammel dato (år 2000), robust uansett når testen
+  // faktisk kjøres. ---
+  console.log("\n— Sidetelling: Trender skjules for eldgammel data —");
+  (function () {
+    var ANCIENT_ROWS = [
+      { type: "pageview", path: "#", referrer: null, cta_id: null, session_id: "old1", device_type: "pc", created_at: "2000-01-01T10:00:00.000Z" }
+    ];
+    var html5 = fs.readFileSync("index.html", "utf8");
+    var dom5 = new JSDOM(html5, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window5 = dom5.window;
+    window5.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window5.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window5.scrollTo = () => {};
+    window5.HTMLElement.prototype.scrollIntoView = () => {};
+    window5.URL.createObjectURL = window5.URL.createObjectURL || (() => "blob:mock-url");
+    window5.URL.revokeObjectURL = window5.URL.revokeObjectURL || (() => {});
+
+    var fakeSb5 = makeFakeSb([], ANCIENT_ROWS, {});
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window5.eval(src);
+    });
+    window5.App.supabase = fakeSb5;
+    window5.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window5.document.dispatchEvent(new window5.Event("DOMContentLoaded", { bubbles: true }));
+    var doc5 = window5.document;
+
+    var panel5 = doc5.createElement("div");
+    doc5.body.appendChild(panel5);
+    window5.VwSidetelling.renderAdminPanel(panel5);
+    assert(!/Trender/.test(panel5.innerHTML),
+      "Trender-seksjonen vises IKKE når inneværende halvdel av perioden har null sidevisninger (data fra år 2000, godt utenfor standardperioden på 30 dager)");
   })();
 
   // --- module-sidetelling.js: "Trender" -- periode-mot-periode-samanligning ---
@@ -2871,12 +2934,19 @@ const __asyncTests = (async () => {
     var DAY = 86400000;
     var now = Date.now();
     var iso = function (daysAgo) { return new Date(now - daysAgo * DAY).toISOString(); };
+    // Innsikt-runden (2026-08-03): Trender-vindauget er generalisert frå det
+    // faste "siste 7 mot føregåande 7 dagar" til "andre halvdel av VALT
+    // periode mot første halvdel" (sjå TREND_PERIOD_HALF i
+    // module-sidetelling.js). Standardperioden er 30 dagar -> halvdel = 15,
+    // så "forrige periode" må no liggje 15-30 dagar tilbake (var 8-13,
+    // stemte med den gamle faste 7-dagars-halvdelen).
     var TREND_ROWS = [
-      // Forrige periode (dag 8-13 tilbake): 2 sidevisninger, 1 CTA, facebook.com
-      { type: "pageview", path: "#",     referrer: "facebook.com", cta_id: null, session_id: "p1", device_type: "pc", created_at: iso(9) },
-      { type: "pageview", path: "#",     referrer: "facebook.com", cta_id: null, session_id: "p2", device_type: "pc", created_at: iso(10) },
-      { type: "cta",      path: "#",     referrer: null,           cta_id: "tel", session_id: "p1", device_type: "pc", created_at: iso(9) },
-      // Denne perioden (siste 7 dagar): 4 sidevisninger (dobbelt), google.com, tjenester mest besøkt
+      // Forrige periode (dag 20-22 tilbake, godt innanfor 15-30-vindauget):
+      // 2 sidevisninger, 1 CTA, facebook.com
+      { type: "pageview", path: "#",     referrer: "facebook.com", cta_id: null, session_id: "p1", device_type: "pc", created_at: iso(20) },
+      { type: "pageview", path: "#",     referrer: "facebook.com", cta_id: null, session_id: "p2", device_type: "pc", created_at: iso(22) },
+      { type: "cta",      path: "#",     referrer: null,           cta_id: "tel", session_id: "p1", device_type: "pc", created_at: iso(20) },
+      // Denne perioden (siste 15 dagar): 4 sidevisninger (dobbelt), google.com, tjenester mest besøkt
       { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "c1", device_type: "mobil", created_at: iso(1) },
       { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "c2", device_type: "pc",    created_at: iso(2) },
       { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "c3", device_type: "pc",    created_at: iso(3) },
@@ -2917,26 +2987,33 @@ const __asyncTests = (async () => {
       "trafikkendring rekna korrekt (4 mot 2 sidevisninger = 100% auke): " + (panel6.innerHTML.match(/[↑↓][^<]*sidevisninger[^<]*/) || ["(ikke funnet)"])[0]);
     assert(/Tjenester er nå mest besøkt side \(var Hjem forrige periode\)/.test(panel6.innerHTML),
       "endring i mest populære side vises (Tjenester denne perioden, Hjem forrige)");
-    assert(/google\.com/.test(panel6.innerHTML.match(/Trender[\s\S]*?Sidevisninger per dag/)[0]),
+    // "Trafikk per dag/uke" (var "Sidevisninger per dag") -- Innsikt-runden
+    // delte den gamle enkelt-h5-overskrifta i ei seksjonsoverskrift ("Trafikk
+    // per dag/uke") pluss eigne widget-titlar ("Sidevisninger"/"CTA-klikk").
+    assert(/google\.com/.test(panel6.innerHTML.match(/Trender[\s\S]*?Trafikk per (dag|uke)/)[0]),
       "størst endring i henvisningskilde (google.com, ny denne perioden) vises i selve Trender-seksjonen");
   })();
 
   // --- module-sidetelling.js: konverteringskobling (Fase 2 steg 3b) ---
   console.log("\n— Sidetelling: konverteringskobling (leads/bookings -> inngangsside) —");
   (function () {
+    // Relative datoar (sjå daysAgoIso-notatet i FAKE_ROWS-blokka over) --
+    // faste "2026-08-01"-datoar ville drive utanfor standardperioden (30
+    // dagar) etter kvart som testen faktisk køyrer seinare og seinare.
+    var daysAgoIso7 = function (n) { return new Date(Date.now() - n * 86400000).toISOString(); };
     var ANALYTICS_ROWS = [
-      { type: "pageview", path: "#tjenester", referrer: null, cta_id: null, session_id: "conv-1", device_type: "pc", created_at: "2026-08-01T10:00:00.000Z" },
-      { type: "pageview", path: "#",          referrer: null, cta_id: null, session_id: "conv-2", device_type: "pc", created_at: "2026-08-01T11:00:00.000Z" },
-      { type: "pageview", path: "#om-oss",    referrer: null, cta_id: null, session_id: "ukoblet", device_type: "pc", created_at: "2026-08-01T12:00:00.000Z" }
+      { type: "pageview", path: "#tjenester", referrer: null, cta_id: null, session_id: "conv-1", device_type: "pc", created_at: daysAgoIso7(1) },
+      { type: "pageview", path: "#",          referrer: null, cta_id: null, session_id: "conv-2", device_type: "pc", created_at: daysAgoIso7(1) },
+      { type: "pageview", path: "#om-oss",    referrer: null, cta_id: null, session_id: "ukoblet", device_type: "pc", created_at: daysAgoIso7(1) }
     ];
     var LEADS_ROWS = [
-      { analytics_session_id: "conv-1", created_at: "2026-08-01T10:05:00.000Z" },
+      { analytics_session_id: "conv-1", created_at: daysAgoIso7(1) },
       // Peikar på ein session_id sidetellinga ALDRI har sett -- skal stille
       // utelatast frå koblinga, ikkje krasje eller telje feil.
-      { analytics_session_id: "ukjent-session", created_at: "2026-08-01T10:06:00.000Z" }
+      { analytics_session_id: "ukjent-session", created_at: daysAgoIso7(1) }
     ];
     var BOOKINGS_ROWS = [
-      { analytics_session_id: "conv-2", created_at: "2026-08-01T11:05:00.000Z" }
+      { analytics_session_id: "conv-2", created_at: daysAgoIso7(1) }
     ];
 
     function makeMultiTableFakeSb() {
@@ -2981,11 +3058,106 @@ const __asyncTests = (async () => {
     window7.document.body.appendChild(panel7);
     window7.VwSidetelling.renderAdminPanel(panel7);
 
-    assert(/Henvendelser fra disse sidene/.test(panel7.innerHTML), "konverteringsseksjonen vises når leads/bookings har matchande analytics_session_id");
-    assert(/Henvendelser fra disse sidene[\s\S]*Tjenester/.test(panel7.innerHTML) && /Henvendelser fra disse sidene[\s\S]*Hjem/.test(panel7.innerHTML),
-      "kobler lead til Tjenester (conv-1 sin inngangsside) og booking til Hjem (conv-2 sin inngangsside)");
+    // Innsikt-runden (2026-08-03): "Henvendelser fra disse sidene"
+    // (topplista etter inngangsside) er erstatta med ein samla, bevisst
+    // tona-ned trakt (sidevisning -> CTA-klikk -> henvendelse, sjå
+    // renderSiderPane()) -- kobling mellom besøksdata og ein namngjeven
+    // henvendelse er framleis eit ope juridisk spørsmål (ADR-0013-området),
+    // så per-side-nedbrytinga vart bevisst ikkje teken med vidare.
+    assert(!!panel7.querySelector(".an-funnel"), "konverteringsseksjonen (trakt) vises når leads/bookings har matchande analytics_session_id");
+    assert(/Fra besøk til henvendelse/.test(panel7.innerHTML), "trakten har rett overskrift");
     assert(/2 henvendelser[^<]*kan spores/.test(panel7.innerHTML),
       "totalt 2 koblede henvendelser vises (den urelaterte \"ukjent-session\"-raden er stille utelatt): " + (panel7.innerHTML.match(/\d+ henvendelser?[^<]*kan spores[^<]*/) || ["(ikke funnet)"])[0]);
+    var funnelNs = [].slice.call(panel7.querySelectorAll(".an-funnel__n")).map(function (el) { return el.textContent; });
+    assert(funnelNs.join(",") === "3,0,2", "trakten viser riktige tall: 3 sidevisninger, 0 CTA-klikk, 2 henvendelser (conv-1+conv-2, \"ukoblet\"/\"ukjent-session\" telles ikke): " + funnelNs.join(","));
+  })();
+
+  // --- module-sidetelling.js: sub-faner, periodevalg, søyle-tooltip (tap +
+  // tastatur) -- dei tre nye interaktive kontrollane frå Innsikt-runden
+  // (2026-08-03), som elles ikkje hadde nokon eigen testdekning ---
+  console.log("\n— Sidetelling: sub-faner, periodevalg og søyle-tooltip —");
+  (function () {
+    var daysAgoIso8 = function (n) { return new Date(Date.now() - n * 86400000).toISOString(); };
+    // Éin rad godt innanfor 7 dagar (tel i alle periodar), éin rad kun
+    // innanfor 30/90 dagar -- gjer periodevalet faktisk observerbart.
+    var PERIOD_TEST_ROWS = [
+      { type: "pageview", path: "#hjem", referrer: null, cta_id: null, session_id: "near", device_type: "pc", created_at: daysAgoIso8(1) },
+      { type: "pageview", path: "#tjenester", referrer: null, cta_id: null, session_id: "far", device_type: "pc", created_at: daysAgoIso8(20) }
+    ];
+    var html8 = fs.readFileSync("index.html", "utf8");
+    var dom8 = new JSDOM(html8, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window8 = dom8.window;
+    window8.IntersectionObserver = class { constructor(cb){this.cb=cb;} observe(el){this.cb([{isIntersecting:true,target:el}]);} unobserve(){} disconnect(){} };
+    window8.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window8.scrollTo = () => {};
+    window8.HTMLElement.prototype.scrollIntoView = () => {};
+    window8.URL.createObjectURL = window8.URL.createObjectURL || (() => "blob:mock-url");
+    window8.URL.revokeObjectURL = window8.URL.revokeObjectURL || (() => {});
+
+    var fakeSb8 = makeFakeSb([], PERIOD_TEST_ROWS, {});
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window8.eval(src);
+    });
+    window8.App.supabase = fakeSb8;
+    window8.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window8.document.dispatchEvent(new window8.Event("DOMContentLoaded", { bubbles: true }));
+    var doc8 = window8.document;
+
+    var panel8 = doc8.createElement("div");
+    doc8.body.appendChild(panel8);
+    window8.VwSidetelling.renderAdminPanel(panel8);
+
+    function fire8(el, type) { el.dispatchEvent(new window8.Event(type, { bubbles: true, cancelable: true })); }
+
+    // -- Periodevalg: standard er 30 dager, begge rader tel med --
+    assert(panel8.querySelector(".an-card__val").textContent === "2", "periodevalg: standardperioden (30 dager) viser begge sidevisningane");
+
+    // -- Sub-faner: bytte til "Sider" viser den fana, skjuler "Oversikt" --
+    var siderTab = panel8.querySelector('[data-an-tab="sider"]');
+    var oversiktTab = panel8.querySelector('[data-an-tab="oversikt"]');
+    fire8(siderTab, "click");
+    assert(siderTab.classList.contains("is-active") && siderTab.getAttribute("aria-selected") === "true",
+      "sub-fane: klikk på «Sider» markerer den som aktiv (klasse + aria-selected)");
+    assert(!oversiktTab.classList.contains("is-active") && oversiktTab.getAttribute("aria-selected") === "false",
+      "sub-fane: «Oversikt» mister aktiv-status når «Sider» velges");
+    assert(panel8.querySelector('[data-an-pane="sider"]').classList.contains("is-active") && !panel8.querySelector('[data-an-pane="oversikt"]').classList.contains("is-active"),
+      "sub-fane: riktig panel vises/skjules ved fanebytte");
+    fire8(oversiktTab, "click"); // tilbake til Oversikt for resten av testen
+
+    // -- Periodevalg: 7 dager ekskluderer den 20-dagar-gamle raden --
+    var days7Btn = panel8.querySelector('[data-an-days="7"]');
+    fire8(days7Btn, "click");
+    assert(days7Btn.classList.contains("is-active"), "periodevalg: «7 dager»-knappen markeres aktiv");
+    assert(panel8.querySelector(".an-card__val").textContent === "1",
+      "periodevalg: bytte til 7 dager filtrerer bort den 20 dager gamle sidevisningen, uten ny spørring (samme rader, kun ny slicing): " + panel8.querySelector(".an-card__val").textContent);
+    fire8(panel8.querySelector('[data-an-days="30"]'), "click"); // tilbake til 30 dager
+
+    // -- Søyle-tooltip: klikk (tap) --
+    var firstBar = panel8.querySelector(".an-bar");
+    assert(!!firstBar, "minst én søyle vises i Sidevisninger-grafen");
+    assert(firstBar.getAttribute("tabindex") === "0" && firstBar.getAttribute("role") === "img" && !!firstBar.getAttribute("aria-label"),
+      "søylene er tastatur-/skjermleser-tilgjengelige (tabindex/role/aria-label)");
+    fire8(firstBar, "click");
+    assert(firstBar.classList.contains("is-tipped"), "tap/klikk på søyle åpner tooltip (.is-tipped)");
+    fire8(firstBar, "click");
+    assert(!firstBar.classList.contains("is-tipped"), "nytt tap/klikk på samme søyle lukker tooltipen igjen");
+
+    // -- Søyle-tooltip: tastatur (Enter) --
+    var kd = new window8.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    firstBar.dispatchEvent(kd);
+    assert(firstBar.classList.contains("is-tipped"), "Enter-tast på en fokusert søyle åpner tooltipen (tastaturtilgang, ikke bare mus/touch)");
+
+    // -- Ingen lekkasje av delegerte klikk-lyttarar ved gjentatte "Oppdater" --
+    // (UX-review-funn 2026-08-03: container._anBarsBound skal hindre at
+    // bindBarTooltips() legg til en ny delegert lyttar for hvert klikk.)
+    window8.VwSidetelling.renderAdminPanel(panel8);
+    window8.VwSidetelling.renderAdminPanel(panel8);
+    var barAfterRefresh = panel8.querySelector(".an-bar");
+    fire8(barAfterRefresh, "click");
+    var tippedCount = panel8.querySelectorAll(".an-bar.is-tipped").length;
+    assert(tippedCount === 1, "gjentatte \"Oppdater\"-kall legger ikke til flere delegerte klikk-lyttarar (nøyaktig én søyle tippes, ikke flere/duplikat-oppførsel): " + tippedCount);
   })();
 
   // --- module-sidetelling.js: test-data-knapp vises KUN på vibeverk-staging ---

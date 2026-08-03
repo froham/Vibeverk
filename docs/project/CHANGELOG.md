@@ -30,6 +30,100 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.87.0 — 2026-08-03
+
+### Ny: "Innsikt" -- sidetellings-panelet redesigna som eige dashboard, eigen fane
+
+Brukar bad om ein skikkeleg designrunde på sidetellings-panelet ("gjøre dette
+vesentlig bedre og mer 'dashboard'-aktig") -- rett etter at 0.86.1 avslutta
+"unike besøkjande"-diskusjonen med "neste fokus: polere/optimalisere
+sidetellingsmodulen slik han er i dag". Arkitekten (data-/arkitektursida)
+og UX/Mobil-reviewer (visuell/UX-sida) vart konsulterte uavhengig av
+kvarandre, deretter bygd ein interaktiv HTML-mockup (fiktive tal) og
+iterert saman med brukaren over fleire rundar -- inkludert ein eigen
+Arkitekt-gjennomgang av sjølve implementasjonsplanen (periode-slicing,
+`MAX_ROWS`, trend-generalisering) før koding starta.
+
+**Eigen "Innsikt"-kategori i adminpanelet.** `ADMIN_CATEGORIES` (`core.js`)
+fekk ein ny fjerde kategori: `Design | Innhold | Henvendelser | Innsikt |
+Innstillinger | Min konto`. "Analyse"-fana (intern id framleis `"analyse"`)
+flytta ut av "Innstillinger" til denne nye kategorien og heiter no
+"Innsikt". Halde admin-only, same tilgangsnivå som før.
+
+**Henvendelsestala er no ein alltid-synleg header.** "Denne måneden" og eit
+redesigna "Status (åpne/løst)" (opne-talet er hovudtalet i kvart kort, med
+ei løyst-framdriftslinje og "X av Y løyst"-note, i staden for to
+likestilte tal) vert vist øvst i Innsikt-fana uansett om kunden har
+sidetellingsmodulen eller ikkje.
+
+**Periodevalg (7/30/90 dagar), overordna for heile dashboardet.**
+`module-sidetelling.js` hentar no alltid det maksimale vindauget (90
+dagar, éin spørring) og filtrerer/aggregerer klientside per valt periode
+-- ingen ny spørring ved periodebyte. "Trender" er generalisert frå den
+faste "siste 7 mot føregåande 7 dagar" til "andre halvdel av valt periode
+mot første halvdel". 90-dagarsvisinga viser vekentlege søyler i staden for
+90 tynne dagssøyler.
+
+**Sub-faner i staden for éin lang scroll**: Oversikt / Sider / Kilder &
+enheter. **To nye KPI-ar** (avvisningsrate, sider per besøk), gratis frå
+eksisterande sesjonsgruppering. **Konverteringstopplista** ("Henvendelser
+fra disse sidene") er erstatta med ein samla, framleis bevisst tona-ned
+trakt (sidevisning → CTA-klikk → henvendelse) -- det opne juridiske
+spørsmålet rundt konverteringskoplinga (sjå ADR-0013-området) er uendra,
+berre presentasjonen. **Ikkje-modul-fallback**: manglar kunden
+sidetellingsmodulen, vert berre henvendelsestala vist, pluss ein kort
+teaser-tekst om oppgradering (same mønster som andre ukjøpte modular).
+
+**Vurdert og bevisst utsett i denne runda**: eit ukedag/tid-på-døgnet-
+varmekart vart faktisk bygd i mockup-form, men trekt ut etter
+brukartilbakemelding ("ikke helt fornøyd med den") -- ikkje avvist på
+prinsipp, berre utsett til visualiseringa er betre gjennomtenkt.
+
+Full teknisk historie og grunngjeving: `docs/architecture/sidetelling.md`
+(Fase 3-avsnittet). `?v=N`: `core.js` (86 i alle tre HTML-innganger, sidan
+`ADMIN_CATEGORIES`/`allowedCategoriesForRole`/`buildAdminTabs`/
+`adminAnalyse` alle endra), `module-sidetelling.js` (8, index.html +
+admin/index.html), `console-core.js` (195).
+
+**Oppfølging same dag, etter Security Auditor + UX/Mobil-reviewer (obligatorisk
+før produksjon per CLAUDE.md, sidan endringa rører rollebasert fane-synlegheit
+og betydelege UI-endringar):**
+- **Security Auditor**: ingen BLOCKER/HIGH/MEDIUM-funn. Stadfesta uavhengig at
+  `allowedCategoriesForRole()` berre gjev "innsikt" til admin-greina (ikkje
+  editor/member), at ingen annan fane arva kategorien ved eit uhell, og at
+  server-sida RLS-en (`is_admin_or_owner()`) framleis er den reelle
+  sperra uansett klientside-tilstand. Éin LOW-merknad (manglande
+  regresjonstest for at editor/member IKKJE ser Innsikt-kategorien) -- notert
+  som oppfølgingskandidat, ikkje retta no.
+- **UX/Mobil-reviewer**: retta tre reelle funn -- (1) periodevalg-/sub-fane-
+  knappane var under 44px berøringsmål (lagt til `min-height:44px`), (2)
+  gjentatte klikk på "Oppdater" hopa opp duplikate delegerte klikk-lyttarar
+  på søyle-tooltipen (reell lekkasje -- retta ved å binde denne éin gong per
+  container, verna med eit flagg, i staden for på nytt ved kvart
+  `mountPanel()`-kall), (3) søyle-tooltipen hadde ingen tastatur-/skjermlesar-
+  tilgang (lagt til `tabindex`/`role="img"`/`aria-label` + Enter/mellomrom-
+  handtering). Retta i tillegg ein ARIA-mangel (sub-fanene hadde
+  `role="tablist"` utan matchande `role="tab"`/`aria-selected`/
+  `aria-controls` på knappane), ein pre-eksisterande (ikkje innført av denne
+  runda) inkonsekvens der `.an-heading` var eit tydeleg eyebrow-nivå på
+  `index.html` sitt `#admin`-overlegg, men visuelt uskilt frå widget-titlane
+  på `admin/index.html`, og gav minste einingsfordelings-segment ei
+  minimumsbreidde (`min-width:3px`) så det ikkje forsvinn heilt ved svært
+  skeive fordelingar. Lagt til 12 nye test-assertions som dekkjer sub-fane-
+  bytte, periodevalg-filtrering og søyle-tooltip (klikk + tastatur +
+  gjentatt-"Oppdater"-regresjon).
+- Ikkje retta no (krev live augnemål på ein ekte skjerm, ikkje kodegjennomgang
+  åleine): tettleiken på 30 daglege søyler på svært smale mobilskjermar, og
+  2-kolonne-grafraden sin klemme ved ~768px (iPad-portrettbreidde) -- begge
+  notert som oppfølgingskandidatar i samtalen, ikkje avviste.
+
+**Verifisert:** alle tre testsuiter grøne (676/180/37, 0 FEIL) -- nye/
+oppdaterte assertions dekkjer kategoriflyttinga, det redesigna
+Status-kortet, periodeavhengig visning (relative testdatoar i staden for
+faste, sidan reell klientside periode-slicing no gjer visinga avhengig av
+Date.now()), den nye aggregerte henvendelsestrakta, og dei tre nye
+interaktive kontrollane (sub-faner, periodevalg, søyle-tooltip).
+
 ## 0.86.1 — 2026-08-03
 
 ### Avgjerd: "unike besøkjande" AVVIST for sidetellinga, ikkje berre utsett

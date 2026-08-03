@@ -1,6 +1,6 @@
-# Sidetelling / "Analyse" — arkitektur
+# Sidetelling / "Innsikt" — arkitektur
 
-Intern, cookiefri trafikkmåling for den offentlege nettsida — eit gratis alternativ til Plausible for kundar som ikkje har eige Plausible-konto. `module-sidetelling.js` (offentleg side + Web-admin), styrt av eit Console-brytar-panel i `console/console-core.js`. Bygd i fleire rundar frå 2026-07-31 til 2026-08-03 — sjå `docs/project/CHANGELOG.md` (0.78.0–0.86.0) for full, datert historie. Dette dokumentet er ei samla arkitekturoversikt, ikkje ein endringslogg.
+Intern, cookiefri trafikkmåling for den offentlege nettsida — eit gratis alternativ til Plausible for kundar som ikkje har eige Plausible-konto. `module-sidetelling.js` (offentleg side + Web-admin sin "Innsikt"-fane, tidlegare "Analyse"), styrt av eit Console-brytar-panel i `console/console-core.js`. Bygd i fleire rundar frå 2026-07-31 til 2026-08-03 — sjå `docs/project/CHANGELOG.md` (0.78.0–0.87.0) for full, datert historie. Dette dokumentet er ei samla arkitekturoversikt, ikkje ein endringslogg.
 
 ## Grunnprinsipp (Fase 2, stadfesta av brukar 2026-08-03, gjeld all vidare utvikling)
 
@@ -50,9 +50,31 @@ Grunnmodul: pageview/CTA-fangst, `insert_analytics_event()` (SECURITY DEFINER, a
 
 ### Fase 2 (0.81.0–0.84.0, 2026-08-03) — Arkitekt-konsultert samla før koding
 1. **Steg 1**: `device_type`/`is_bot` (sjå datamodell over).
-2. **Steg 2 — "Trender"**: rein periode-mot-periode-samanlikning (siste 7 dagar mot dei 7 før), same "rule-based, ingen AI"-filosofi som `computeWebsiteHealth()` (`docs/architecture/website-health-scoring.md`). Ingen ny spørring — samanlikningsvindauget (14 dagar) er innanfor dei 30 dagane panelet alt hentar.
+2. **Steg 2 — "Trender"**: rein periode-mot-periode-samanlikning (siste 7 dagar mot dei 7 før), same "rule-based, ingen AI"-filosofi som `computeWebsiteHealth()` (`docs/architecture/website-health-scoring.md`). Ingen ny spørring — samanlikningsvindauget (14 dagar) er innanfor dei 30 dagane panelet alt hentar. **Sjå Fase 3 under — dette faste 7-dagars-vindauget er sidan generalisert til å skalere med periodevalet.**
 3. **Steg 3a**: `App.getAnalyticsSessionId()` i `core.js` — session-ID-generering flytta ut av `module-sidetelling.js` sjølv, sidan Kontakt-/Tilbod-/Booking-skjemaa fungerer heilt uavhengig av om `features.sidetelling` er på/av, og treng tilgang til same ID for steg 3b. Returnerer `null` når funksjonen er av.
-4. **Steg 3b — konverteringskobling**: `leads`/`bookings.analytics_session_id`, kopla mot inngangsside i adminpanelet ("Henvendelser fra disse sidene"). Sjå "Ope juridisk spørsmål" under.
+4. **Steg 3b — konverteringskobling**: `leads`/`bookings.analytics_session_id`, kopla mot inngangsside i adminpanelet ("Henvendelser fra disse sidene"). **Sjå Fase 3 under — denne per-inngangsside-topplista er sidan erstatta med ein samla trakt.** Sjå "Ope juridisk spørsmål" under.
+
+### Fase 3 — Innsikt-redesign (0.87.0, 2026-08-03)
+
+Ein fullstendig omdesign av admin-panelet, driven av eit eksplisitt brukarønske om noko "vesentlig bedre og mer dashboard-aktig". Prosessen følgde same to-stegs mønster som tidlegare (Codex/Arkitekt-vurdering før koding), men denne gongen supplert med ein interaktiv HTML-mockup (fiktive tal) iterert saman med brukaren over fleire rundar før noko kode vart skriven — sjå samtalen 2026-08-03 for full historikk, inkludert ei UX/Mobil-gjennomgang og ei Arkitekt-gjennomgang av implementasjonsplanen (køyrekostnad, `MAX_ROWS`, periode-slicing) før koding starta.
+
+**Eigen "Innsikt"-kategori i adminpanelet.** `ADMIN_CATEGORIES` (`core.js`) fekk ein ny fjerde kategori mellom "Henvendelser" og "Innstillinger": `Design | Innhold | Henvendelser | Innsikt | Innstillinger | Min konto`. "Analyse"-fana (intern id framleis `"analyse"`, kun *label* og *category* endra) flytta ut av "Innstillinger" til denne nye kategorien og fekk namnet "Innsikt". Halde admin-only (same tilgangsnivå "Analyse" hadde før, ikkje utvida til editor-rolla).
+
+**Henvendelsestala er no ein alltid-synleg header, uavhengig av modulen.** "Denne måneden" og eit redesigna "Status (åpne/løst)" (opne-talet er no hovudtalet i kvart kort, med ei løyst-framdriftslinje og ei "X av Y løyst"-note, i staden for to likestilte tal) vert vist øvst i Innsikt-fana **uansett** om kunden har `features.sidetelling` eller ikkje -- dette var faktisk alt tilfelle før (aldri gata på sidetelling-flagget), berre no eksplisitt forklart som eit design-val i UI-en, ikkje ein tilfeldigheit.
+
+**Periodevalg (7/30/90 dagar), overordna for heile dashboardet.** `module-sidetelling.js` hentar no alltid det maksimale vindauget (`MAX_LOOKBACK_DAYS = 90`, éin spørring, `MAX_ROWS` uendra på 5000) og filtrerer/aggregerer klientside per valt periode (`sliceRowsToPeriod()`) -- ingen ny spørring ved periodebyte, same "unngå ekstra spørring innanfor alt henta data"-mønster som Fase 2 sitt Trender-steg alt etablerte. "Trender" er generalisert frå den faste "siste 7 mot føregåande 7 dagar" til "andre halvdel av valt periode mot første halvdel" (`TREND_PERIOD_HALF = {7:3, 30:15, 90:45}`, ein fast oppslagstabell sidan periodane er eit lukka sett på tre val). 90-dagarsvisinga viser vekentlege søyler i staden for 90 tynne dagssøyler (`BUCKET_MODE`).
+
+**Sub-faner i staden for éin lang scroll.** "Oversikt" (KPI-ar, Trender, dagsgrafar) / "Sider" (topplister, CTA-typar, henvendelsestrakt) / "Kilder & enheter" (henvisningar, einingsfordeling) -- eigne `.an-subtabs`/`.an-subtab`-klassar (IKKJE `C.tabbar()`/`.tab`, som ville kollidert med `test.js` sine top-nivå fane-spørringar og vore eit ARIA tablist-i-tablist-antimønster).
+
+**Nye KPI-ar, gratis frå eksisterande gruppering:** avvisningsrate og sider per besøk, begge utleia frå `bySession`-grupperinga panelet alt bygde for inngangs-/utgangssider.
+
+**Konverteringstopplista er erstatta med ein samla, tona-ned trakt.** "Henvendelser fra disse sidene" (per inngangsside) vart bytt ut med éin aggregert sidevisning → CTA-klikk → henvendelse-trakt. Framleis bevisst dempa (stipla kant, dempa farge, ikkje ein hovudmetrikk) -- konverteringskoplinga sitt opne juridiske spørsmål (sjå under) endra seg ikkje, berre presentasjonen.
+
+**Ikkje-modul-fallback.** Har kunden ikkje `features.sidetelling` (og ingen Plausible), vert berre henvendelsestala vist, pluss ein kort, fristande tekst ("Med Innsikt kan du se sidevisninger, kilder, enheter og mer... Spør oss om oppgradering") -- same mønster som andre ukjøpte modular sin teaser (sjå `openManualModal()` i `core.js`).
+
+**Vurdert og bevisst utsett i denne runda:** eit ukedag/tid-på-døgnet-varmekart vart faktisk bygd i mockup-forma og vist til brukaren, men trekt ut etter tilbakemelding ("ikke helt fornøyd med den") -- ikkje avvist på prinsipp, berre utsett til visualiseringa er betre gjennomtenkt. Sjå "Utsett, ikkje avvist" under.
+
+**Retta etter Security Auditor + UX/Mobil-reviewer (same dag, før produksjon):** periodevalg-/sub-fane-knappane fekk `min-height:44px` (var under berøringsmål-minimumet), ein reell lekkasje der `bindPanel()` batt ein ny delegert klikk-lyttar for søyle-tooltipen for KVART "Oppdater"-klikk vart retta (`bindBarTooltips()` bunde éin gong per container, verna av eit flagg), søylene fekk `tabindex`/`role="img"`/`aria-label` + Enter/mellomrom-tastaturstøtte (var berre mus-/touch-tilgjengelege), sub-fanene fekk fullstendige ARIA-roller (`role="tab"`/`aria-selected`/`aria-controls`, matcha av `role="tabpanel"` på panela), `admin/index.html` sin `.an-heading` vart retta til same eyebrow-stil som `index.html` (var uskilt frå widget-titlane på denne PWA-flata), og einingsfordelinga fekk ei minimumsbreidde per segment. 12 nye test-assertions dekkjer sub-fane/periodevalg/tooltip-mekanismane. Sjå `docs/project/CHANGELOG.md` (0.87.0) for full liste.
 
 ## Ope juridisk spørsmål (må avklarast før nokon reell kunde, sjå ROADMAP.md)
 
@@ -80,7 +102,8 @@ Deployert til produksjon 2026-08-03 likevel (brukarval) sidan ingen ekte kundar 
 
 ## Utsett, ikkje avvist
 
-- **Fase 3**: rollup-tabell (reint teknisk optimalisering, ingen prinsipp-konflikt, berre ikkje urgent med dagens datamengde), CMS-per-side-widget (ingen ny datainnsamling, berre ei anna visning av data som alt finst).
+- **Rollup-tabell** (reint teknisk optimalisering, ingen prinsipp-konflikt, berre ikkje urgent med dagens datamengde), **CMS-per-side-widget** (ingen ny datainnsamling, berre ei anna visning av data som alt finst).
+- **Ukedag/tid-på-døgnet-varmekart**: bygd i mockup-form og vist til brukaren i Innsikt-redesignrunden (Fase 3, 2026-08-03), men trekt ut etter tilbakemelding ("ikke helt fornøyd med den"). Ikkje eit prinsipp-problem (dagen ligg alt i `created_at`) -- berre visualiseringa som ikkje trefte enno. God kandidat for ei seinare, isolert forbedring med ein annan visuell approach, ikkje eit avvist konsept.
 
 ## `seed_test_pageviews()` — kjent, ikkje-fungerande mekanisme
 
