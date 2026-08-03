@@ -30,6 +30,91 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.80.0 — 2026-08-03
+
+### Utvida: sidetellings-panelet i Web-admin ("Analyse")
+
+Same dag som 0.79.0 sin Console-brytar, etter fyrste ekte live-testing
+(Playwright, lokalt mot produksjons-Supabase, verifisert med `npx supabase
+db query --linked`) og oppfølgingsspørsmål frå brukar om sjølve panelet:
+
+**Rett funne under live-testing:** hashchange-fangsten i
+`module-sidetelling.js` var utilsikta inkonsekvent -- om ein seksjon
+(Referansar/Aktuelt) av ein eller annan grunn ikkje fanst som DOM-element
+akkurat då nokon klikka nav-lenka, fall klikket attende til ekte
+nettlesar-hashnavigering og VART talt som eiga visning, medan identiske
+klikk på synlege seksjonar (Om oss/Tenester) IKKJE vart talt (mjuk-scroll
+via `history.replaceState()`, som aldri utløyser `hashchange`). Stadfesta
+med brukar at mjuk-scroll ALDRI skal telje som eiga visning -- retta med
+ein eksplisitt allow-liste (`isRealPage()`) som kjenner att dei same
+unntaka `bindGlobalNav()` i `core.js` sjølv alt bruker (`#booking`,
+`#aktuelt/alle`, `#sak/*`), i staden for å stole på det tilfeldige
+DOM-eksistens-utfallet. NB: krev vedlikehald viss ein framtidig ny
+`page:true`-modul vert lagt til (same kopling som `bindGlobalNav()` sjølv
+alt har).
+
+**Nye felt i panelet** (alle bygd på data som alt vart samla -- ingen ny
+sporing):
+- **Konverteringsrate** (CTA-klikk ÷ sidevisningar, med forklarande
+  hjelpetekst) som eige KPI-kort ved sida av det eksisterande
+  sidevisnings-talet.
+- **CTA-klikk per dag**, same søylegraf-mønster som "Sidevisninger per
+  dag", eiga skala (delt skala med sidevisningar ville gjort CTA-søylene
+  usynleg små).
+- Hjelpetekstar lagt til under "Henvisninger" (kva "Direkte" betyr) og
+  "CTA-klikk" (kva som vert talt).
+- **"Oppdater"-knapp**, alltid synleg (i tillegg til den eksisterande
+  "Prøv igjen" som berre vises ved feil), køyrer same spørring på nytt.
+
+**Lesbare sidenamn:** "Mest besøkte sider"/"Inngangssider"/"Utgangssider"
+viste tidlegare rå hash-verdiar (`#tjenester`, `#om-oss`). Ny
+`PATH_LABELS`-tabell + generisk fallback (fjern `#`, stor forbokstav) i
+`module-sidetelling.js` viser no "Tjenester", "Om oss" osb. Viser
+STANDARDNAMNET for kjende innebygde seksjonar, ikkje eit ev. kundetilpassa
+seksjonsnamn (t.d. ein tilpassa FAQ-overskrift) -- adminpanelet har ikkje
+tilgang til dei tilpassa CMS-tekstane, berre `CFG`.
+
+**Målform avklart med brukar:** kundevendt tekst (Web-admin/offentleg
+nettside, dette panelet inkludert) skal vere **bokmål**, konsekvent med ei
+tidlegare, aldri stadfesta tilråding (2026-07-02) og ein tidlegare reell
+normaliseringsrunde (2026-07-01, 15 nynorske strengar → bokmål). Footer-
+teksten vart difor "Analyse fra Vibeverk …" (bokmål "fra", ikkje nynorsk
+"frå"), sjølv om Console (internt Vibeverk-verktøy) framleis nyttar
+nynorsk andre stader -- uendra, ikkje del av denne runda.
+
+**Vurdert, ikkje bygd:** eit kakediagram for henvisningar/CTA-typar vart
+vurdert og medvite avvist -- horisontale søylelister (alt i bruk) er
+lettare å lese nøyaktig for dette talet kategoriar.
+
+**Verifisert:** alle tre testsuiter grøne (633/180/37, 0 FEIL -- tre
+eksisterande jsdom-assertions i `test.js` oppdatert til å forvente dei nye
+lesbare namna i staden for rå hash-verdiar). Visuelt stadfesta med eit
+Playwright-skjermbilete av det faktiske panelet (ekte kode, forfalska
+Supabase-respons, sidan anon ikkje har SELECT-tilgang på
+`analytics_events` -- venta åtferd, ikkje ein feil).
+
+`?v=N`: `module-sidetelling.js` (2), `console-core.js` (187).
+
+**Oppfølging same dag -- staging-verifisering, delvis fullført:**
+`20260731103651_add_analytics_events.sql` og `20260725123445_announcement_reads.sql`
+(begge tidlegare berre på produksjon) er no køyrde mot `vibeverk-staging`
+(24/24, matchar produksjon), og `seed_test_pageviews()` (den staging-only
+fila) er deployert med rette grants. **Funne, IKKJE fiksa**: sjølve
+fail-closed-sperra i `seed_test_pageviews()` -- `current_setting('app.
+settings.is_staging', true)` -- kan ALDRI settast på noko Supabase-hosta
+prosjekt, korkje via Dashboard (ingen UI for eigendefinerte GUC-namnerom,
+berre eit avgrensa sett ytingsparametrar) eller via SQL (`ALTER DATABASE`/
+`ALTER ROLE ... SET` krev superbrukar, som Supabase aldri gjev ut på hosta
+prosjekt -- stadfesta direkte via eit reelt `permission denied to set
+parameter`-forsøk mot staging). "Generer testdata"-knappen har difor
+truleg vore utilgjengeleg sidan han vart bygd i Fase 1 (0.78.0), på KVA
+Supabase-prosjekt som helst, ikkje ei staging-spesifikk mangel. Medvite
+lagt til side (brukarval 2026-08-03, perifer testbekvemmelegheit, ikkje
+kundevendt, blokkerer ikkje anna arbeid) -- attverande skisse til seinare
+fiks: byt GUC-sperra ut med ein rad i `store`-tabellen (same mønster som
+resten av superconfig) i staden, ingen Postgres-superbrukar-avhengigheit.
+Sjå `docs/roadmap/ROADMAP.md` "Later".
+
 ## 0.79.0 — 2026-08-03
 
 ### Ny: Console-brytar for intern Analyse (Fase 1 av Console-innføringa)
@@ -94,6 +179,27 @@ audit-detalj) gjeld heile broker-mekanismen, ikkje berre denne brytaren, og
 er difor IKKJE del av denne oppgåva -- eigne, seinare saker.
 
 `?v=N`: `console-core.js` (186).
+
+**Avklart same dag, live-testa i produksjon (Vibeverk sjølv):** etter at
+brytaren vart slått på og verifisert med ekte nettlesar-trafikk
+(Playwright, lokalt mot produksjons-Supabase), vart det stadfesta at
+mjuk-scroll-navigering mellom seksjonar på framsida (Om oss/Tenester/osb.)
+IKKJE tel som eigne sidevisningar -- berre distinkte hash-ruter
+(inngangssida, Booking, Aktuelt-arkivet, enkeltsaker) gjer. Dette er
+tilsikta åtferd, stadfesta av brukar, ikkje ein feil å rette. Funne
+samstundes: sjølve hashchange-basert fangst er i dag **inkonsistent**
+mellom seksjonar -- om ein seksjon (t.d. Referansar/Aktuelt) av ein eller
+annan grunn ikkje finst som eit DOM-element i det augeblikket nokon
+klikkar nav-lenka, fell klikket tilbake til ekte nettlesar-hashnavigering
+og VERT tracka, medan seksjonar som faktisk er synlege (Om oss/Tenester/
+Kontakt) vert mjukt-scrolla og IKKJE tracka -- eit utilsikta, tilfeldig
+avhengig utfall, ikkje ei medviten regel. Vurdert saman med spørsmålet om
+"kva seksjon var kunden på ved avreise" (skrolldjupne/seksjon-synlegheit) --
+begge bevisst UTSETT, ikkje bygd no: skrolldjupne-sporing krev anten mange
+fleire skriv per visning eller ein sendBeacon/pagehide-mekanisme som alt
+vart forkasta ein gong i Fase 1 av kostnad/nytte-grunnar, og nøyaktigheita
+ville uansett vore tvilsam på tvers av skjermstorleikar. Sjå
+`docs/roadmap/ROADMAP.md` "Later" for same punkt.
 
 **Fase 2** (utsett, ikkje starta): fleire funksjonar i sjølve analyse-
 modulen (unike besøkande, bot-filtrering, o.l. -- sjå 0.78.0-innslaget).
