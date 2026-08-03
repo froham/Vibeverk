@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.85.0";
+  var VIBEVERK_VERSION = "0.86.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -924,7 +924,7 @@ window.VwConsole = (function () {
           C.field({ id:"cs-ogimage", label:"Delingsbilde (OG-bilde)", value: com.ogImage || "", placeholder:"https://… (1200×630px)",
             help:"Bildet som vises når nokon deler lenka til sida på Facebook, LinkedIn eller andre sosiale medium." }) +
           C.field({ id:"cs-favicon", label:"Favicon-URL", value: com.favicon || "", placeholder:"https://…",
-            help:"Det vesle ikonet som vises i nettlesar-fana og bokmerke." }) +
+            help:"Det vesle ikonet som vises i nettlesar-fana og bokmerke. Står dette tomt, vert Logo-URL brukt automatisk." }) +
         '</fieldset>' +
         '<fieldset class="admin-group" id="cs-nettsidehelse"><legend>Nettsidehelse</legend><p class="prose prose--muted" style="font-size:.85rem;margin:0">Lastar nettsidehelse …</p></fieldset>' +
         '<fieldset class="admin-group"><legend>Fargar</legend>' +

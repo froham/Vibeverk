@@ -1035,19 +1035,23 @@ window.App = (function () {
       setMetaTag("name", "twitter:card", "summary_large_image");
     }
     setMetaTag("property", "og:type", "website");
-    if (com.favicon) {
+    // Fell tilbake til logoUrl når favicon (eit eige, separat felt) ikkje
+    // er utfylt -- retta 2026-08-03 etter brukarspørsmål: nettlesar-fana
+    // synte ingenting fordi favicon-feltet var tomt, sjølv om logoUrl var
+    // sett. apple-touch-icon-taggen under hadde alt denne fallbacken;
+    // sjølve favicon-taggen hadde det inkonsekvent nok ikkje.
+    const faviconUrl = com.favicon || com.logoUrl;
+    if (faviconUrl) {
       let link = document.querySelector('link[rel="icon"]');
       if (!link) { link = document.createElement("link"); link.setAttribute("rel", "icon"); document.head.appendChild(link); }
-      link.setAttribute("href", com.favicon);
+      link.setAttribute("href", faviconUrl);
     }
     // iOS Safari sin "Legg til på Heimskjerm" ignorerer manifest.json heilt
-    // og bruker BERRE denne taggen. Fell tilbake til logoUrl sidan favicon
-    // (eit nyare, separat felt) enno ikkje er utfylt av nokon reell tenant.
-    const touchIconUrl = com.favicon || com.logoUrl;
-    if (touchIconUrl) {
+    // og bruker BERRE denne taggen.
+    if (faviconUrl) {
       let touch = document.querySelector('link[rel="apple-touch-icon"]');
       if (!touch) { touch = document.createElement("link"); touch.setAttribute("rel", "apple-touch-icon"); document.head.appendChild(touch); }
-      touch.setAttribute("href", touchIconUrl);
+      touch.setAttribute("href", faviconUrl);
     }
   }
 
@@ -2710,7 +2714,7 @@ window.App = (function () {
             '<img id="cs-d-ogimage-preview" src="' + C.esc(com.ogImage || "") + '" alt="" style="max-width:100%;max-height:100%;object-fit:contain">' +
           '</div>' +
           C.field({ id: "cs-d-favicon", label: "Favicon-URL", value: com.favicon || "", placeholder: "https://…",
-            help: "Det vesle ikonet som vises i nettlesar-fana og bokmerke." }) +
+            help: "Det vesle ikonet som vises i nettlesar-fana og bokmerke. Står dette tomt, vert Logo-URL over brukt automatisk." }) +
         '</div>' +
         C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
         '<p class="form__status" data-design-seo-status role="status" aria-live="polite"></p>' +
