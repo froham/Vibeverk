@@ -30,6 +30,42 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.85.0 — 2026-08-03
+
+### Ny: modulbasert brukerveiledning i Web-admin
+
+"?"-knapp i admin-modalen sitt hovud, ved sida av fullskjerm-knappen
+(same opt-in-mønster i `C.modal()` som `fullscreenToggle` alt bruker --
+ny `helpToggle`-parameter, sendt kun frå `renderAdminPanel()`, held
+funksjonen avgrensa til Web-admin slik ønska, ingen andre modal-kallarar
+i Workspace/Console påverka).
+
+Opnar ei enkel, scrollbar oversikt (gjenbruker same overlegg-mønster som
+`openReplyModal()`) med eitt kapittel per modul kunden faktisk har --
+Innhald/Aktuelt/Kontakt alltid, resten (Design, Analyse, Booking,
+Tilbud, Referanser, Spørsmål og svar, Mediebank, Chat, Kunder) styrt av
+nøyaktig same feature-flagg-sjekk (`feat()`/`CFG.features.x === true`)
+som `buildAdminTabs()` alt bruker for å byggje fanelista -- ingen ny
+"kva modular har kunden"-logikk å vedlikehalde to stader.
+
+Modular kunden IKKJE har, vert IKKJE utelatne heilt: dei vises i ei
+eiga "Flere moduler tilgjengelig"-liste nedst, med ei kort, fristande
+oppsummering (brukarval -- kan gjere kunden nysgjerrig på oppgradering)
+i staden for full bruksrettleiing.
+
+Innhaldet er statisk, skrive av Vibeverk (ikkje kunderedigerbart) --
+medvite enkelt for denne runda, per brukarens eige ønske om ein
+fungerande, dynamisk fyrsteversjon framfor perfekt innhald. Vert
+oppdatert etter kvart.
+
+`?v=N`: `components.js` (20), `core.js` (84 i index.html/admin, 83 i
+console/workspace), `console-core.js` (192).
+
+**Verifisert:** alle tre testsuiter grøne (657/180/37, 0 FEIL) -- inkl.
+10 nye assertions (knapp finst, modal opnar/lukkar, aktive modular viser
+full tekst, inaktive viser berre teaser, ikkje omvendt). Visuelt
+stadfesta med Playwright-skjermbilete (topp + botn av innhaldet).
+
 ## 0.84.0 — 2026-08-03
 
 ### Ny: Fase 2 steg 3b — konverteringskobling (leads/bookings ↔ inngangsside)

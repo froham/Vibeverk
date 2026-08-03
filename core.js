@@ -1698,6 +1698,101 @@ window.App = (function () {
     }, 50);
   }
 
+  // Modulbasert brukerveiledning i Web-admin (2026-08-03) -- statisk,
+  // Vibeverk-skrevet innhold (ikke kunderedigerbart, holder ting enkelt).
+  // Hvert kapittel sin "active"-sjekk gjenbruker nøyaktig samme feature-
+  // flagg-logikk som buildAdminTabs() alt bruker, så listen er automatisk
+  // riktig for hver kunde – ingen egen "hvilke moduler har kunden"-logikk
+  // å vedlikeholde to steder. Moduler kunden IKKE har vises som en kort,
+  // fristende oppsummering nederst i stedet for å utelates helt (brukervalg
+  // 2026-08-03) – kan gjøre kunden nysgjerrig på en oppgradering.
+  var MANUAL_CHAPTERS = [
+    { id: "innhold",  title: "Innhold", active: function () { return true; },
+      body: "Her redigerer du tekstene på forsiden din – forsidetopp, Om oss og Tjenester. Endringene vises på nettsiden så snart du lagrer." },
+    { id: "aktuelt",  title: "Aktuelt", active: function () { return true; },
+      body: "Skriv nyheter og oppdateringer som vises på forsiden og i et eget arkiv. Bruk det til å vise at siden er aktiv – nye produkter, åpningstider eller presseoppslag." },
+    { id: "kontakt",  title: "Kontakt", active: function () { return true; },
+      body: "Her ser du henvendelser som kommer inn fra kontaktskjemaet på nettsiden. Du kan svare direkte, markere som løst, og se historikk per kunde." },
+    { id: "sidebygger", title: "Design", active: function () { return !!(CFG.features && CFG.features.sidebygger === true); },
+      body: "Du kan selv velge mellom flere design-maler for hele nettsiden, og style farger, fonter, logo og SEO-innstillinger.",
+      teaser: "Bytt utseende på hele nettsiden selv, style farger/fonter, og legg til bannere – uten å kontakte oss." },
+    { id: "sidetelling", title: "Analyse", active: function () { return !!(CFG.features && CFG.features.sidetelling === true); },
+      body: "Se hvor mange som besøker nettsiden din, hvilke sider som er mest populære, og om besøk fører til henvendelser – helt uten cookies.",
+      teaser: "Se hvor mange som besøker nettsiden og hva de gjør der – helt uten cookies og uten ekstra kostnad." },
+    { id: "booking",  title: "Booking", active: function () { return feat("booking"); },
+      body: "Besøkende kan reservere tid eller ressurser direkte på nettsiden. Du administrerer ledige tider og ser kommende bookinger her.",
+      teaser: "La kundene dine reservere tid selv, direkte på nettsiden – uten telefon frem og tilbake." },
+    { id: "quote",    title: "Tilbud", active: function () { return feat("quote"); },
+      body: "Besøkende kan sende inn forespørsel om pristilbud, med mulighet for å legge ved bilder. Du finner alle forespørsler her.",
+      teaser: "La besøkende be om pristilbud direkte på nettsiden, med bildevedlegg – nyttig for håndverkere og tjenestebedrifter." },
+    { id: "references", title: "Referanser", active: function () { return feat("references"); },
+      body: "Vis frem tidligere prosjekter eller kundecase på nettsiden. Bygger tillit hos nye besøkende.",
+      teaser: "Vis frem fornøyde kunder og gjennomførte prosjekter – god tillitsbygging for nye besøkende." },
+    { id: "faq",      title: "Spørsmål og svar", active: function () { return feat("faq"); },
+      body: "Legg til vanlige spørsmål og svar. Reduserer antall like henvendelser til deg.",
+      teaser: "En egen spørsmål-og-svar-seksjon kan spare deg for mange like henvendelser." },
+    { id: "mediabank", title: "Mediebank", active: function () { return feat("mediabank"); },
+      body: "Et bildegalleri synlig for besøkende – nyttig for å vise produkter, lokaler eller prosjekter.",
+      teaser: "Få et bildegalleri på nettsiden – fint for å vise frem produkter eller lokaler." },
+    { id: "chat",     title: "Chat", active: function () { return feat("chat"); },
+      body: "En live chat-boble vises for besøkende. Du svarer fra samme sted som andre henvendelser.",
+      teaser: "La besøkende få svar med en gang via live chat – kan øke antall henvendelser betydelig." },
+    { id: "crm",      title: "Kunder", active: function () { return feat("crm"); },
+      body: "Samler henvendelser, tilbud og bookinger per kunde, med historikk og notater – et enkelt kunderegister.",
+      teaser: "Samle all kundehistorikk – henvendelser, tilbud, bookinger – på ett sted." }
+  ];
+
+  function buildManualHtml() {
+    var active = MANUAL_CHAPTERS.filter(function (c) { return c.active(); });
+    var inactive = MANUAL_CHAPTERS.filter(function (c) { return !c.active() && c.teaser; });
+
+    var navHtml = '<nav style="margin-bottom:1.2rem;display:flex;flex-wrap:wrap;gap:.5rem">' +
+      active.map(function (c) { return '<a href="#manual-' + c.id + '" style="font-size:.82rem;padding:.3rem .7rem;border:1px solid var(--color-border);border-radius:999px;color:var(--color-text);text-decoration:none">' + C.esc(c.title) + '</a>'; }).join("") +
+      '</nav>';
+
+    var chaptersHtml = active.map(function (c) {
+      return '<section id="manual-' + c.id + '" style="margin-bottom:1.4rem;scroll-margin-top:1rem">' +
+        '<h3 style="margin:0 0 .4rem;font-size:1.02rem">' + C.esc(c.title) + '</h3>' +
+        '<p style="margin:0;font-size:.9rem;color:var(--color-text)">' + C.esc(c.body) + '</p>' +
+      '</section>';
+    }).join("");
+
+    var teaserHtml = inactive.length
+      ? '<div style="margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid var(--color-border)">' +
+          '<h3 style="margin:0 0 .6rem;font-size:.95rem;color:var(--color-muted)">Flere moduler tilgjengelig</h3>' +
+          '<p class="an-hint" style="margin:0 0 .8rem">Dette er moduler du ikke har i dag. Ta kontakt med oss hvis noe av dette høres nyttig ut.</p>' +
+          inactive.map(function (c) {
+            return '<p style="margin:0 0 .6rem;font-size:.85rem"><strong>' + C.esc(c.title) + '</strong> -- ' + C.esc(c.teaser) + '</p>';
+          }).join("") +
+        '</div>'
+      : "";
+
+    return navHtml + chaptersHtml + teaserHtml;
+  }
+
+  function openManualModal() {
+    var existing = document.getElementById("manual-modal-root");
+    if (existing) { existing.remove(); return; }
+    var root = document.createElement("div");
+    root.id = "manual-modal-root";
+    root.innerHTML =
+      '<div style="position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem" data-manual-back>' +
+        '<div style="background:var(--color-bg);border-radius:var(--radius);width:min(640px,100%);max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.3rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
+            '<strong style="font-size:1rem">Brukerveiledning</strong>' +
+            '<button data-manual-close aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
+          '</div>' +
+          '<div style="padding:1.2rem 1.3rem">' + buildManualHtml() + '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(root);
+    function close() { root.remove(); }
+    root.querySelector("[data-manual-close]").addEventListener("click", close);
+    root.querySelector("[data-manual-back]").addEventListener("click", function (e) {
+      if (e.target === e.currentTarget) close();
+    });
+  }
+
   // Selve panelet
   function renderAdminPanel(root) {
     const role = getAuthRole() || "member";
@@ -1727,6 +1822,7 @@ window.App = (function () {
       wide: true,
       fullscreenToggle: true,
       isFullscreen: adminFullscreen,
+      helpToggle: true,
       body: catBarHtml +
             (function () {
               var hasWs = activeCategory === "henvendelser" && CFG.intranettFeatures && Object.keys(CFG.intranettFeatures).length > 0;
@@ -1753,6 +1849,8 @@ window.App = (function () {
       Store.set("admin-panel-fullscreen", adminFullscreen);
       renderAdminPanel(root);
     });
+    var helpToggleBtn = root.querySelector("[data-modal-help-toggle]");
+    if (helpToggleBtn) helpToggleBtn.addEventListener("click", openManualModal);
 
     // Kategoriveksling — hopper til første fane i kategorien
     root.querySelectorAll("[data-admin-cat]").forEach(function (btn) {

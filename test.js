@@ -157,6 +157,26 @@ assert(!!doc.querySelector(".admin-catbar"), "admin-panelet har en kategori-bar 
 var catLabels = [...doc.querySelectorAll(".admin-cat")].map(c => c.textContent);
 assert(JSON.stringify(catLabels) === JSON.stringify(["Innhold","Henvendelser","Innstillinger"]), "tre kategorier i riktig rekkefølge: " + catLabels.join(","));
 
+// 7d) Modulbasert brukerveiledning (2026-08-03) -- "?"-knapp i modal__head,
+// dynamisk innhold basert på faktisk aktive feature-flagg (config.js sin
+// standard: booking/quote/references/faq/mediabank/chat/crm = på,
+// sidebygger/sidetelling = av).
+(function () {
+  var helpBtn = doc.querySelector("[data-modal-help-toggle]");
+  assert(!!helpBtn, "«?»-knapp for brukerveiledning finst i admin-modalen sitt hovud");
+  helpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var manualRoot = doc.getElementById("manual-modal-root");
+  assert(!!manualRoot && /Brukerveiledning/.test(manualRoot.textContent), "klikk på «?» opnar brukerveiledningsmodalen");
+  assert(/Besøkende kan reservere tid/.test(manualRoot.textContent), "aktiv modul (Booking) viser full kapitteltekst");
+  assert(/Samler henvendelser, tilbud og bookinger/.test(manualRoot.textContent), "aktiv modul (Kunder/CRM) viser full kapitteltekst");
+  assert(/Flere moduler tilgjengelig/.test(manualRoot.textContent), "seksjon for ikkje-aktive modular vises");
+  assert(/Bytt utseende på hele nettsiden selv/.test(manualRoot.textContent), "inaktiv modul (Design) viser kort, fristande oppsummering (teaser)");
+  assert(!/Du kan selv velge mellom flere design-maler/.test(manualRoot.textContent), "inaktiv modul (Design) viser IKKJE den fulle, aktive kapittelteksten");
+  assert(/Se hvor mange som besøker nettsiden/.test(manualRoot.textContent), "inaktiv modul (Analyse) viser teaser-teksten");
+  manualRoot.querySelector("[data-manual-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(!doc.getElementById("manual-modal-root"), "lukkeknappen fjernar brukerveiledningsmodalen");
+})();
+
 function clickCat(id) { var b = doc.querySelector('[data-admin-cat="' + id + '"]'); if (b) b.dispatchEvent(new window.Event("click", { bubbles: true })); }
 function clickTab(id) { var b = doc.querySelector('[data-tab="' + id + '"]'); if (b) b.dispatchEvent(new window.Event("click", { bubbles: true })); }
 
