@@ -2804,6 +2804,64 @@ const __asyncTests = (async () => {
       "is_bot-rader filtreres alltid bort i spørringen, uavhengig av staging/produksjon: " + JSON.stringify(eqCalls4));
     assert(/Enheter[\s\S]*Mobil/.test(panel.innerHTML) && /Enheter[\s\S]*PC/.test(panel.innerHTML),
       "adminpanel: enhetsfordeling (Mobil/PC) vises i topplisten");
+    assert(!/Trender/.test(panel.innerHTML),
+      "Trender-seksjonen vises IKKE når all data er eldre enn samanlikningsvindauget (FAKE_ROWS er frå juli, godt utanfor siste 7 dagar)");
+  })();
+
+  // --- module-sidetelling.js: "Trender" -- periode-mot-periode-samanligning ---
+  console.log("\n— Sidetelling: Trender (periode-mot-periode) —");
+  (function () {
+    var DAY = 86400000;
+    var now = Date.now();
+    var iso = function (daysAgo) { return new Date(now - daysAgo * DAY).toISOString(); };
+    var TREND_ROWS = [
+      // Forrige periode (dag 8-13 tilbake): 2 sidevisninger, 1 CTA, facebook.com
+      { type: "pageview", path: "#",     referrer: "facebook.com", cta_id: null, session_id: "p1", device_type: "pc", created_at: iso(9) },
+      { type: "pageview", path: "#",     referrer: "facebook.com", cta_id: null, session_id: "p2", device_type: "pc", created_at: iso(10) },
+      { type: "cta",      path: "#",     referrer: null,           cta_id: "tel", session_id: "p1", device_type: "pc", created_at: iso(9) },
+      // Denne perioden (siste 7 dagar): 4 sidevisninger (dobbelt), google.com, tjenester mest besøkt
+      { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "c1", device_type: "mobil", created_at: iso(1) },
+      { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "c2", device_type: "pc",    created_at: iso(2) },
+      { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "c3", device_type: "pc",    created_at: iso(3) },
+      { type: "pageview", path: "#",          referrer: "google.com", cta_id: null, session_id: "c4", device_type: "pc",    created_at: iso(4) }
+    ];
+
+    var html6 = fs.readFileSync("index.html", "utf8");
+    var dom6 = new JSDOM(html6, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window6 = dom6.window;
+    window6.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window6.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window6.scrollTo = () => {};
+    window6.HTMLElement.prototype.scrollIntoView = () => {};
+    window6.URL.createObjectURL = window6.URL.createObjectURL || (() => "blob:mock-url");
+    window6.URL.revokeObjectURL = window6.URL.revokeObjectURL || (() => {});
+
+    var fakeSb6 = makeFakeSb([], TREND_ROWS, {});
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window6.eval(src);
+    });
+    window6.App.supabase = fakeSb6;
+    window6.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window6.document.dispatchEvent(new window6.Event("DOMContentLoaded", { bubbles: true }));
+    var doc6 = window6.document;
+
+    var panel6 = doc6.createElement("div");
+    doc6.body.appendChild(panel6);
+    window6.VwSidetelling.renderAdminPanel(panel6);
+
+    assert(/Trender/.test(panel6.innerHTML), "Trender-seksjonen vises når det finnes data i begge periodane");
+    assert(/100% flere sidevisninger/.test(panel6.innerHTML),
+      "trafikkendring rekna korrekt (4 mot 2 sidevisninger = 100% auke): " + (panel6.innerHTML.match(/[↑↓][^<]*sidevisninger[^<]*/) || ["(ikke funnet)"])[0]);
+    assert(/Tjenester er nå mest besøkt side \(var Hjem forrige periode\)/.test(panel6.innerHTML),
+      "endring i mest populære side vises (Tjenester denne perioden, Hjem forrige)");
+    assert(/google\.com/.test(panel6.innerHTML.match(/Trender[\s\S]*?Sidevisninger per dag/)[0]),
+      "størst endring i henvisningskilde (google.com, ny denne perioden) vises i selve Trender-seksjonen");
   })();
 
   // --- module-sidetelling.js: test-data-knapp vises KUN på vibeverk-staging ---
