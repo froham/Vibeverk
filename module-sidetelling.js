@@ -1,5 +1,5 @@
 /* =============================================================================
-   module-sidetelling.js  —  INTERN, COOKIEFRI SIDETELLING (Fase 1, 2026-07-31)
+   module-sidetelling.js  —  INTERN, COOKIEFRI SIDETELLING
    -----------------------------------------------------------------------------
    Selvstendig IIFE. Lastes etter core.js. Slås av/på med features.sidetelling,
    og kjører KUN når analytics.plausible er tom (kunden velger ett av de to,
@@ -12,13 +12,21 @@
        allerede den første/siste pageview-raden for en økt, en ren spørring
        i adminpanelet (renderAdminPanel under). Ingen sendBeacon/pagehide.
      - Uttrykkelig IKKE med: unike besøkende, bot-filtrering, geolokasjon,
-       enhet/nettleser/skjerm-metadata, rollup-tabell, AI-oppsummering,
-       Workspace-analyse, CMS-per-side-widget. Egne, senere vurderte faser.
+       enhet/nettleser/skjerm-metadata utover kategori, rollup-tabell,
+       AI-oppsummering, Workspace-analyse, CMS-per-side-widget, ukedag/
+       tid-på-døgnet-varmekart (vurdert i mockup-runden 2026-08-03, utsatt --
+       se docs/architecture/sidetelling.md). Egne, senere vurderte faser.
 
    Cookiefritt: sesjons-ID genereres og lagres i sessionStorage, IKKE en
    cookie -- forsvinner ved fane-lukking, sendes aldri automatisk til
    server. Personvernstekst-gren for dette ligger i core.js sin
    computeDefaultPrivacyText().
+
+   Innsikt-runden (2026-08-03): admin-panelet flyttet til egen "Innsikt"-
+   kategori i adminpanelet (var underfane under Innstillinger), fikk et
+   periodevalg (7/30/90 dager) som overordnet filter, og sub-faner
+   (Oversikt/Sider/Kilder & enheter) i stedet for én lang scroll. Se
+   docs/architecture/sidetelling.md for full historie/design-runde.
    ========================================================================== */
 (function () {
   "use strict";
@@ -132,11 +140,28 @@
   bindCtaTracking();
 
   /* =========================================================================
-     ADMINPANEL — kalles fra core.js sin adminAnalyse() (Analyse-fanen), IKKE
+     ADMINPANEL — kalles fra core.js sin adminAnalyse() (Innsikt-fanen), IKKE
      en egen registrert admin-fane. Eksponert på window slik konvensjonen sier
      (window.VwChatAdmin, window.CrmAdmin, ...).
      ====================================================================== */
-  var DAYS_BACK = 30;
+
+  // Panelet henter ALLTID det maksimale, faste vinduet (90 dager) én gang --
+  // periodevalget (7/30/90) under skjer så helt klientside ved å filtrere
+  // de allerede hentede radene, ikke ved å spørre Supabase på nytt. Samme
+  // mønster som "Trender" alt brukte for å unngå en ekstra spørring (sjå
+  // kommentaren ved TREND_PERIOD_HALF under) -- generalisert til å gjelde
+  // hele panelet, ikke bare trend-sammenligningen.
+  var MAX_LOOKBACK_DAYS = 90;
+  var PERIOD_OPTIONS = [7, 30, 90];
+  var DEFAULT_PERIOD_DAYS = 30;
+  // Hvor mange dager hver halvdel av "Trender"-sammenligningen dekker, per
+  // valgt periode -- en fast oppslagstabell (periodene er et lukket sett på
+  // tre valg, ikke en vilkårlig brukerinput), ikke en generell days/2-formel.
+  // 90 dager -> daglige søyler blir 90 tynne, uleselige streker, så den
+  // perioden viser ukentlige søyler i stedet (se BUCKET_MODE/barsHtml under).
+  var TREND_PERIOD_HALF = { 7: 3, 30: 15, 90: 45 };
+  var BUCKET_MODE = { 7: "day", 30: "day", 90: "week" };
+
   var CTA_LABELS = { tel: "Telefon-klikk", mailto: "E-post-klikk", kontakt: "Kontakt-CTA", tilbud: "Tilbud-CTA", booking: "Booking-CTA" };
 
   // Lesbare namn for kjende sider/seksjonar -- viser STANDARDNAMNET, ikkje
@@ -170,11 +195,15 @@
   // Hard tak på antall rader hentet til nettleseren -- uten dette kan et
   // uratebegrenset antall anon-innsendinger (insert_analytics_event har
   // ingen rate-limiting) i praksis gjøre adminpanelet ubrukelig (nettleseren
-  // må hente og iterere hele resultatsettet ved hver åpning av Analyse-fanen).
+  // må hente og iterere hele resultatsettet ved hver åpning av Innsikt-fanen).
+  // Fast uansett periodevalg -- se docs/architecture/sidetelling.md: ved
+  // Vibeverk sine kunders faktiske trafikkvolum (noen hundre besøk/måned) er
+  // 5000 rader trygt over selv 90 dagers volum, og en hardere grense er
+  // bevisst en abuse-himmel, ikke en volumdimensjonering som bør skaleres.
   var MAX_ROWS = 5000;
 
   function fetchStats(cb) {
-    var since = new Date(Date.now() - DAYS_BACK * 86400000).toISOString();
+    var since = new Date(Date.now() - MAX_LOOKBACK_DAYS * 86400000).toISOString();
     var q = _sb.from("analytics_events").select("type,path,referrer,cta_id,session_id,device_type,created_at");
     // is_test-rader filtreres bort for ekte kunder, men MÅ vises på staging --
     // ellers viser ikke "Generer testdata"-knappen noensinne noe (den setter
@@ -190,11 +219,11 @@
 
   // Fase 2 (steg 3b) -- konverteringskobling. Egen, tolerant spørring (feiler
   // IKKE hele panelet om denne feiler -- kun selve konverteringsdelen
-  // uteblir, se renderAdminPanel()). Henter kun analytics_session_id +
-  // tidspunkt fra leads/bookings, aldri navn/e-post/melding -- selve
-  // koblingen (mot pageview-radene) skjer klientsiden i buildPanelHtml().
+  // uteblir, se mountPanel()). Henter kun analytics_session_id + tidspunkt
+  // fra leads/bookings, aldri navn/e-post/melding -- selve koblingen (mot
+  // pageview-radene) skjer klientsiden i renderSiderPane().
   function fetchConversions(cb) {
-    var since = new Date(Date.now() - DAYS_BACK * 86400000).toISOString();
+    var since = new Date(Date.now() - MAX_LOOKBACK_DAYS * 86400000).toISOString();
     // Manuell join-teljar i staden for Promise.all() -- held seg til same
     // synkron-når-mogleg callback-stil som resten av fila (den falske
     // Supabase-klienten i test.js svarer synkront; ekte Supabase gjer det
@@ -225,41 +254,69 @@
       .slice(0, n);
   }
 
+  // rank/is-top -- første rad er tonet og markert, så øyet har noe å lande
+  // på med det samme (UX-review-funn 2026-08-03: alle rader hadde tidligere
+  // lik visuell vekt). Forklaringstekst går no via C.helpIcon() i staden for
+  // ei fast synleg <p class="an-hint">-avsnitt -- components.js sin eigen
+  // konvensjon (sjå kommentaren ved helpIcon()-definisjonen) seier
+  // hand-rulla forklaringsavsnitt skal unngåast til fordel for denne.
   function toplistHtml(title, items, labelFn, hint) {
     if (!items.length) return "";
-    return '<div class="an-toplist"><h5>' + esc(title) + '</h5>' +
-      (hint ? '<p class="an-hint" style="margin-top:-.2rem">' + esc(hint) + '</p>' : "") +
+    return '<div class="an-card an-toplist"><h5>' + esc(title) + (hint ? " " + C.helpIcon(hint) : "") + '</h5>' +
       '<ul>' +
-      items.map(function (i) {
-        return '<li><span>' + esc(labelFn(i)) + '</span><strong>' + i.n + '</strong></li>';
+      items.map(function (i, idx) {
+        return '<li class="' + (idx === 0 ? "is-top" : "") + '"><span class="an-toplist__rank">' + (idx + 1) + '</span><span>' + esc(labelFn(i)) + '</span><strong>' + i.n + '</strong></li>';
       }).join("") +
       '</ul></div>';
   }
 
-  // Bygger søylegrafen for "N per dag" -- delt mellom sidevisninger og
-  // CTA-klikk, hver med sin egen skala (deling av samme skala ville gjort
-  // CTA-søylene usynlig små, siden CTA-tall normalt er mye lavere).
-  function dayBarsHtml(byDay, days) {
-    if (!days.length) return { bars: "", range: "" };
-    var max = Math.max.apply(null, days.map(function (d) { return byDay[d]; }).concat([1]));
-    var bars = days.map(function (d) {
-      var h = Math.round((byDay[d] / max) * 60) + 4;
-      return '<div class="an-bar" style="height:' + h + 'px" title="' + esc(d + ": " + byDay[d]) + '"></div>';
-    }).join("");
-    // title-tooltip virker ikke på touch -- en synlig datoperiode under grafen
-    // gir i det minste en referanse selv uten hover/mus (funn fra UX-review).
-    var range = '<p class="an-hint" style="margin-top:.3rem">' + esc(days[0]) + ' – ' + esc(days[days.length - 1]) + '</p>';
-    return { bars: bars, range: range };
+  function sliceRowsToPeriod(rows, days) {
+    var since = Date.now() - days * 86400000;
+    return rows.filter(function (r) { return new Date(r.created_at).getTime() >= since; });
   }
 
-  // Fase 2 (steg 2) -- "Trendar": rein periode-mot-periode-samanlikning,
-  // ingen AI/eksternt kall (same "rule-based"-filosofi som
-  // computeWebsiteHealth(), sjå docs/architecture/website-health-scoring.md).
-  // Talde innanfor dei siste DAYS_BACK dagane fetchStats() alt hentar --
-  // TREND_PERIOD_DAYS*2 (14) er godt innanfor DAYS_BACK (30), så ingen ny
-  // spørring trengst (unngår MAX_ROWS-faren ved å hente to gonger så mykje
-  // data mot same tak -- Arkitekt-notat 2026-08-03).
-  var TREND_PERIOD_DAYS = 7;
+  // ISO-uke-nøkkel (mandag i uka som dato-streng) -- brukt for 90-dagers-
+  // grafene, som viser ukentlige søyler i staden for 90 tynne, uleselige
+  // dagssøyler (UX-review-prioritet #3, 2026-08-03-runden). dayStr er alt
+  // ein UTC-kalenderdag (same String(created_at).slice(0,10)-utleiing som
+  // resten av fila brukar for dagsgruppering) -- held heile utrekninga i
+  // UTC (getUTCDay/setUTCDate) i staden for lokal tid, elles kunne
+  // vekemerkinga bomme med éin dag avhengig av admin sin tidssone.
+  function weekKey(dayStr) {
+    var d = new Date(dayStr + "T00:00:00Z");
+    var isoDay = (d.getUTCDay() + 6) % 7; // 0 = mandag
+    d.setUTCDate(d.getUTCDate() - isoDay);
+    return d.toISOString().slice(0, 10);
+  }
+  function bucketKey(dayStr, mode) { return mode === "week" ? weekKey(dayStr) : dayStr; }
+
+  // Bygger søylegrafen for "N per dag/uke" -- delt mellom sidevisninger og
+  // CTA-klikk, hver med sin egen skala (deling av samme skala ville gjort
+  // CTA-søylene usynlig små, siden CTA-tall normalt er mye lavere). Toppsøylen
+  // merkes med tallet sitt direkte over (i staden for berre ein hover-
+  // tooltip), og alle søyler har ein tap/klikk-utløyst verditooltip -- title=
+  // åleine verka ikkje på touch (UX-review-funn 2026-08-03).
+  function barsHtml(byBucket, buckets, mode) {
+    if (!buckets.length) return { bars: "", range: "" };
+    var max = Math.max.apply(null, buckets.map(function (b) { return byBucket[b]; }).concat([1]));
+    var peakIdx = 0;
+    buckets.forEach(function (b, i) { if (byBucket[b] > byBucket[buckets[peakIdx]]) peakIdx = i; });
+    var bars = buckets.map(function (b, i) {
+      var v = byBucket[b];
+      var h = Math.round((v / max) * 60) + 4;
+      var isPeak = i === peakIdx;
+      // tabindex/role/aria-label -- ein rein <div> nådde aldri tastaturfokus
+      // og verdien i .an-bar__tip (display:none utanom hover/.is-tipped) var
+      // difor heilt utilgjengeleg for skjermlesar/tastatur (UX-review-funn).
+      return '<div class="an-bar' + (isPeak ? " is-peak" : "") + '" style="height:' + h + 'px" data-val="' + v + '" tabindex="0" role="img" aria-label="' + esc(b) + ': ' + v + '">' +
+        (isPeak ? '<span class="an-bar__peak">' + v + '</span>' : "") +
+        '<span class="an-bar__tip">' + esc(b) + ': ' + v + '</span>' +
+      '</div>';
+    }).join("");
+    var unitLabel = mode === "week" ? "per uke" : "per dag";
+    var range = '<p class="an-hint" style="margin-top:.3rem">' + esc(buckets[0]) + ' – ' + esc(buckets[buckets.length - 1]) + ' (' + unitLabel + ') · tips/klikk en søyle for tall</p>';
+    return { bars: bars, range: range };
+  }
 
   function periodStats(rows) {
     var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
@@ -288,21 +345,28 @@
     return Math.round(((now - before) / before) * 1000) / 10;
   }
 
-  function buildTrendsHtml(pageviews, ctas) {
+  // Trend-vinduet er no "andre halvdel av valgt periode mot første halvdel"
+  // (generalisert frå den tidlegare faste "siste 7 mot føregåande 7 dagar",
+  // sjå TREND_PERIOD_HALF). Opererer på dei FULLE, uslissa radene (opptil 90
+  // dagar) sidan halvparten for periode=90 (45) krev historikk lenger tilbake
+  // enn dei 7/30 dagane som eventuelt er valde for visinga elles -- akkurat
+  // difor hentar fetchStats() alltid heile 90-dagarsvindauget på førehand.
+  function buildTrendsHtml(allRows, days) {
+    var half = TREND_PERIOD_HALF[days];
     var now = Date.now(), DAY = 86400000;
-    var cutThis = now - TREND_PERIOD_DAYS * DAY;
-    var cutPrev = now - TREND_PERIOD_DAYS * 2 * DAY;
+    var cutThis = now - half * DAY;
+    var cutPrev = now - half * 2 * DAY;
     function inWindow(r, from, to) { var t = new Date(r.created_at).getTime(); return t >= from && t < to; }
-    var thisRows = pageviews.concat(ctas).filter(function (r) { return inWindow(r, cutThis, now); });
-    var prevRows = pageviews.concat(ctas).filter(function (r) { return inWindow(r, cutPrev, cutThis); });
+    var thisRows = allRows.filter(function (r) { return inWindow(r, cutThis, now); });
+    var prevRows = allRows.filter(function (r) { return inWindow(r, cutPrev, cutThis); });
     var cur = periodStats(thisRows), prev = periodStats(prevRows);
     if (cur.pageviews === 0) return "";
 
     var items = [];
     var pvChange = pctChange(cur.pageviews, prev.pageviews);
     items.push(pvChange === null
-      ? "Fyrste periode med nok data -- ingen samanligning enda."
-      : (pvChange >= 0 ? "↑ " : "↓ ") + Math.abs(pvChange) + "% " + (pvChange >= 0 ? "flere" : "færre") + " sidevisninger enn de " + TREND_PERIOD_DAYS + " dagene før.");
+      ? "Første halvdel av perioden med nok data -- ingen sammenligning ennå."
+      : (pvChange >= 0 ? "↑ " : "↓ ") + Math.abs(pvChange) + "% " + (pvChange >= 0 ? "flere" : "færre") + " sidevisninger enn de " + half + " dagene før.");
 
     if (cur.bestDay) items.push("Beste dag: " + esc(cur.bestDay.key) + " (" + cur.bestDay.n + " sidevisninger).");
 
@@ -327,46 +391,71 @@
       items.push(esc(displayPath(cur.topPath.key)) + " er nå mest besøkt side (var " + esc(displayPath(prev.topPath.key)) + " forrige periode).");
     }
 
-    return '<h5>Trender</h5>' +
-      '<p class="an-hint" style="margin-top:-.2rem">Sammenligner de siste ' + TREND_PERIOD_DAYS + ' dagene mot de ' + TREND_PERIOD_DAYS + ' dagene før. Ingen AI -- bare enkel regning på tallene over.</p>' +
-      '<ul style="list-style:none;padding:0;margin:0 0 1.2rem">' +
+    return '<div class="an-card" style="margin-bottom:1.2rem">' +
+      '<h5>Trender ' + C.helpIcon("Sammenligner andre halvdel av valgt periode mot første halvdel. Ingen KI -- bare enkel regning på tallene over.") + '</h5>' +
+      '<ul style="list-style:none;padding:0;margin:0">' +
         items.map(function (t) { return '<li style="padding:.35rem 0;border-bottom:1px solid var(--color-border);font-size:.88rem">' + t + '</li>'; }).join("") +
-      '</ul>';
+      '</ul></div>';
   }
 
-  function buildPanelHtml(rows, conversions) {
+  /* --- Oversikt-fane -------------------------------------------------------- */
+  function renderOversiktPane(rows, days) {
     var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
     var ctas      = rows.filter(function (r) { return r.type === "cta"; });
 
-    var byDay = {};
+    var bySession = {};
     pageviews.forEach(function (r) {
-      var d = String(r.created_at).slice(0, 10);
-      byDay[d] = (byDay[d] || 0) + 1;
+      if (!bySession[r.session_id]) bySession[r.session_id] = [];
+      bySession[r.session_id].push(r);
     });
-    var days = Object.keys(byDay).sort();
-    var pageviewBars = dayBarsHtml(byDay, days);
+    var sessionIds = Object.keys(bySession);
+    var bounceSessions = sessionIds.filter(function (sid) { return bySession[sid].length === 1; }).length;
+    var bounceRate = sessionIds.length ? Math.round((bounceSessions / sessionIds.length) * 100) : 0;
+    var avgPagesPerSession = sessionIds.length ? Math.round((pageviews.length / sessionIds.length) * 10) / 10 : 0;
+    var conversionRate = pageviews.length ? Math.round((ctas.length / pageviews.length) * 1000) / 10 : 0;
 
-    var byDayCta = {};
-    ctas.forEach(function (r) {
-      var d = String(r.created_at).slice(0, 10);
-      byDayCta[d] = (byDayCta[d] || 0) + 1;
+    var mode = BUCKET_MODE[days];
+    var byBucketPv = {};
+    pageviews.forEach(function (r) {
+      var b = bucketKey(String(r.created_at).slice(0, 10), mode);
+      byBucketPv[b] = (byBucketPv[b] || 0) + 1;
     });
-    var ctaDays = Object.keys(byDayCta).sort();
-    var ctaBars = dayBarsHtml(byDayCta, ctaDays);
+    var pvBuckets = Object.keys(byBucketPv).sort();
+    var pvBars = barsHtml(byBucketPv, pvBuckets, mode);
+
+    var byBucketCta = {};
+    ctas.forEach(function (r) {
+      var b = bucketKey(String(r.created_at).slice(0, 10), mode);
+      byBucketCta[b] = (byBucketCta[b] || 0) + 1;
+    });
+    var ctaBuckets = Object.keys(byBucketCta).sort();
+    var ctaBars = barsHtml(byBucketCta, ctaBuckets, mode);
+
+    return '<div class="an-cards">' +
+        '<div class="an-card"><div class="an-card__val">' + pageviews.length + '</div><div class="an-card__label">Sidevisninger</div></div>' +
+        '<div class="an-card"><div class="an-card__val">' + conversionRate + '%</div><div class="an-card__label">Konverteringsrate</div></div>' +
+        '<div class="an-card"><div class="an-card__val">' + bounceRate + '%</div><div class="an-card__label">Avvisningsrate ' + C.helpIcon("Andel besøk der den besøkende bare så én side før de forlot nettsiden.") + '</div></div>' +
+        '<div class="an-card"><div class="an-card__val">' + avgPagesPerSession + '</div><div class="an-card__label">Sider per besøk ' + C.helpIcon("Gjennomsnittlig antall sider en besøkende ser før økten avsluttes.") + '</div></div>' +
+      '</div>' +
+      buildTrendsHtml(rows, days) +
+      '<h4 class="an-heading">Trafikk ' + (mode === "week" ? "per uke" : "per dag") + '</h4>' +
+      '<div class="an-chart-row">' +
+        '<div class="an-card"><h5>Sidevisninger</h5><div class="an-bars">' + (pvBars.bars || "") + '</div>' +
+          (pvBars.bars ? pvBars.range : '<p class="an-hint">Ingen data ennå.</p>') + '</div>' +
+        (ctaBars.bars
+          ? '<div class="an-card"><h5>CTA-klikk</h5><div class="an-bars">' + ctaBars.bars + '</div>' + ctaBars.range + '</div>'
+          : "") +
+      '</div>';
+  }
+
+  /* --- Sider-fane ------------------------------------------------------------ */
+  function renderSiderPane(rows, conversions, days) {
+    var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
+    var ctas      = rows.filter(function (r) { return r.type === "cta"; });
 
     var byPath = {};
     pageviews.forEach(function (r) { byPath[r.path] = (byPath[r.path] || 0) + 1; });
     var topPaths = topN(byPath, 10);
-
-    var byRef = {};
-    pageviews.forEach(function (r) { var k = r.referrer || "Direkte"; byRef[k] = (byRef[k] || 0) + 1; });
-    var topRefs = topN(byRef, 10);
-
-    // "Ukjent" dekkjer rader frå før device_type-kolonnen fanst (nullable).
-    var DEVICE_LABELS = { mobil: "Mobil", nettbrett: "Nettbrett", pc: "PC" };
-    var byDevice = {};
-    pageviews.forEach(function (r) { var k = r.device_type || "Ukjent"; byDevice[k] = (byDevice[k] || 0) + 1; });
-    var topDevices = topN(byDevice, 5);
 
     var bySession = {};
     pageviews.forEach(function (r) {
@@ -382,58 +471,191 @@
     var topEntry = topN(entryCount, 5);
     var topExit  = topN(exitCount, 5);
 
-    // Fase 2 (steg 3b) -- match leads/bookings mot sesjonen sin inngangsside.
-    // Kun sesjonar sidetellinga faktisk har sett (bySession) tel med -- ein
-    // konvertering utan matchande pageview-sesjon (t.d. innsending etter at
-    // øktvindauget på DAYS_BACK dagar er ute) vert stille utelate, ikkje feil.
-    var conversionByEntry = {}, conversionCount = 0;
-    (conversions || []).forEach(function (c) {
-      var sessRows = bySession[c.analytics_session_id];
-      if (!sessRows || !sessRows.length) return;
-      var entryPath = sessRows.slice().sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; })[0].path;
-      conversionByEntry[entryPath] = (conversionByEntry[entryPath] || 0) + 1;
-      conversionCount++;
-    });
-    var topConversions = topN(conversionByEntry, 5);
-
     var byCta = {};
     ctas.forEach(function (r) { byCta[r.cta_id] = (byCta[r.cta_id] || 0) + 1; });
-    var ctaCardsHtml = Object.keys(byCta).map(function (k) {
-      return '<div class="an-card"><div class="an-card__val">' + byCta[k] + '</div><div class="an-card__label">' + esc(CTA_LABELS[k] || k) + '</div></div>';
-    }).join("");
+    var ctaChipsHtml = Object.keys(byCta).length
+      ? '<div class="an-cta-chips">' + Object.keys(byCta).map(function (k) {
+          return '<span class="an-cta-chip">' + esc(CTA_LABELS[k] || k) + ' <strong>' + byCta[k] + '</strong></span>';
+        }).join("") + '</div>'
+      : '<p class="an-hint">Ingen CTA-klikk i valgt periode.</p>';
 
-    var conversionRate = pageviews.length ? Math.round((ctas.length / pageviews.length) * 1000) / 10 : 0;
+    // Konverteringskobling -- kun sesjonar sidetellinga faktisk har sett
+    // (bySession) tel med -- ein konvertering utan matchande pageview-
+    // sesjon (t.d. innsending like utanfor perioden) vert stille utelate.
+    // Vist som ein samla, TONA NED trakt (sidevisning -> CTA-klikk ->
+    // henvendelse) i staden for ei topplista etter inngangsside -- kobling
+    // mellom besøksdata og ein namngjeven henvendelse er framleis eit ope
+    // juridisk spørsmål internt (sjå ADR-0013-området/roadmap), skal difor
+    // aldri få meir visuell vekt enn resten av panelet.
+    var conversionCount = 0;
+    (conversions || []).forEach(function (c) {
+      if (bySession[c.analytics_session_id] && bySession[c.analytics_session_id].length) conversionCount++;
+    });
+    var funnelHtml = conversionCount ? (
+      '<div class="an-funnel">' +
+        '<h5>Fra besøk til henvendelse ' + C.helpIcon(
+          conversionCount + " henvendelse" + (conversionCount === 1 ? "" : "r") + " (kontakt, tilbud eller booking) kan spores til besøk i valgt periode. Vises tonet ned bevisst -- koblingen mellom besøksdata og en navngitt henvendelse er fortsatt en uavklart problemstilling internt, ikke en hovedmetrikk."
+        ) + '</h5>' +
+        '<div class="an-funnel__row">' +
+          '<div class="an-funnel__step"><div class="an-funnel__n">' + pageviews.length + '</div><div class="an-funnel__l">Sidevisninger</div></div>' +
+          '<div class="an-funnel__arrow">→</div>' +
+          '<div class="an-funnel__step"><div class="an-funnel__n">' + ctas.length + '</div><div class="an-funnel__l">CTA-klikk</div></div>' +
+          '<div class="an-funnel__arrow">→</div>' +
+          '<div class="an-funnel__step"><div class="an-funnel__n">' + conversionCount + '</div><div class="an-funnel__l">Henvendelser</div></div>' +
+        '</div>' +
+      '</div>'
+    ) : "";
 
+    return '<h4 class="an-heading">Sidebruk</h4>' +
+      '<div class="an-list-grid">' +
+        toplistHtml("Mest besøkte sider", topPaths, function (i) { return displayPath(i.key); }) +
+        toplistHtml("Inngangssider", topEntry, function (i) { return displayPath(i.key); }, "Siden en besøkende kom inn på nettsiden") +
+        toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siden en besøkende forlot nettsiden fra") +
+      '</div>' +
+      '<h4 class="an-heading">CTA-klikk etter type</h4>' +
+      ctaChipsHtml +
+      (funnelHtml ? '<h4 class="an-heading">Henvendelser</h4>' + funnelHtml : "");
+  }
+
+  /* --- Kilder & enheter-fane ------------------------------------------------- */
+  function renderKilderPane(rows) {
+    var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
+
+    var byRef = {};
+    pageviews.forEach(function (r) { var k = r.referrer || "Direkte"; byRef[k] = (byRef[k] || 0) + 1; });
+    var topRefs = topN(byRef, 10);
+
+    // "Ukjent" dekkjer rader frå før device_type-kolonnen fanst (nullable).
+    var DEVICE_LABELS = { mobil: "Mobil", nettbrett: "Nettbrett", pc: "PC" };
+    var byDevice = {};
+    pageviews.forEach(function (r) { var k = r.device_type || "Ukjent"; byDevice[k] = (byDevice[k] || 0) + 1; });
+    var total = pageviews.length || 1;
+    var deviceOrder = ["mobil", "pc", "nettbrett"].filter(function (k) { return byDevice[k]; })
+      .concat(Object.keys(byDevice).filter(function (k) { return ["mobil", "pc", "nettbrett"].indexOf(k) === -1; }));
+    var shades = ["var(--color-primary)", "color-mix(in srgb, var(--color-primary) 55%, var(--color-bg))", "color-mix(in srgb, var(--color-primary) 25%, var(--color-bg))"];
+    var deviceBarHtml = deviceOrder.length
+      ? '<div class="an-device-bar">' + deviceOrder.map(function (k, i) {
+          var pct = Math.round((byDevice[k] / total) * 100);
+          return '<span style="width:' + pct + '%;background:' + (shades[i] || shades[shades.length - 1]) + '">' + (pct >= 8 ? pct + "%" : "") + '</span>';
+        }).join("") + '</div>' +
+        '<div class="an-device-legend">' + deviceOrder.map(function (k, i) {
+          return '<span class="an-device-legend__item"><span class="an-device-legend__sw" style="background:' + (shades[i] || shades[shades.length - 1]) + '"></span>' + esc(DEVICE_LABELS[k] || k) + ' (' + byDevice[k] + ')</span>';
+        }).join("") + '</div>'
+      : '<p class="an-hint">Ingen data ennå.</p>';
+
+    return '<h4 class="an-heading">Henvisninger og enheter</h4>' +
+      '<div class="an-list-grid">' +
+        toplistHtml("Henvisninger", topRefs, function (i) { return i.key; }, "«Direkte» = besøkende skrev inn adressen selv, brukte et bokmerke, eller kom fra en app.") +
+        '<div class="an-card"><h5>Enheter</h5>' + deviceBarHtml + '</div>' +
+      '</div>';
+  }
+
+  /* --- Panel-skjelett, periodevalg og sub-faner ------------------------------ */
+  function shellHtml(days) {
     return '<div class="an-sidetelling">' +
       '<div style="display:flex;justify-content:flex-end;margin-bottom:.6rem">' +
         C.button({ label: "Oppdater", variant: "ghost", attrs: 'type="button" data-sidetelling-refresh' }) +
       '</div>' +
-      '<div class="an-cards">' +
-        '<div class="an-card"><div class="an-card__val">' + pageviews.length + '</div><div class="an-card__label">Sidevisninger, siste ' + DAYS_BACK + ' dager</div></div>' +
-        '<div class="an-card"><div class="an-card__val">' + conversionRate + '%</div><div class="an-card__label">Konverteringsrate</div></div>' +
+      '<div class="an-period">' +
+        '<span class="an-period__lbl">Periode</span>' +
+        '<div class="an-period__seg" data-an-period-seg>' +
+          PERIOD_OPTIONS.map(function (d) {
+            return '<button type="button" class="' + (d === days ? "is-active" : "") + '" data-an-days="' + d + '">' + d + ' dager</button>';
+          }).join("") +
+        '</div>' +
       '</div>' +
-      '<p class="an-hint" style="margin-top:-.4rem">Konverteringsrate = andel sidevisninger som endte med et CTA-klikk (telefon, e-post, kontakt, tilbud eller booking).</p>' +
-      buildTrendsHtml(pageviews, ctas) +
-      '<h5>Sidevisninger per dag</h5>' +
-      '<div class="an-bars" aria-hidden="true">' + (pageviewBars.bars || "") + '</div>' +
-      (pageviewBars.bars ? pageviewBars.range : '<p class="an-hint">Ingen data ennå.</p>') +
-      (ctaBars.bars
-        ? '<h5>CTA-klikk per dag</h5><div class="an-bars" aria-hidden="true">' + ctaBars.bars + '</div>' + ctaBars.range
-        : "") +
-      toplistHtml("Mest besøkte sider", topPaths, function (i) { return displayPath(i.key); }) +
-      toplistHtml("Henvisninger", topRefs, function (i) { return i.key; }, "«Direkte» = besøkende skrev inn adressen selv, brukte et bokmerke, eller kom fra en app.") +
-      toplistHtml("Enheter", topDevices, function (i) { return DEVICE_LABELS[i.key] || i.key; }, "Hva slags skjerm besøkende brukte -- mobil, nettbrett eller PC.") +
-      toplistHtml("Inngangssider", topEntry, function (i) { return displayPath(i.key); }, "Siden en besøkende kom inn på nettsiden") +
-      toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siden en besøkende forlot nettsiden fra") +
-      (conversionCount
-        ? toplistHtml("Henvendelser fra disse sidene", topConversions, function (i) { return displayPath(i.key); },
-            conversionCount + " henvendelse" + (conversionCount === 1 ? "" : "r") + " (kontakt, tilbud eller booking) kan spores til besøk som startet her.")
-        : "") +
-      (ctaCardsHtml
-        ? '<h5>CTA-klikk</h5><p class="an-hint" style="margin-top:-.2rem">Klikk på telefon-, e-post-, kontakt-, tilbuds- og bookingknapper.</p><div class="an-cards">' + ctaCardsHtml + '</div>'
-        : "") +
+      '<div class="an-subtabs" role="tablist">' +
+        '<button type="button" class="an-subtab is-active" role="tab" aria-selected="true" aria-controls="an-pane-oversikt" data-an-tab="oversikt">Oversikt</button>' +
+        '<button type="button" class="an-subtab" role="tab" aria-selected="false" aria-controls="an-pane-sider" data-an-tab="sider">Sider</button>' +
+        '<button type="button" class="an-subtab" role="tab" aria-selected="false" aria-controls="an-pane-kilder" data-an-tab="kilder">Kilder &amp; enheter</button>' +
+      '</div>' +
+      '<div class="an-pane is-active" role="tabpanel" id="an-pane-oversikt" data-an-pane="oversikt"></div>' +
+      '<div class="an-pane" role="tabpanel" id="an-pane-sider" data-an-pane="sider"></div>' +
+      '<div class="an-pane" role="tabpanel" id="an-pane-kilder" data-an-pane="kilder"></div>' +
       '<p style="font-size:.78rem;color:var(--color-muted);margin-top:.8rem">Analyse fra Vibeverk — cookiefritt, ingen tredjepart involvert.</p>' +
     '</div>';
+  }
+
+  function renderPanes(container, rows, conversions, days) {
+    var sliced = sliceRowsToPeriod(rows, days);
+    container.querySelector('[data-an-pane="oversikt"]').innerHTML = renderOversiktPane(sliced, days);
+    container.querySelector('[data-an-pane="sider"]').innerHTML = renderSiderPane(sliced, conversions, days);
+    container.querySelector('[data-an-pane="kilder"]').innerHTML = renderKilderPane(sliced);
+  }
+
+  function mountPanel(container, rows, conversions) {
+    var state = { days: DEFAULT_PERIOD_DAYS };
+    container.innerHTML = shellHtml(state.days) + testDataButtonHtml();
+    renderPanes(container, rows, conversions, state.days);
+    bindPanel(container, rows, conversions, state);
+    bindBarTooltips(container);
+    var seedBtn = container.querySelector("[data-sidetelling-seed]");
+    if (seedBtn) seedBtn.addEventListener("click", function () { runSeedTestData(container, seedBtn); });
+  }
+
+  // Tap/klikk/tastatur-tooltip på søylene (title= virker ikke på touch,
+  // UX-review-funn 2026-08-03) -- delegert på CONTAINEREN (ikkje per søyle,
+  // sidan søylene rendrast på nytt ved kvart periodeval). container-noden
+  // sjølv vert ALDRI erstatta av "Oppdater" (kun container.innerHTML), så
+  // dette må bindast KUN ÉIN GONG per container -- elles hopar det seg opp
+  // éin ny delegert click-lyttar for kvart "Oppdater"-klikk (reell, funne
+  // lekkasje, UX-review 2026-08-03). Bunde i mountPanel(), ikkje bindPanel()
+  // (som køyrer på nytt ved kvar "Oppdater"), og verna med eit flagg.
+  function bindBarTooltips(container) {
+    if (container._anBarsBound) return;
+    container._anBarsBound = true;
+    function toggle(bar) {
+      var wasOpen = bar.classList.contains("is-tipped");
+      container.querySelectorAll(".an-bar.is-tipped").forEach(function (b) { b.classList.remove("is-tipped"); });
+      if (!wasOpen) bar.classList.add("is-tipped");
+    }
+    container.addEventListener("click", function (e) {
+      var bar = e.target.closest && e.target.closest(".an-bar");
+      if (bar) toggle(bar);
+    });
+    // Enter/mellomrom -- søylene har tabindex="0"/role="img" (sjå barsHtml()),
+    // men var elles berre nåbare med mus/touch (UX-review-funn).
+    container.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      var bar = e.target.closest && e.target.closest(".an-bar");
+      if (!bar) return;
+      e.preventDefault();
+      toggle(bar);
+    });
+  }
+
+  function bindPanel(container, rows, conversions, state) {
+    // Sub-faner (Oversikt/Sider/Kilder & enheter) -- egen attributt/klasse,
+    // IKKE C.tabbar()/.tab: en tablist nøstet inne i den øverste admin-
+    // fanens .tab/.tabbar ville både kollidert med test.js sine
+    // .tab/[data-tab]-spørringer og vore eit ARIA-antimønster (tablist i
+    // tablist). Bundet lokalt her, same mønster som modulen alt bruker for
+    // oppdater-/prøv igjen-knappane sine. Desse knappane er ferske DOM-
+    // element ved kvar mountPanel()-køyring (shellHtml() byggjer heile
+    // skjelettet på nytt), så direkte binding her -- i motsetnad til
+    // søyle-tap-lyttaren over -- lek ikkje: gamle knappar (med sine gamle
+    // lyttarar) vert kasta saman med resten av det gamle DOM-treet.
+    container.querySelectorAll("[data-an-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        container.querySelectorAll("[data-an-tab]").forEach(function (b) { b.classList.remove("is-active"); b.setAttribute("aria-selected", "false"); });
+        container.querySelectorAll("[data-an-pane]").forEach(function (p) { p.classList.remove("is-active"); });
+        btn.classList.add("is-active");
+        btn.setAttribute("aria-selected", "true");
+        container.querySelector('[data-an-pane="' + btn.getAttribute("data-an-tab") + '"]').classList.add("is-active");
+      });
+    });
+
+    container.querySelectorAll("[data-an-days]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.days = Number(btn.getAttribute("data-an-days"));
+        container.querySelectorAll("[data-an-days]").forEach(function (b) { b.classList.remove("is-active"); });
+        btn.classList.add("is-active");
+        renderPanes(container, rows, conversions, state.days);
+      });
+    });
+
+    var refreshBtn = container.querySelector("[data-sidetelling-refresh]");
+    if (refreshBtn) refreshBtn.addEventListener("click", function () { renderAdminPanel(container); });
   }
 
   // Rein kosmetisk synlighets-sjekk — den REELLE beskyttelsen mot at
@@ -463,11 +685,7 @@
       // nettverk), skal resten av panelet framleis rendrast normalt.
       fetchConversions(function (conversions) {
         if (!container.ownerDocument || !container.ownerDocument.contains(container)) return;
-        container.innerHTML = buildPanelHtml(rows, conversions || []) + testDataButtonHtml();
-        var btn = container.querySelector("[data-sidetelling-seed]");
-        if (btn) btn.addEventListener("click", function () { runSeedTestData(container, btn); });
-        var refreshBtn = container.querySelector("[data-sidetelling-refresh]");
-        if (refreshBtn) refreshBtn.addEventListener("click", function () { renderAdminPanel(container); });
+        mountPanel(container, rows, conversions || []);
       });
     });
   }

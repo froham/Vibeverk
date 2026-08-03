@@ -1483,21 +1483,25 @@ window.App = (function () {
     { id: "design",        label: "Design" },
     { id: "innhold",       label: "Innhold" },
     { id: "henvendelser",  label: "Henvendelser" },
+    { id: "innsikt",       label: "Innsikt" },
     { id: "innstillinger", label: "Innstillinger" },
     { id: "konto",         label: "Min konto" }
   ];
   // Kva faner kvar rolle ser i web-adminen:
-  //   admin       → alt (design* + innhold + henvendelser + innstillinger)
-  //   editor      → design* + innhald og henvendelser (ikkje innstillinger)
+  //   admin       → alt (design* + innhold + henvendelser + innsikt + innstillinger)
+  //   editor      → design* + innhald og henvendelser (ikkje innsikt, ikkje innstillinger)
   //   member → berre henvendelser (getAuthRole() normaliserer eldre "employee" til "member")
   //   *design berre dersom feat("sidebygger") er sant -- Console-only
   //   betalingsflagg, IKKJE noko kunden sjølv kan skru på (feat() les
   //   CFG.features, som berre Console/superconfig kan skrive til).
+  // Innsikt er halde admin-only, same tilgangsnivå som "Analyse" hadde under
+  // Innstillinger tidlegare -- denne runda flytta han til eigen kategori,
+  // men endra ikkje kven som ser han (sjå docs/architecture/sidetelling.md).
   function allowedCategoriesForRole(role) {
     var cats;
     if (role === "member") cats = ["henvendelser"];
     else if (role === "editor") cats = feat("sidebygger") ? ["design", "innhold", "henvendelser"] : ["innhold", "henvendelser"];
-    else cats = feat("sidebygger") ? ["design", "innhold", "henvendelser", "innstillinger"] : ["innhold", "henvendelser", "innstillinger"];
+    else cats = feat("sidebygger") ? ["design", "innhold", "henvendelser", "innsikt", "innstillinger"] : ["innhold", "henvendelser", "innsikt", "innstillinger"];
     if (_sb) cats = cats.concat(["konto"]);
     return cats;
   }
@@ -1508,7 +1512,7 @@ window.App = (function () {
       { id: "design-seo",    label: "SEO",    category: "design" },
       { id: "design-fargar", label: "Fargar", category: "design" },
       { id: "design-fontar", label: "Fontar", category: "design" },
-      { id: "analyse",    label: "Analyse",    category: "innstillinger" },
+      { id: "analyse",    label: "Innsikt",    category: "innsikt" },
       { id: "navigasjon", label: "Navigasjon", category: "innstillinger" },
       { id: "innhold",    label: "Innhold",    category: "innhold" },
       { id: "tjenester",  label: "Tjenester",  category: "innhold" },
@@ -3547,13 +3551,26 @@ window.App = (function () {
     // Åpne = ny + lest, Løst = løst. Samme status-system som brukes i Kontakt/Tilbud/Booking.
     function openCount(items)     { return items.filter(function (x) { return (x.status || "ny") !== "løst"; }).length; }
     function resolvedCount(items) { return items.filter(function (x) { return (x.status || "ny") === "løst"; }).length; }
+    // Redesignet 2026-08-03 (Innsikt-runden): åpne er hovedtallet i kortet --
+    // det er det som faktisk trenger oppfølging -- med løst-andelen som ei
+    // fremdriftslinje og ei "X av Y løst"-støttetekst, i staden for to
+    // likestilte tal side ved side.
     function statusCard(label, items) {
+      const open = openCount(items), resolved = resolvedCount(items), total = open + resolved;
+      const pct = total ? Math.round((resolved / total) * 100) : 100;
+      if (open === 0) {
+        return `<div class="an-card">
+          <div class="an-card__label" style="font-weight:600;margin:0 0 .65rem">${C.esc(label)}</div>
+          <div class="an-status__row"><div class="an-card__val" style="color:#16a34a">0</div><div class="an-status__val-label">åpne</div></div>
+          <div class="an-status__bar"><div class="an-status__fill" style="width:100%"></div></div>
+          <div class="an-status__note" style="color:#16a34a;font-weight:600">Alt løst ✓</div>
+        </div>`;
+      }
       return `<div class="an-card">
-        <div class="an-card__split">
-          <div><div class="an-card__val">${openCount(items)}</div><div class="an-card__label">Åpne</div></div>
-          <div><div class="an-card__val">${resolvedCount(items)}</div><div class="an-card__label">Løst</div></div>
-        </div>
-        <div class="an-card__label" style="margin:.5rem 0 0;font-weight:600">${C.esc(label)}</div>
+        <div class="an-card__label" style="font-weight:600;margin:0 0 .65rem">${C.esc(label)}</div>
+        <div class="an-status__row"><div class="an-card__val">${open}</div><div class="an-status__val-label">åpne</div></div>
+        <div class="an-status__bar"><div class="an-status__fill" style="width:${pct}%"></div></div>
+        <div class="an-status__note">${resolved} av ${total} løst (${pct}%)</div>
       </div>`;
     }
     function countCard(label, val) {
@@ -3620,14 +3637,23 @@ window.App = (function () {
     }
     if (plVal && !embedVal) bits.push(plLink);
     if (sideOn) bits.push(`<div data-sidetelling-root></div>`);
-    const trafficHtml = bits.length ? bits.join("") : `<p class="an-hint">Ingen analyse er satt opp ennå. Vibeverk anbefaler Plausible.io for en enkel, sikker og cookie-free løsning. Ta kontakt med oss, så hjelper vi å sette dette opp.</p>`;
+    // Kunden mangler BÅDE Plausible og Innsikt-modulen -- fristande tekst om
+    // oppgradering, same mønster som andre ukjøpte moduler (t.d. Design-
+    // modulen sin teaser, sjå openManualModal()), pluss det eksisterande
+    // Plausible-tipset som alt fanst her.
+    const trafficHtml = bits.length ? bits.join("") : `
+      <div class="an-upsell">
+        <p>Ingen trafikkmåling er satt opp ennå.</p>
+        <p>Med Innsikt kan du se sidevisninger, kilder, enheter og mer om besøket på nettsiden din — helt uten cookies. Spør oss om oppgradering hvis dette høres nyttig ut.</p>
+        <p class="an-hint" style="margin:0">Vibeverk anbefaler ellers Plausible.io som et enkelt, cookiefritt alternativ.</p>
+      </div>`;
 
     body.innerHTML = `
       <div class="an-wrap">
         <h4 class="an-heading">Denne måneden</h4>
         <div class="an-cards">${monthCards.join("")}</div>
 
-        <h4 class="an-heading">Status (åpne/løst)</h4>
+        <h4 class="an-heading">Status (åpne/løst) <span class="an-heading__note">åpne er hovedtallet — det er det som trenger oppfølging</span></h4>
         <div class="an-cards">${statusCards.join("")}</div>
 
         ${contentCards.length ? `<h4 class="an-heading">Innhold</h4><div class="an-cards">${contentCards.join("")}</div>${refCatHtml}` : ""}

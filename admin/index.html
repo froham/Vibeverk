@@ -190,8 +190,18 @@
     .has-credit > img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .img-credit-badge { position: absolute; right: .5rem; bottom: .5rem; font-size: .65rem; font-weight: 700; letter-spacing: .02em; color: #fff; background: rgba(0,0,0,.62); padding: .15rem .5rem; border-radius: 5px; cursor: default; }
 
-    .an-wrap { max-width: 640px; }
-    .an-heading { margin: 0 0 .8rem; font-size: 1rem; }
+    /* max-width:none (ikke 640px) -- Innsikt-runden 2026-08-03: en fast
+       640px-kolonne klemte det nye 2-3-kolonners dashboard-rutenettet ned
+       til en smal enkeltkolonne på denne PWA-installerbare admin-flaten,
+       mens den samme fanen på index.html sitt #admin-overlegg alt hadde
+       max-width:none (UX-review-funn -- inkonsekvens mellom flatene). */
+    .an-wrap { max-width: none; }
+    /* Eyebrow-stil (uppercase/dempa), same som index.html sitt #admin-
+       overlegg -- var berre "margin/font-size" her tidlegare, altså same
+       visuelle vekt som widget-titlane under (.an-sidetelling h5), som
+       gjorde "to overskrift-nivå"-hensikta usynleg på denne PWA-flata
+       (UX-review-funn, Innsikt-runden 2026-08-03). */
+    .an-heading { margin: 0 0 .6rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--color-muted); }
     .an-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-bottom: 1.6rem; }
     .an-card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem 1.1rem; background: var(--color-surface); }
     .an-card__val { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--color-primary); }
@@ -219,13 +229,71 @@
     @media(max-width:560px) { .an-cards { grid-template-columns: 1fr; } }
     /* Sidetelling (module-sidetelling.js) */
     .an-sidetelling h5 { margin: 1.2rem 0 .5rem; font-size: .82rem; font-weight: 600; color: var(--color-text); }
-    .an-bars { display: flex; align-items: flex-end; gap: 2px; height: 64px; padding: 0 .1rem; border-bottom: 1px solid var(--color-border); }
-    .an-bar { flex: 1; min-width: 2px; background: var(--color-primary); border-radius: 2px 2px 0 0; opacity: .85; }
-    .an-toplist ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
-    .an-toplist li { display: flex; justify-content: space-between; gap: .8rem; padding: .5rem .8rem; font-size: .85rem; border-bottom: 1px solid var(--color-border); }
+    .an-bars { display: flex; align-items: flex-end; gap: 2px; height: 64px; padding: 1.4rem .1rem 0; border-bottom: 1px solid var(--color-border); }
+    .an-bar { flex: 1; min-width: 2px; background: var(--color-primary); border-radius: 2px 2px 0 0; opacity: .55; cursor: pointer; position: relative; transition: opacity .12s; }
+    .an-bar:hover, .an-bar.is-peak { opacity: 1; }
+    /* .an-toplist ul/li: kortrand/bakgrunn kjem no frå .an-card (delt klasse
+       på same wrapper, sjå toplistHtml()) -- unngår ei dobbel boks-i-boks-
+       kjensle mellom KPI-kort og topplister (UX-review-funn 2026-08-03). */
+    .an-toplist ul { list-style: none; margin: 0; padding: 0; }
+    .an-toplist li { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; font-size: .85rem; border-bottom: 1px solid var(--color-border); }
     .an-toplist li:last-child { border-bottom: none; }
-    .an-toplist li span { color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
-    .an-toplist li strong { flex-shrink: 0; }
+    .an-toplist__rank { font-size: .72rem; font-weight: 700; color: var(--color-muted); width: 1.1rem; flex-shrink: 0; }
+    .an-toplist li.is-top { background: var(--color-tint); margin: 0 -.4rem; padding: .4rem; border-radius: 8px; border-bottom-color: transparent; }
+    .an-toplist li.is-top .an-toplist__rank { color: var(--color-primary); }
+    .an-toplist li span { color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+    .an-toplist li.is-top span { font-weight: 600; }
+    .an-toplist li strong { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .an-bar__peak { position: absolute; top: -1.3rem; left: 50%; transform: translateX(-50%); font-size: .72rem; font-weight: 700; color: var(--color-primary); white-space: nowrap; }
+    .an-bar__tip { position: absolute; bottom: 100%; left: 50%; margin-bottom: .35rem; transform: translateX(-50%); background: var(--color-text); color: var(--color-bg); font-size: .74rem; font-weight: 600; padding: .3rem .55rem; border-radius: 6px; white-space: nowrap; pointer-events: none; display: none; z-index: 5; }
+    .an-bar:hover .an-bar__tip, .an-bar.is-tipped .an-bar__tip { display: block; }
+    .an-heading__note { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--color-muted); font-size: .78rem; margin-left: .5rem; }
+    .an-upsell { border: 1.5px dashed var(--color-border); border-radius: var(--radius); padding: 1.1rem 1.2rem; }
+    .an-upsell p { margin: 0 0 .5rem; font-size: .9rem; }
+    .an-upsell p:last-child { margin-bottom: 0; }
+    /* Status (åpne/løst) -- åpne er hovedtallet, løst er ei fremdriftslinje
+       + note (core.js sin redesigna statusCard(), Innsikt-runden). */
+    .an-status__row { display: flex; align-items: baseline; gap: .4rem; margin-bottom: .55rem; }
+    .an-status__val-label { font-size: .8rem; color: var(--color-muted); font-weight: 500; }
+    .an-status__bar { height: 6px; border-radius: 999px; background: var(--color-border); overflow: hidden; margin-bottom: .45rem; }
+    .an-status__fill { height: 100%; background: var(--color-primary); border-radius: 999px; }
+    .an-status__note { font-size: .76rem; color: var(--color-muted); }
+    /* Periodevalg (7/30/90 dager) -- overordnet filter for hele Innsikt-dashboardet. */
+    .an-period { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; margin: 0 0 1rem; }
+    .an-period__lbl { font-size: .82rem; color: var(--color-muted); }
+    .an-period__seg { display: flex; border: 1px solid var(--color-border); border-radius: 999px; overflow: hidden; }
+    .an-period__seg button { background: var(--color-surface); border: 0; padding: .4rem .85rem; min-height: 44px; font: inherit; font-size: .82rem; font-weight: 600; color: var(--color-muted); cursor: pointer; }
+    .an-period__seg button + button { border-left: 1px solid var(--color-border); }
+    .an-period__seg button.is-active { background: var(--color-primary); color: #fff; }
+    /* Sub-faner (Oversikt/Sider/Kilder & enheter) -- egne klasser, ikke
+       .tabs/.tab (unngår kollisjon med test.js sine top-nivå fane-spørringer
+       og ARIA tablist-i-tablist, se module-sidetelling.js sin kommentar). */
+    .an-subtabs { display: flex; gap: .25rem; flex-wrap: wrap; border-bottom: 1px solid var(--color-border); margin: .2rem 0 1.1rem; }
+    .an-subtab { background: none; border: 0; font: inherit; font-size: .88rem; font-weight: 600; color: var(--color-muted); padding: .5rem .7rem; min-height: 44px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .an-subtab.is-active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+    .an-pane { display: none; }
+    .an-pane.is-active { display: block; }
+    .an-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; margin-bottom: 1.6rem; }
+    .an-list-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .9rem; margin-bottom: 1.6rem; }
+    @media(max-width:720px) { .an-chart-row { grid-template-columns: 1fr; } }
+    .an-cta-chips { display: flex; flex-wrap: wrap; gap: .6rem; }
+    .an-cta-chip { border: 1px solid var(--color-border); border-radius: 999px; padding: .4rem .8rem; font-size: .82rem; background: var(--color-surface); display: inline-flex; gap: .4rem; align-items: baseline; }
+    .an-cta-chip strong { color: var(--color-primary); }
+    /* Henvendelser-trakt -- bevisst tona ned (stipla kant, dempa farge), sjå
+       ADR-0013-området/roadmap for kvifor konverteringskobling ikkje skal
+       vege tyngre visuelt enn resten av panelet. */
+    .an-funnel { border: 1px dashed var(--color-border); border-radius: var(--radius); padding: 1rem 1.1rem; }
+    .an-funnel h5 { color: var(--color-muted); font-size: .82rem; }
+    .an-funnel__row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
+    .an-funnel__step { text-align: center; }
+    .an-funnel__n { font-size: 1.3rem; font-weight: 700; color: var(--color-text); }
+    .an-funnel__l { font-size: .74rem; color: var(--color-muted); }
+    .an-funnel__arrow { color: var(--color-muted); font-size: .95rem; }
+    .an-device-bar { display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin: .3rem 0 .8rem; }
+    .an-device-bar span { display: flex; align-items: center; justify-content: center; color: #fff; font-size: .72rem; font-weight: 700; min-width: 3px; }
+    .an-device-legend { display: flex; flex-wrap: wrap; gap: .9rem; font-size: .8rem; }
+    .an-device-legend__item { display: inline-flex; align-items: center; gap: .4rem; }
+    .an-device-legend__sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
 
     .field input:not([type="color"]), .field textarea {
       font: inherit; padding: .7rem .85rem; border-radius: 10px;
@@ -408,7 +476,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8/dist/umd/supabase.js"></script>
   <script src="../config.js?v=13"></script>
   <script src="../components.js?v=20"></script>
-  <script src="../core.js?v=85"></script>
+  <script src="../core.js?v=86"></script>
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
@@ -424,7 +492,7 @@
   <script src="../module-mediabank.js?v=6"></script>
   <script src="../module-chat.js?v=22"></script>
   <script src="../module-users.js?v=15"></script>
-  <script src="../module-sidetelling.js?v=6"></script>
+  <script src="../module-sidetelling.js?v=8"></script>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
