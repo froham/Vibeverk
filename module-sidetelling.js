@@ -55,6 +55,28 @@
     try { return new URL(r).hostname || null; } catch (e) { return null; }
   }
 
+  // Fase 2 (steg 1) -- einingskategori + bot-filtrering. Begge avleia av
+  // navigator.userAgent, aldri lagra rå (sjå migrasjonen sin eigen
+  // kommentar for personvernsgrunngjevinga -- same mønster som
+  // chat_conversations.browser/os i module-chat.js sin getBrowserInfo()).
+  function detectDeviceType() {
+    var w = window.innerWidth || (screen && screen.width) || 0;
+    if (w < 640) return "mobil";
+    if (w < 1024) return "nettbrett";
+    return "pc";
+  }
+
+  // Enkel signatur-liste, ikkje ei ekstern bot-deteksjonsteneste (prinsipp
+  // 2: ingen API-kall). Fangar dei store søkemotor-crawlarane og vanlege
+  // SEO-/scraping-bottar -- ikkje uttømmande, og bottar som bevisst
+  // forfalskar User-Agent-en sin vert ikkje fanga. Godt nok for formålet
+  // (unngå at ekte crawler-trafikk feilaktig ser ut som kundetrafikk i
+  // Analyse-panelet), ikkje meint som ei tryggingssperre.
+  var BOT_UA_RE = /bot|crawl|spider|slurp|facebookexternalhit|googlebot|bingbot|yandex|duckduckbot|baiduspider|semrushbot|ahrefsbot|mj12bot|petalbot|headless/i;
+  function detectIsBot() {
+    return BOT_UA_RE.test(navigator.userAgent || "");
+  }
+
   function currentPath() { return location.hash || "#"; }
 
   // Kva hash-endringar som faktisk skal telje som EI NY visning. De fleste
@@ -85,7 +107,9 @@
       p_type: type,
       p_path: path,
       p_referrer: type === "pageview" ? strippedReferrer() : null,
-      p_cta_id: ctaId || null
+      p_cta_id: ctaId || null,
+      p_device_type: detectDeviceType(),
+      p_is_bot: detectIsBot()
     }).then(function (r) {
       // Stille -- sidetelling skal aldri forstyrre besøkende med feilmeldinger.
       if (r && r.error && window.console) console.warn("Sidetelling: kunne ikke lagre hendelse", r.error);
@@ -162,11 +186,15 @@
 
   function fetchStats(cb) {
     var since = new Date(Date.now() - DAYS_BACK * 86400000).toISOString();
-    var q = _sb.from("analytics_events").select("type,path,referrer,cta_id,session_id,created_at");
+    var q = _sb.from("analytics_events").select("type,path,referrer,cta_id,session_id,device_type,created_at");
     // is_test-rader filtreres bort for ekte kunder, men MÅ vises på staging --
     // ellers viser ikke "Generer testdata"-knappen noensinne noe (den setter
     // is_test=true på alt den lager, se seed_test_pageviews.sql).
     if (!isStagingProject()) q = q.eq("is_test", false);
+    // is_bot filtreres ALLTID bort, uavhengig av staging/produksjon -- dette
+    // handler ikke om testdata, men om ekte robot-/crawler-trafikk som aldri
+    // skal telle med i tallene en kunde faktisk ser.
+    q = q.eq("is_bot", false);
     q.gte("created_at", since).order("created_at", { ascending: true }).limit(MAX_ROWS)
       .then(function (r) { cb(r.error ? null : (r.data || [])); });
   }
@@ -235,6 +263,12 @@
     pageviews.forEach(function (r) { var k = r.referrer || "Direkte"; byRef[k] = (byRef[k] || 0) + 1; });
     var topRefs = topN(byRef, 10);
 
+    // "Ukjent" dekkjer rader frå før device_type-kolonnen fanst (nullable).
+    var DEVICE_LABELS = { mobil: "Mobil", nettbrett: "Nettbrett", pc: "PC" };
+    var byDevice = {};
+    pageviews.forEach(function (r) { var k = r.device_type || "Ukjent"; byDevice[k] = (byDevice[k] || 0) + 1; });
+    var topDevices = topN(byDevice, 5);
+
     var bySession = {};
     pageviews.forEach(function (r) {
       if (!bySession[r.session_id]) bySession[r.session_id] = [];
@@ -274,6 +308,7 @@
         : "") +
       toplistHtml("Mest besøkte sider", topPaths, function (i) { return displayPath(i.key); }) +
       toplistHtml("Henvisninger", topRefs, function (i) { return i.key; }, "«Direkte» = besøkende skrev inn adressen selv, brukte et bokmerke, eller kom fra en app.") +
+      toplistHtml("Enheter", topDevices, function (i) { return DEVICE_LABELS[i.key] || i.key; }, "Hva slags skjerm besøkende brukte -- mobil, nettbrett eller PC.") +
       toplistHtml("Inngangssider", topEntry, function (i) { return displayPath(i.key); }, "Siden en besøkende kom inn på nettsiden") +
       toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siden en besøkende forlot nettsiden fra") +
       (ctaCardsHtml
