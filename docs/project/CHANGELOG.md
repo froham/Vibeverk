@@ -30,6 +30,53 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.81.0 — 2026-08-03
+
+### Ny: Fase 2 steg 1 — einingskategori + bot-filtrering i Analyse
+
+Fyrste steg i Fase 2 (sjå `docs/roadmap/ROADMAP.md`). Arkitekt-konsultert
+FØR koding (heile Fase 2-bunten -- bot-filtrering/einingsmetadata,
+"Trendar", konverteringskobling -- vurdert samla). Fire arkitektoniske
+avgjerder følgde direkte av den konsultasjonen:
+
+1. **Førehandsrekna, kategoriske felt (`device_type`, `is_bot`) i staden
+   for ein rå `navigator.userAgent`-streng** -- same mønster som
+   `chat_conversations.browser/os` (`module-chat.js`) alt bruker i
+   produksjon. Ein rå UA-streng er ein fingerprinting-vektor, ein
+   kategorisk verdi som "mobil"/"pc" er det ikkje.
+2. Bot-filtrering og einingskategorisering vart bygd saman -- delar
+   datakjelde (User-Agent), same personvernsrisiko-klasse.
+3. `device_type` avgjort klientsida via enkel skjermbreidde-terskel
+   (mobil/nettbrett/pc), `is_bot` via ein enkel regex mot kjende
+   bot-signaturar -- ingen ekstern bot-deteksjonsteneste (prinsipp 2:
+   ingen API-kall), ikkje meint som ei tryggingssperre.
+4. Postgres-fallgruve handtert eksplisitt: å utvide
+   `insert_analytics_event()` sin parameterliste skapar ein NY, overlasta
+   funksjon ved sida av den gamle 5-argument-versjonen -- `CREATE OR
+   REPLACE` erstattar berre identiske signaturar. Den gamle signaturen
+   vart droppa eksplisitt (`DROP FUNCTION IF EXISTS ...`) i same
+   migrasjon, stadfesta direkte etterpå (`pg_proc` viser no nøyaktig éin
+   funksjon, 7-argument-signaturen).
+
+**Nytt i Analyse-panelet**: "Enheter"-topplista (Mobil/Nettbrett/PC).
+Bot-trafikk vert no filtrert bort **alltid** (uavhengig av staging/
+produksjon -- ulikt `is_test`, som berre gjeld staging).
+
+**Deployert rett til produksjon denne runda** (brukarval, ikkje standard
+rutine -- staging vart eksplisitt hoppa over). Verifisert direkte, ikkje
+berre grøn exit-kode: kolonnane finst (`information_schema.columns`),
+nøyaktig éin `insert_analytics_event`-signatur att i `pg_proc` (den gamle
+er stadfesta borte), `anon` har EXECUTE/`authenticated` har det ikkje
+(`has_function_privilege`), og eit ekte anon-nøkkel-kall mot REST-API-et
+lykkast (204) med rett `device_type`/`is_bot` lagra -- verifiseringsrada
+sletta att etterpå.
+
+`?v=N`: `module-sidetelling.js` (3), `console-core.js` (188).
+
+**Neste**: Steg 2 ("Trendar", periode-mot-periode-samanlikning -- har ein
+reell dataavhengigheit til denne bot-filtreringa, difor bygd etter, ikkje
+før), deretter steg 3 (konverteringskobling mot leads/bookings).
+
 ## 0.80.0 — 2026-08-03
 
 ### Utvida: sidetellings-panelet i Web-admin ("Analyse")

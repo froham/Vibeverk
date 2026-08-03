@@ -2736,10 +2736,10 @@ const __asyncTests = (async () => {
   }
 
   var FAKE_ROWS = [
-    { type: "pageview", path: "#hjem",      referrer: null,         cta_id: null, session_id: "s1", created_at: "2026-07-01T10:00:00.000Z" },
-    { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "s1", created_at: "2026-07-01T10:01:00.000Z" },
-    { type: "pageview", path: "#tjenester", referrer: null,         cta_id: null, session_id: "s2", created_at: "2026-07-02T09:00:00.000Z" },
-    { type: "cta",      path: "#kontakt",   referrer: null,         cta_id: "tel", session_id: "s2", created_at: "2026-07-02T09:05:00.000Z" }
+    { type: "pageview", path: "#hjem",      referrer: null,         cta_id: null, session_id: "s1", device_type: "pc",    created_at: "2026-07-01T10:00:00.000Z" },
+    { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "s1", device_type: "mobil", created_at: "2026-07-01T10:01:00.000Z" },
+    { type: "pageview", path: "#tjenester", referrer: null,         cta_id: null, session_id: "s2", device_type: "pc",    created_at: "2026-07-02T09:00:00.000Z" },
+    { type: "cta",      path: "#kontakt",   referrer: null,         cta_id: "tel", session_id: "s2", device_type: "pc",   created_at: "2026-07-02T09:05:00.000Z" }
   ];
 
   console.log("\n— Sidetelling: pageview/CTA-fangst —");
@@ -2775,6 +2775,8 @@ const __asyncTests = (async () => {
     assert(typeof window4.VwSidetelling === "object", "features.sidetelling=true + Supabase konfigurert -- VwSidetelling eksponeres");
     assert(rpcCalls.length === 1 && rpcCalls[0].name === "insert_analytics_event" && rpcCalls[0].params.p_type === "pageview",
       "sidevisning sendes automatisk ved sidelast: " + JSON.stringify(rpcCalls[0]));
+    assert(["mobil", "nettbrett", "pc"].indexOf(rpcCalls[0].params.p_device_type) > -1 && rpcCalls[0].params.p_is_bot === false,
+      "sidevisning sender med device_type og is_bot=false (jsdom er ikke en bot): " + JSON.stringify(rpcCalls[0]));
 
     var telLink = doc4.createElement("a");
     telLink.setAttribute("href", "tel:12345678");
@@ -2798,6 +2800,10 @@ const __asyncTests = (async () => {
       "test-data-knappen vises IKKE når prosjektets Supabase-URL ikke er vibeverk-staging (produksjonsref i config.js her)");
     assert(eqCalls4.some(function (c) { return c[0] === "is_test" && c[1] === false; }),
       "for et ekte kundeprosjekt (ikke staging) filtreres is_test-rader eksplisitt bort i spørringen: " + JSON.stringify(eqCalls4));
+    assert(eqCalls4.some(function (c) { return c[0] === "is_bot" && c[1] === false; }),
+      "is_bot-rader filtreres alltid bort i spørringen, uavhengig av staging/produksjon: " + JSON.stringify(eqCalls4));
+    assert(/Enheter[\s\S]*Mobil/.test(panel.innerHTML) && /Enheter[\s\S]*PC/.test(panel.innerHTML),
+      "adminpanel: enhetsfordeling (Mobil/PC) vises i topplisten");
   })();
 
   // --- module-sidetelling.js: test-data-knapp vises KUN på vibeverk-staging ---
