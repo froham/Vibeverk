@@ -69,8 +69,10 @@ enheter. **To nye KPI-ar** (avvisningsrate, sider per besøk), gratis frå
 eksisterande sesjonsgruppering. **Konverteringstopplista** ("Henvendelser
 fra disse sidene") er erstatta med ein samla, framleis bevisst tona-ned
 trakt (sidevisning → CTA-klikk → henvendelse) -- det opne juridiske
-spørsmålet rundt konverteringskoplinga (sjå ADR-0013-området) er uendra,
-berre presentasjonen. **Ikkje-modul-fallback**: manglar kunden
+spørsmålet rundt konverteringskoplinga (sjå `docs/roadmap/ROADMAP.md`
+punkt 6 og `docs/architecture/sidetelling.md` sitt "Ope juridisk
+spørsmål"-avsnitt -- IKKJE ADR-0013, som gjeld eit anna tema, unike
+besøkjande) er uendra, berre presentasjonen. **Ikkje-modul-fallback**: manglar kunden
 sidetellingsmodulen, vert berre henvendelsestala vist, pluss ein kort
 teaser-tekst om oppgradering (same mønster som andre ukjøpte modular).
 
