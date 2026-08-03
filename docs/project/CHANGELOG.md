@@ -30,6 +30,67 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.84.0 — 2026-08-03
+
+### Ny: Fase 2 steg 3b — konverteringskobling (leads/bookings ↔ inngangsside)
+
+Tredje og siste steg i denne Fase 2-runda. Ny, nullbar
+`analytics_session_id`-kolonne på `leads` og `bookings` (ingen FK, same
+laus-kopling-mønster som `leads.chat_id`) -- `insert_anon_lead()`/
+`insert_anon_booking()` utvida med `p_analytics_session_id text DEFAULT
+NULL`, sett frå klienten via `App.getAnalyticsSessionId()` (steg 3a).
+Postgres-fallgruva (ny overlasta funksjon ved parameterutviding) handtert
+eksplisitt igjen -- begge gamle signaturar droppa eksplisitt.
+
+Nytt i Analyse-panelet: "Henvendelser fra disse sidene" -- viser KOR
+MANGE henvendelser (kontakt/tilbod/booking) som kan sporast til besøk
+som starta på kvar side, gruppert på inngangsside. Hentar **berre**
+`analytics_session_id`+`created_at` frå leads/bookings (aldri namn/e-
+post/melding), koplar mot sidetellinga sine eigne pageview-sesjonar
+klientsida. Feilar denne spørringa (t.d. RLS/nettverk), rendrast resten
+av panelet framleis normalt -- konverteringsdelen uteblir berre.
+
+**Privacy Advisor-gjennomgang før deploy (obligatorisk, sidan dette
+koplar analysedata mot ekte persondata) fann eit ope juridisk spørsmål,
+ikkje ein teknisk feil:** implementasjonen sjølv vart vurdert solid
+(`analytics_session_id` er stadfesta ALDRI eksponert i Web-admin sitt
+UI/CSV/JSON-eksport -- bevisst haldt utanfor `dbLeadToJs`/
+`dbBookingToJs` sine kvitelister -- og GDPR-sletting handterer kolonna
+korrekt, sidan ho berre er ein del av same rad som vert sletta). MEN:
+for DEI sesjonane som faktisk konverterer, skapar koplinga ein indirekte
+veg frå elles anonyme pageview-rader til ein namngjeven person (via
+lead/booking sine kontaktopplysningar) -- eit spørsmål om dette framleis
+er dekt av same unntak sidetellinga sjølv byggjer på (ekomlova §3-1-
+typen argumentasjon), eller om det krev eit sterkare/anna rettsleg
+grunnlag. **Kan ikkje avgjerast av kodegjennomgang åleine.**
+
+**Brukarval 2026-08-03**: deploy no, likevel, som del av det same
+`features.sidetelling`-flagget -- ingen ekte kundar er påverka i dag
+(berre Vibeverk sjølv og Sunnvask-demo). Det juridiske spørsmålet, samt
+tilrådinga om å skilje ut eit eige feature-flagg og oppdatere
+personvernsteksten (utkast levert av Privacy Advisor, IKKJE juridisk
+kvalitetssikra), er lagt inn som eit eksplisitt "MÅ AVKLARAST FØR NOKON
+EKTE KUNDE"-punkt i `docs/roadmap/ROADMAP.md` "Next" -- skal ikkje
+gløymast før dette nokon gong vert slått på for ein reell kunde.
+
+**Verifisert:** alle tre testsuiter grøne (648/180/37, 0 FEIL) -- inkl.
+ny dedikert testblokk for sjølve konverteringskoblinga (multi-tabell
+falsk Supabase-klient), og ei retting av ein reell testrigg-feil
+oppdaga undervegs (`addLead()` sin eigen, interne `_sb`-variabel vert
+fanga FØR `App.supabase` kan overstyrast i etterkant -- ulikt
+`module-sidetelling.js`, som les `App.supabase` friskt ved eiga, seinare
+lasting; retta ved å stubbe `window.supabase.createClient()` sjølv FØR
+`core.js` vert evaluert, i staden for å setje `App.supabase` i etterkant).
+
+`?v=N`: `core.js` (83 i index.html/admin, 82 i console/workspace),
+`module-booking.js` (18), `module-sidetelling.js` (6), `console-core.js`
+(191).
+
+**Fase 2 er no fullført** (bot-filtrering/einingsmetadata, Trendar,
+konverteringskobling). Attverande: dokumentasjon
+(`docs/architecture/sidetelling.md`), deretter avklaring av Fase 2.5
+(unike besøkjande) og Fase 3 (rollup-tabell, CMS-per-side-widget).
+
 ## 0.83.0 — 2026-08-03
 
 ### Refaktor: Fase 2 steg 3a — delt session-ID (`App.getAnalyticsSessionId()`)
