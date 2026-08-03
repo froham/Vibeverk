@@ -670,6 +670,13 @@ window.Components = (function () {
     const fsBtn = o.fullscreenToggle
       ? `<button class="modal__fullscreen-toggle" data-modal-fullscreen-toggle aria-label="${o.isFullscreen ? "Gå ut av fullskjerm" : "Vis i fullskjerm"}" title="${o.isFullscreen ? "Gå ut av fullskjerm" : "Vis i fullskjerm"}">${icon(o.isFullscreen ? "arrows-minimize" : "arrows-maximize")}</button>`
       : "";
+    // o.helpToggle: valfri "?"-knapp i modal__head, ved sida av fullskjerm-
+    // knappen (brukt av admin-panelet sin modulbaserte brukarrettleiing,
+    // 2026-08-03) -- same opt-in-mønster som fullscreenToggle, ingen andre
+    // kallarar sender han i dag.
+    const helpBtn = o.helpToggle
+      ? `<button class="modal__help-toggle" data-modal-help-toggle aria-label="Brukerveiledning" title="Brukerveiledning">${icon("help")}</button>`
+      : "";
     return `
       <div class="modal${o.isFullscreen ? " is-fullscreen" : ""}" data-modal role="dialog" aria-modal="true" aria-label="${esc(o.label || "Dialog")}">
         <div class="modal__backdrop" data-modal-close></div>
@@ -677,6 +684,7 @@ window.Components = (function () {
           <div class="modal__head">
             <h2 class="modal__title">${esc(o.title)}</h2>
             <div style="display:flex;align-items:center">
+              ${helpBtn}
               ${fsBtn}
               <button class="modal__close" data-modal-close aria-label="Lukk">${icon("x")}</button>
             </div>
