@@ -164,17 +164,27 @@ assert(JSON.stringify(catLabels) === JSON.stringify(["Innhold","Henvendelser","I
 (function () {
   var helpBtn = doc.querySelector("[data-modal-help-toggle]");
   assert(!!helpBtn, "«?»-knapp for brukerveiledning finst i admin-modalen sitt hovud");
+  assert(!doc.querySelector(".modal.is-fullscreen"), "føresetnad: admin-panelet er IKKJE i fullskjerm før «?» vert klikka");
   helpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(!!doc.querySelector(".modal.is-fullscreen"), "klikk på «?» aktiverer fullskjerm på admin-panelet automatisk (brukarvalg 2026-08-03)");
   var manualRoot = doc.getElementById("manual-modal-root");
   assert(!!manualRoot && /Brukerveiledning/.test(manualRoot.textContent), "klikk på «?» opnar brukerveiledningsmodalen");
-  assert(/Besøkende kan reservere tid/.test(manualRoot.textContent), "aktiv modul (Booking) viser full kapitteltekst");
-  assert(/Samler henvendelser, tilbud og bookinger/.test(manualRoot.textContent), "aktiv modul (Kunder/CRM) viser full kapitteltekst");
+  assert(/Booking-modulen lar besøkende reservere tid/.test(manualRoot.textContent), "aktiv modul (Booking) viser full, fortellande kapitteltekst");
+  assert(/Kunder-fanen er et enkelt kunderegister/.test(manualRoot.textContent), "aktiv modul (Kunder/CRM) viser full, fortellande kapitteltekst");
   assert(/Flere moduler tilgjengelig/.test(manualRoot.textContent), "seksjon for ikkje-aktive modular vises");
-  assert(/Bytt utseende på hele nettsiden selv/.test(manualRoot.textContent), "inaktiv modul (Design) viser kort, fristande oppsummering (teaser)");
-  assert(!/Du kan selv velge mellom flere design-maler/.test(manualRoot.textContent), "inaktiv modul (Design) viser IKKJE den fulle, aktive kapittelteksten");
-  assert(/Se hvor mange som besøker nettsiden/.test(manualRoot.textContent), "inaktiv modul (Analyse) viser teaser-teksten");
+  assert(/Med Design-modulen kan du selv style hele nettsiden/.test(manualRoot.textContent), "inaktiv modul (Design) viser kort, fristande oppsummering (teaser)");
+  assert(!/Med Design-modulen har du full kontroll over hvordan nettsiden ser ut/.test(manualRoot.textContent), "inaktiv modul (Design) viser IKKJE den fulle, aktive kapittelteksten");
+  assert(/Lurer du på hvor mange som faktisk besøker nettsiden/.test(manualRoot.textContent), "inaktiv modul (Analyse) viser teaser-teksten");
+  var navLinks = [].slice.call(manualRoot.querySelectorAll(".vw-manual__nav a")).map(function (a) { return a.textContent.trim(); });
+  assert(navLinks.indexOf("Booking") > -1 && navLinks.indexOf("Design") === -1, "sidebar-navigasjonen listar aktive kapittel, ikkje inaktive (Design manglar): " + navLinks.join(","));
   manualRoot.querySelector("[data-manual-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
   assert(!doc.getElementById("manual-modal-root"), "lukkeknappen fjernar brukerveiledningsmodalen");
+  // Andre gongs klikk (admin-panelet er no alt i fullskjerm) skal ikkje
+  // trigge ein ny fullskjerm-omrendering -- berre opne modalen på nytt.
+  helpBtn = doc.querySelector("[data-modal-help-toggle]"); // re-hent -- forrige helpBtn-referanse vart fjerna av re-renderinga over
+  helpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(!!doc.getElementById("manual-modal-root"), "andre klikk på «?» opnar modalen på nytt sjølv om fullskjerm alt var aktivt");
+  doc.getElementById("manual-modal-root").querySelector("[data-manual-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
 })();
 
 function clickCat(id) { var b = doc.querySelector('[data-admin-cat="' + id + '"]'); if (b) b.dispatchEvent(new window.Event("click", { bubbles: true })); }

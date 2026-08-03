@@ -58,13 +58,38 @@ medvite enkelt for denne runda, per brukarens eige ønske om ein
 fungerande, dynamisk fyrsteversjon framfor perfekt innhald. Vert
 oppdatert etter kvart.
 
+**Oppfølging same dag, etter brukartilbakemelding ("design-messig veldig
+tynn", teksten måtte vere meir fortellande):**
+- **Modalen er no vesentleg breiare** (`min(980px,96vw)` mot `640px`
+  før) med ein eigen sidebar-navigasjon (kapittelliste med ikon, ved
+  sida av innhaldet) i staden for ei enkel rad med lenke-piller over
+  teksten.
+- **Klikk på "?" mens admin-panelet IKKJE er i fullskjerm, slår no på
+  fullskjerm automatisk** (same `adminFullscreen`-tilstand som den
+  eksisterande fullskjerm-knappen), FØR sjølve rettleiingsmodalen opnar
+  -- gir meir plass til den breiare modalen. Denne omrenderinga er
+  pakka i eit `try`/`catch`: skulle noko uventa feile i den aktive fana
+  sin eigen render-funksjon undervegs (stadfesta reelt mogleg under
+  visuell verifisering med ein forenkla Playwright-mock), skal ikkje
+  det hindre sjølve rettleiingsmodalen i å opne.
+- **Alle kapiteltekstar omskrivne frå korte stikkord til fortellande
+  avsnitt** -- skrivne for ein bedriftseigar utan datakunnskap: kva
+  modulen er, kvifor han er nyttig i kvardagsspråk, og korleis han vert
+  brukt. Teaser-tekstane for modular kunden ikkje har fekk tilsvarande,
+  om enn kortare, utdjuping.
+- Kvart kapittel har no eit ikon (gjenbruker `C.icon()`/Tabler-
+  ikonsettet, alle namn stadfesta å finnast i den pinna
+  `@tabler/icons-webfont@3.0.0`-versjonen før bruk).
+
 `?v=N`: `components.js` (20), `core.js` (84 i index.html/admin, 83 i
 console/workspace), `console-core.js` (192).
 
-**Verifisert:** alle tre testsuiter grøne (657/180/37, 0 FEIL) -- inkl.
-10 nye assertions (knapp finst, modal opnar/lukkar, aktive modular viser
-full tekst, inaktive viser berre teaser, ikkje omvendt). Visuelt
-stadfesta med Playwright-skjermbilete (topp + botn av innhaldet).
+**Verifisert:** alle tre testsuiter grøne (661/180/37, 0 FEIL) -- inkl.
+15 assertions for brukerveiledninga (knapp finst, fullskjerm-utløysing,
+modal opnar/lukkar/opnar på nytt, aktive modular viser full tekst,
+inaktive viser berre teaser, sidebar listar berre aktive kapittel).
+Visuelt stadfesta med Playwright-skjermbilete (topp + botn av
+innhaldet, inkl. sidebar og fullskjermtilstand).
 
 ## 0.84.0 — 2026-08-03
 
