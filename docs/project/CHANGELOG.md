@@ -30,6 +30,30 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.86.0 — 2026-08-03
+
+### Retta: favicon (nettlesar-fana) fell no tilbake til Logo-URL
+
+Brukarfunn: nettlesar-fana viste ingenting for kundar som berre hadde
+fylt ut Logo-URL, ikkje det separate Favicon-URL-feltet. Rotårsak:
+`apple-touch-icon`-taggen (iOS "Legg til på Heimskjerm") har alt hatt ein
+fallback til `logoUrl` når `favicon` er tomt -- sjølve favicon-taggen
+(`<link rel="icon">`) hadde det inkonsekvent nok ikkje, og ingen
+`favicon.ico` finst som siste utveg ved rota av nettstaden heller.
+
+Retta til å bruke same fallback-logikk begge stader (`applyMeta()` i
+`core.js`). Hjelpetekstane ved Favicon-URL-feltet (Web-admin sin
+Design → SEO og Console sin tilsvarande fane) oppdaterte til å nemne
+dette eksplisitt.
+
+`?v=N`: `core.js` (85 i index.html/admin, 84 i console/workspace),
+`console-core.js` (193).
+
+**Verifisert:** alle tre testsuiter grøne (662/180/37, 0 FEIL) -- ny
+assertion stadfestar at `<link rel="icon">` no fell tilbake til
+`logoUrl`, same mønster som den eksisterande testen for
+`apple-touch-icon`.
+
 ## 0.85.0 — 2026-08-03
 
 ### Ny: modulbasert brukerveiledning i Web-admin

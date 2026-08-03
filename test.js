@@ -2132,6 +2132,7 @@ const __asyncTests = (async () => {
   window.App.store.set("superconfig", { company: { favicon: "", logoUrl: "https://nordpunkt.no/logo.png" } });
   window.App.reloadConfig();
   assert(doc.querySelector('link[rel="apple-touch-icon"]')?.getAttribute("href") === "https://nordpunkt.no/logo.png", "apple-touch-icon fell tilbake til logoUrl når favicon ikkje er satt");
+  assert(doc.querySelector('link[rel="icon"]')?.getAttribute("href") === "https://nordpunkt.no/logo.png", "favicon (nettlesar-fana) fell no OGSÅ tilbake til logoUrl når favicon ikkje er satt (retta 2026-08-03 -- var tidlegare inkonsekvent med apple-touch-icon)");
   window.App.store.remove("superconfig");
   window.App.reloadConfig();
 
