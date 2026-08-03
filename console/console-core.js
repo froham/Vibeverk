@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.78.0";
+  var VIBEVERK_VERSION = "0.79.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -399,8 +399,18 @@ window.VwConsole = (function () {
     social:"Sosiale lenker", contactForm:"Kontaktskjema", booking:"Booking", quote:"Tilbud",
     references:"Referansar", faq:"FAQ", siteSearch:"Søk i toppmeny",
     crm:"Kunder", crmFull:"Native e-post", mediabank:"Mediebank", chat:"Chat",
-    sidebygger:"Design"
+    sidebygger:"Design", sidetelling:"Analyse"
   };
+  // Opt-in-brytarar -- MÅ defaulte til AV for ein kunde som aldri har lagra
+  // features eksplisitt, i motsetnad til alle andre brytarar over (som er
+  // opt-OUT og difor skal defaulte til PÅ). featureDefaults() under brukar
+  // denne til å avgjere kva som er rett default per nøkkel -- utan denne
+  // lista ville checkboxen for eit nytt opt-in-flagg vist seg som hukt av
+  // for enhver kunde som aldri har rørt fana, sjølv om den faktiske,
+  // lagra verdien er av. Det ville i tillegg lagra "true" stille inn viss
+  // operatøren trykte "Lagra" av ein heilt annan grunn (t.d. skrudde på
+  // FAQ), sidan skjemaet skriv HEILE features-objektet på nytt kvar gong.
+  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true };
   // Kva kvar bryter faktisk gjer -- rendrast som ein helpIcon() ved sida av
   // kvar checkbox (copy-clarity-initiativet, fase 4, 2026-07-13). Vald i
   // staden for å gjette meining frå den korte labelen åleine, sidan fleire
@@ -420,7 +430,8 @@ window.VwConsole = (function () {
     crmFull:     "Sender e-post direkte frå systemet i staden for å opne kunden sin eigen e-postklient (Outlook e.l.) ved svar til kundar.",
     mediabank:   "Aktiverer eit bildegalleri synleg for besøkjande på nettsida.",
     chat:        "Aktiverer live chat-widgeten for besøkjande.",
-    sidebygger:  "Gjev kunden ein eigen «Design»-fane i Web-admin, der dei sjølv kan velje mellom fleire designmalar for heile nettsida, i tillegg til Banner- og Karusell-seksjonar — eit betalt tillegg."
+    sidebygger:  "Gjev kunden ein eigen «Design»-fane i Web-admin, der dei sjølv kan velje mellom fleire designmalar for heile nettsida, i tillegg til Banner- og Karusell-seksjonar — eit betalt tillegg.",
+    sidetelling: "Aktiverer Vibeverk sin eigen, cookiefrie analyse (sidevisningar, henvisningar og klikk på knappar), synleg for kunden i Analyse-fana i Web-admin. Kan ikkje brukast saman med eit eksternt verktøy (t.d. Plausible) sett opp i Analyse-fana her i Console — er begge slått på, vinn Plausible automatisk, og denne interne analysen samlar ikkje inn noko."
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
@@ -1332,7 +1343,7 @@ window.VwConsole = (function () {
 
   function featureDefaults(labels) {
     var d = {};
-    Object.keys(labels).forEach(function (k) { d[k] = true; });
+    Object.keys(labels).forEach(function (k) { d[k] = !OPT_IN_FEATURES[k]; });
     return d;
   }
 
@@ -1413,7 +1424,7 @@ window.VwConsole = (function () {
         sc2.features = feats;
         sc2.intranettFeatures = ifeats;
         saveSC(sc2, savingTenantId);
-        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra! Trer i kraft ved neste sideopplasting.", true);
       });
     });
 
@@ -1513,9 +1524,26 @@ window.VwConsole = (function () {
     // representerer tenanten som var aktiv DÅ SIDA VART TEIKNA, uansett kva
     // _activeTenant måtte verta seinare (sjå saveSC() sitt notat).
     var savingTenantId = _activeTenant && _activeTenant.id;
+    // Sjå OPT_IN_FEATURES-notatet ved FEAT_LABELS: den interne Analyse-modulen
+    // (features.sidetelling, slått av/på i Modular-fana) og eit eksternt verktøy
+    // sett opp HER kan aldri vere aktive samtidig. Retninga er IKKJE symmetrisk:
+    // initAnalytics() i core.js lastar Plausible-scriptet ubetinga når
+    // analytics.plausible er sett, utan å sjå på features.sidetelling i det
+    // heile -- det er module-sidetelling.js sjølv som gjev seg
+    // (`if (an.plausible) return;`) når Plausible er sett. Plausible vinn altså
+    // alltid, den interne analysen går stille i dvale, ikkje omvendt (funne av
+    // Project Historian 2026-08-03, sjå CHANGELOG). Boksen under må difor
+    // åtvare i DEN retninga: lagrar du Plausible-felta under mens kunden har
+    // intern analyse på, er det Plausible som tek over.
+    var sidetellingWarning = (sc.features && sc.features.sidetelling === true)
+      ? '<div class="i-notice i-notice--warn" style="margin-bottom:1rem;padding:.8rem 1rem;border:1.5px solid #E8833A;border-radius:8px;background:color-mix(in srgb,#E8833A 10%,transparent);font-size:.88rem">' +
+          '<strong>Kunden har intern analyse aktivert i Modular-fana.</strong> Fyller du inn Plausible under og lagrar, tek Plausible automatisk over — den interne analysen sluttar då stille å samle inn data (ingen feilmelding, og det som alt er samla går ikkje tapt). Vil du halde fram med intern analyse for denne kunden, lat felta under stå tomme.' +
+        '</div>'
+      : "";
     getStoreKey("analytics", function (an) {
       wrap.innerHTML =
         '<form id="cs-form">' +
+          sidetellingWarning +
           '<fieldset class="admin-group"><legend>Analyse</legend>' +
             '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Koblar kunden sitt nettsted til Plausible Analytics, eit personvernvenleg verktøy for besøksstatistikk (ingen sporingscookies). Krev at kunden har ein eigen Plausible-konto.</p>' +
             C.field({ id:"cs-an-pl",      label:"Plausible – domenenavn", value: an.plausible || "", placeholder:"vibeverk.no",

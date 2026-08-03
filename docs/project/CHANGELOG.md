@@ -30,6 +30,74 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.79.0 — 2026-08-03
+
+### Ny: Console-brytar for intern Analyse (Fase 1 av Console-innføringa)
+
+Bakgrunn: `features.sidetelling` (sjå 0.78.0) kunne til no berre skruast av/på
+ved å endre `config.js` og pushe til `main`. Etter ei runde med Arkitekt- og
+Security Auditor-vurdering (uavhengige, sjå ADR-mønsteret i CLAUDE.md) vart
+det klart at det generiske `renderModular`/`FEAT_LABELS`-mønsteret i Console
+alt fanst og var rett veg -- MEN featureDefaults() defaulta alle brytarar til
+PÅ, uavhengig av om flagget faktisk er opt-in eller opt-out. For eit
+opt-in-flagg (`sidebygger` frå før, no òg `sidetelling`) synte det ein
+kunde som aldri hadde rørt fana som hukt av, sjølv om lagra verdien var av
+-- og lagra operatøren Modular-fana av ein heilt annan grunn (skriv HEILE
+features-objektet på nytt kvar gong), vart flagget stille sett til `true`.
+
+Fiksa generelt: ny `OPT_IN_FEATURES`-liste i `console-core.js` som
+`featureDefaults()` no respekterer (rettar samstundes det latente,
+eksisterande hòlet for `sidebygger`). `sidetelling` lagt til `FEAT_LABELS`/
+`FEAT_HELP` under merkelappen **"Analyse"** (ikkje "Sidetelling") -- brukaren
+ønskjer å byggje den interne løysinga god nok til å vere eit reelt
+alternativ til eksterne verktøy over tid, og "Analyse" er den namnsettinga
+som skal vise fram framover. Interne namn (`features.sidetelling`,
+`module-sidetelling.js`) er UENDRA -- same mønster som Workspace/Intranett-
+omdøypinga (sjå repo-layout-notatet i CLAUDE.md): berre skjermteksten er
+endra, ikkje datamodellen.
+
+Console sin eigen Analyse-fane (der eksterne verktøy som Plausible vert sett
+opp) fekk ein varselboks: "Kunden har intern analyse aktivert i
+Modular-fana" når `features.sidetelling === true` for den aktive tenanten.
+Boksen legg ikkje til ny åtferd -- modulen sjekka alt sjølv om Plausible var
+sett og hoppa over viss så (`module-sidetelling.js`) -- ho skal berre gjere
+den eksisterande anten/eller-logikken synleg for operatøren. "Lagra"-teksten i
+Modular-fana oppdatert til å seie "Trer i kraft ved neste sideopplasting"
+(matchar Produkt/Web-fanene), i staden for eit upresist "✓ Lagra!" som
+kunne lese som augeblikkeleg.
+
+**Retta same dag, etter Project Historian + UX/Mobile Reviewer:** Project
+Historian fann at teksten i varselboksen og i `FEAT_HELP.sidetelling` (begge
+i `console-core.js`) hevda at det interne analyse-modulen "vinn automatisk"
+over eit eksternt verktøy sett opp samtidig -- baklengs. `initAnalytics()` i
+`core.js` lastar Plausible-scriptet ubetinga når `analytics.plausible` er
+sett, utan å sjekke `features.sidetelling` i det heile; det er
+`module-sidetelling.js` som gjev seg (`if (an.plausible) return;`) når
+Plausible er sett. I praksis **vinn Plausible, og den interne modulen går i
+dvale**, ikkje omvendt -- retta i begge tekstane. UX/Mobile Reviewer fann i
+tillegg at varselboksen sin raude `i-notice--danger`-styling (`#c0392b`)
+var feil signal for ein normal, tilsikta tilstand (ikkje ein feil) --
+bytt til same oransje `i-notice--warn` (`#E8833A`) som den eksisterande
+`sidebyggerWarning`-boksen, og teksten vart gjort meir handlingsretta
+("lat felta under stå tomme" i staden for berre å skildre konflikten).
+Retta òg "CTA-klikk" til "klikk på knappar" i hjelpeteksten
+(copy-style-guide, unngå fagsjargong).
+
+Bevisst UTELATE frå denne fasen, etter eksplisitt brukarval: ei påminning
+ved sjølve brytaren om å sjekke personvernsteksten (eit forslag til
+oppdatert sidetelling-tekst i `computeDefaultPrivacyText()` -- omdøypt til
+"Analyse"-språk -- er levert til brukaren som separat utkast, ikkje
+implementert, sidan personvernsteksten skal få eigen, større gjennomgang
+før kundelansering). Systemiske funn frå sikkerheitsgjennomgangen (ingen
+rolle-/tenant-scoping handheva i broker for `set_config`, ingen felt-nivå
+audit-detalj) gjeld heile broker-mekanismen, ikkje berre denne brytaren, og
+er difor IKKJE del av denne oppgåva -- eigne, seinare saker.
+
+`?v=N`: `console-core.js` (186).
+
+**Fase 2** (utsett, ikkje starta): fleire funksjonar i sjølve analyse-
+modulen (unike besøkande, bot-filtrering, o.l. -- sjå 0.78.0-innslaget).
+
 ## 0.78.0 — 2026-07-31
 
 ### Ny modul: intern, cookiefri sidetelling (Fase 1) -- gratis alternativ til Plausible
