@@ -123,16 +123,46 @@ umiddelbar reprøving):
   - `priserRefreshPkgHints()` var reelt daud kode (aldri kalla, sidan
     enkelt-pane-arkitekturen ikkje treng tverr-pane-oppdatering) -- fjerna.
 
-**Merga til main og delvis deploya (2026-08-04, brukargodkjent steg for steg):**
-PR pusha og merga (squash), `tenant-admin`-funksjonen (med den nye
-`set_pricing_config`-handlinga) er deploya til `vibeverk-control`
-(`jxoglthrnshabqmdmnui`) og stadfesta live via CLI. **Sjølve migrasjonen
-(`20260804120000_add_pricing_config.sql`) er IKKJE køyrd enno** -- krev
-pooler-connection-string-en til `vibeverk-control`, som brukaren bad om å
-vente med. Praktisk konsekvens: Console sin nye "Priser"-fane vil feile ved
-lasting (`pricing_config`-tabellen finst ikkje enno) heilt til migrasjonen
-faktisk er køyrd -- ikkje ein feil om det skjer, forventa tilstand inntil
-vidare.
+**Merga til main og fullt deploya (2026-08-04, brukargodkjent steg for
+steg):** PR pusha og merga (squash), `tenant-admin`-funksjonen (med den nye
+`set_pricing_config`-handlinga) deploya til `vibeverk-control`
+(`jxoglthrnshabqmdmnui`) og stadfesta live via CLI. Sjølve migrasjonen
+(`20260804120000_add_pricing_config.sql`) vart køyrd MANUELT av brukaren via
+Supabase Dashboard sin SQL Editor (ikkje `supabase db push` -- ingen
+pooler-connection-string var tilgjengeleg i denne økta) -- **stadfesta med
+fire separate, eksplisitte verifiseringsspørringar** i tråd med CLAUDE.md
+sitt eige "eit 'Success'-svar frå Dashboard stadfestar ingenting"-prinsipp,
+ikkje berre stola på eit grønt SQL-resultat:
+
+- Rad + seed-data: `id=true`, `n_packages=3` -- stadfesta.
+- `relrowsecurity=true` -- RLS faktisk PÅ, ikkje berre ein policy definert
+  utan handheving.
+- Nøyaktig éin policy (`pricing_config_operator_read`, `r`/SELECT, rolle
+  `authenticated`) -- stadfesta.
+- Grants: **fann eit reelt avvik frå det dokumenterte** -- `service_role`
+  hadde full CRUD (DELETE/INSERT/REFERENCES/TRIGGER/TRUNCATE i tillegg til
+  den tiltenkte SELECT/UPDATE), ikkje berre dei to migrasjonen eksplisitt
+  granta. Stadfesta årsak: Supabase sin eigen plattform-standard-ACL granta
+  `service_role` alt på tabellnivå ved oppretting, uavhengig av kva
+  migrasjonen sjølv skreiv -- same klasse funn som den alt dokumenterte
+  FUNCTION-ACL-fella i CLAUDE.md (ADR-0009), berre no stadfesta å gjelde
+  TABELLAR òg i dette prosjektet. Ikkje ein ny sikkerheitsrisiko i praksis
+  (`service_role` har uansett full DB-tilgang via BYPASSRLS og er ein
+  reint server-sida-nøkkel), men retta likevel til å faktisk matche det
+  dokumenterte minste-privilegium-prinsippet: `revoke all ... from
+  service_role` + `grant select, update ...` køyrd manuelt, stadfesta
+  på nytt til nøyaktig SELECT/UPDATE.
+
+**Kjent, ikkje-blokkerande følgje:** sidan migrasjonen vart køyrd via
+Dashboard og ikkje CLI, veit ikkje Supabase sin eigen migrasjonshistorikk
+(`supabase_migrations.schema_migrations`) at han er brukt -- ein framtidig
+`supabase db push --db-url ... ` mot `vibeverk-control` kan prøve å køyre
+han på nytt og feile på "tabellen finst alt". Bør rettast med
+`supabase migration repair 20260804120000 --status applied` (krev
+pooler-connection-string) neste gong nokon har den tilgjengeleg -- ikkje
+gjort i denne økta.
+
+**Status: Priser-fana er no fullt funksjonell i produksjon** (`vibeverk-control`).
 
 ### Ny: "Innsikt" -- sidetellings-panelet redesigna som eige dashboard, eigen fane
 
