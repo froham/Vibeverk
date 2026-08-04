@@ -149,13 +149,14 @@ export default async function handler(request) {
   // EIN KVA SOM HELST tenant (same delte Vercel-utrulling/ANTHROPIC_API_KEY
   // betener alle tenantar, jf. ADR-0007) kalle endepunktet direkte og bruke
   // opp ekte Anthropic-kostnad sjølv om tenanten deira aldri har fått Smart
-  // årshjul aktivert. tenant.enabled_modules er den kontrollplan-autoritative
-  // kjelda (same felt som api/tenant-config.js sin eigen
-  // `intranettFeatures: enabledModules.intranettFeatures || {}"`), IKKJE
-  // klienten sin eigen CFG.intranettFeatures (som berre styrer UI-synlegheit).
-  var enabledModules = tenant.enabled_modules || {};
-  var tenantIntranettFeatures = enabledModules.intranettFeatures || {};
-  if (tenantIntranettFeatures.smartAarshjul !== true) {
+  // årshjul aktivert. Smart årshjul er ein skreddarsydd modul (customModules),
+  // ikkje ein intranettFeatures-brytar -- tenant.custom_modules_manifest er
+  // den kontrollplan-autoritative kjelda (same felt som api/tenant-config.js
+  // sin eigen `customModules: tenant.custom_modules_manifest || {}`), IKKJE
+  // klienten sin eigen CFG.customModules (som berre styrer UI-synlegheit).
+  var customModulesManifest = tenant.custom_modules_manifest || {};
+  var smartAarshjulModule = customModulesManifest["smart-aarshjul"];
+  if (!smartAarshjulModule || smartAarshjulModule.enabled !== true) {
     return errorResponse(403, "Smart årshjul er ikkje aktivert for denne installasjonen.");
   }
 

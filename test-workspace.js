@@ -71,7 +71,7 @@ window.confirm = () => true;
     src = src.replace(/intranettFeatures:\s*\{[^}]*\}/s, `intranettFeatures: {
     announcements: true, notes: true, orgdrift: true, links: true,
     crm: true, booking: true, quote: true, contact: true,
-    kb: true, mediaInternal: true, smartAarshjul: true
+    kb: true, mediaInternal: true
   }`);
   }
   window.eval(src);
@@ -128,7 +128,7 @@ assert(navIds.includes("announcements"), "b4: announcements i nav");
 assert(!navIds.includes("workspaceship"),"b5: workspaceship skjult");
 assert(navIds.includes("users"),         "b6: users i nav for admin");
 assert(!navIds.includes("spaceship"),    "b7: spaceship-modulen skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
-assert(navIds.includes("smart-aarshjul"),"b8: smart-aarshjul i nav når intranettFeatures.smartAarshjul er sett til true (config.js sin ekte standard er false)");
+assert(!navIds.includes("smart-aarshjul"),"b8: smart-aarshjul skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
 
 /* --- C) INGEN OFFENTLEG INNHALD ------------------------------------------ */
 assert(!doc.querySelector(".site-header"), "c1: ingen site-header");
@@ -763,28 +763,74 @@ nav("#/notes"); nav("#/dashboard");
     "aa4: workspaceship-root vert fjerna frå DOM-et når brukaren navigerer vekk (naudsynt for at MutationObserver-oppryddinga faktisk skal utløysast)");
 })();
 
-/* --- AB) SMART ÅRSHJUL -----------------------------------------------------
-   ON-stien (hovud-DOM-en over har alt tvinga smartAarshjul:true, sjå
-   intranettFeatures-patchen heilt øvst): stadfest at modulen faktisk
-   rendrar oppsett-steget (steg 1) med bransjeveljar, skildringsfelt og
-   steg-navigasjon, og at steg 2/3 er deaktiverte før det finst forslag/
-   aktivitetar. Nettverkskall (POST /api/ai/annual-wheel) vert IKKJE testa
-   her -- det høyrer heime i test-api.js (server-sida) + manuell køyring via
-   run-vibeverk-skillet (klient-integrasjonen), ikkje i denne jsdom-hurtig-
-   sjekken. --------------------------------------------------------------- */
-nav("#/smart-aarshjul");
-assert(!!doc.querySelector("#saa-root"), "ab1: #saa-root rendrar ved navigering");
-assert(!!doc.querySelector("#saa-industry"), "ab2: bransjeveljar finst i oppsett-steget");
-assert(!!doc.querySelector("#saa-description"), "ab3: skildringsfelt finst i oppsett-steget");
-assert(doc.querySelector('[data-a="stepNav"][data-step="1"]')?.classList.contains("is-active"),
-  "ab4: steg 1 er aktivt ved første besøk");
-assert(doc.querySelector('[data-a="stepNav"][data-step="2"]')?.hasAttribute("disabled"),
-  "ab5: steg 2 er deaktivert før det finst forslag");
-assert(doc.querySelector('[data-a="stepNav"][data-step="3"]')?.hasAttribute("disabled"),
-  "ab6: steg 3 er deaktivert før det finst aktivitetar");
-nav("#/dashboard");
+/* --- AB) SMART ÅRSHJUL SOM CUSTOMMODULES-EKSEMPEL --------------------------
+   Same mønster som AA-seksjonen over (spaceship): patch config.js sin
+   customModules for å stadfeste PÅ-stien -- at ei eksplisitt { enabled: true
+   }-oppføring faktisk får modulen til å registrere seg i navigasjonen og
+   rendere oppsett-steget (steg 1) med bransjeveljar, skildringsfelt og
+   steg-navigasjon, med steg 2/3 deaktiverte før det finst forslag/
+   aktivitetar. Eigen, separat DOM av same grunn som AA (App.ready() sin
+   gate vert avgjort éin gong ved skriptlasting). Nettverkskall (POST
+   /api/ai/annual-wheel) vert IKKJE testa her -- det høyrer heime i
+   test-api.js (server-sida) + manuell køyring via run-vibeverk-skillet
+   (klient-integrasjonen), ikkje i denne jsdom-hurtigsjekken. -------------- */
+(function () {
+  const dom5 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window5 = dom5.window;
+  window5.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window5.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window5.scrollTo = () => {};
+  window5.HTMLElement.prototype.scrollIntoView = () => {};
+  window5.URL.createObjectURL = window5.URL.createObjectURL || (() => "blob:mock");
+  window5.URL.revokeObjectURL = window5.URL.revokeObjectURL || (() => {});
+  window5.confirm = () => true;
 
-/* --- AC) SMART ÅRSHJUL AV: intranettFeatures.smartAarshjul = false (dagens
+  [
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js",
+    "workspace/module-smart-aarshjul.js"
+  ].forEach(f => {
+    let src = fs.readFileSync(f, "utf8");
+    if (f === "config.js") {
+      src = src.replace(/customModules:\s*\{/, 'customModules: { "smart-aarshjul": { label: "Smart årshjul", enabled: true, params: {} },');
+    }
+    window5.eval(src);
+  });
+
+  const _NS5 = window5.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window5.eval(`sessionStorage.setItem("${_NS5}:admin","admin")`);
+  window5.document.dispatchEvent(new window5.Event("DOMContentLoaded", { bubbles: true }));
+  const doc5 = window5.document;
+
+  function nav5(hash) {
+    window5.location.hash = hash;
+    window5.dispatchEvent(new window5.Event("hashchange"));
+  }
+
+  const navIds5 = [...doc5.querySelectorAll(".i-nav__link")].map(a => a.getAttribute("data-inav"));
+  assert(navIds5.includes("smart-aarshjul"),
+    "ab1: smart-aarshjul-modulen VISES i navigasjonen når customModules[\"smart-aarshjul\"].enabled er true");
+  nav5("#/smart-aarshjul");
+  assert(!!doc5.querySelector("#saa-root"), "ab2: #saa-root rendrar ved navigering");
+  assert(!!doc5.querySelector("#saa-industry"), "ab3: bransjeveljar finst i oppsett-steget");
+  assert(!!doc5.querySelector("#saa-description"), "ab4: skildringsfelt finst i oppsett-steget");
+  assert(doc5.querySelector('[data-a="stepNav"][data-step="1"]')?.classList.contains("is-active"),
+    "ab5: steg 1 er aktivt ved første besøk");
+  assert(doc5.querySelector('[data-a="stepNav"][data-step="2"]')?.hasAttribute("disabled"),
+    "ab6: steg 2 er deaktivert før det finst forslag");
+  assert(doc5.querySelector('[data-a="stepNav"][data-step="3"]')?.hasAttribute("disabled"),
+    "ab7: steg 3 er deaktivert før det finst aktivitetar");
+})();
+
+/* --- AC) SMART ÅRSHJUL AV: customModules.smartAarshjul absent (dagens
    faktiske standard i config.js) skal skjule modulen heilt -- same mønster
    som Z-seksjonen over for kb. Eigen, separat DOM av same grunn (App.ready()
    sin gate vert avgjort éin gong ved skriptlasting). --------------------- */
@@ -806,8 +852,9 @@ nav("#/dashboard");
   window4.URL.revokeObjectURL = window4.URL.revokeObjectURL || (() => {});
   window4.confirm = () => true;
 
-  // Ingen intranettFeatures-patching her -- poenget er nettopp å teste
-  // config.js sin ekte, upatcha standard (smartAarshjul: false).
+  // Ingen customModules-patching her -- poenget er nettopp å teste
+  // config.js sin ekte, upatcha standard (customModules: {}, ingen
+  // smartAarshjul-oppføring).
   [
     "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
     "workspace/workspace-core.js",
@@ -825,8 +872,8 @@ nav("#/dashboard");
     window4.dispatchEvent(new window4.Event("hashchange"));
   }
 
-  assert(window4.SITE_CONFIG.intranettFeatures.smartAarshjul === false,
-    "ac1: føresetnad for denne seksjonen -- config.js sin ekte standard har smartAarshjul: false");
+  assert(Object.keys(window4.SITE_CONFIG.customModules || {}).length === 0,
+    "ac1: føresetnad for denne seksjonen -- config.js sin ekte standard har eit tomt customModules-objekt (ingen smartAarshjul-oppføring)");
   assert(!doc4.querySelector('[data-inav="smart-aarshjul"]'),
     "ac2: «Smart årshjul» finst ikkje i sidebar-navigasjonen når funksjonen er av");
 
