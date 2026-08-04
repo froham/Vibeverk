@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.91.1 — 2026-08-04
+
+### Fiks: Pakkenavn/Kort beskrivelse så "plutselig reduserte" ut i .basics-box
+
+Brukar sende skjermbilete av den ferskt deploya 0.91.0: `.basics-box > .field
+{ max-width: 30rem }` gjorde at Pakkenavn-feltet og Kort beskrivelse-feltet
+vart låst til 480px, medan Pris/Oppstartskostnad-rada rett under/over fylte
+HEILE boksbreidda via `.basics-grid` -- éi og same tona/ramma boks fekk
+dermed eit smalt felt, éi full-brei rad, så eit smalt felt att, noko som såg
+ut som ein rendrings-feil heller enn eit medvite val. Fjerna
+30rem-avgrensinga heilt -- alle felt i `.basics-box` fyller no boksen sin
+fulle breidde konsekvent, slik boksen sin eigen synlege kant alt lova.
+
+Ingen `?v=N`-bump treng (berre inline CSS i `console/index.html` endra,
+ingen skript-fil).
+
 ## 0.91.0 — 2026-08-04
 
 ### Console: "Rediger pakker" seksjonert, Kundar-lista fekk stilrefresh
