@@ -399,6 +399,180 @@ serve(async (req: Request) => {
     return json({ success: true, tenant_id: data.id });
   }
 
+  // ── set_pricing_config ───────────────────────────────────────────────────
+  // Console "Priser"-fane (Innsikt-runda sin oppfølgar, 2026-08-03): global,
+  // ikkje-tenant-skopa prisdokument (modulprisliste + pakkeforslag), IKKJE
+  // ekte fakturering. Høyrer heime her og ikkje i broker.ts av same grunn som
+  // register_tenant over -- broker.brokerCall() krev alltid ein vald
+  // _activeTenant (sjå console-core.js), og dette datasettet er ikkje bunde
+  // til nokon tenant i det heile. Ingen get_pricing_config-handling her med
+  // vilje (Arkitekt-konsultert 2026-08-03): lesing skjer direkte mot
+  // pricing_config sin eigen RLS-SELECT-policy (same mønster som
+  // console-core.js alt bruker for tenants/operators), sidan denne funksjonen
+  // sin blanke superadmin-sperre (linje ~185) elles ville gjort lesing
+  // strengare enn skriving-RLS-en treng å vere -- to lesevegar til same data
+  // med to ulike tilgangsgrenser er akkurat den typen inkonsekvens ADR-området
+  // for control-plane-tilgang åtvarar mot.
+  if (action === "set_pricing_config") {
+    const { data } = body;
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      return json({ error: "Ugyldig format -- data må vere eit objekt" }, 400);
+    }
+    const dataObj = data as Record<string, unknown>;
+    const topKeys = Object.keys(dataObj);
+    if (topKeys.length !== 2 || !topKeys.includes("prices") || !topKeys.includes("packages")) {
+      return json({ error: "Ugyldig format -- forventa nøyaktig prices/packages" }, 400);
+    }
+
+    // Modulnøklar (features.*/intranettFeatures.*) er camelCase-identifikatorar
+    // i heile resten av kodebasen -- valideringa her sjekkar FORMA på nøklane,
+    // ikkje at dei finst i ei fast liste (den lista lever i console-core.js og
+    // kan vekse utan at denne funksjonen treng ei ny deploy for kvar nye modul).
+    const FEATURE_KEY_RE = /^[a-zA-Z][a-zA-Z0-9]{0,49}$/;
+    const PKG_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+    // Strengt hex-format -- badgeColor vert interpolert direkte inn i eit
+    // style="border-color:...">-attributt klientsida (renderPreview()) utan
+    // eiga escaping der. Utan denne sperra kunne ein operatør (eller nokon som
+    // fekk skrive direkte i databasen) bryte ut av attributtet med eit
+    // anførselsteikn og injisere vilkårleg HTML/skript -- lagra XSS som ville
+    // ramme KVAR EIN operatør som opnar Priser-fana seinare. Klientsida
+    // validerer det same på nytt før rendering, som eit andre forsvarslag.
+    const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+    // Reint datakvalitets-tak (Security Auditor-funn, 2026-08-04) -- isFinite
+    // åleine stoppar NaN/Infinity, men ikkje eit urimeleg stort tal som
+    // 1e300. 10 millionar kr er langt over noko realistisk pris/oppstart for
+    // denne produktkatalogen, men høgt nok til aldri å kollidere med ein
+    // ekte verdi.
+    const MAX_PRICE_KR = 10000000;
+
+    function validatePriceEntry(key: string, v: unknown): string | null {
+      if (!FEATURE_KEY_RE.test(key)) return "ugyldig modulnøkkel: «" + key + "»";
+      if (v === null || typeof v !== "object" || Array.isArray(v)) return "«" + key + "» må vere eit objekt";
+      const e = v as Record<string, unknown>;
+      const keys = Object.keys(e);
+      if (keys.length !== 3 || !keys.includes("monthly") || !keys.includes("setup") || !keys.includes("standard")) {
+        return "«" + key + "» må ha nøyaktig monthly/setup/standard";
+      }
+      if (typeof e.monthly !== "number" || !isFinite(e.monthly) || e.monthly < 0 || e.monthly > MAX_PRICE_KR) return "«" + key + "» sin monthly må vere eit tal mellom 0 og " + MAX_PRICE_KR;
+      if (typeof e.setup !== "number" || !isFinite(e.setup) || e.setup < 0 || e.setup > MAX_PRICE_KR) return "«" + key + "» sin setup må vere eit tal mellom 0 og " + MAX_PRICE_KR;
+      if (typeof e.standard !== "boolean") return "«" + key + "» sin standard må vere true/false";
+      return null;
+    }
+
+    const prices = dataObj.prices;
+    if (prices === null || typeof prices !== "object" || Array.isArray(prices)) {
+      return json({ error: "Ugyldig format -- prices må vere eit objekt" }, 400);
+    }
+    const pricesObj = prices as Record<string, unknown>;
+    const priceNsKeys = Object.keys(pricesObj);
+    if (priceNsKeys.length !== 2 || !priceNsKeys.includes("f") || !priceNsKeys.includes("i")) {
+      return json({ error: "Ugyldig format -- prices må ha nøyaktig f/i" }, 400);
+    }
+    for (const ns of ["f", "i"] as const) {
+      const nsVal = pricesObj[ns];
+      if (nsVal === null || typeof nsVal !== "object" || Array.isArray(nsVal)) {
+        return json({ error: "Ugyldig format -- prices." + ns + " må vere eit objekt" }, 400);
+      }
+      const nsObj = nsVal as Record<string, unknown>;
+      if (Object.keys(nsObj).length > 200) return json({ error: "For mange modular i prices." + ns }, 400);
+      for (const [k, v] of Object.entries(nsObj)) {
+        const err = validatePriceEntry(k, v);
+        if (err) return json({ error: "prices." + ns + ": " + err }, 400);
+      }
+    }
+
+    const packages = dataObj.packages;
+    if (!Array.isArray(packages)) return json({ error: "Ugyldig format -- packages må vere ei liste" }, 400);
+    if (packages.length > 50) return json({ error: "For mange pakkar (maks 50)" }, 400);
+
+    function validateStringArray(v: unknown, label: string, maxItems: number): string | null {
+      if (!Array.isArray(v)) return label + " må vere ei liste";
+      if (v.length > maxItems) return label + " har for mange element";
+      for (const item of v) {
+        if (typeof item !== "string" || !FEATURE_KEY_RE.test(item)) return label + " inneheld ein ugyldig modulnøkkel";
+      }
+      return null;
+    }
+    function validateTagMap(v: unknown, label: string): string | null {
+      if (v === null || typeof v !== "object" || Array.isArray(v)) return label + " må vere eit objekt";
+      const obj = v as Record<string, unknown>;
+      if (Object.keys(obj).length > 200) return label + " har for mange oppføringar";
+      for (const [k, val] of Object.entries(obj)) {
+        if (!FEATURE_KEY_RE.test(k)) return label + " har ein ugyldig modulnøkkel: «" + k + "»";
+        if (typeof val !== "string" || val.length > 100) return label + "." + k + " må vere ein tekst på maks 100 teikn";
+      }
+      return null;
+    }
+
+    const PKG_ALLOWED_KEYS = ["id", "name", "price", "setupCost", "desc", "features", "iFeatures", "tags", "allStandard", "featured", "badgeText", "badgeColor"];
+    // Unikskapskontroll (Security Auditor-funn, 2026-08-04): klientsida sin
+    // _priserData.packages.find(...) løyser alltid til FYRSTE treff --
+    // duplikate id-ar ville stille fått "Fjern pakke"/feltredigering til å
+    // ramme feil kort. Serversida sin einaste jobb her er å hindre at eit
+    // slikt dokument nokon gong kjem forbi lagring, uansett klient-bug.
+    const seenPkgIds = new Set<string>();
+    for (const pkgRaw of packages) {
+      if (pkgRaw === null || typeof pkgRaw !== "object" || Array.isArray(pkgRaw)) {
+        return json({ error: "Ugyldig pakke -- må vere eit objekt" }, 400);
+      }
+      const pkg = pkgRaw as Record<string, unknown>;
+      const pkgKeys = Object.keys(pkg);
+      const unknownKey = pkgKeys.find((k) => !PKG_ALLOWED_KEYS.includes(k));
+      if (unknownKey || pkgKeys.length !== PKG_ALLOWED_KEYS.length) {
+        return json({ error: "Ugyldig pakke -- forventa nøyaktig " + PKG_ALLOWED_KEYS.join("/") }, 400);
+      }
+      if (typeof pkg.id !== "string" || !PKG_ID_RE.test(pkg.id)) return json({ error: "Ugyldig pakke-id" }, 400);
+      if (seenPkgIds.has(pkg.id)) return json({ error: "Duplikat pakke-id: «" + pkg.id + "»" }, 400);
+      seenPkgIds.add(pkg.id);
+      if (typeof pkg.name !== "string" || !pkg.name.trim() || pkg.name.length > 200) return json({ error: "Ugyldig pakkenavn" }, 400);
+      if (typeof pkg.price !== "number" || !isFinite(pkg.price) || pkg.price < 0 || pkg.price > MAX_PRICE_KR) return json({ error: "Ugyldig pris for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.setupCost !== "number" || !isFinite(pkg.setupCost) || pkg.setupCost < 0 || pkg.setupCost > MAX_PRICE_KR) return json({ error: "Ugyldig oppstartskostnad for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.desc !== "string" || pkg.desc.length > 2000) return json({ error: "Ugyldig beskrivelse for «" + pkg.name + "»" }, 400);
+      const featErr = validateStringArray(pkg.features, "features", 200);
+      if (featErr) return json({ error: "«" + pkg.name + "»: " + featErr }, 400);
+      const iFeatErr = validateStringArray(pkg.iFeatures, "iFeatures", 200);
+      if (iFeatErr) return json({ error: "«" + pkg.name + "»: " + iFeatErr }, 400);
+      if (pkg.tags === null || typeof pkg.tags !== "object" || Array.isArray(pkg.tags)) {
+        return json({ error: "Ugyldig tags for «" + pkg.name + "»" }, 400);
+      }
+      const tagsObj = pkg.tags as Record<string, unknown>;
+      const tagNsKeys = Object.keys(tagsObj);
+      if (tagNsKeys.length !== 2 || !tagNsKeys.includes("f") || !tagNsKeys.includes("i")) {
+        return json({ error: "Ugyldig tags for «" + pkg.name + "» -- forventa nøyaktig f/i" }, 400);
+      }
+      const tagFErr = validateTagMap(tagsObj.f, "tags.f");
+      if (tagFErr) return json({ error: "«" + pkg.name + "»: " + tagFErr }, 400);
+      const tagIErr = validateTagMap(tagsObj.i, "tags.i");
+      if (tagIErr) return json({ error: "«" + pkg.name + "»: " + tagIErr }, 400);
+      if (typeof pkg.allStandard !== "boolean") return json({ error: "Ugyldig allStandard for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.featured !== "boolean") return json({ error: "Ugyldig featured for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.badgeText !== "string" || pkg.badgeText.length > 100) return json({ error: "Ugyldig merkelapptekst for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.badgeColor !== "string" || !HEX_COLOR_RE.test(pkg.badgeColor)) return json({ error: "Ugyldig farge for «" + pkg.name + "» -- må vere #rrggbb" }, 400);
+    }
+
+    const serialized = JSON.stringify(dataObj);
+    // Same UTF-8-byte-teljing-disiplin som set_custom_modules_manifest (over)
+    // -- .length på strengen tel UTF-16-kodeeiningar, ikkje dei faktiske
+    // bytane som vert lagra i jsonb-kolonna.
+    const PRICING_CONFIG_MAX_BYTES = 300 * 1024;
+    if (new TextEncoder().encode(serialized).length > PRICING_CONFIG_MAX_BYTES) {
+      return json({ error: "Prisdokumentet er for stort (maks " + Math.round(PRICING_CONFIG_MAX_BYTES / 1024) + "KB)" }, 400);
+    }
+
+    const auditId = await auditStart(null, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb
+      .from("pricing_config")
+      .update({ data: dataObj, updated_at: new Date().toISOString(), updated_by: user.id })
+      .eq("id", true);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", packages.length + " pakkar lagra");
+    return json({ success: true });
+  }
+
   // Every action below operates on an existing tenant (tenant_id already
   // destructured above, alongside action, for the auth-failure audit path).
   if (!tenant_id) return json({ error: "tenant_id er påkrevd" }, 400);

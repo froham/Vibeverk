@@ -30,7 +30,102 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
-## 0.87.0 — 2026-08-03
+## 0.88.0 — 2026-08-04
+
+### Ny: "Priser" -- internt pris-/pakkeplanleggingsverktøy i Console
+
+Brukar ba om ein "pris/produkt-arkpakke" i Console rett etter Innsikt-
+redesignet -- suggesjonar for pris og ulike pakketeringar av løysinga, med
+manuell prisredigering. Same mockup-først-arbeidsflyt som Innsikt: ein
+interaktiv HTML-mockup vart bygd og iterert over fleire rundar (fremhevet
+pakke som manuelt val med eiga farge/merkelapptekst, fritekst-tags per
+modul, Workspace-funksjonar på lik linje med Nettside-funksjonar, ein
+bakomliggande modul-prisliste med eiga "Bygg tilbud"-kalkulator og
+oppstartskostnad, og til slutt ein brukarvalgt "Standard"-merking per modul
+som lèt lange modullister kollapsast til "Alle standardmoduler" + berre dei
+reelle tillegga) før noko ekte kode vart skriven.
+
+**Arkitektur -- retta undervegs, ikkje fyrste forslag.** Fyrste Arkitekt-
+konsultasjon tilrådde direkte RLS-gata CRUD-skriving frå Console (etter
+mønster frå den opphavlege `operators_operator_all`-policyen). Før
+implementering synte direkte lesing av migrasjonshistorikken at denne
+policyen alt var FJERNA to gonger tidlegare (`tenants` i
+`20260708204201_restrict_tenants_operator_to_read_only.sql`, `operators` i
+`20260708222400_restrict_operators_to_read_only.sql`) -- begge gonger fordi
+direkte autentisert CRUD hoppar forbi `broker_audit_log`. Ein ny
+Arkitekt-runde med dette funnet gav ei retta løysing:
+
+- **Ny tabell** `pricing_config` (`supabase-control/supabase/migrations/
+  20260804120000_add_pricing_config.sql`) -- éin singleton-rad, jsonb-
+  dokument `{ prices: {f,i}, packages: [...] }`. RLS: berre SELECT for
+  `authenticated`, ingen INSERT/UPDATE/DELETE-policy i det heile. Eksplisitt
+  `service_role`-grant lagt til defensivt (ADR-0009-leksjonen: BYPASSRLS er
+  ikkje det same som objekt-grantar).
+- **Ny, audited handling** `set_pricing_config` i `supabase-control/
+  supabase/functions/tenant-admin/index.ts` -- plassert som ein tenant_id-
+  uavhengig tidleg-retur-blokk (same mønster som `register_tenant`), difor
+  underlagt funksjonen sin eksisterande blanke superadmin-sperre. Ingen
+  `get_pricing_config`-handling med vilje -- lesing går direkte mot
+  RLS-SELECT-en, sidan å rute lesing gjennom superadmin-sperra ville gjort
+  lesing STRENGARE enn skrive-RLS-en treng vere. Fullstendig server-sida
+  validering (nøkkel-kvitelister, tal-/streng-/lengd-grenser, strengt
+  hex-format på `badgeColor` sidan den vert interpolert inn i eit
+  style=-attributt klientsida), auditert til `broker_audit_log` med
+  `tenant_id = NULL`.
+- **Console** (`console/console-core.js`, ny `renderPriser()` + ~20
+  hjelpefunksjonar, ny `NAV_ITEMS`-oppføring mellom "Modular" og "Analyse"):
+  fire underfaner (Rediger pakker / Modulpriser / Bygg tilbud /
+  Forhåndsvisning), attbruker eksisterande `FEAT_LABELS`/`IFEAT_LABELS`
+  direkte i staden for å duplisere dei. All brukarredigerbar tekst går
+  gjennom `C.esc()`; `badgeColor` valideres på nytt klientsida
+  (`priserSafeHex()`) før interpolering, som eit andre forsvarslag mot
+  lagra data som kan vere eldre enn server-valideringa.
+
+`?v=N`: `console-core.js` (196).
+
+**Security Auditor + UX/Mobil-reviewer gjennomført same dag** (begge
+subagentane feila fyrste gong på ei mellombels økt-grense, lukkast ved
+umiddelbar reprøving):
+
+- **Security Auditor**: ingen BLOCKER/HIGH/MEDIUM-funn. To LOW-funn retta:
+  ingen øvre grense på pris-/oppstartskostnad-tal (lagt til, maks 10 000 000
+  kr), og ingen kontroll mot duplikate pakke-id-ar server-sida (lagt til --
+  klientsida sin `.find()` løyser alltid til fyrste treff, så eit duplikat
+  kunne fått "Fjern pakke"/feltredigering til å ramme feil kort).
+- **UX/Mobil-reviewer**: to BLOCKER, fire HIGH, fleire MEDIUM. Alle
+  BLOCKER/HIGH retta:
+  - "Generell oppstartskostnad"-feltet i Bygg tilbud mista tastaturfokus på
+    KVART tastetrykk (eit fullt `wrap.innerHTML`-re-render på `input`-
+    hendinga) -- retta til ei målretta oppdatering av berre sum-tala.
+  - Modulpriser-tabellen klipte oppstartskostnad-kolonna heilt vekk og
+    utilgjengeleg på telefonbreidde (`overflow:hidden` i staden for
+    `overflow-x:auto`) -- retta.
+  - "Fjern pakke" hadde ingen stadfesting i det heile, ulikt kvar annan
+    destruktiv handling i same fil -- lagt til ei Tier B-stadfesting.
+  - Kvart avkryssa modul-/featured-/allStandard-felt utløyste eit fullt
+    pane-re-render som mista tastaturfokus -- lagt til
+    `priserRerenderEditPreservingFocus()`, som fangar og gjenopprettar
+    fokusert element rundt re-renderinga.
+  - "Standardmoduler"-brytaren hadde ingen forklaring sjølv om åtferda
+    (dynamisk, ikkje eit augeblinksbilete) er reelt non-obvious -- lagt til
+    `helpIcon()`.
+  - "Bygg tilbud" sin tomt-state-tekst sa "til venstre" sjølv om plukkeren
+    stables OVER handlekurven på alle skjermar ≤800px -- retta ordlyd.
+  - Fleire touch-mål under 44px (`.seg button`, `.pkg-card__del`,
+    `.quote-chip button`) -- retta med `min-height:44px`. "Standard"-
+    avkryssinga i Modulpriser var ikkje pakka i ein `<label>` (lite
+    trykkflate) -- retta.
+  - "×"-knappane i handlekurven mangla `aria-label` -- lagt til.
+  - Modul-chips attbrukte ikkje dei eksisterande `FEAT_HELP`/`IFEAT_HELP`-
+    forklaringane Modular-fana alt har for same nøklar -- lagt til.
+  - Delt "Lagre endringer"-knapp kunne mistolkast som at han berre lagra
+    aktiv underfane -- omdøypt til "Lagre alle endringer".
+  - `priserRefreshPkgHints()` var reelt daud kode (aldri kalla, sidan
+    enkelt-pane-arkitekturen ikkje treng tverr-pane-oppdatering) -- fjerna.
+
+**INGENTING er pusha**, og migrasjonen er IKKJE køyrd mot det verkelege
+`vibeverk-control`-prosjektet -- begge krev eksplisitt brukargodkjenning per
+CLAUDE.md sitt deployment-sikringsnett.
 
 ### Ny: "Innsikt" -- sidetellings-panelet redesigna som eige dashboard, eigen fane
 

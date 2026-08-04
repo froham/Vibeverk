@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.87.0";
+  var VIBEVERK_VERSION = "0.88.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -456,6 +456,7 @@ window.VwConsole = (function () {
     { id: "web",        icon: "world",       label: "Web" },
     { id: "workspace",  icon: "briefcase",   label: "Workspace" },
     { id: "modular",    icon: "puzzle",      label: "Modular" },
+    { id: "priser",     icon: "tag",         label: "Priser" },
     { id: "analyse",    icon: "chart-bar",   label: "Analyse" },
     { id: "personvern", icon: "shield-lock", label: "Personvern" },
     { id: "laring",     icon: "book",        label: "Læring" },
@@ -1519,6 +1520,516 @@ window.VwConsole = (function () {
   // tenant-skoperte lesing (getStoreKey) og broker-skriving (saveSC-mønster)
   // som resten av superconfig — "analytics" lagt til broker sin
   // ALLOWED_CONFIG_KEYS.
+  /* =========================================================================
+     PRISER — internt pris-/pakkeforslags-verktøy for Vibeverk sjølv, GLOBALT
+     (ikkje tenant-skopa, difor ignorerer renderPriser sc-argumentet sitt --
+     same mønster som renderKundar over). Design- og arkitekturhistorie:
+     interaktiv mockup bygd saman med brukaren, deretter Arkitekt-konsultert
+     TO gonger for persistens-mønsteret -- fyrste runde tilrådde direkte
+     RLS-CRUD, men det synte seg feil ved direkte lesing av
+     migrasjonshistorikken (Security Auditor-funn M3 hadde alt fjerna
+     nøyaktig den policyen på operators-tabellen, same grunn som tenants).
+     Retta mønster: lesing direkte via RLS-SELECT (som tenants/operators),
+     skriving KUN via ein ny, audited tenant-admin-handling
+     (set_pricing_config) -- sjå supabase-control/supabase/functions/
+     tenant-admin/index.ts og migrasjonen 20260804120000_add_pricing_config.sql
+     for full grunngjeving.
+
+     Datamodell (pricing_config.data, éin rad): { prices: { f, i }, packages }
+     -- "f"/"i" namnerom sidan features.crm og intranettFeatures.crm er ulike
+     modular med same nøkkelnamn. Modulnamn/-hjelpetekst hentast IKKJE frå ei
+     eiga liste her -- attbruker FEAT_LABELS/IFEAT_LABELS (over, alt brukt av
+     Modular-fana), slik at Priser aldri kan gå ut av synk med den faktiske
+     flaggmengda.
+     ====================================================================== */
+  var _priserData = null;              // { prices, packages } -- null til fyrste lasting er ferdig
+  var _priserLoading = false;
+  var _priserView = "edit";            // "edit" | "prices" | "quote" | "preview"
+  var _priserQuote = { f: [], i: [] }; // "Bygg tilbud" -- reint økt-lokalt, aldri lagra
+  var _priserPkgIdSeq = 1;
+
+  function priserPriceEntry(ns, key) {
+    var src = (ns === "f" ? _priserData.prices.f : _priserData.prices.i) || {};
+    // Fallback dekkjer ein flaggnøkkel FEAT_LABELS/IFEAT_LABELS har fått
+    // EtTER at denne rada sist vart lagra -- manglar prisoppføring, ikkje
+    // ein feil, berre "ikkje prissett enno".
+    return src[key] || { monthly: 0, setup: 0, standard: true };
+  }
+  function priserStandardKeys(ns) {
+    var labels = ns === "f" ? FEAT_LABELS : IFEAT_LABELS;
+    return Object.keys(labels).filter(function (k) { return priserPriceEntry(ns, k).standard; });
+  }
+  function priserSum(featureKeys, iFeatureKeys) {
+    var monthly = 0, setup = 0;
+    (featureKeys || []).forEach(function (k) { var p = priserPriceEntry("f", k); monthly += p.monthly; setup += p.setup; });
+    (iFeatureKeys || []).forEach(function (k) { var p = priserPriceEntry("i", k); monthly += p.monthly; setup += p.setup; });
+    return { monthly: monthly, setup: setup };
+  }
+  // Når pkg.allStandard er på: standardmodular reknast med DYNAMISK (følgjer
+  // kva som til ei kvar tid er merka standard i Modulpriser), ikkje eit
+  // fastfrose augeblinksbilete -- pkg.features/iFeatures held då berre styr
+  // på dei eksplisitt valde TILLEGG-modulane.
+  function priserEffectiveKeys(pkg, ns) {
+    var explicit = ns === "f" ? pkg.features : pkg.iFeatures;
+    if (!pkg.allStandard) return explicit;
+    var addonPicked = explicit.filter(function (k) { return !priserPriceEntry(ns, k).standard; });
+    return priserStandardKeys(ns).concat(addonPicked);
+  }
+  // Farge er brukarredigerbar (<input type="color"> gjev alltid eit gyldig
+  // #rrggbb frå nettlesaren sjølv når brukaren endrar han), men vert like
+  // fullt validert på nytt her før interpolering inn i eit style=-attributt
+  // (renderPriserPreview) eller eit value=-attributt (fargeveljaren sjølv) --
+  // lagra data kan i prinsippet vere eldre enn denne kontrollen, eller
+  // stamme frå ei framtidig endring som gjekk glipp av noko server-sida.
+  // Utan dette kunne eit anførselsteikn i verdien bryte ut av attributtet og
+  // injisere vilkårleg HTML/skript -- lagra XSS som ville ramme kvar
+  // operatør som opnar Priser-fana seinare.
+  function priserSafeHex(c) {
+    return (typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c)) ? c : "#2563eb";
+  }
+  function priserFmtPrice(n) { return Number(n || 0).toLocaleString("nb-NO"); }
+
+  function priserLoad(wrap) {
+    if (_priserLoading) return;
+    _priserLoading = true;
+    _sbControl.from("pricing_config").select("data").eq("id", true).maybeSingle().then(function (r) {
+      _priserLoading = false;
+      if (r.error || !r.data) {
+        wrap.innerHTML = '<p style="color:var(--color-muted)">Kunne ikke laste prisdata.</p>' +
+          C.button({ label: "Prøv igjen", variant: "ghost", attrs: 'type="button" id="priser-retry"' });
+        var retryBtn = wrap.querySelector("#priser-retry");
+        if (retryBtn) retryBtn.addEventListener("click", function () { priserLoad(wrap); });
+        return;
+      }
+      _priserData = r.data.data;
+      renderPriser(null, wrap);
+    });
+  }
+
+  function priserSave(btn, statusEl) {
+    if (btn) btn.disabled = true;
+    tenantAdminCall("set_pricing_config", { data: _priserData }, function (r) {
+      if (btn) btn.disabled = false;
+      if (r.error) { statusMsg(statusEl, "✗ " + r.error, false); return; }
+      statusMsg(statusEl, "✓ Lagra!", true);
+    });
+  }
+  function priserSaveRowHtml() {
+    return '<div style="display:flex;justify-content:flex-end;align-items:center;gap:.7rem;margin-top:1.2rem">' +
+      '<span class="form__status" id="priser-save-status"></span>' +
+      C.button({ label: "Lagre alle endringer", variant: "primary", attrs: 'type="button" id="priser-save-btn"' }) +
+    '</div>';
+  }
+  function priserBindSaveRow(wrap) {
+    var btn = wrap.querySelector("#priser-save-btn");
+    if (btn) btn.addEventListener("click", function () { priserSave(btn, wrap.querySelector("#priser-save-status")); });
+  }
+
+  // Delt hjelpefunksjon: deler ei nøkkelliste i "Standard"/"Tillegg" basert
+  // på priserPriceEntry(ns,key).standard, og rendrar kvar gruppe for seg via
+  // chipFn(key). "Da blir det standard + modulnavn" (brukarønske
+  // 2026-08-03): standardmodular vises kompakt/samla øvst, dei ekte
+  // tilleggsmodulane får sin eigen, tydeleg avgrensa seksjon.
+  function priserGroupedGrid(keys, ns, chipFn, wrapClass) {
+    wrapClass = wrapClass === undefined ? "feat-grid" : wrapClass;
+    var std = keys.filter(function (k) { return priserPriceEntry(ns, k).standard; });
+    var addon = keys.filter(function (k) { return !priserPriceEntry(ns, k).standard; });
+    function section(title, list) {
+      if (!list.length) return "";
+      var inner = list.map(chipFn).join("");
+      return '<div class="feat-subgroup-title">' + title + '</div>' + (wrapClass ? '<div class="' + wrapClass + '">' + inner + '</div>' : inner);
+    }
+    return section("Standard", std) + section("Tillegg", addon);
+  }
+
+  // FEAT_LABELS/IFEAT_LABELS er attbrukt her frå Modular-fana (sjå
+  // renderPriser() sin eigen kommentar), og same gjeld FEAT_HELP/IFEAT_HELP
+  // -- UX-review-funn 2026-08-04: forklaringane fanst alt for kvar nøkkel,
+  // men vart aldri vist på Priser sine chips, sjølv om ei rekkje modular
+  // (t.d. "crmFull"→"Native e-post") ikkje er sjølvforklarande av namnet åleine.
+  function priserHelpFor(ns, key) { return (ns === "f" ? FEAT_HELP : IFEAT_HELP)[key]; }
+
+  function priserFeatChip(key, label, checked, pkgId, group, tagValue) {
+    var help = priserHelpFor(group, key);
+    var chip = '<div class="feat-chip' + (checked ? " is-checked" : "") + '">' +
+      '<label class="feat-chip__label">' +
+        '<input type="checkbox" data-priser-pkg="' + C.esc(pkgId) + '" data-priser-group="' + group + '" data-priser-feat="' + C.esc(key) + '" ' + (checked ? "checked" : "") + '>' +
+        '<span>' + C.esc(label) + '</span>' +
+      '</label>' + (help ? C.helpIcon(help) : "");
+    if (checked) {
+      chip += '<input type="text" class="feat-chip__tag" placeholder="tag (valgfritt)" maxlength="100" ' +
+        'data-priser-tag-pkg="' + C.esc(pkgId) + '" data-priser-tag-group="' + group + '" data-priser-tag-key="' + C.esc(key) + '" value="' + C.esc(tagValue || "") + '">';
+    }
+    return chip + '</div>';
+  }
+
+  function priserPkgFeatGroup(pkg, ns, labels, chipFn) {
+    var keys = Object.keys(labels);
+    if (!pkg.allStandard) return priserGroupedGrid(keys, ns, chipFn);
+    var addonKeys = keys.filter(function (k) { return !priserPriceEntry(ns, k).standard; });
+    var html = '<p class="all-standard-line">Alle standardmoduler</p>';
+    if (addonKeys.length) html += '<div class="feat-subgroup-title">Tillegg</div><div class="feat-grid">' + addonKeys.map(chipFn).join("") + '</div>';
+    return html;
+  }
+
+  function priserPkgCardHtml(pkg) {
+    var featGrid = priserPkgFeatGroup(pkg, "f", FEAT_LABELS, function (k) {
+      return priserFeatChip(k, FEAT_LABELS[k], pkg.features.indexOf(k) > -1, pkg.id, "f", pkg.tags.f[k]);
+    });
+    // Workspace-funksjoner vises på lik linje med Nettside-funksjoner --
+    // samme rutenett, alltid synlig, ingen "Inkluderer Workspace"-sperre
+    // foran (brukarønske 2026-08-03).
+    var iFeatGrid = priserPkgFeatGroup(pkg, "i", IFEAT_LABELS, function (k) {
+      return priserFeatChip(k, IFEAT_LABELS[k], pkg.iFeatures.indexOf(k) > -1, pkg.id, "i", pkg.tags.i[k]);
+    });
+    var sum = priserSum(priserEffectiveKeys(pkg, "f"), priserEffectiveKeys(pkg, "i"));
+
+    var highlightFields = pkg.featured ? (
+      '<div class="highlight-fieldset__row">' +
+        '<div class="field"><label>Merkelapptekst</label><input type="text" maxlength="100" data-priser-field="badgeText" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.badgeText) + '"></div>' +
+        '<div class="field" style="flex:0"><label>Farge</label><input type="color" data-priser-field="badgeColor" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + priserSafeHex(pkg.badgeColor) + '"></div>' +
+      '</div>'
+    ) : "";
+
+    return '<div class="pkg-card" data-priser-pkg-card="' + C.esc(pkg.id) + '">' +
+      '<div class="pkg-card__top">' +
+        '<button type="button" class="pkg-card__del" data-priser-del="' + C.esc(pkg.id) + '">Fjern pakke</button>' +
+      '</div>' +
+      '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
+      '<div class="field"><label>Pris</label><div class="price-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span>kr/mnd</span></div>' +
+        '<div class="price-hint" data-priser-hint-monthly="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.monthly) + ' kr/mnd</div></div>' +
+      '<div class="field"><label>Oppstartskostnad</label><div class="price-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span>kr, engang</span></div>' +
+        '<div class="price-hint" data-priser-hint-setup="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.setup) + ' kr</div></div>' +
+      '<div class="field"><label>Kort beskrivelse</label><textarea rows="2" maxlength="2000" data-priser-field="desc" data-priser-pkg="' + C.esc(pkg.id) + '">' + C.esc(pkg.desc) + '</textarea></div>' +
+      '<div class="highlight-fieldset">' +
+        '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="featured" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.featured ? "checked" : "") + '> Fremhev i forhåndsvisning (ramme + merkelapp)</label>' +
+        highlightFields +
+      '</div>' +
+      '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="allStandard" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.allStandard ? "checked" : "") + '> Standardmoduler</label>' +
+      C.helpIcon("Pakken følger automatisk de modulene som er merket «Standard» i Modulpriser-fanen, også etter at du har lagret og senere endrer hva som er standard der. Skru av for å velge nøyaktig hvilke moduler denne pakken skal ha.") +
+      '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
+      featGrid +
+      '<div class="feat-section-title">Workspace-funksjoner</div>' +
+      iFeatGrid +
+    '</div>';
+  }
+
+  function priserFindMatch(wrap, selectorAttr, matchAttrs) {
+    var candidates = wrap.querySelectorAll(selectorAttr);
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i], ok = true;
+      for (var attr in matchAttrs) { if (el.getAttribute(attr) !== matchAttrs[attr]) { ok = false; break; } }
+      if (ok) return el;
+    }
+    return null;
+  }
+
+  // Eit fullt re-render av heile pakke-panelet (renderPriserEdit) mistar
+  // tastaturfokus -- kritisk for eit skjema med opp mot 25 avkryssingsboksar
+  // per pakke (UX-review-funn 2026-08-04: ein tastaturbrukar måtte Tab-e frå
+  // toppen på nytt etter KVART avkryssa felt). Fangar kva felt som var
+  // fokusert FØR re-render, finn att same felt etterpå og gjev det fokus på
+  // nytt -- dekkjer feature- og featured-/allStandard-avkryssingane, dei
+  // einaste elementa som utløyser eit fullt re-render herifrå.
+  function priserRerenderEditPreservingFocus(wrap) {
+    var active = document.activeElement;
+    var restore = null;
+    if (active && wrap.contains(active)) {
+      if (active.hasAttribute("data-priser-feat")) {
+        restore = { selectorAttr: "[data-priser-feat]", attrs: {
+          "data-priser-pkg": active.getAttribute("data-priser-pkg"),
+          "data-priser-group": active.getAttribute("data-priser-group"),
+          "data-priser-feat": active.getAttribute("data-priser-feat")
+        } };
+      } else if (active.hasAttribute("data-priser-field")) {
+        restore = { selectorAttr: "[data-priser-field]", attrs: {
+          "data-priser-pkg": active.getAttribute("data-priser-pkg"),
+          "data-priser-field": active.getAttribute("data-priser-field")
+        } };
+      }
+    }
+    renderPriserEdit(wrap);
+    if (restore) {
+      var el = priserFindMatch(wrap, restore.selectorAttr, restore.attrs);
+      if (el) el.focus();
+    }
+  }
+
+  function renderPriserEdit(wrap) {
+    wrap.innerHTML =
+      '<div class="pkg-grid">' + _priserData.packages.map(priserPkgCardHtml).join("") + '</div>' +
+      '<button type="button" class="add-pkg-btn" id="priser-add-pkg">+ Legg til pakke</button>' +
+      priserSaveRowHtml();
+    priserBindPkgEvents(wrap);
+    priserBindSaveRow(wrap);
+    wrap.querySelector("#priser-add-pkg").addEventListener("click", function () {
+      _priserData.packages.push({
+        id: "p" + (_priserPkgIdSeq++) + "-" + Date.now().toString(36), name: "Ny pakke", price: 0, setupCost: 0, desc: "",
+        features: [], iFeatures: [], tags: { f: {}, i: {} }, allStandard: false,
+        featured: false, badgeText: "Mest valgt", badgeColor: "#2563eb"
+      });
+      renderPriserEdit(wrap);
+    });
+  }
+
+  function priserBindPkgEvents(wrap) {
+    wrap.querySelectorAll("[data-priser-field]").forEach(function (el) {
+      var evt = el.type === "checkbox" ? "change" : "input";
+      el.addEventListener(evt, function () {
+        var pkg = _priserData.packages.find(function (p) { return p.id === el.getAttribute("data-priser-pkg"); });
+        var field = el.getAttribute("data-priser-field");
+        if (field === "featured" || field === "allStandard") {
+          pkg[field] = el.checked;
+          priserRerenderEditPreservingFocus(wrap); // re-render for å vise/skjule avhengige felt/lister, utan å miste fokus
+          return;
+        }
+        if (field === "badgeColor") { pkg.badgeColor = priserSafeHex(el.value); return; }
+        pkg[field] = (field === "price" || field === "setupCost") ? (Number(el.value) || 0) : el.value;
+      });
+    });
+    wrap.querySelectorAll("[data-priser-feat]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var pkg = _priserData.packages.find(function (p) { return p.id === cb.getAttribute("data-priser-pkg"); });
+        var group = cb.getAttribute("data-priser-group");
+        var key = cb.getAttribute("data-priser-feat");
+        var list = group === "f" ? pkg.features : pkg.iFeatures;
+        var idx = list.indexOf(key);
+        if (cb.checked && idx === -1) list.push(key);
+        if (!cb.checked && idx > -1) { list.splice(idx, 1); delete pkg.tags[group][key]; }
+        priserRerenderEditPreservingFocus(wrap); // re-render slik at tag-feltet vises/skjules riktig, utan å miste fokus
+      });
+    });
+    wrap.querySelectorAll("[data-priser-tag-key]").forEach(function (input) {
+      input.addEventListener("input", function () {
+        var pkg = _priserData.packages.find(function (p) { return p.id === input.getAttribute("data-priser-tag-pkg"); });
+        var group = input.getAttribute("data-priser-tag-group");
+        var key = input.getAttribute("data-priser-tag-key");
+        pkg.tags[group][key] = input.value;
+      });
+    });
+    // Tier B-stadfesting (UX-review-funn 2026-08-04) -- fjerning her hadde
+    // ingen bekreftelse i det heile, ulikt kvar annan destruktiv handling i
+    // denne fila (modul-fjerning linje ~1478, kunde-arkivering linje ~2639).
+    wrap.querySelectorAll("[data-priser-del]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-priser-del");
+        var pkg = _priserData.packages.find(function (p) { return p.id === id; });
+        var navn = (pkg && pkg.name) || "denne pakken";
+        if (!confirm('Fjerne pakken «' + navn + '»? Alt innhold i den (pris, oppstartskostnad, beskrivelse, valgte moduler og tags) forsvinner fra denne oversikten med det samme. Endringen blir permanent først når du trykker «Lagre alle endringer» — til da kan du fortsatt angre ved å ikke lagre. Er du sikker?')) return;
+        _priserData.packages = _priserData.packages.filter(function (p) { return p.id !== id; });
+        renderPriserEdit(wrap);
+      });
+    });
+  }
+
+  function renderPriserPrices(wrap) {
+    function row(key, label, ns) {
+      var p = priserPriceEntry(ns, key);
+      return '<tr>' +
+        '<td>' + C.esc(label) + '</td>' +
+        '<td><label style="display:inline-flex;padding:.5rem;cursor:pointer"><input type="checkbox" data-priser-standard-ns="' + ns + '" data-priser-standard-key="' + C.esc(key) + '" ' + (p.standard ? "checked" : "") + '></label></td>' +
+        '<td><input type="number" min="0" data-priser-price-ns="' + ns + '" data-priser-price-key="' + C.esc(key) + '" data-priser-price-field="monthly" value="' + p.monthly + '"></td>' +
+        '<td><input type="number" min="0" data-priser-price-ns="' + ns + '" data-priser-price-key="' + C.esc(key) + '" data-priser-price-field="setup" value="' + p.setup + '"></td>' +
+      '</tr>';
+    }
+    wrap.innerHTML =
+      '<p class="preview-note">Denne listen er kilden pakkene og «Bygg tilbud» henter priser og standard/tillegg-status fra.</p>' +
+      '<div class="price-table-wrap"><table class="price-table">' +
+        '<thead><tr><th>Modul</th><th>Standard</th><th>Månedspris (kr)</th><th>Oppstartskostnad (kr, engang)</th></tr></thead>' +
+        '<tbody>' +
+          '<tr class="group-row"><td colspan="4">Nettside-/Web-admin-funksjoner</td></tr>' +
+          Object.keys(FEAT_LABELS).map(function (k) { return row(k, FEAT_LABELS[k], "f"); }).join("") +
+          '<tr class="group-row"><td colspan="4">Workspace-funksjoner</td></tr>' +
+          Object.keys(IFEAT_LABELS).map(function (k) { return row(k, IFEAT_LABELS[k], "i"); }).join("") +
+        '</tbody>' +
+      '</table></div>' +
+      priserSaveRowHtml();
+
+    wrap.querySelectorAll("[data-priser-price-key]").forEach(function (input) {
+      input.addEventListener("input", function () {
+        var ns = input.getAttribute("data-priser-price-ns"), key = input.getAttribute("data-priser-price-key"), field = input.getAttribute("data-priser-price-field");
+        priserPriceEntry(ns, key); // sikrar at objektet finst før vi skriv i det
+        if (!_priserData.prices[ns][key]) _priserData.prices[ns][key] = { monthly: 0, setup: 0, standard: true };
+        _priserData.prices[ns][key][field] = Number(input.value) || 0;
+      });
+    });
+    wrap.querySelectorAll("[data-priser-standard-key]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var ns = cb.getAttribute("data-priser-standard-ns"), key = cb.getAttribute("data-priser-standard-key");
+        if (!_priserData.prices[ns][key]) _priserData.prices[ns][key] = { monthly: 0, setup: 0, standard: true };
+        _priserData.prices[ns][key].standard = cb.checked;
+      });
+    });
+    priserBindSaveRow(wrap);
+  }
+
+  function priserQuoteChip(key, label, ns) {
+    var p = priserPriceEntry(ns, key);
+    var added = _priserQuote[ns].indexOf(key) > -1;
+    var help = priserHelpFor(ns, key);
+    return '<div class="quote-chip' + (added ? " is-added" : "") + '">' +
+      '<span>' + C.esc(label) + (help ? C.helpIcon(help) : "") + '<span class="quote-chip__meta"> — ' + priserFmtPrice(p.monthly) + ' kr/mnd, ' + priserFmtPrice(p.setup) + ' kr oppstart</span></span>' +
+      (added
+        ? '<button type="button" class="quote-chip__rm" data-priser-q-rm="' + ns + ":" + C.esc(key) + '">Fjern</button>'
+        : '<button type="button" class="quote-chip__add" data-priser-q-add="' + ns + ":" + C.esc(key) + '">+ Legg til</button>') +
+    '</div>';
+  }
+
+  function priserQuoteCartGroupHtml(title, items) {
+    if (!items.length) return "";
+    return '<div class="feat-section-title" style="margin-top:.6rem">' + title + '</div><ul>' + items.map(function (it) {
+      return '<li><span>' + C.esc(it.label) + '</span><span>' + priserFmtPrice(it.monthly) + ' kr/mnd</span>' +
+        '<button type="button" class="quote-chip__rm" data-priser-q-rm="' + it.ns + ":" + C.esc(it.key) + '" aria-label="Fjern ' + C.esc(it.label) + '">×</button></li>';
+    }).join("") + '</ul>';
+  }
+
+  // Oppdaterer BERRE sum-tala, ikkje heile paneet -- brukt av
+  // "Generell oppstartskostnad"-feltet sin egen input-handsamar (UX-review-
+  // funn 2026-08-04: eit fullt wrap.innerHTML-kall på kvart tastetrykk
+  // øydelegg og skaper feltet på nytt, som gjer at tastaturfokus forsvinn
+  // etter kvar einaste teikn -- reelt sett umogleg å skrive inn eit tal).
+  function priserRefreshQuoteTotals(wrap) {
+    var sum = priserSum(_priserQuote.f, _priserQuote.i);
+    var extra = _priserQuote.extraSetup || 0;
+    var totalsEl = wrap.querySelector("#priser-quote-totals");
+    if (!totalsEl) return;
+    totalsEl.innerHTML =
+      '<div class="quote-cart__row"><span>Moduler, sum/mnd</span><span>' + priserFmtPrice(sum.monthly) + ' kr</span></div>' +
+      '<div class="quote-cart__row"><span>Oppstartskostnad (moduler)</span><span>' + priserFmtPrice(sum.setup) + ' kr</span></div>' +
+      '<div class="quote-cart__row"><span>Generell oppstartskostnad</span><span>' + priserFmtPrice(extra) + ' kr</span></div>' +
+      '<div class="quote-cart__row is-total"><span>Totalt per måned</span><span>' + priserFmtPrice(sum.monthly) + ' kr</span></div>' +
+      '<div class="quote-cart__row is-total"><span>Totalt oppstart</span><span>' + priserFmtPrice(sum.setup + extra) + ' kr</span></div>';
+  }
+
+  function renderPriserQuote(wrap) {
+    var fCartItems = _priserQuote.f.map(function (k) { return { label: FEAT_LABELS[k], monthly: priserPriceEntry("f", k).monthly, ns: "f", key: k }; });
+    var iCartItems = _priserQuote.i.map(function (k) { return { label: IFEAT_LABELS[k], monthly: priserPriceEntry("i", k).monthly, ns: "i", key: k }; });
+    // "til venstre" var feil på alle skjermar ≤800px, der plukkeren stables
+    // OVER handlekurven, ikkje til venstre for han (UX-review-funn).
+    var cartHtml = (!fCartItems.length && !iCartItems.length)
+      ? '<p class="quote-cart__empty">Ingen moduler lagt til ennå — velg moduler under.</p>'
+      : priserQuoteCartGroupHtml("Nettside", fCartItems) + priserQuoteCartGroupHtml("Workspace", iCartItems);
+
+    var extra = _priserQuote.extraSetup || 0;
+
+    wrap.innerHTML =
+      '<p class="preview-note">Sett sammen et tilbud modul for modul, uavhengig av de faste pakkene — nyttig når en kunde bare vil ha noen få enkeltmoduler. Lagres ikke, kun en økt-lokal kalkulator.</p>' +
+      '<div class="quote-layout">' +
+        '<div class="quote-picker">' +
+          '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
+          priserGroupedGrid(Object.keys(FEAT_LABELS), "f", function (k) { return priserQuoteChip(k, FEAT_LABELS[k], "f"); }, "") +
+          '<div class="feat-section-title">Workspace-funksjoner</div>' +
+          priserGroupedGrid(Object.keys(IFEAT_LABELS), "i", function (k) { return priserQuoteChip(k, IFEAT_LABELS[k], "i"); }, "") +
+        '</div>' +
+        '<div class="quote-cart">' +
+          '<h4>Valgte moduler</h4>' +
+          cartHtml +
+          '<div class="quote-extra">' +
+            '<label for="priser-quote-extra">Generell oppstartskostnad (ikke modulspesifikk — f.eks. domene, merkevare, oppstartsmøte)</label>' +
+            '<input type="number" min="0" id="priser-quote-extra" value="' + extra + '">' +
+          '</div>' +
+          '<div class="quote-cart__totals" id="priser-quote-totals"></div>' +
+        '</div>' +
+      '</div>';
+    priserRefreshQuoteTotals(wrap);
+
+    wrap.querySelectorAll("[data-priser-q-add]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var parts = btn.getAttribute("data-priser-q-add").split(":");
+        if (_priserQuote[parts[0]].indexOf(parts[1]) === -1) _priserQuote[parts[0]].push(parts[1]);
+        renderPriserQuote(wrap);
+      });
+    });
+    wrap.querySelectorAll("[data-priser-q-rm]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var parts = btn.getAttribute("data-priser-q-rm").split(":");
+        var idx = _priserQuote[parts[0]].indexOf(parts[1]);
+        if (idx > -1) _priserQuote[parts[0]].splice(idx, 1);
+        renderPriserQuote(wrap);
+      });
+    });
+    wrap.querySelector("#priser-quote-extra").addEventListener("input", function (e) {
+      _priserQuote.extraSetup = Number(e.target.value) || 0;
+      priserRefreshQuoteTotals(wrap); // ALDRI eit fullt re-render her -- sjå kommentaren over
+    });
+  }
+
+  // Speiler same "Standardmoduler"-kollaps som pakkeredigeringa: er
+  // pkg.allStandard på, vis "Alle standardmoduler" som éin rad i staden for
+  // kvar standardmodul, og list kun dei eksplisitt valde tillegga under.
+  // Nettside/Workspace-overskrifter på kvar sin liste hindrar at t.d.
+  // "Aktuelt" (finst i begge namnerom) dukkar opp to gonger utan skille.
+  function priserFeatListHtml(title, pkg, ns, labels) {
+    var keys = ns === "f" ? pkg.features : pkg.iFeatures;
+    var tags = ns === "f" ? pkg.tags.f : pkg.tags.i;
+    if (!pkg.allStandard) {
+      if (!keys.length) return "";
+      return '<div class="compare-card__group-title">' + title + '</div><ul>' + keys.map(function (k) {
+        var tag = tags[k];
+        return '<li><span class="check">✓</span><span>' + C.esc(labels[k]) + '</span>' + (tag ? '<span class="addon-tag">' + C.esc(tag) + '</span>' : "") + '</li>';
+      }).join("") + '</ul>';
+    }
+    var addonKeys = keys.filter(function (k) { return !priserPriceEntry(ns, k).standard; });
+    var stdCount = priserStandardKeys(ns).length;
+    if (!stdCount && !addonKeys.length) return "";
+    var items = stdCount ? ['<li><span class="check">✓</span><span>Alle standardmoduler</span></li>'] : [];
+    addonKeys.forEach(function (k) {
+      var tag = tags[k];
+      items.push('<li><span class="check">✓</span><span>' + C.esc(labels[k]) + '</span>' + (tag ? '<span class="addon-tag">' + C.esc(tag) + '</span>' : "") + '</li>');
+    });
+    return '<div class="compare-card__group-title">' + title + '</div><ul>' + items.join("") + '</ul>';
+  }
+
+  function renderPriserPreview(wrap) {
+    wrap.innerHTML =
+      '<p class="preview-note">Slik kunne pakkene sett ut presentert som en enkel sammenligning — kun en intern forhåndsvisning, ikke en publisert side.</p>' +
+      '<div class="compare-grid">' +
+        _priserData.packages.map(function (pkg) {
+          var color = priserSafeHex(pkg.badgeColor);
+          var style = pkg.featured ? ' style="border-color:' + color + '"' : "";
+          var badge = pkg.featured ? '<span class="compare-card__badge" style="background:' + color + '">' + C.esc(pkg.badgeText || "Fremhevet") + '</span>' : "";
+          return '<div class="compare-card' + (pkg.featured ? " is-featured" : "") + '"' + style + '>' +
+            badge +
+            '<div class="compare-card__name">' + C.esc(pkg.name) + '</div>' +
+            '<div class="compare-card__price">' + priserFmtPrice(pkg.price) + ' kr</div>' +
+            '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>' +
+            '<div class="compare-card__desc">' + C.esc(pkg.desc || "") + '</div>' +
+            priserFeatListHtml("Nettside", pkg, "f", FEAT_LABELS) +
+            priserFeatListHtml("Workspace", pkg, "i", IFEAT_LABELS) +
+          '</div>';
+        }).join("") +
+      '</div>';
+  }
+
+  function renderPriser(_sc, wrap) {
+    if (!_priserData) {
+      wrap.innerHTML = '<p style="color:var(--color-muted)">Laster prisdata…</p>';
+      priserLoad(wrap);
+      return;
+    }
+    var views = [["edit", "Rediger pakker"], ["prices", "Modulpriser"], ["quote", "Bygg tilbud"], ["preview", "Forhåndsvisning"]];
+    wrap.innerHTML =
+      '<div class="seg" id="priser-view-toggle" style="margin-bottom:1.4rem">' +
+        views.map(function (v) {
+          return '<button type="button" class="' + (v[0] === _priserView ? "is-active" : "") + '" data-priser-view="' + v[0] + '">' + C.esc(v[1]) + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div id="priser-pane"></div>';
+
+    wrap.querySelectorAll("[data-priser-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        _priserView = btn.getAttribute("data-priser-view");
+        renderPriser(null, wrap);
+      });
+    });
+
+    var pane = wrap.querySelector("#priser-pane");
+    if (_priserView === "edit") renderPriserEdit(pane);
+    else if (_priserView === "prices") renderPriserPrices(pane);
+    else if (_priserView === "quote") renderPriserQuote(pane);
+    else renderPriserPreview(pane);
+  }
+
   function renderAnalyse(sc, wrap) {
     // Fanga her, ikkje inne i submit-handteraren -- dette skjemaet
     // representerer tenanten som var aktiv DÅ SIDA VART TEIKNA, uansett kva
@@ -2190,7 +2701,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   var TITLES = {
     kundar:"Kundar", produkt:"Produkt", web:"Web", workspace:"Workspace",
-    modular:"Modular", analyse:"Analyse", personvern:"Personvern", laring:"Læring", system:"System"
+    modular:"Modular", priser:"Priser", analyse:"Analyse", personvern:"Personvern", laring:"Læring", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
@@ -2198,6 +2709,7 @@ window.VwConsole = (function () {
     web:        renderWeb,
     workspace:  renderWorkspace,
     modular:    renderModular,
+    priser:     renderPriser,
     analyse:    renderAnalyse,
     personvern: renderPersonvern,
     laring:     renderLaring,
