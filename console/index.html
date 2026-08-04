@@ -74,6 +74,12 @@
     .btn--primary:hover { box-shadow: 0 6px 18px color-mix(in srgb, var(--color-primary) 35%, transparent); }
     .btn--ghost    { background: transparent; color: var(--color-text); border-color: var(--color-border); }
     .btn--ghost:hover { background: var(--color-tint); }
+    /* Fanst ingen visuell disabled-tilstand for knappar noko stad i Console
+       frå før (UX-review-funn 2026-08-04, oppdaga via "Last ned som bilde"
+       som no vert disabled når null pakkar er valde i Forhåndsvisning) --
+       retta éin gong her, gjeld alle knappar, ikkje berre denne. */
+    .btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; box-shadow: none; }
+    .btn:disabled:hover, .btn[disabled]:hover { box-shadow: none; }
 
     /* --- Formfelt --------------------------------------------------------- */
     .field { display: grid; gap: .35rem; }
@@ -289,7 +295,11 @@
     .cs-sidebar.is-collapsed .cs-tenant-picker,
     .cs-sidebar.is-collapsed .cs-nav__item-label,
     .cs-sidebar.is-collapsed .cs-sidebar__foot { display: none; }
-    .cs-sidebar.is-collapsed .cs-brand { justify-content: center; padding: 1.2rem .5rem 1rem; }
+    /* Kollapseknappen er absolutt-posisjonert oppe til høgre (24px, top:.5rem)
+       -- i det smale 64px-kollapsa sidefeltet delte han rad med det sentrerte
+       merke-ikonet og overlappa det (rapportert bug, 2026-08-04). Nok
+       topp-padding her flyttar ikonet klart under knappen i staden. */
+    .cs-sidebar.is-collapsed .cs-brand { justify-content: center; padding: 2.6rem .5rem 1rem; }
     .cs-sidebar.is-collapsed .cs-nav__item { justify-content: center; padding: .6rem; }
     .cs-brand {
       padding: 1.3rem 1.2rem 1rem;
@@ -350,7 +360,7 @@
 
     .cs-main { flex: 1; overflow-y: auto; background: var(--color-bg); display: flex; flex-direction: column; }
     .cs-content { max-width: 720px; width: 100%; padding: 2rem 2rem 4rem; margin: 0 auto; }
-    /* Berre Priser-fana treng meir enn lesebreidde -- pkg-grid/compare-grid
+    /* Berre Priser-fana treng meir enn lesebreidde -- edit-layout/compare-grid
        sine fleire-kolonner-rutenett vart klemt til éin-og-ein-halv kolonne
        innanfor 720px (brukarfunn 2026-08-04). Dei andre fanene (Produkt,
        Personvern osb.) er enkle tekst-/skjemasider som framleis les betre
@@ -420,11 +430,44 @@
     .seg button + button { border-left:1px solid var(--color-border); }
     .seg button.is-active { background: var(--color-primary); color:#fff; }
 
-    .pkg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.2rem; }
-    .pkg-card { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); padding: 1.2rem 1.3rem; display:flex; flex-direction:column; gap: .9rem; }
-    .pkg-card__top { display:flex; justify-content:flex-end; }
-    .pkg-card__del { background:none; border:0; color: var(--color-muted); cursor:pointer; font-size: .85rem; padding: .6rem .6rem; min-height:44px; border-radius:6px; }
-    .pkg-card__del:hover { background: rgba(192,57,43,.1); color: #c0392b; }
+    /* Rediger pakker -- master/detail (brukarønske 2026-08-04: å ha alle
+       pakkane opne side om side heile tida vart "rotete og uoversiktleg" --
+       vel éi pakke i lista til venstre, rediger berre den til høgre). */
+    .edit-layout { display: grid; grid-template-columns: 260px 1fr; gap: 1.2rem; align-items: start; }
+    .pkg-rail { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); overflow: hidden; position: sticky; top: 1rem; }
+    .pkg-rail__head { padding: .9rem 1rem .6rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); }
+    .pkg-row {
+      display: flex; align-items: center; gap: .65rem; width: 100%; text-align: left;
+      padding: .7rem 1rem; border: none; background: none; cursor: pointer; font: inherit;
+      border-left: 3px solid transparent; color: var(--color-text); min-height: 44px;
+    }
+    .pkg-row:hover { background: var(--color-tint); }
+    .pkg-row.is-active { background: var(--color-tint); border-left-color: var(--color-primary); }
+    .pkg-row:focus-visible, .pkg-rail__add:focus-visible, .edit-panel__del:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .pkg-row__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--color-border); }
+    .pkg-row__body { flex: 1; min-width: 0; }
+    .pkg-row__name { display: block; font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pkg-row__price { display: block; font-size: .76rem; color: var(--color-muted); }
+    .pkg-rail__add {
+      display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; min-height: 44px;
+      padding: .75rem 1rem; border: none; border-top: 1px solid var(--color-border); background: none;
+      color: var(--color-muted); font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer;
+    }
+    .pkg-rail__add:hover { color: var(--color-primary); background: var(--color-tint); }
+    .pkg-rail__add .plus { width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--color-muted); display: flex; align-items: center; justify-content: center; font-size: .8rem; flex-shrink: 0; }
+
+    .edit-panel { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+    .edit-panel__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.4rem; border-bottom: 1px solid var(--color-border); }
+    .edit-panel__title { font-size: 1.15rem; font-weight: 700; }
+    .edit-panel__sub { font-size: .8rem; color: var(--color-muted); margin-top: .15rem; }
+    .edit-panel__del { background: none; border: 1px solid var(--color-border); color: var(--color-muted); font-size: .8rem; padding: .45rem .8rem; border-radius: 8px; cursor: pointer; white-space: nowrap; min-height: 44px; }
+    .edit-panel__del:hover { border-color: #c0392b; color: #c0392b; background: rgba(192,57,43,.06); }
+    .edit-panel__body { padding: 1.3rem 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 1.4rem; }
+    /* 900px, ikkje 700px -- UX-review-funn 2026-08-04: ved 768px med
+       skrivebord-sidemenyen framleis open (ho minimerer/skjuler seg fyrst
+       ved 700px) var det att for lite plass til både 260px-lista OG eit
+       lesbart redigeringspanel side om side. */
+    @media (max-width: 900px) { .edit-layout { grid-template-columns: 1fr; } .pkg-rail { position: static; } }
 
     .price-row { display:flex; align-items:baseline; gap:.4rem; }
     .price-row input { font-size: 1.3rem; font-weight:700; width: 9rem; text-align:right; }
@@ -459,9 +502,11 @@
     .cap-field__unlimited { display:flex; align-items:center; gap:.35rem; font-size:.76rem; color: var(--color-muted); font-weight:400; margin-top:.25rem; cursor:pointer; padding:.4rem .5rem; border-radius:8px; transition: background .1s; }
     .cap-field__unlimited:hover { background: var(--color-tint); }
 
-    .add-pkg-btn { border: 1.5px dashed var(--color-border); border-radius: var(--radius); background:transparent; color: var(--color-muted);
-      padding: 1.4rem; text-align:center; cursor:pointer; font: inherit; font-weight:600; font-size:.9rem; width:100%; }
-    .add-pkg-btn:hover { background: var(--color-tint); color: var(--color-primary); border-color: var(--color-primary); }
+    /* Fritekst-/tal-felt (namn, pris, oppstartskostnad, skildring) treng
+       ikkje strekke seg til heile edit-panel si breidde -- panelet er breitt
+       (sjå .edit-layout), men eit adressefelt-liknande innskrivingsfelt les
+       best smalt, same grunngjeving som --measure-linja i typografien elles. */
+    .edit-panel__body > .field { max-width: 30rem; }
 
     .preview-note { font-size:.8rem; color: var(--color-muted); margin-bottom:1.2rem; }
 
@@ -506,6 +551,19 @@
     .quote-extra input { font: inherit; width:100%; padding:.5rem .6rem; border-radius:8px; border:1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); }
 
     /* Forhåndsvisning */
+    /* Hvilke pakker som vises kan variere frå kunde til kunde (brukarønske
+       2026-08-04) -- avkryssingsbrikker over sjølve rutenettet. */
+    .pv-select { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1.5rem; }
+    .pv-chip {
+      display:flex; align-items:center; gap:.5rem; padding:.5rem .9rem; border-radius:999px; min-height:44px;
+      border:1.5px solid var(--color-border); background: var(--color-surface); font: inherit; font-size:.85rem; font-weight:600;
+      cursor:pointer; color: var(--color-muted); transition: border-color .12s, color .12s, background .12s;
+    }
+    .pv-chip .box { width:15px; height:15px; border-radius:4px; border:1.5px solid var(--color-muted); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.68rem; color:#fff; }
+    .pv-chip.is-on { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-tint); }
+    .pv-chip.is-on .box { border-color: var(--color-primary); background: var(--color-primary); }
+    .pv-chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+    .pv-empty { text-align:center; padding:3rem 1rem; color: var(--color-muted); font-size:.9rem; border:1.5px dashed var(--color-border); border-radius: var(--radius); }
     .compare-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(250px,1fr)); gap:1rem; }
     .compare-card { border:1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); padding:1.4rem 1.3rem; text-align:center; position:relative; }
     .compare-card.is-featured { box-shadow: 0 8px 24px rgba(0,0,0,.1); }
@@ -523,7 +581,7 @@
     .compare-card li .addon-tag { font-size:.6rem; font-weight:700; text-transform:uppercase; color: var(--color-secondary); margin-left:auto; }
     .compare-card__group-title { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color: var(--color-muted); margin:.7rem 0 .2rem; text-align:left; }
     .compare-card__group-title:first-of-type { margin-top:0; }
-    @media(max-width:560px) { .pkg-grid, .compare-grid { grid-template-columns: 1fr; } }
+    @media(max-width:560px) { .compare-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -553,6 +611,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=198"></script>
+  <script src="console-core.js?v=200"></script>
 </body>
 </html>
