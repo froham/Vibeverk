@@ -48,7 +48,7 @@ Bump `?v=N` on the script tag in `index.html` for every file you change. Only bu
 
 ## External dependencies (CDN)
 
-`@supabase/supabase-js`, `marked`, and `@tabler/icons-webfont` are loaded from `cdn.jsdelivr.net`, not bundled via npm. **Always pin the exact version** (e.g. `@supabase/supabase-js@2.110.8`, not `@supabase/supabase-js@2`) — a major-version-only pin means every page load silently gets whatever the newest matching release happens to be, with no changelog review and no way to roll back a bad one. Check the current resolved version before pinning a new one: `curl https://data.jsdelivr.com/v1/packages/npm/<pkg>/resolved?specifier=<range>`. Upgrading is a deliberate act — bump the pinned version number explicitly, note it in `docs/project/CHANGELOG.md`, and re-run the test suites, the same as any other dependency change.
+`@supabase/supabase-js`, `marked`, `@tabler/icons-webfont`, and `html2canvas` (Console only, `console/index.html`, used for the Priser "Last ned som bilde" export) are loaded from `cdn.jsdelivr.net`, not bundled via npm. **Always pin the exact version** (e.g. `@supabase/supabase-js@2.110.8`, not `@supabase/supabase-js@2`) — a major-version-only pin means every page load silently gets whatever the newest matching release happens to be, with no changelog review and no way to roll back a bad one. Check the current resolved version before pinning a new one: `curl https://data.jsdelivr.com/v1/packages/npm/<pkg>/resolved?specifier=<range>`. Upgrading is a deliberate act — bump the pinned version number explicitly, note it in `docs/project/CHANGELOG.md`, and re-run the test suites, the same as any other dependency change.
 
 ## Versioning and changelog
 

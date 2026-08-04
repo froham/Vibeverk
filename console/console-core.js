@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.88.0";
+  var VIBEVERK_VERSION = "0.89.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -764,7 +764,10 @@ window.VwConsole = (function () {
     app.innerHTML =
       '<div class="cs-wrap">' +
         '<aside class="cs-sidebar">' +
-          '<div class="cs-brand"><span class="ti ti-layout-grid"></span> Console</div>' +
+          '<button type="button" class="cs-sidebar__collapse-btn" id="cs-sidebar-collapse" title="Minimer sidemeny" aria-label="Minimer sidemeny">' +
+            '<span class="ti ti-chevron-left"></span>' +
+          '</button>' +
+          '<div class="cs-brand"><span class="ti ti-layout-grid"></span> <span class="cs-brand__label">Console</span></div>' +
           '<div class="cs-tenant-picker">' +
             '<select id="cs-tenant-select" title="Vel kunde">' +
               _tenants.filter(function (t) { return t.status !== "archived"; }).map(function (t) {
@@ -775,8 +778,8 @@ window.VwConsole = (function () {
           '</div>' +
           '<nav class="cs-nav">' +
             NAV_ITEMS.map(function (n) {
-              return '<button type="button" class="cs-nav__item" data-cs-nav="' + n.id + '">' +
-                '<span class="ti ti-' + n.icon + '"></span> ' + C.esc(n.label) + '</button>';
+              return '<button type="button" class="cs-nav__item" data-cs-nav="' + n.id + '" title="' + C.esc(n.label) + '">' +
+                '<span class="ti ti-' + n.icon + '"></span> <span class="cs-nav__item-label">' + C.esc(n.label) + '</span></button>';
             }).join("") +
           '</nav>' +
           '<div class="cs-sidebar__foot">' +
@@ -809,6 +812,32 @@ window.VwConsole = (function () {
     }
     if (csHamburger) csHamburger.addEventListener("click", openCsSidebar);
     if (csOverlay) csOverlay.addEventListener("click", closeCsSidebar);
+
+    // Minimer sidemeny -- reint visuelt/plasssparande, skil seg frå mobil sin
+    // hamburger-open/lukk over (heilt skjult vs. synleg på smale skjermar).
+    // Same mønster som Workspace sin .i-sidebar.is-collapsed
+    // (workspace-core.js/workspace/index.html), berre persistert via
+    // localStorage direkte sidan Console ikkje har App.store (heilt separat
+    // app frå den offentlege sida/Workspace). Brukarønske 2026-08-04 --
+    // Priser sitt breie kort-rutenett gjorde det tydeleg at den faste
+    // 224px-sidemenyen jamt tek meir plass enn ønskeleg.
+    var CS_COLLAPSE_KEY = "cs-sidebar-collapsed";
+    var csCollapseBtn = document.getElementById("cs-sidebar-collapse");
+    function applyCsCollapsed(collapsed) {
+      if (!csSidebar) return;
+      csSidebar.classList.toggle("is-collapsed", collapsed);
+      if (csCollapseBtn) {
+        csCollapseBtn.querySelector(".ti").className = "ti ti-" + (collapsed ? "chevron-right" : "chevron-left");
+        csCollapseBtn.title = collapsed ? "Vis sidemeny" : "Minimer sidemeny";
+        csCollapseBtn.setAttribute("aria-label", csCollapseBtn.title);
+      }
+    }
+    applyCsCollapsed(localStorage.getItem(CS_COLLAPSE_KEY) === "true");
+    if (csCollapseBtn) csCollapseBtn.addEventListener("click", function () {
+      var next = !csSidebar.classList.contains("is-collapsed");
+      applyCsCollapsed(next);
+      localStorage.setItem(CS_COLLAPSE_KEY, next ? "true" : "false");
+    });
 
     document.querySelectorAll("[data-cs-nav]").forEach(function (btn) {
       btn.addEventListener("click", function () { closeCsSidebar(); navigate(btn.getAttribute("data-cs-nav")); });
@@ -1589,6 +1618,39 @@ window.VwConsole = (function () {
   }
   function priserFmtPrice(n) { return Number(n || 0).toLocaleString("nb-NO"); }
 
+  // Maks-tal (brukarønske 2026-08-04): inkludert datalagring, e-post-
+  // utsendingar og brukarkontoar per pakke -- -1 er sentinel-verdien for
+  // "ubegrenset" (vist/redigert via ei eiga avkryssingsboks, sjå
+  // priserCapFieldHtml()), same idé som andre delar av kodebasen brukar ein
+  // sentinel i staden for eit eige boolsk flagg per felt. Berre eit
+  // startforslag, tilpassa til kva app'en faktisk måler i dag (mediebank-
+  // lagring, e-postutsending via Resend send-reply, brukarkontoar i
+  // Workspace/Web-admin) -- fritt redigerbart per pakke, akkurat som pris.
+  var PRISER_CAP_FIELDS = [
+    { key: "storageGB",      label: "Datalagring",      unit: "GB",        deflt: [2, 10, 50] },
+    { key: "emailsPerMonth", label: "E-postutsendinger", unit: "e-post/mnd", deflt: [200, 1000, 5000] },
+    { key: "usersIncluded",  label: "Brukerkontoer",    unit: "brukere",   deflt: [2, 5, -1] }
+  ];
+  // Tre-stegs terskel basert på pris -- fungerer for dei tre eksisterande
+  // pakkane (Grunnpakke/Standard/Komplett) OG for ei ukjend framtidig pakke,
+  // i staden for å hardkode etter pakke-id/namn.
+  function priserDefaultCapsFor(pkg) {
+    var tier = pkg.price < 4000 ? 0 : (pkg.price < 7000 ? 1 : 2);
+    var out = {};
+    PRISER_CAP_FIELDS.forEach(function (f) { out[f.key] = f.deflt[tier]; });
+    return out;
+  }
+  // Fyller inn manglande cap-felt på pakkar lasta frå FØR denne funksjonen
+  // fanst (dei tre live pakkane hadde ingen av desse felta enno) -- utan
+  // dette ville talfelta vist "undefined" i redigeringa til brukaren lagra
+  // på nytt éin gong.
+  function priserBackfillCaps(pkg) {
+    var defaults = priserDefaultCapsFor(pkg);
+    PRISER_CAP_FIELDS.forEach(function (f) {
+      if (typeof pkg[f.key] !== "number") pkg[f.key] = defaults[f.key];
+    });
+  }
+
   function priserLoad(wrap) {
     if (_priserLoading) return;
     _priserLoading = true;
@@ -1602,6 +1664,7 @@ window.VwConsole = (function () {
         return;
       }
       _priserData = r.data.data;
+      (_priserData.packages || []).forEach(priserBackfillCaps);
       renderPriser(null, wrap);
     });
   }
@@ -1672,6 +1735,18 @@ window.VwConsole = (function () {
     return html;
   }
 
+  function priserCapFieldHtml(pkg, f) {
+    var unlimited = pkg[f.key] === -1;
+    return '<div class="field cap-field">' +
+      '<label>' + C.esc(f.label) + '</label>' +
+      '<div class="price-row">' +
+        '<input type="number" min="0" max="1000000" step="1" data-priser-cap="' + f.key + '" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (unlimited ? "" : pkg[f.key]) + '" ' + (unlimited ? "disabled" : "") + '>' +
+        '<span>' + C.esc(f.unit) + '</span>' +
+      '</div>' +
+      '<label class="cap-field__unlimited"><input type="checkbox" data-priser-cap-unlimited="' + f.key + '" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (unlimited ? "checked" : "") + '> Ubegrenset</label>' +
+    '</div>';
+  }
+
   function priserPkgCardHtml(pkg) {
     var featGrid = priserPkgFeatGroup(pkg, "f", FEAT_LABELS, function (k) {
       return priserFeatChip(k, FEAT_LABELS[k], pkg.features.indexOf(k) > -1, pkg.id, "f", pkg.tags.f[k]);
@@ -1707,6 +1782,8 @@ window.VwConsole = (function () {
       '</div>' +
       '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="allStandard" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.allStandard ? "checked" : "") + '> Standardmoduler</label>' +
       C.helpIcon("Pakken følger automatisk de modulene som er merket «Standard» i Modulpriser-fanen, også etter at du har lagret og senere endrer hva som er standard der. Skru av for å velge nøyaktig hvilke moduler denne pakken skal ha.") +
+      '<div class="feat-section-title">Grenser (maks inkludert)' + C.helpIcon("Vises til kunden i Forhåndsvisning som en del av pakkebeskrivelsen. Kun informative tall her — de håndheves ikke teknisk noe sted ennå.") + '</div>' +
+      '<div class="cap-field-row">' + PRISER_CAP_FIELDS.map(function (f) { return priserCapFieldHtml(pkg, f); }).join("") + '</div>' +
       '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
       featGrid +
       '<div class="feat-section-title">Workspace-funksjoner</div>' +
@@ -1746,6 +1823,11 @@ window.VwConsole = (function () {
           "data-priser-pkg": active.getAttribute("data-priser-pkg"),
           "data-priser-field": active.getAttribute("data-priser-field")
         } };
+      } else if (active.hasAttribute("data-priser-cap-unlimited")) {
+        restore = { selectorAttr: "[data-priser-cap-unlimited]", attrs: {
+          "data-priser-pkg": active.getAttribute("data-priser-pkg"),
+          "data-priser-cap-unlimited": active.getAttribute("data-priser-cap-unlimited")
+        } };
       }
     }
     renderPriserEdit(wrap);
@@ -1763,11 +1845,13 @@ window.VwConsole = (function () {
     priserBindPkgEvents(wrap);
     priserBindSaveRow(wrap);
     wrap.querySelector("#priser-add-pkg").addEventListener("click", function () {
-      _priserData.packages.push({
+      var pkg = {
         id: "p" + (_priserPkgIdSeq++) + "-" + Date.now().toString(36), name: "Ny pakke", price: 0, setupCost: 0, desc: "",
         features: [], iFeatures: [], tags: { f: {}, i: {} }, allStandard: false,
         featured: false, badgeText: "Mest valgt", badgeColor: "#2563eb"
-      });
+      };
+      priserBackfillCaps(pkg);
+      _priserData.packages.push(pkg);
       renderPriserEdit(wrap);
     });
   }
@@ -1785,6 +1869,25 @@ window.VwConsole = (function () {
         }
         if (field === "badgeColor") { pkg.badgeColor = priserSafeHex(el.value); return; }
         pkg[field] = (field === "price" || field === "setupCost") ? (Number(el.value) || 0) : el.value;
+      });
+    });
+    wrap.querySelectorAll("[data-priser-cap]").forEach(function (input) {
+      input.addEventListener("input", function () {
+        var pkg = _priserData.packages.find(function (p) { return p.id === input.getAttribute("data-priser-pkg"); });
+        pkg[input.getAttribute("data-priser-cap")] = Math.min(1000000, Math.max(0, Number(input.value) || 0));
+      });
+    });
+    wrap.querySelectorAll("[data-priser-cap-unlimited]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var pkg = _priserData.packages.find(function (p) { return p.id === cb.getAttribute("data-priser-pkg"); });
+        var key = cb.getAttribute("data-priser-cap-unlimited");
+        if (cb.checked) {
+          pkg[key] = -1;
+        } else {
+          var def = priserDefaultCapsFor(pkg)[key];
+          pkg[key] = def === -1 ? 0 : def;
+        }
+        priserRerenderEditPreservingFocus(wrap); // felt vert aktivert/deaktivert -- treng re-render
       });
     });
     wrap.querySelectorAll("[data-priser-feat]").forEach(function (cb) {
@@ -1980,9 +2083,60 @@ window.VwConsole = (function () {
     return '<div class="compare-card__group-title">' + title + '</div><ul>' + items.join("") + '</ul>';
   }
 
+  // "Last ned som bilde" (brukarønske 2026-08-04, ekte PNG valgt eksplisitt
+  // over ei enklare utskrift-til-PDF-løysing) -- html2canvas rendrar
+  // .compare-grid til eit <canvas>, som så vert trigga som ei nedlasting.
+  // Skalert 2x for eit skarpt bilete på skjermar med høg pikseltettleik
+  // (presentasjonar vert ofte vist prosjektert/forstørra).
+  function priserExportImage(btn, statusEl) {
+    if (typeof window.html2canvas !== "function") {
+      statusMsg(statusEl, "✗ Bildeeksport er ikke lastet inn riktig -- prøv å laste siden på nytt.", false);
+      return;
+    }
+    var target = document.querySelector(".compare-grid");
+    if (!target) return;
+    btn.disabled = true;
+    var origLabel = btn.textContent;
+    btn.textContent = "Genererer bilde…";
+    window.html2canvas(target, { backgroundColor: "#ffffff", scale: 2 }).then(function (canvas) {
+      canvas.toBlob(function (blob) {
+        btn.disabled = false;
+        btn.textContent = origLabel;
+        if (!blob) { statusMsg(statusEl, "✗ Kunne ikke generere bilde.", false); return; }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        var stamp = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = "vibeverk-priser-" + stamp + ".png";
+        a.click();
+        URL.revokeObjectURL(url);
+        statusMsg(statusEl, "✓ Lastet ned!", true);
+      }, "image/png");
+    }).catch(function (err) {
+      console.error("priserExportImage:", err); // teknisk detalj i konsollen, aldri i brukarvend tekst (copy-style-guide)
+      btn.disabled = false;
+      btn.textContent = origLabel;
+      statusMsg(statusEl, "✗ Kunne ikke generere bildet. Prøv å laste siden på nytt og forsøk igjen.", false);
+    });
+  }
+
+  function priserCapsLine(pkg) {
+    var parts = PRISER_CAP_FIELDS.map(function (f) {
+      var v = pkg[f.key];
+      return (v === -1 ? "Ubegrenset " + f.label.toLowerCase() : v + " " + f.unit);
+    });
+    return '<div class="compare-card__caps">' + parts.map(function (p) { return '<span>' + C.esc(p) + '</span>'; }).join("") + '</div>';
+  }
+
   function renderPriserPreview(wrap) {
     wrap.innerHTML =
-      '<p class="preview-note">Slik kunne pakkene sett ut presentert som en enkel sammenligning — kun en intern forhåndsvisning, ikke en publisert side.</p>' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:.6rem">' +
+        '<p class="preview-note" style="margin-bottom:0">Slik kunne pakkene sett ut presentert som en enkel sammenligning — kun en intern forhåndsvisning, ikke en publisert side.</p>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          C.button({ label: "Last ned som bilde", variant: "ghost", attrs: 'type="button" id="priser-export-btn"' }) +
+          '<div class="form__status" id="priser-export-status" style="margin-top:.3rem"></div>' +
+        '</div>' +
+      '</div>' +
       '<div class="compare-grid">' +
         _priserData.packages.map(function (pkg) {
           var color = priserSafeHex(pkg.badgeColor);
@@ -1994,11 +2148,17 @@ window.VwConsole = (function () {
             '<div class="compare-card__price">' + priserFmtPrice(pkg.price) + ' kr</div>' +
             '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>' +
             '<div class="compare-card__desc">' + C.esc(pkg.desc || "") + '</div>' +
+            priserCapsLine(pkg) +
             priserFeatListHtml("Nettside", pkg, "f", FEAT_LABELS) +
             priserFeatListHtml("Workspace", pkg, "i", IFEAT_LABELS) +
           '</div>';
         }).join("") +
       '</div>';
+
+    var exportBtn = wrap.querySelector("#priser-export-btn");
+    if (exportBtn) exportBtn.addEventListener("click", function () {
+      priserExportImage(exportBtn, wrap.querySelector("#priser-export-status"));
+    });
   }
 
   function renderPriser(_sc, wrap) {
@@ -2724,6 +2884,9 @@ window.VwConsole = (function () {
   function renderSection(id) {
     var content = document.getElementById("cs-content");
     if (!content) return;
+    // Berre Priser treng breiare enn lesebreidde -- sjå CSS-kommentaren ved
+    // .cs-content--wide (console/index.html) for grunngjeving.
+    content.classList.toggle("cs-content--wide", id === "priser");
     var myGen = ++_renderGen;
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +

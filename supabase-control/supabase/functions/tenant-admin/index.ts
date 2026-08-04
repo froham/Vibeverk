@@ -504,7 +504,16 @@ serve(async (req: Request) => {
       return null;
     }
 
-    const PKG_ALLOWED_KEYS = ["id", "name", "price", "setupCost", "desc", "features", "iFeatures", "tags", "allStandard", "featured", "badgeText", "badgeColor"];
+    const PKG_ALLOWED_KEYS = ["id", "name", "price", "setupCost", "desc", "features", "iFeatures", "tags", "allStandard", "featured", "badgeText", "badgeColor", "storageGB", "emailsPerMonth", "usersIncluded"];
+    // -1 er ein sentinel-verdi for "ubegrensa" (klientsida sin "Ubegrenset"-
+    // avkryssing, 2026-08-04) -- alt anna må vere eit ikkje-negativt tal.
+    const MAX_CAP_VALUE = 1000000;
+    function validateCapField(v: unknown, label: string, pkgName: string): string | null {
+      if (typeof v !== "number" || !isFinite(v) || v < -1 || v > MAX_CAP_VALUE || (v !== -1 && !Number.isInteger(v))) {
+        return "Ugyldig " + label + " for «" + pkgName + "»";
+      }
+      return null;
+    }
     // Unikskapskontroll (Security Auditor-funn, 2026-08-04): klientsida sin
     // _priserData.packages.find(...) løyser alltid til FYRSTE treff --
     // duplikate id-ar ville stille fått "Fjern pakke"/feltredigering til å
@@ -548,6 +557,12 @@ serve(async (req: Request) => {
       if (typeof pkg.featured !== "boolean") return json({ error: "Ugyldig featured for «" + pkg.name + "»" }, 400);
       if (typeof pkg.badgeText !== "string" || pkg.badgeText.length > 100) return json({ error: "Ugyldig merkelapptekst for «" + pkg.name + "»" }, 400);
       if (typeof pkg.badgeColor !== "string" || !HEX_COLOR_RE.test(pkg.badgeColor)) return json({ error: "Ugyldig farge for «" + pkg.name + "» -- må vere #rrggbb" }, 400);
+      const storageErr = validateCapField(pkg.storageGB, "datalagringsgrense", pkg.name);
+      if (storageErr) return json({ error: storageErr }, 400);
+      const emailsErr = validateCapField(pkg.emailsPerMonth, "e-postgrense", pkg.name);
+      if (emailsErr) return json({ error: emailsErr }, 400);
+      const usersErr = validateCapField(pkg.usersIncluded, "brukergrense", pkg.name);
+      if (usersErr) return json({ error: usersErr }, 400);
     }
 
     const serialized = JSON.stringify(dataObj);
