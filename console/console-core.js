@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.94.2";
+  var VIBEVERK_VERSION = "0.94.3";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2283,8 +2283,10 @@ window.VwConsole = (function () {
   }
 
   function renderPriserQuote(wrap) {
-    var fCartItems = _priserQuote.f.map(function (k) { return { label: PRISER_F_LABELS[k], monthly: priserPriceEntry("f", k).monthly, ns: "f", key: k }; });
-    var iCartItems = _priserQuote.i.map(function (k) { return { label: PRISER_I_LABELS[k], monthly: priserPriceEntry("i", k).monthly, ns: "i", key: k }; });
+    // Same kanonisk-rekkjefølgje-fiks som priserFeatListHtml() -- kurven her
+    // er bygd i klikk-orden ("+ Legg til"), ikkje Modulpriser sin faste orden.
+    var fCartItems = priserOrderedFeatureKeys(_priserQuote.f, PRISER_F_LABELS).map(function (k) { return { label: PRISER_F_LABELS[k], monthly: priserPriceEntry("f", k).monthly, ns: "f", key: k }; });
+    var iCartItems = priserOrderedFeatureKeys(_priserQuote.i, PRISER_I_LABELS).map(function (k) { return { label: PRISER_I_LABELS[k], monthly: priserPriceEntry("i", k).monthly, ns: "i", key: k }; });
     // "til venstre" var feil på alle skjermar ≤800px, der plukkeren stables
     // OVER handlekurven, ikkje til venstre for han (UX-review-funn).
     var cartHtml = (!fCartItems.length && !iCartItems.length)
@@ -2341,8 +2343,21 @@ window.VwConsole = (function () {
   // dei eksplisitt valde tillegga under.
   // Nettside/Workspace-overskrifter på kvar sin liste hindrar at t.d.
   // "Aktuelt" (finst i begge namnerom) dukkar opp to gonger utan skille.
+  // Brukarfunn 2026-08-05: denne lista viste modulane i den rekkjefølgja dei
+  // vart HUKA AV i (pkg.features/iFeatures sin rå array-orden), ikkje den
+  // faste rekkjefølgja frå Modulpriser -- ein nyleg lagt til modul (t.d.
+  // "Hosting og vedlikehold") som vart huka av SIST på ei ELDRE pakke hamna
+  // difor sist i lista, langt bak "FAQ", i staden for først som Modulpriser
+  // faktisk viser han. `labels` ER Modulpriser sin kanoniske rekkjefølgje
+  // (Object.keys() bevarer innsettingsorden) -- sorterer pkg sine valde
+  // nøklar etter DEN, uavhengig av kva rekkjefølgje dei vart huka av i.
+  function priserOrderedFeatureKeys(rawKeys, labels) {
+    var canonical = Object.keys(labels);
+    return rawKeys.slice().sort(function (a, b) { return canonical.indexOf(a) - canonical.indexOf(b); });
+  }
+
   function priserFeatListHtml(title, pkg, ns, labels) {
-    var keys = ns === "f" ? pkg.features : pkg.iFeatures;
+    var keys = priserOrderedFeatureKeys(ns === "f" ? pkg.features : pkg.iFeatures, labels);
     var tags = ns === "f" ? pkg.tags.f : pkg.tags.i;
     if (!priserAllStandard(pkg, ns)) {
       if (!keys.length) return "";

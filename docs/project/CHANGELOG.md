@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.94.3 — 2026-08-05
+
+### Priser: fiks feil rekkjefølgje på modular i Forhåndsvisning og «Bygg tilbud»
+
+Brukaren fann feilen med skjermbilete: «Hosting og vedlikehold av nettside» dukka opp SIST i modul-sjekklista på ei eksisterande pakke (etter FAQ), i staden for FØRST som Modulpriser viser han. Rota: `priserFeatListHtml()` (Forhåndsvisning) og `renderPriserQuote()` («Bygg tilbud») rendra `pkg.features`/`pkg.iFeatures` (og `_priserQuote.f`/`.i`) i RÅ array-orden -- den orden modulane vart huka av i, ikkje Modulpriser sin faste, kanoniske orden. Ein modul huka av SIST (t.d. ein nyleg lagt til, som "Hosting og vedlikehold") hamna difor sist, uansett kor han faktisk står i Modulpriser.
+
+Retta med ein delt `priserOrderedFeatureKeys(rawKeys, labels)`-hjelpefunksjon som sorterer etter posisjon i `labels` (= `PRISER_F_LABELS`/`PRISER_I_LABELS`, Modulpriser sin faste orden) FØR rendring -- verkar på alt eksisterande lagra data, ingen migrering trengst. Pakke-redigeringa sin eigen modul-rutenett (`priserPkgFeatGroup`) hadde IKKJE denne feilen (itererer alltid over `Object.keys(labels)` direkte), berre Forhåndsvisning og Bygg tilbud sine lister.
+
+Verifisert visuelt med akkurat brukaren sitt scenario reprodusert (ein modul huka av sist på ei pakke med individuelt valde modular) -- stadfesta korrekt kanonisk rekkjefølgje etter fiksen.
+
 ## 0.94.2 — 2026-08-05
 
 ### Priser: fiks "Ugyldig pakke"-lagringsfeil + pil opp/ned for pakke-rekkjefølgje
