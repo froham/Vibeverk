@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.91.1";
+  var VIBEVERK_VERSION = "0.92.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1737,15 +1737,22 @@ window.VwConsole = (function () {
     return html;
   }
 
+  // Ekte ramma "kort" per grense (brukarfunn 2026-08-04: fanst INGEN ramme
+  // her frå før, medan rada sjølv strekte kvart kort ut over ei heil
+  // 1fr-brei rutenett-kolonne -- eit lite tal flytande i eit stort tomt
+  // rom, sett saman med to nabo-kort like tomme, las ut som broten/rotete).
+  // `.cap-card` veks difor IKKJE lenger til å fylle rada -- flex med ei
+  // fast basisbreidde -- og tal-verdien er farga (same "stat"-mønster som
+  // Pris/Oppstartskostnad-korta og .an-card__val i Analyse-fana).
   function priserCapFieldHtml(pkg, f) {
     var unlimited = pkg[f.key] === -1;
-    return '<div class="field cap-field">' +
-      '<label>' + C.esc(f.label) + '</label>' +
-      '<div class="price-row">' +
+    return '<div class="cap-card">' +
+      '<label class="cap-label">' + C.esc(f.label) + '</label>' +
+      '<div class="stat-input-row">' +
         '<input type="number" min="0" max="1000000" step="1" data-priser-cap="' + f.key + '" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (unlimited ? "" : pkg[f.key]) + '" ' + (unlimited ? "disabled" : "") + '>' +
-        '<span>' + C.esc(f.unit) + '</span>' +
+        '<span class="unit">' + C.esc(f.unit) + '</span>' +
       '</div>' +
-      '<label class="cap-field__unlimited"><input type="checkbox" data-priser-cap-unlimited="' + f.key + '" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (unlimited ? "checked" : "") + '> Ubegrenset</label>' +
+      '<label class="cap-unlimited"><input type="checkbox" data-priser-cap-unlimited="' + f.key + '" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (unlimited ? "checked" : "") + '> Ubegrenset</label>' +
     '</div>';
   }
 
@@ -1789,24 +1796,22 @@ window.VwConsole = (function () {
 
     // Seksjonert i .rp-section-blokker med tydeleg skiljelinje mellom kvar
     // (UX-review-funn 2026-08-04: éin lang, udelt kolonne av felt kjentest
-    // "rotete/uoversiktleg" -- dei fire fyrste felta hadde i tillegg ingen
-    // ramme i det heile, ulikt highlight-fieldset lenger ned, og var låst
-    // til 30rem inni eit panel som kan vere 900px+ breitt). Grunnleggande-
-    // felta samla i ein tona boks (.basics-box), Pris/Oppstartskostnad
-    // side om side i staden for kvar sin fulle rad (brukarfunn: fylte
-    // ikkje breidda, verka merkeleg med tomt rom attmed).
+    // "rotete/uoversiktleg"). Pris/Oppstartskostnad er no reine "stat"-kort
+    // (farga tal, same mønster som .an-card__val i Analyse-fana -- brukar
+    // bad eksplisitt om litt farge for "dynamikk") med berre eit tal, ingen
+    // eining-tekst attmed eller hint-linje under (brukarønske 2026-08-04:
+    // "Ikke noe mer på de to rutene") -- den tidlegare "Veiledende sum"-
+    // teksten ligg no i ein helpIcon() i staden for å forsvinne heilt.
     return '<div class="rp-section">' +
         '<div class="feat-section-title">Grunnleggende</div>' +
-        '<div class="basics-box">' +
-          '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
-          '<div class="basics-grid">' +
-            '<div class="field"><label>Pris</label><div class="price-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span>kr/mnd</span></div>' +
-              '<div class="price-hint" data-priser-hint-monthly="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.monthly) + ' kr/mnd</div></div>' +
-            '<div class="field"><label>Oppstartskostnad</label><div class="price-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span>kr, engang</span></div>' +
-              '<div class="price-hint" data-priser-hint-setup="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.setup) + ' kr</div></div>' +
-          '</div>' +
-          '<div class="field"><label>Kort beskrivelse</label><textarea rows="2" maxlength="2000" data-priser-field="desc" data-priser-pkg="' + C.esc(pkg.id) + '">' + C.esc(pkg.desc) + '</textarea></div>' +
+        '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
+        '<div class="stat-row">' +
+          '<div class="stat-box"><label>Pris pr. mnd' + C.helpIcon("Veiledende sum fra modulpriser: " + priserFmtPrice(sum.monthly) + " kr/mnd") + '</label>' +
+            '<div class="stat-input-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span class="unit">kr</span></div></div>' +
+          '<div class="stat-box"><label>Oppstartskostnad' + C.helpIcon("Veiledende sum fra modulpriser: " + priserFmtPrice(sum.setup) + " kr") + '</label>' +
+            '<div class="stat-input-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span class="unit">kr</span></div></div>' +
         '</div>' +
+        '<div class="field"><label>Kort beskrivelse</label><textarea rows="2" maxlength="2000" data-priser-field="desc" data-priser-pkg="' + C.esc(pkg.id) + '">' + C.esc(pkg.desc) + '</textarea></div>' +
       '</div>' +
       '<div class="rp-section">' +
         '<div class="feat-section-title">Innstillinger</div>' +
@@ -1819,7 +1824,7 @@ window.VwConsole = (function () {
       '</div>' +
       '<div class="rp-section">' +
         '<div class="feat-section-title">Grenser (maks inkludert)' + C.helpIcon("Vises til kunden i Forhåndsvisning som en del av pakkebeskrivelsen. Kun informative tall her — de håndheves ikke teknisk noe sted ennå.") + '</div>' +
-        '<div class="cap-field-row">' + PRISER_CAP_FIELDS.map(function (f) { return priserCapFieldHtml(pkg, f); }).join("") + '</div>' +
+        '<div class="cap-row">' + PRISER_CAP_FIELDS.map(function (f) { return priserCapFieldHtml(pkg, f); }).join("") + '</div>' +
       '</div>' +
       '<div class="rp-section">' +
         '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +

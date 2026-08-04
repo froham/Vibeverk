@@ -489,18 +489,6 @@
        kjentest "rotete/uoversiktleg"). */
     .rp-section { padding-top: 1.2rem; margin-top: 1.2rem; border-top: 1px solid var(--color-border); }
     .rp-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
-    /* Grunnleggande-felta (namn/pris/oppstart/skildring) samla i ein tona,
-       ramma boks -- dei hadde tidlegare INGEN ramme i det heile, ulikt
-       .highlight-fieldset like under, som synte seg vere ein reell årsak
-       til at panelet kjentest ustrukturert (UX-review-funn 2026-08-04). */
-    .basics-box { border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg); padding: 1rem 1.1rem; display: grid; gap: .9rem; }
-    /* minmax(0,1fr), ikkje berre 1fr -- UX-review-funn 2026-08-04: ein bar
-       1fr-kolonne sitt automatiske minstemål er innhaldet sitt eige
-       min-content (her: eit 9rem breitt tal-felt + eining-tekst), som kan
-       tvinge .basics-box til å flyte utanfor ramma si i staden for at
-       feltet krympar, i eit reelt trongt vindaugebelte (~901-1050px). */
-    .basics-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: .8rem; }
-    @media (max-width: 560px) { .basics-grid { grid-template-columns: 1fr; } }
     .rp-section > .highlight-fieldset { margin-bottom: .9rem; }
     /* 900px, ikkje 700px -- UX-review-funn 2026-08-04: ved 768px med
        skrivebord-sidemenyen framleis open (ho minimerer/skjuler seg fyrst
@@ -508,10 +496,35 @@
        lesbart redigeringspanel side om side. */
     @media (max-width: 900px) { .edit-layout { grid-template-columns: 1fr; } .pkg-rail { position: static; } }
 
-    .price-row { display:flex; align-items:baseline; gap:.4rem; }
-    .price-row input { font-size: 1.3rem; font-weight:700; width: 9rem; text-align:right; }
-    .price-row span { font-size: .85rem; color: var(--color-muted); }
-    .price-hint { font-size:.74rem; color: var(--color-muted); margin-top:-.1rem; }
+    /* Pris/Oppstartskostnad som reine "stat"-kort (brukarønske 2026-08-04:
+       "Ikke noe mer på de to rutene" enn talet sjølv -- ingen eining-tekst
+       attmed, ingen hint-linje under; det tidlegare "Veiledende sum"-hintet
+       ligg no i helpIcon() ved sida av kvar label i staden). Farga tal --
+       same "stat"-mønster som .an-card__val i Analyse-fana -- er den einaste
+       fargebruken lagt til her, valt for å ikkje finne opp ny visuell
+       språkbruk (brukarønske: "bruke litt farger for å skape dynamikk"). */
+    .stat-row { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; }
+    .stat-box { flex: 1 1 200px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg); padding: .8rem 1rem; }
+    .stat-box label { font-size: .78rem; font-weight: 600; color: var(--color-muted); display: block; margin-bottom: .3rem; }
+    .stat-input-row { display: flex; align-items: baseline; gap: .3rem; }
+    .stat-input-row input { font: inherit; font-size: 1.4rem; font-weight: 700; color: var(--color-primary); border: none; background: none; padding: 0; width: 6rem; }
+    .stat-input-row input:focus { outline: none; }
+    .stat-input-row input:disabled { color: var(--color-muted); }
+    .stat-input-row .unit { font-size: .8rem; color: var(--color-muted); }
+
+    /* Grenser -- kvar grense fekk INGEN ramme frå før, medan rada strekte
+       kvart kort ut over ei heil 1fr-brei rutenett-kolonne (eit lite tal
+       flytande i eit stort tomt rom -- brukarfunn 2026-08-04, "ser ikke
+       ryddig eller fint ut"). Same "stat-kort"-mønster som Pris/
+       Oppstartskostnad over, flex med fast basisbreidde i staden for eit
+       rutenett som tvinga korta til å fylle heile radbreidda. */
+    .cap-row { display: flex; flex-wrap: wrap; gap: .8rem; }
+    .cap-card { flex: 0 1 180px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); padding: .8rem .9rem; }
+    .cap-card .cap-label { font-size: .78rem; font-weight: 600; color: var(--color-muted); display: block; margin-bottom: .3rem; }
+    .cap-card .stat-input-row { margin-bottom: .5rem; }
+    .cap-card .stat-input-row input { font-size: 1.2rem; width: 4rem; }
+    .cap-card .cap-unlimited { display: flex; align-items: center; gap: .35rem; font-size: .74rem; color: var(--color-muted); cursor: pointer; padding-top: .5rem; border-top: 1px solid var(--color-border); }
+    .cap-card .cap-unlimited input { margin: 0; }
 
     .feat-section-title { font-size: .76rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color: var(--color-muted); margin: .3rem 0 .5rem; }
     .feat-subgroup-title { font-size: .72rem; font-weight:600; color: var(--color-muted); margin: .5rem 0 .3rem; padding-left: .1rem; }
@@ -540,11 +553,6 @@
     .highlight-fieldset__row { display:flex; gap:.6rem; align-items:flex-end; }
     .highlight-fieldset__row .field { flex:1; }
     .highlight-fieldset__row input[type="color"] { width:2.6rem; height:2.3rem; padding:2px; border-radius:8px; border:1.5px solid var(--color-border); background:var(--color-bg); cursor:pointer; }
-
-    .cap-field-row { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:.7rem; }
-    .cap-field .price-row input { font-size:1rem; font-weight:600; width:5.5rem; }
-    .cap-field__unlimited { display:flex; align-items:center; gap:.35rem; font-size:.76rem; color: var(--color-muted); font-weight:400; margin-top:.25rem; cursor:pointer; padding:.4rem .5rem; border-radius:8px; transition: background .1s; }
-    .cap-field__unlimited:hover { background: var(--color-tint); }
 
     .preview-note { font-size:.8rem; color: var(--color-muted); margin-bottom:1.2rem; }
 
@@ -649,6 +657,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=202"></script>
+  <script src="console-core.js?v=203"></script>
 </body>
 </html>

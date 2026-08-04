@@ -30,6 +30,46 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.92.0 — 2026-08-04
+
+### Priser: "Grenser" fekk endeleg ei ramme, Pris/Oppstartskostnad forenkla, fargeaksent
+
+Framleis same dag -- brukar sende eit nytt skjermbilete etter 0.91.1: éin
+raud ring rundt "kr/mnd"/"kr, engang"-teksten (verka flytande/rotete), éin
+stor raud ring rundt heile "Grenser (maks inkludert)"-rada. Denne runda vart
+IKKJE patcha blindt ein fjerde gong -- roten vart faktisk funnen fyrst
+(sjå under), og ein ny mockup vart bygd og godkjent før koden vart endra
+("Les tilbake før du endrer").
+
+**Rotårsak, "Grenser" (reell implementeringsglipp, ikkje berre smak):** den
+tidlegare godkjente mockupen synte kvar grense som eit ramma kort -- men
+den ramma vart ALDRI implementert i den ekte koden i 0.91.0-runda, berre
+seksjoneringa rundt heile Grenser-blokka. `.cap-field-row` sin
+`repeat(auto-fit, minmax(150px,1fr))` strekte i tillegg kvart av dei tre
+korta til å fylle ein heil 1fr-brei rutenett-kolonne (~300px i eit 900px
+breitt panel) -- eit lite tal flytande i eit stort tomt rom, tre gonger på
+rad, las ut som broten.
+
+- **Grenser**: `priserCapFieldHtml()` gjev no kvar grense eit ekte,
+  ramma `.cap-card` (`border`+`background: var(--color-surface)`), i ei
+  `.cap-row` (flex, fast basisbreidde `flex: 0 1 180px` i staden for eit
+  rutenett som tvinga korta til å fylle heile radbreidda).
+- **Pris/Oppstartskostnad**: forenkla til reine "stat"-kort per eksplisitt
+  brukarønske -- berre eit tal, INGEN "kr/mnd"/"kr, engang"-tekst attmed og
+  INGEN "Veiledende sum fra modulpriser"-linje under ("Ikke noe mer på de
+  to rutene enn tallet"). Det tidlegare hint-et ligg no i ein `helpIcon()`
+  ved sida av kvar label i staden for å forsvinne heilt.
+- **Fargeaksent** ("bruke litt farger for å skape dynamikk", eksplisitt
+  brukarønske): tal-verdiane i Pris/Oppstartskostnad/Grenser er no
+  `var(--color-primary)` -- attbruker det same "stat-tal"-mønsteret som
+  `.an-card__val` i Analyse-fana alt etablerer, i staden for å finne opp
+  ny visuell språkbruk.
+- `.price-row`/`.basics-box`/`.basics-grid`/`.cap-field`/
+  `.cap-field-row`/`.cap-field__unlimited`/`.price-hint` alle daude,
+  fjerna.
+
+`?v=N`: `console-core.js` (203).
+
 ## 0.91.1 — 2026-08-04
 
 ### Fiks: Pakkenavn/Kort beskrivelse så "plutselig reduserte" ut i .basics-box
