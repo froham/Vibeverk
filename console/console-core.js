@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.94.1";
+  var VIBEVERK_VERSION = "0.94.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1843,15 +1843,27 @@ window.VwConsole = (function () {
   // Kompakt rad i pakke-lista til venstre (master/detail, brukarønske
   // 2026-08-04) -- prikken speglar merkelappfargen for ei fremheva pakke,
   // elles nøytral border-farge.
-  function priserPkgRailRowHtml(pkg, isActive) {
+  // Rekkjefølgja her (array-orden i _priserData.packages) er ALT det som
+  // styrer visingsordenen i «Forhåndsvisning» (renderPriserPreview itererer
+  // packages.filter(...) i same orden) -- pil opp/ned flytter difor berre
+  // element i denne arrayen, ingen eiga "order"-felt trengst (brukarønske
+  // 2026-08-05: pilene skal bu her i pakke-rada, ikkje på Modulpriser-sida,
+  // sidan pakkar ikkje finst der).
+  function priserPkgRailRowHtml(pkg, isActive, isFirst, isLast) {
     var dotStyle = pkg.featured ? ' style="background:' + priserSafeHex(pkg.badgeColor) + '"' : "";
-    return '<button type="button" class="pkg-row' + (isActive ? " is-active" : "") + '" data-priser-select="' + C.esc(pkg.id) + '" aria-current="' + (isActive ? "true" : "false") + '">' +
-      '<span class="pkg-row__dot"' + dotStyle + '></span>' +
-      '<span class="pkg-row__body">' +
-        '<span class="pkg-row__name">' + C.esc(pkg.name || "(uten navn)") + '</span>' +
-        '<span class="pkg-row__price">' + (pkg.priceOnRequest ? "Pris etter avtale" : (priserFmtPrice(pkg.price) + ' kr/mnd')) + '</span>' +
+    return '<div class="pkg-row-wrap">' +
+      '<button type="button" class="pkg-row' + (isActive ? " is-active" : "") + '" data-priser-select="' + C.esc(pkg.id) + '" aria-current="' + (isActive ? "true" : "false") + '">' +
+        '<span class="pkg-row__dot"' + dotStyle + '></span>' +
+        '<span class="pkg-row__body">' +
+          '<span class="pkg-row__name">' + C.esc(pkg.name || "(uten navn)") + '</span>' +
+          '<span class="pkg-row__price">' + (pkg.priceOnRequest ? "Pris etter avtale" : (priserFmtPrice(pkg.price) + ' kr/mnd')) + '</span>' +
+        '</span>' +
+      '</button>' +
+      '<span class="pkg-row__reorder">' +
+        '<button type="button" class="pkg-row__move" data-priser-move-up="' + C.esc(pkg.id) + '" aria-label="Flytt «' + C.esc(pkg.name || "pakke") + '» opp"' + (isFirst ? " disabled" : "") + '><i class="ti ti-chevron-up"></i></button>' +
+        '<button type="button" class="pkg-row__move" data-priser-move-down="' + C.esc(pkg.id) + '" aria-label="Flytt «' + C.esc(pkg.name || "pakke") + '» ned"' + (isLast ? " disabled" : "") + '><i class="ti ti-chevron-down"></i></button>' +
       '</span>' +
-    '</button>';
+    '</div>';
   }
 
   function priserEditSubtitle(pkg) {
@@ -2010,7 +2022,7 @@ window.VwConsole = (function () {
       '<div class="edit-layout">' +
         '<div class="pkg-rail">' +
           '<div class="pkg-rail__head">Pakker (' + _priserData.packages.length + ')</div>' +
-          _priserData.packages.map(function (p) { return priserPkgRailRowHtml(p, p.id === _priserEditSelected); }).join("") +
+          _priserData.packages.map(function (p, i) { return priserPkgRailRowHtml(p, p.id === _priserEditSelected, i === 0, i === _priserData.packages.length - 1); }).join("") +
           '<button type="button" class="pkg-rail__add" id="priser-add-pkg"><span class="plus">+</span> Ny pakke</button>' +
         '</div>' +
         (selected
@@ -2036,6 +2048,26 @@ window.VwConsole = (function () {
         var newBtn = wrap.querySelector('[data-priser-select="' + _priserEditSelected + '"]');
         if (newBtn) newBtn.focus();
       });
+    });
+    function priserMovePkg(id, delta) {
+      var idx = _priserData.packages.findIndex(function (p) { return p.id === id; });
+      var target = idx + delta;
+      if (idx < 0 || target < 0 || target >= _priserData.packages.length) return;
+      var arr = _priserData.packages;
+      var tmp = arr[idx]; arr[idx] = arr[target]; arr[target] = tmp;
+      renderPriserEdit(wrap);
+      // Behald tastaturfokus på den same knappen (same disiplin/grunngjeving
+      // som data-priser-select over) -- elles hoppar fokus til <body> ved
+      // kvar flytting, plagsamt for ein tastaturbrukar som flytter éi pakke
+      // fleire hakk på rad.
+      var again = wrap.querySelector('[data-priser-move-' + (delta > 0 ? "down" : "up") + '="' + id + '"]');
+      if (again && !again.disabled) again.focus();
+    }
+    wrap.querySelectorAll("[data-priser-move-up]").forEach(function (btn) {
+      btn.addEventListener("click", function () { priserMovePkg(btn.getAttribute("data-priser-move-up"), -1); });
+    });
+    wrap.querySelectorAll("[data-priser-move-down]").forEach(function (btn) {
+      btn.addEventListener("click", function () { priserMovePkg(btn.getAttribute("data-priser-move-down"), 1); });
     });
     wrap.querySelector("#priser-add-pkg").addEventListener("click", function () {
       var pkg = {

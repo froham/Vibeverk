@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.94.2 — 2026-08-05
+
+### Priser: fiks "Ugyldig pakke"-lagringsfeil + pil opp/ned for pakke-rekkjefølgje
+
+**Regresjonsfunn og -fiks**: `supabase-control/supabase/functions/tenant-admin/index.ts` sin `set_pricing_config`-validering (`PKG_ALLOWED_KEYS` m.fl.) var ikkje oppdatert til å matche 0.94.0/0.94.1 sine endringar i pakkeform (`allStandard` → `allStandardF`/`allStandardI`, nye `priceOnRequest`/`trafficGBPerMonth`-felt) — kvar lagring i "Rediger pakker" blei difor avvist med "✗ Ugyldig pakke -- forventa nøyaktig ...". Retta til å matche den faktiske, nye forma. **Krev ein separat Edge Function-deploy for å ta effekt** (ikkje ein del av git-pusha kode — gjort etter eksplisitt godkjenning, sjå eige punkt i sesjonen).
+
+**Ny funksjon**: pil opp/ned på hver pakke-rad i "Rediger pakker" (brukarønske 2026-08-05) — flytter pakken i `_priserData.packages`, som "Forhåndsvisning" alltid har rendra i uendra rekkjefølgje frå. Boundary-knappane (fyrste pakke sin opp-pil, siste sin ned-pil) er deaktiverte. Ingen eige "order"-felt trengst.
+
 ## 0.94.1 — 2026-08-05
 
 ### Priser: retta punkt 4 — "Nettside"/"Workspace"/"Skreddersydd..." skal vere MODULAR, ikkje pakkar
