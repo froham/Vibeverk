@@ -30,6 +30,60 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.91.0 — 2026-08-04
+
+### Console: "Rediger pakker" seksjonert, Kundar-lista fekk stilrefresh
+
+Same dag som 0.90.0 -- brukar meldte tilbake at "Rediger pakker" framleis
+"ser dølt ut", med "mye kvitt og mye plass som gjør det uoversiktlig", og bad
+om ein UI-reviewer-gjennomgang spesifikt av det. Mockup-godkjent etter éi
+runde med tilbakemelding (Pris/Oppstartskostnad fylte ikkje breidda i fyrste
+forslag -- retta til å dele boksen 50/50 i staden for ein tom fyrste kolonne
++ to smale felt).
+
+**Rotårsak (UX-reviewer):** dei fire øvste felta (Pakkenavn/Pris/Oppstarts-
+kostnad/Kort beskrivelse) var låst til 30rem breidde inni eit panel som kan
+vere 900px+ breitt (opptil 500-600px daudt kvitrom per felt), OG hadde ingen
+ramme i det heile, ulikt "Fremhev i forhåndsvisning"-boksen rett under dei --
+denne inkonsekvensen var sjølve årsaka til "uoversiktleg", ikkje mangel på
+farge/dekor.
+
+- `priserPkgFieldsHtml()` (`console/console-core.js`) delt inn i fem
+  `.rp-section`-blokker (Grunnleggende / Innstillinger / Grenser / Nettside-
+  funksjoner / Workspace-funksjoner), kvar med ei tydeleg skiljelinje
+  (`border-top`) mot den førre, i staden for berre ein uppercase-mikrolabel.
+- Grunnleggande-felta samla i ein ny, tona/ramma `.basics-box`
+  (`background: var(--color-bg)`, som `.an-card`-mønsteret alt brukar andre
+  stader i fila). Pris og Oppstartskostnad ligg no side om side i ein
+  `.basics-grid` (1fr/1fr) i staden for kvar sin fulle rad.
+- Bonus-fiks: `.feat-chip.is-checked` fekk endeleg ein CSS-regel -- klassen
+  vart alt sett i `priserFeatChip()`, men hadde aldri hatt ei matchande
+  regel, så valde modular såg identiske ut som ikkje-valde bortsett frå
+  sjølve avkryssingsboksen. Same "valgt"-mønster som `.quote-chip.is-added`.
+
+**Kundar-lista fekk same stilrefresh** som vart vist i mockupen tidlegare
+same dag (initial-ikon, status som pille i staden for laus farga tekst,
+domene som undertekst) -- pluss ein reell funksjonsgap som synte seg
+undervegs: **lista hadde ingen "valgt"-tilstand i det heile**, einaste måten
+å sjå kven som var vald var å sjå etter sjekklista lenger nede på sida.
+`kdStatusBadge()` gjer no ein pille (`kd-pill--<status>`), ny `kdInitials()`.
+
+**UX/Mobil-reviewer same dag** (etter implementering, ikkje berre mockupen):
+éin HIGH + éin MEDIUM, begge retta:
+
+- `.basics-grid` sin `1fr 1fr` mangla `minmax(0,1fr)` -- ein bar 1fr-kolonne
+  sitt automatiske minstemål er innhaldet sitt eige min-content (her: eit
+  9rem breitt tal-felt + eining-tekst), som kunne tvinge `.basics-box` til å
+  flyte utanfor ramma si i eit reelt trongt vindaugebelte (~901-1050px total
+  viewport, verre med sidemenyen open) -- retta.
+- Kundar-lista sine rader var berre klikkbare med mus/touch (ein einaste
+  `click`-lyttar, ingen `tabindex`/rolle/tastatur-handtering) -- retta med
+  `tabindex="0" role="button" aria-pressed`, ein `keydown`-handterar for
+  Enter/mellomrom, og ein `:focus-visible`-ring, same mønster som
+  `.pkg-row` i "Rediger pakker" alt brukar.
+
+`?v=N`: `console-core.js` (202).
+
 ## 0.90.0 — 2026-08-04
 
 ### Priser: "Rediger pakker" som master/detail, valgbar forhåndsvisning, sidemeny-bugfiks
