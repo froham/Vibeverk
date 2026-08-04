@@ -506,7 +506,11 @@
        same "stat"-mønster som .an-card__val i Analyse-fana -- er den einaste
        fargebruken lagt til her, valt for å ikkje finne opp ny visuell
        språkbruk (brukarønske: "bruke litt farger for å skape dynamikk"). */
-    .stat-row { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; }
+    /* margin-top lagt til (brukarfunn 2026-08-04): .field (Pakkenavn) har
+       ingen eigen margin-bottom, og .stat-row hadde berre margin-bottom, ikkje
+       margin-top -- dei to sat difor heilt utan luft mellom seg, medan
+       stat-row -> neste .field (Kort beskrivelse) hadde normal avstand. */
+    .stat-row { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: 1rem; margin-bottom: 1rem; }
     /* --color-bg var identisk med SIDA sin eigen bakgrunn (.cs-main), så
        "ramma" forsvann heilt -- synte seg berre som ein tynn kant på grått
        mot grått (brukarfunn 2026-08-04, "det må stå 'ut' fra bakgrunnen").
@@ -523,6 +527,12 @@
     .stat-input-row input:focus { outline: none; }
     .stat-input-row input:disabled { color: var(--color-muted); }
     .stat-input-row .unit { font-size: .8rem; color: var(--color-muted); }
+    /* "Hent priser" -- brukarønske 2026-08-05: liten knapp som hentar den
+       kalkulerte modulsummen (alt vist som ein "veiledande sum"-helpIcon på
+       label-en) rett inn i talfeltet, i staden for at operatøren må lese av
+       hint-teksten og taste inn tallet manuelt. */
+    .stat-input-row .stat-fetch-btn { margin-left: auto; align-self: center; }
+    .stat-onrequest { font-size: 1.05rem; font-weight: 700; color: var(--color-text); }
 
     /* Grenser -- kvar grense fekk INGEN ramme frå før, medan rada strekte
        kvart kort ut over ei heil 1fr-brei rutenett-kolonne (eit lite tal
@@ -673,6 +683,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=203"></script>
+  <script src="console-core.js?v=204"></script>
 </body>
 </html>

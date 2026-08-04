@@ -30,6 +30,54 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.94.0 — 2026-08-04
+
+### Priser (Console): fem brukarønska rettingar/utvidingar
+
+Alle fem punkta blei lest tilbake til brukaren og klargjort (gap-tolkning, omfang på trafikkgrense, "grunnprodukt"-forma) FØR noko blei endra, per eksplisitt instruks.
+
+1. **CSS-fiks: "gapet mellom Grunnpakke og prisene".** `.field` (Pakkenavn) hadde ingen eigen `margin-bottom`, og `.stat-row` (Pris pr. mnd/Oppstartskostnad) hadde berre `margin-bottom`, ikkje `margin-top` — dei sat difor heilt utan luft mellom seg. Lagt til `margin-top:1rem` på `.stat-row` (`console/index.html`).
+2. **Ny, informativ grense: "Datatrafikk" (GB/mnd).** Lagt til i `PRISER_CAP_FIELDS`, same "kun informativt tal, ikkje teknisk handheva"-status som Datalagring/E-postutsendinger/Brukerkontoer. Ekte overvaking/handheving mot faktisk Supabase-forbruk vurdert og eksplisitt avslått som eiga, større oppgåve (ville kravd ny infrastruktur).
+3. **Fiks: "Standardmoduler" var ETT delt flagg for BÅDE Nettside og Workspace.** Kunne ikkje ha "alle standardmodular" på nettsida, men eksplisitt valde Workspace-modular, for same pakke — det ene valet styrte alltid det andre óg. Splitta `pkg.allStandard` i `pkg.allStandardF`/`pkg.allStandardI`, med éin uavhengig brytar plassert rett ved sitt eige modul-rutenett. `priserBackfillStandardFlags()` migrerer eksisterande lagra pakkar trygt (gammalt felt vinn for begge nye, til operatøren endrar eitt av dei).
+4. **"Pris etter avtale"-pakketype**, for skreddersydde pakkar/modular utan fast pris (t.d. "Skreddersydd modul", "Skreddersydd AI-modul" — desse to konkrete pakkane er IKKJE sjølv oppretta av denne endringa, må lagast av operatøren via "+ Ny pakke" sidan Console-data er ei live, global rad Claude ikkje har credentials til å skrive direkte i). Nytt `pkg.priceOnRequest`-flagg byter ut Pris/Oppstartskostnad med teksten "Pris etter avtale" i redigeringspanelet, pakkelista og Forhåndsvisning — og skjuler den elles noko misvisande "0 GB/0 brukere"-grenselinja i Forhåndsvisning for slike pakkar.
+5. **"Hent priser"-knapp** på både Pris pr. mnd og Oppstartskostnad — set feltet til den ferske, kalkulerte modulsummen frå Modulpriser (same tal som alt vart vist som ein "veiledande sum"-hjelpetekst, no eitt klikk i staden for manuell avlesing+utfylling).
+
+Verifisert visuelt via ein mocka Console-økt (Playwright, alle nettverkskall til `vibeverk-control` intercepta lokalt — ingen ekte OTP-innlogging eller skriving mot den verkelege `pricing_config`-rada) sidan Claude ikkje har ekte Console-tilgang: padding-fiksen, uavhengig av/på-bryting av dei to nye Standardmoduler-brytarane, "Hent priser" som fylte inn talfeltet, og "Pris etter avtale" som bytte ut heile prisblokka i både redigering og Forhåndsvisning.
+
+Ingen ny testdekning lagt til her — Console har ingen jsdom-testhøve i dette repoet (kun `test.js`/`test-workspace.js`/`test-api.js` finst, ingen dekker `console/`), same status som før denne endringa.
+
+## 0.93.0 — 2026-08-04
+
+### Ny modul: Smart årshjul (Workspace) — første AI-integrasjon på plattforma
+
+Ny Workspace-modul som foreslår ein 12-månaders aktivitetsplan (marknadsføring,
+vedlikehald, offentlege fristar, kurs/messer/arrangement) basert på bransje +
+fritekst om verksemda. Konvertert frå ein godkjend, sjølvstendig HTML-demo
+(vedlagd av brukar) til ein ekte modul, med den lokale forslagssimuleringa
+erstatta av eit ekte serverkall.
+
+**Nye filer:**
+- `workspace/module-smart-aarshjul.js` — Workspace-modulen (`Intranet.registerModule`, `App.store` under nøkkelen `wsp-smart-aarshjul`, alle CSS-klassar prefiksa `saa-`). Steg-navigasjon (Vel utgangspunkt → Tilpass forslag → Bruk årshjulet), forslagsverkstad med filter/søk/redigering, årshjul med kvartalsfargar (Q1–Q4, dempa palett frå den godkjende demoen — ingen ekstra kvartaloversikt lagt til), månads-/liste-/balansevisning, CSV/tekst/JSON-eksport, JSON-backup+import med stadfesting, låsing av aktivitetar, gjentakande (månadlege) aktivitetar.
+- `api/ai/annual-wheel.js` — Vercel Edge Function. Verifiserer tenant (Host-header, same mønster som `api/tenant-config.js`) og at kallaren har ei gyldig innlogging med rolle admin/editor mot TENANTENS EIGEN Supabase Auth/users-tabell, før eit einaste Anthropic-kall vert gjort. Best-effort per-instans rate-limit (ikkje ein ekte distribuert avgrensar — dokumentert som kjend avgrensing).
+- `api/_lib/annual-wheel-sources.js` — kuratert, hand-vedlikehalde kjeldedatasett (Skatteetaten-fristar + bransjespesifikke kurs/messer/arrangement, kvar med namn/URL/kontrollert-dato) og det reine, nettverksfrie oppslagslaget over det (`identifyRelevantSourceQueries`/`searchApprovedSources`/`normalizeSourceResults`). Statisk i repoet, ikkje ein Supabase-tabell — sjå fila sin eigen header for grunngjeving (git-diff er ein sterkare garanti mot oppdikta kjelder enn ein redigerbar tabell).
+- `api/_lib/annual-wheel-ai.js` — `analyzeBusinessInput`/`buildAnnualWheelPrompt`/`generateAnnualWheelSuggestions` (det EINE Anthropic-kallet, strukturert via forced tool-use, ikkje tekst-parsing) og `validateAnnualWheelResponse` (klemmer kvart felt til trygge verdiar uansett kva modellen returnerer).
+
+**Endra filer:** `config.js` (ny `intranettFeatures.smartAarshjul: false` — standard AV, som andre nye/uprøvde funksjonar), `workspace/index.html` (nytt skript-tag), `test-workspace.js`/`test-api.js` (nye testseksjonar AB/AC og E).
+
+**Nye miljøvariablar (Vercel):** `ANTHROPIC_API_KEY` (kravd), `ANTHROPIC_MODEL` (valfri, fell tilbake til Claude Haiku 4.5).
+
+**Arkitektur-avgjerder** (sjå `vibeverk-architect`-gjennomgangen som gjekk føre denne endringa): kuraterte, ikkje-live kjelder for v1 (ingen web-søk-infrastruktur finst); auth-gjerdet gjenbrukar tenantens eigen Workspace-innlogging i staden for å vere eit ope endepunkt. **Ein ADR for dette (kjeldemønster + AI-auth-mønster for framtidige AI-endepunkt) er tilrådd, men ikkje skriven enno** — treng eksplisitt stadfesting frå brukar på rammeverket først (governance-regel: ingen ADR utan stadfesta avgjerdsbevis).
+
+**Tryggleiksgjennomgang (Claude Security Auditor, same dag) fann og retta éin HIGH-alvorsgrad-feil før merge:** endepunktet sjekka rolle (admin/editor), men aldri om TENANTEN sjølv faktisk hadde fått Smart årshjul aktivert i control-planet (`tenant.enabled_modules.intranettFeatures.smartAarshjul`) — sidan éin delt Vercel-utrulling/`ANTHROPIC_API_KEY` betener alle tenantar (ADR-0007), kunne ein admin/editor hos EIN KVA SOM HELST tenant kalle endepunktet direkte (forbi den reint klientside-styrte `CFG.intranettFeatures`-sperra) og bruke opp ekte Anthropic-kostnad sjølv utan at eigen tenant hadde fått funksjonen aktivert. Retta med ein eksplisitt entitlement-sjekk (403 utan) rett etter tenant-oppslaget. Same gjennomgang fann og retta ein mindre feil i `annual-wheel-ai.js` (dobbel `resp.json()`-lesing sluka den faktiske Anthropic-feilteksten frå loggen ved HTTP-feil).
+
+**Kjend, akseptert avgrensing (ikkje retta no):** rate-limiteren er eksplisitt best-effort/per-instans, ikkje ein ekte distribuert kostnadstak — sjå fila sin eigen kommentar. Ein persistent per-tenant kostnad-/kvotesperre (t.d. ein rad per tenant+dag i tenanten sin eigen `store`-tabell) er identifisert som ei rimeleg vidareføring, men ikkje bygd i denne runda.
+
+**UX/mobil-gjennomgang (Claude UX/Mobile Reviewer, same dag) fann og retta éin blokkerande feil før merge:** "trygg startside"-knappen som vert vist ved ein render-krasj sa "Ingen data er sletta", men kalla i røynda `state = defaultState()` og sletta alle aktivitetar/forslag — stikk i strid med teksten på same skjerm og med Tier B-regelen i `docs/architecture/copy-style-guide.md`. Retta til berre å byte skjerm (`state.screen = "setup"`), aldri røre aktivitetsdata. Same gjennomgang fann og retta fleire mindre feil: forslagskort sin avkryssingsboks var det einaste klikkbare området for eit heilt kort (no ein `&lt;label&gt;` som dekker heile kortet); kategorifargesystemet frå den godkjende demoen (12 dempa fargar, `--planning`/`--marketing`/osv.) var falle ut under portering til produksjon og vart erstatta med éin hardkoda fargeplaceholder — attoppretta som `--saa-cat-*`-variablar; manglande `min-height:44px` på mobil-månadsbrikkene og aktivitets-redigeringsknappen (touch-mål under WCAG-minimumet); potensielt rå, engelske nettlesarfeiltekstar (t.d. "Failed to fetch") kunne vise seg direkte i eit norsk feilvarsel ved nettverksfeil; modaldialogen sitt Lagre/Avbryt-felt kunne rulle utanfor skjermen på korte/liggjande mobilskjermar (no fast plassert med rullande innhald mellom); to lukk-knappar mangla `aria-label`; kjeda modalopning ved import-stadfesting kunne øydeleggje tastaturfokus-retur; `disclaimer`-feltet frå API-et vart lagra, men aldri vist — no synleg i forslagsverkstaden. Verifisert visuelt (headless nettlesar, kategorifargar stadfesta ulike per kategori, modal-rulling stadfesta fast footer).
+
+**Ikkje retta (mindre alvorsgrad, kan takast seinare):** `.saa-sgrid` sin brotpunkt (720px) tek ikkje omsyn til at Workspace-sidebaren framleis er synleg og statisk ved 768px, som gjer forslagskorta smalare enn nødvendig på nettbrett i ståande format; native HTML5-validering ("required") viser nettlesaren sin eigen (ofte engelske) feilboble før den tilpassa norske teksten for eit heilt tomt skildringsfelt.
+
+**Ikkje testa i denne runda (krev manuell/skarp verifisering før produksjonsbruk):** faktisk levande Anthropic-kall (test-suitene mockar `fetch`), full UX/mobil-gjennomgang (bestilt, ventar på resultat).
+
 ## 0.92.1 — 2026-08-04
 
 ### Fiks: fargeramma "forsvann" i grått mot grått

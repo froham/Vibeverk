@@ -25,7 +25,8 @@ const html = fs.readFileSync("workspace/index.html", "utf8")
   .replace(/src="module-orgdrift\.js"/g,  'src="workspace/module-orgdrift.js"')
   .replace(/src="module-links\.js"/g,     'src="workspace/module-links.js"')
   .replace(/src="module-workspaceship\.js[^"]*"/g, 'src="workspace/module-workspaceship.js"')
-  .replace(/src="module-users\.js[^"]*"/g,   'src="workspace/module-users.js"');
+  .replace(/src="module-users\.js[^"]*"/g,   'src="workspace/module-users.js"')
+  .replace(/src="module-smart-aarshjul\.js[^"]*"/g, 'src="workspace/module-smart-aarshjul.js"');
 
 const dom = new JSDOM(html, {
   runScripts: "outside-only", pretendToBeVisual: true,
@@ -61,7 +62,8 @@ window.confirm = () => true;
   "workspace/module-orgdrift.js",
   "workspace/module-links.js",
   "workspace/module-workspaceship.js",
-  "workspace/module-users.js"
+  "workspace/module-users.js",
+  "workspace/module-smart-aarshjul.js"
 ].forEach(f => {
   let src = fs.readFileSync(f, "utf8");
   // For testmiljøet: skru på alle intranett-features
@@ -69,7 +71,7 @@ window.confirm = () => true;
     src = src.replace(/intranettFeatures:\s*\{[^}]*\}/s, `intranettFeatures: {
     announcements: true, notes: true, orgdrift: true, links: true,
     crm: true, booking: true, quote: true, contact: true,
-    kb: true, mediaInternal: true
+    kb: true, mediaInternal: true, smartAarshjul: true
   }`);
   }
   window.eval(src);
@@ -126,6 +128,7 @@ assert(navIds.includes("announcements"), "b4: announcements i nav");
 assert(!navIds.includes("workspaceship"),"b5: workspaceship skjult");
 assert(navIds.includes("users"),         "b6: users i nav for admin");
 assert(!navIds.includes("spaceship"),    "b7: spaceship-modulen skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
+assert(navIds.includes("smart-aarshjul"),"b8: smart-aarshjul i nav når intranettFeatures.smartAarshjul er sett til true (config.js sin ekte standard er false)");
 
 /* --- C) INGEN OFFENTLEG INNHALD ------------------------------------------ */
 assert(!doc.querySelector(".site-header"), "c1: ingen site-header");
@@ -758,6 +761,80 @@ nav("#/notes"); nav("#/dashboard");
   nav3("#/dashboard");
   assert(!doc3.getElementById("intranet-main").contains(doc3.getElementById("workspaceship-root")),
     "aa4: workspaceship-root vert fjerna frå DOM-et når brukaren navigerer vekk (naudsynt for at MutationObserver-oppryddinga faktisk skal utløysast)");
+})();
+
+/* --- AB) SMART ÅRSHJUL -----------------------------------------------------
+   ON-stien (hovud-DOM-en over har alt tvinga smartAarshjul:true, sjå
+   intranettFeatures-patchen heilt øvst): stadfest at modulen faktisk
+   rendrar oppsett-steget (steg 1) med bransjeveljar, skildringsfelt og
+   steg-navigasjon, og at steg 2/3 er deaktiverte før det finst forslag/
+   aktivitetar. Nettverkskall (POST /api/ai/annual-wheel) vert IKKJE testa
+   her -- det høyrer heime i test-api.js (server-sida) + manuell køyring via
+   run-vibeverk-skillet (klient-integrasjonen), ikkje i denne jsdom-hurtig-
+   sjekken. --------------------------------------------------------------- */
+nav("#/smart-aarshjul");
+assert(!!doc.querySelector("#saa-root"), "ab1: #saa-root rendrar ved navigering");
+assert(!!doc.querySelector("#saa-industry"), "ab2: bransjeveljar finst i oppsett-steget");
+assert(!!doc.querySelector("#saa-description"), "ab3: skildringsfelt finst i oppsett-steget");
+assert(doc.querySelector('[data-a="stepNav"][data-step="1"]')?.classList.contains("is-active"),
+  "ab4: steg 1 er aktivt ved første besøk");
+assert(doc.querySelector('[data-a="stepNav"][data-step="2"]')?.hasAttribute("disabled"),
+  "ab5: steg 2 er deaktivert før det finst forslag");
+assert(doc.querySelector('[data-a="stepNav"][data-step="3"]')?.hasAttribute("disabled"),
+  "ab6: steg 3 er deaktivert før det finst aktivitetar");
+nav("#/dashboard");
+
+/* --- AC) SMART ÅRSHJUL AV: intranettFeatures.smartAarshjul = false (dagens
+   faktiske standard i config.js) skal skjule modulen heilt -- same mønster
+   som Z-seksjonen over for kb. Eigen, separat DOM av same grunn (App.ready()
+   sin gate vert avgjort éin gong ved skriptlasting). --------------------- */
+(function () {
+  const dom4 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window4 = dom4.window;
+  window4.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window4.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window4.scrollTo = () => {};
+  window4.HTMLElement.prototype.scrollIntoView = () => {};
+  window4.URL.createObjectURL = window4.URL.createObjectURL || (() => "blob:mock");
+  window4.URL.revokeObjectURL = window4.URL.revokeObjectURL || (() => {});
+  window4.confirm = () => true;
+
+  // Ingen intranettFeatures-patching her -- poenget er nettopp å teste
+  // config.js sin ekte, upatcha standard (smartAarshjul: false).
+  [
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js",
+    "workspace/module-smart-aarshjul.js"
+  ].forEach(f => window4.eval(fs.readFileSync(f, "utf8")));
+
+  const _NS4 = window4.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window4.eval(`sessionStorage.setItem("${_NS4}:admin","admin")`);
+  window4.document.dispatchEvent(new window4.Event("DOMContentLoaded", { bubbles: true }));
+  const doc4 = window4.document;
+
+  function nav4(hash) {
+    window4.location.hash = hash;
+    window4.dispatchEvent(new window4.Event("hashchange"));
+  }
+
+  assert(window4.SITE_CONFIG.intranettFeatures.smartAarshjul === false,
+    "ac1: føresetnad for denne seksjonen -- config.js sin ekte standard har smartAarshjul: false");
+  assert(!doc4.querySelector('[data-inav="smart-aarshjul"]'),
+    "ac2: «Smart årshjul» finst ikkje i sidebar-navigasjonen når funksjonen er av");
+
+  let navThrew4 = false;
+  try { nav4("#/smart-aarshjul"); } catch (e) { navThrew4 = true; }
+  assert(!navThrew4, "ac3: direkte navigering til #/smart-aarshjul krasjar ikkje sjølv om modulen aldri registrerte seg");
+  assert(doc4.getElementById("intranet-main").textContent.indexOf("Modul ikke funnet") > -1,
+    "ac4: #/smart-aarshjul fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
 })();
 
 /* --- RESULTAT ------------------------------------------------------------- */

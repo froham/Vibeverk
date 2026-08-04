@@ -28,6 +28,16 @@ function fakeRequest(url, headers) {
   return { url, headers: { get: (k) => h.get(k.toLowerCase()) || null } };
 }
 
+function fakePostRequest(url, headers, bodyObj) {
+  const req = fakeRequest(url, Object.assign({ "content-type": "application/json" }, headers || {}));
+  req.method = "POST";
+  req.json = async () => {
+    if (bodyObj === undefined) throw new SyntaxError("Unexpected end of JSON input");
+    return bodyObj;
+  };
+  return req;
+}
+
 function basicAuthHeader(password) {
   return "Basic " + Buffer.from("x:" + password).toString("base64");
 }
@@ -52,7 +62,15 @@ async function main() {
           data_plane_anon_key: "tenant-anon-key",
           data_plane_storage_key: "nordpunkt",
           product_mode: "full",
-          enabled_modules: { features: { crm: true }, intranettFeatures: { tasks: true } },
+          // smartAarshjul: true her (og IKKJE i "aw-not-entitled" pga eigen
+          // gren under) -- api/ai/annual-wheel.js sin eigen entitlement-sjekk
+          // (lagt til etter tryggleiksgjennomgang) krev denne, uavhengig av
+          // rolla til kallaren. Andre forbrukarar av denne mocken
+          // (tenant-config/tenant-manifest/middleware-testane over) bryr seg
+          // ikkje om dette feltet, så det er trygt å leggje det til her.
+          enabled_modules: scenario === "aw-not-entitled"
+            ? { features: { crm: true }, intranettFeatures: { tasks: true } }
+            : { features: { crm: true }, intranettFeatures: { tasks: true, smartAarshjul: true } },
           custom_modules_manifest: {},
           theme: { primary: "#000000" },
         }],
@@ -72,6 +90,43 @@ async function main() {
         }],
       };
     }
+    // api/ai/annual-wheel.js sine eigne tre hopp: tenantens Supabase Auth
+    // (bearer-verifisering), tenantens users-tabell (rolleoppslag) og
+    // Anthropic sjølv (den eine AI-genereringa). scenario-strengane her er
+    // eksklusive for denne seksjonen (aw-*), kolliderer ikkje med scenarioa over.
+    if (String(url).includes("/auth/v1/user")) {
+      if (scenario === "aw-auth-fail") return { ok: false, status: 401 };
+      return { ok: true, json: async () => ({ id: "user-123" }) };
+    }
+    if (String(url).includes("/rest/v1/users")) {
+      if (scenario === "aw-role-member") return { ok: true, json: async () => [{ role: "member" }] };
+      if (scenario === "aw-role-http-error") return { ok: false, status: 500 };
+      return { ok: true, json: async () => [{ role: "admin" }] };
+    }
+    if (String(url).includes("api.anthropic.com")) {
+      if (scenario === "aw-anthropic-http-error") return { ok: false, status: 500, json: async () => ({ error: { message: "modelloverbelastning" } }) };
+      if (scenario === "aw-anthropic-bad-shape") return { ok: true, json: async () => ({ content: [{ type: "text", text: "ikkje eit tool_use-svar" }] }) };
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{
+            type: "tool_use", name: "return_annual_wheel_plan",
+            input: {
+              detectedBusinessProfile: {
+                primaryIndustry: "Tømrarverksemd", specialization: "Rehabilitering av eldre bygg", hasEmployees: true,
+                employeeCountApproximation: 5, seasonalPattern: "Høg aktivitet vår til haust", identifiedNeeds: ["kompetanseheving"],
+              },
+              summary: "Forslaga er tilpassa rehabilitering og vinteraktivitet.",
+              suggestions: [
+                { title: "Planlegg vårkampanje", description: "Lag ein enkel plan.", reason: "Synlegheit før høgsesong.", month: 3, day: null, recurrence: "none", category: "marketing", itemType: "", verificationRequired: false, sourceName: "", sourceUrl: "", sourceVerifiedAt: "", exactDate: "", applicability: "" },
+                { title: "Lever a-melding", description: "Kontroller og lever a-meldinga.", reason: "Verksemda har tilsette.", month: 1, day: 5, recurrence: "monthly", category: "deadlines", itemType: "deadline", verificationRequired: true, sourceName: "Skatteetaten", sourceUrl: "https://www.skatteetaten.no/", sourceVerifiedAt: "2026-08-04", exactDate: "Den 5. kvar månad", applicability: "Berre dersom verksemda har plikt til å levere a-melding." },
+                { title: "<script>evil()</script>", description: "skal klemmast/reinsast", reason: "test", month: 99, day: 999, recurrence: "ukjend", category: "ukjend-kategori", itemType: "ukjend", verificationRequired: "ja", sourceName: "", sourceUrl: "javascript:alert(1)", sourceVerifiedAt: "", exactDate: "", applicability: "" },
+              ],
+            },
+          }],
+        }),
+      };
+    }
     throw new Error("uventa fetch-URL i test: " + url);
   };
 
@@ -82,6 +137,7 @@ async function main() {
   const { default: siteManifestHandler } = await import("./api/site-manifest.js");
   const { default: adminManifestHandler } = await import("./api/admin-manifest.js");
   const { default: middleware } = await import("./middleware.js");
+  const { default: annualWheelHandler } = await import("./api/ai/annual-wheel.js");
 
   /* =========================================================================
      A) api/_lib/resolve-tenant.js
@@ -212,6 +268,97 @@ async function main() {
   scenario = "no-tenant";
   r = await middleware(fakeRequest("https://ukjend.no/", { host: "ukjend.no", authorization: basicAuthHeader("hemmelig") }));
   assert(r.status === 404, "d6: ukjend hostname på ei vanleg side gjev 404 «ikkje registrert som kunde» (etter site-lock, uendra åtferd)");
+
+  /* =========================================================================
+     E) api/ai/annual-wheel.js -- Smart årshjul sitt server-endepunkt.
+     Fyrste endepunkt som brukar ein tredjeparts betalt LLM (Anthropic) --
+     testar auth-gjerdet (tenant + bearer-token + rolle), inputvalidering,
+     og at eit vellykka/mislykka AI-svar vert handtert trygt.
+     ====================================================================== */
+  process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+  const validBody = { industry: "carpenter", businessDescription: "Lite tømrarfirma med fem tilsette.", existingActivities: [] };
+
+  scenario = "full-success";
+  r = await annualWheelHandler(fakeRequest("https://kunde.no/api/ai/annual-wheel", { host: "e1.kunde.no" }));
+  assert(r.status === 405, "e1: berre POST er støtta (GET gjev 405)");
+
+  delete process.env.ANTHROPIC_API_KEY;
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e2.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 500, "e2: 500 når ANTHROPIC_API_KEY manglar på serveren");
+  process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e3.kunde.no" }, validBody));
+  assert(r.status === 401, "e3: 401 utan Authorization-header");
+
+  scenario = "no-tenant";
+  r = await annualWheelHandler(fakePostRequest("https://ukjend.no/api/ai/annual-wheel", { host: "e4.ukjend.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 404, "e4: 404 for ukjend installasjon (tenant finst ikkje)");
+
+  scenario = "hop1-http-error";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e5.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 502, "e5: 502 når kontrollplan-oppslaget feilar");
+
+  scenario = "aw-not-entitled";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e5b.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 403, "e5b: 403 når tenanten IKKJE har Smart årshjul aktivert i control-planet (tenant.enabled_modules), sjølv med gyldig admin/editor-innlogging -- retta etter tryggleiksgjennomgang: rolle åleine var ikkje nok, sidan éin delt Vercel-utrulling/ANTHROPIC_API_KEY betener alle tenantar (ADR-0007)");
+
+  scenario = "aw-auth-fail";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e6.kunde.no", authorization: "Bearer ugyldig" }, validBody));
+  assert(r.status === 401, "e6: 401 ved ugyldig/utløpt innlogging (tenantens eigen Supabase Auth avviser tokenet)");
+
+  scenario = "aw-role-member";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e7.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 403, "e7: 403 for rolla member (krev admin/editor)");
+
+  scenario = "aw-role-http-error";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e8.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 401, "e8: 401 når rolleoppslaget mot tenantens users-tabell feilar");
+
+  scenario = "full-success";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e9.kunde.no", authorization: "Bearer t" }, undefined));
+  assert(r.status === 400, "e9: 400 ved ugyldig JSON i førespurnaden");
+
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e10.kunde.no", authorization: "Bearer t" }, { industry: "carpenter" }));
+  assert(r.status === 400, "e10: 400 når businessDescription manglar");
+
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e11.kunde.no", authorization: "Bearer t" }, { businessDescription: "x".repeat(1201) }));
+  assert(r.status === 400, "e11: 400 når businessDescription er for lang");
+
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e12.kunde.no", authorization: "Bearer t" }, { businessDescription: "Test", existingActivities: [{ title: "x", month: 13, category: "planning", recurrence: "none", locked: false }] }));
+  assert(r.status === 400, "e12: 400 ved ugyldig månad i existingActivities");
+
+  scenario = "aw-anthropic-http-error";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e13.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 502, "e13: 502 når Anthropic-kallet feilar med HTTP-feil (eksisterande aktivitetar er urørte -- ingen tilstand vert skriven server-side i det heile)");
+  body = await r.json();
+  assert(typeof body.error === "string" && body.error.length > 0, "e13b: feilrespons har ei lesbar norsk feilmelding");
+
+  scenario = "aw-anthropic-bad-shape";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e14.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 502, "e14: 502 når Anthropic-svaret manglar tool_use-blokka (ikkje tekst-parsing av eit vanleg svar)");
+
+  scenario = "full-success";
+  r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e15.kunde.no", authorization: "Bearer t" }, validBody));
+  assert(r.status === 200, "e15: 200 ved fullt vellykka generering");
+  body = await r.json();
+  assert(body.detectedBusinessProfile && body.detectedBusinessProfile.primaryIndustry === "Tømrarverksemd", "e15b: detectedBusinessProfile kjem med frå modellsvaret");
+  assert(Array.isArray(body.suggestions) && body.suggestions.length === 3, "e15c: alle tre forslaga frå modellen kjem gjennom valideringa");
+  const monthly = body.suggestions.find(s => s.recurrence === "monthly");
+  assert(monthly && monthly.month === 1 && monthly.day === 5 && monthly.sourceUrl === "https://www.skatteetaten.no/", "e15d: gyldig kjeldebasert, månadleg forslag (a-melding) kjem gjennom uendra");
+  const malformed = body.suggestions[2];
+  assert(malformed.month === 1 && malformed.day === null, "e15e: ugyldig månad/dag frå modellen vert klemte til trygge standardverdiar (månad 99 → 1, dag 999 → null)");
+  assert(malformed.recurrence === "none" && malformed.category === "custom" && malformed.itemType === "", "e15f: ugyldige enum-verdiar frå modellen (gjentaking/kategori/type) vert klemte til trygge standardverdiar, aldri sleppte gjennom rått");
+  assert(malformed.sourceUrl === "", "e15g: ein javascript:-URL frå modellen vert aldri sleppt gjennom (berre https:// er tillate)");
+  assert(body.suggestions.every(s => typeof s.id === "string" && s.id.length > 0), "e15h: kvart forslag får ein server-generert id (stolar ikkje på modellen sin eigen)");
+  assert(typeof body.disclaimer === "string" && body.disclaimer.length > 0, "e15i: svaret har alltid ei fast fråskrivingstekst (juridisk/skatte-/rekneskapsråd)");
+
+  scenario = "full-success";
+  let rateLimited = 0;
+  for (let i = 0; i < 8; i++) {
+    r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e16.kunde.no", authorization: "Bearer t" }, validBody));
+    if (r.status === 429) rateLimited++;
+  }
+  assert(rateLimited > 0, "e16: gjentekne raske kall frå same tenant+brukar vert til slutt rate-limita (429) -- best-effort per-instans-vern, sjå fila sin eigen kommentar om at dette IKKJE er ein ekte distribuert avgrensar");
 
   console.log("\nResultat: OK " + __ok + " / FEIL " + __err);
 }
