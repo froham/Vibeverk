@@ -30,6 +30,75 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.90.0 — 2026-08-04
+
+### Priser: "Rediger pakker" som master/detail, valgbar forhåndsvisning, sidemeny-bugfiks
+
+Ny runde same dag, etter at brukar fekk sjå 0.89.0 live: sidemeny-kollaps-
+knappen overlappa det sentrerte merke-ikonet i det minimerte 64px-sidefeltet
+(begge delte same rad) -- retta med meir topp-padding på merket i staden
+(`console/index.html`, `.cs-sidebar.is-collapsed .cs-brand`).
+
+Hovudinnhaldet: brukar peikte ut at "Rediger pakker" var "rotete og
+uoversiktleg" med alle pakkane opne side om side heile tida. Same
+mockup-først-arbeidsflyt som tidlegare Priser-/Innsikt-rundar -- ein
+interaktiv HTML-mockup vart bygd og godkjent før noko ekte kode vart endra:
+
+- **"Rediger pakker" → master/detail.** Ei kompakt, klikkbar pakke-liste
+  (`.pkg-rail`, sticky, 260px) til venstre; berre den valde pakken sitt
+  redigeringspanel (`.edit-panel`) til høgre. `priserPkgCardHtml()` delt opp
+  i `priserPkgRailRowHtml()` (rad-visning) + `priserPkgFieldsHtml()` (dei
+  same felta som før, uendra) + `priserEditPanelHtml()` (ny hovud/kropp/fot-
+  struktur). Ny økt-lokal state `_priserEditSelected`. Å skrive i
+  "Pakkenavn"/"Pris" oppdaterer rad-teksten og panel-tittelen direkte
+  (målretta DOM-patch, ikkje full re-render) -- same "aldri re-render på
+  kvart tastetrykk"-disiplin som `priserRefreshQuoteTotals()` frå 0.88.0.
+  Full re-render (via den eksisterande `priserRerenderEditPreservingFocus()`)
+  skjer framleis berre ved pakkebyte, avkryssing av featured/allStandard/
+  ubegrensa-cap, eller fjerning -- alle diskrete klikk, ikkje tastetrykk.
+- **Forhåndsvisning → valgbare pakker.** Nye avkryssingsbrikker
+  (`.pv-select`/`.pv-chip`) over samanlikningsrutenettet, éin per pakke --
+  kva som skal visast for ein gitt kunde/tilbod kan variere (brukarønske).
+  Ny økt-lokal state `_priserPreviewVisible` (aldri lagra i
+  `pricing_config`). "Last ned som bilde" vert `disabled` når null pakkar er
+  valde, i staden for å stille no-oppe på eit tomt mål.
+- Fjerna daud CSS (`.pkg-grid`/`.pkg-card*`/`.add-pkg-btn`) etter
+  omstruktureringa.
+
+**UX/Mobil-reviewer same dag**: éin BLOCKER-klasse funn (ikkje merka BLOCKER,
+men same alvor som fokus-regresjonen 0.88.0 alt hadde fiksa éin gong før) +
+tre MEDIUM, alle retta:
+
+- Pakkebyte i "Rediger pakker"-lista og avkryssing i Forhåndsvisning sine
+  brikker gjorde begge eit fullt re-render UTAN å ta vare på tastaturfokus --
+  nøyaktig same feilklasse som `priserRerenderEditPreservingFocus()` alt
+  fiksa éin gong i 0.88.0, no reintrodusert av dei to nye klikk-handterarane.
+  Retta ved å eksplisitt re-fokusere den valde rada/brikka etter kvart
+  re-render.
+- "Lagre alle endringer" sat inni det opne pakke-panelet, rett attmed eit
+  pakke-spesifikt "Fjern pakke" -- kunne feillesast som at lagringa berre
+  gjaldt den eine, opne pakken. Flytta til sidenivå, utanfor `.edit-layout`,
+  same plassering som før denne runda.
+- Ingen `.btn:disabled`-styling fanst noko stad i Console frå før (oppdaga
+  via den nye disabled-tilstanden på "Last ned som bilde") -- retta éin gong
+  globalt, gjeld no alle knappar.
+- Fargeveljaren for merkelapp-farge oppdaterte ikkje rad-prikken i pakke-
+  lista live (same "punktoppdater i staden for re-render"-mønster som namn/
+  pris hadde, men badgeColor-grenen mangla det) -- retta.
+- I tillegg: 260px-lista + redigeringspanel vart trongt ved 768px med
+  skrivebord-sidemenyen open (som fyrst minimerer/skjuler seg ved 700px) --
+  stableringsgrensa for `.edit-layout` heva frå 700px til 900px. Ny pakke
+  ("+ Ny pakke") fokuserer no rett i "Pakkenavn"-feltet.
+
+`?v=N`: `console-core.js` (200).
+
+Brukar bad óg om ein generell gjennomgang av dei andre Console-modulane
+("fortsatt litt kjedelige") for eit meir heilskapleg utsjåande -- éin
+illustrerande stilretning (initial-ikon, statuspille, hover-kant på
+Kundar-lista, same fargar/rundingar som resten av Console) vart vist i
+mockupen som eit diskusjonseksempel, ikkje implementert. Avventar brukar sitt
+val av kva modul(ar) som skal prioriterast for ein ekte runde.
+
 ## 0.89.0 — 2026-08-04
 
 ### Priser-forbetringar: breiddemodus, minimerbar sidemeny, biletnedlasting, datagrenser

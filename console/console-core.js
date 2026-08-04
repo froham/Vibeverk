@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.89.0";
+  var VIBEVERK_VERSION = "0.90.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1576,6 +1576,8 @@ window.VwConsole = (function () {
   var _priserView = "edit";            // "edit" | "prices" | "quote" | "preview"
   var _priserQuote = { f: [], i: [] }; // "Bygg tilbud" -- reint økt-lokalt, aldri lagra
   var _priserPkgIdSeq = 1;
+  var _priserEditSelected = null;      // vald pakke-id i "Rediger pakker" -- master/detail (brukarønske 2026-08-04: alle pakkane opne samtidig var "rotete og uoversiktleg")
+  var _priserPreviewVisible = null;    // { pkgId: true } -- kva pakkar som vert vist i Forhåndsvisning, reint økt-lokalt (kan variere per kunde/tilbod, aldri lagra i pricing_config)
 
   function priserPriceEntry(ns, key) {
     var src = (ns === "f" ? _priserData.prices.f : _priserData.prices.i) || {};
@@ -1747,7 +1749,26 @@ window.VwConsole = (function () {
     '</div>';
   }
 
-  function priserPkgCardHtml(pkg) {
+  // Kompakt rad i pakke-lista til venstre (master/detail, brukarønske
+  // 2026-08-04) -- prikken speglar merkelappfargen for ei fremheva pakke,
+  // elles nøytral border-farge.
+  function priserPkgRailRowHtml(pkg, isActive) {
+    var dotStyle = pkg.featured ? ' style="background:' + priserSafeHex(pkg.badgeColor) + '"' : "";
+    return '<button type="button" class="pkg-row' + (isActive ? " is-active" : "") + '" data-priser-select="' + C.esc(pkg.id) + '" aria-current="' + (isActive ? "true" : "false") + '">' +
+      '<span class="pkg-row__dot"' + dotStyle + '></span>' +
+      '<span class="pkg-row__body">' +
+        '<span class="pkg-row__name">' + C.esc(pkg.name || "(uten navn)") + '</span>' +
+        '<span class="pkg-row__price">' + priserFmtPrice(pkg.price) + ' kr/mnd</span>' +
+      '</span>' +
+    '</button>';
+  }
+
+  function priserEditSubtitle(pkg) {
+    var fCount = priserEffectiveKeys(pkg, "f").length, iCount = priserEffectiveKeys(pkg, "i").length;
+    return fCount + " nettside-modul" + (fCount === 1 ? "" : "er") + ", " + iCount + " Workspace-modul" + (iCount === 1 ? "" : "er") + " valgt";
+  }
+
+  function priserPkgFieldsHtml(pkg) {
     var featGrid = priserPkgFeatGroup(pkg, "f", FEAT_LABELS, function (k) {
       return priserFeatChip(k, FEAT_LABELS[k], pkg.features.indexOf(k) > -1, pkg.id, "f", pkg.tags.f[k]);
     });
@@ -1766,11 +1787,7 @@ window.VwConsole = (function () {
       '</div>'
     ) : "";
 
-    return '<div class="pkg-card" data-priser-pkg-card="' + C.esc(pkg.id) + '">' +
-      '<div class="pkg-card__top">' +
-        '<button type="button" class="pkg-card__del" data-priser-del="' + C.esc(pkg.id) + '">Fjern pakke</button>' +
-      '</div>' +
-      '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
+    return '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
       '<div class="field"><label>Pris</label><div class="price-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span>kr/mnd</span></div>' +
         '<div class="price-hint" data-priser-hint-monthly="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.monthly) + ' kr/mnd</div></div>' +
       '<div class="field"><label>Oppstartskostnad</label><div class="price-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span>kr, engang</span></div>' +
@@ -1787,7 +1804,17 @@ window.VwConsole = (function () {
       '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
       featGrid +
       '<div class="feat-section-title">Workspace-funksjoner</div>' +
-      iFeatGrid +
+      iFeatGrid;
+  }
+
+  function priserEditPanelHtml(pkg) {
+    return '<div class="edit-panel">' +
+      '<div class="edit-panel__head">' +
+        '<div><div class="edit-panel__title">' + C.esc(pkg.name || "(uten navn)") + '</div>' +
+        '<div class="edit-panel__sub">' + C.esc(priserEditSubtitle(pkg)) + '</div></div>' +
+        '<button type="button" class="edit-panel__del" data-priser-del="' + C.esc(pkg.id) + '">Fjern pakke</button>' +
+      '</div>' +
+      '<div class="edit-panel__body">' + priserPkgFieldsHtml(pkg) + '</div>' +
     '</div>';
   }
 
@@ -1838,12 +1865,45 @@ window.VwConsole = (function () {
   }
 
   function renderPriserEdit(wrap) {
+    // Held fast på valet mellom render (t.d. etter eit felt-endring-triggra
+    // re-render) -- fell attende til fyrste pakke viss valet ikkje lenger
+    // finst (sletta pakke, eller aller fyrste render denne økta).
+    if (!_priserEditSelected || !_priserData.packages.some(function (p) { return p.id === _priserEditSelected; })) {
+      _priserEditSelected = _priserData.packages.length ? _priserData.packages[0].id : null;
+    }
+    var selected = _priserData.packages.find(function (p) { return p.id === _priserEditSelected; });
+
     wrap.innerHTML =
-      '<div class="pkg-grid">' + _priserData.packages.map(priserPkgCardHtml).join("") + '</div>' +
-      '<button type="button" class="add-pkg-btn" id="priser-add-pkg">+ Legg til pakke</button>' +
+      '<div class="edit-layout">' +
+        '<div class="pkg-rail">' +
+          '<div class="pkg-rail__head">Pakker (' + _priserData.packages.length + ')</div>' +
+          _priserData.packages.map(function (p) { return priserPkgRailRowHtml(p, p.id === _priserEditSelected); }).join("") +
+          '<button type="button" class="pkg-rail__add" id="priser-add-pkg"><span class="plus">+</span> Ny pakke</button>' +
+        '</div>' +
+        (selected
+          ? priserEditPanelHtml(selected)
+          : '<div class="edit-panel"><div class="edit-panel__body"><p style="color:var(--color-muted);margin:0">Ingen pakker ennå — legg til en for å komme i gang.</p></div></div>') +
+      '</div>' +
+      // "Lagre alle endringer" lagrar HEILE pakke-lista, ikkje berre den opne
+      // pakken -- held han difor på sidenivå, utanfor .edit-layout, i staden
+      // for inni panelet til den valde pakken (UX-review-funn 2026-08-04:
+      // plassert saman med eit pakke-spesifikt "Fjern pakke" ga inntrykk av
+      // at lagringa berre gjaldt den eine, opne pakken).
       priserSaveRowHtml();
+
     priserBindPkgEvents(wrap);
     priserBindSaveRow(wrap);
+    wrap.querySelectorAll("[data-priser-select]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        _priserEditSelected = btn.getAttribute("data-priser-select");
+        renderPriserEdit(wrap);
+        // Behald tastaturfokus på den valde rada (UX-review-funn 2026-08-04:
+        // eit fullt re-render her mista fokuset heilt, ulikt resten av fana
+        // sin eksisterande priserRerenderEditPreservingFocus()-disiplin).
+        var newBtn = wrap.querySelector('[data-priser-select="' + _priserEditSelected + '"]');
+        if (newBtn) newBtn.focus();
+      });
+    });
     wrap.querySelector("#priser-add-pkg").addEventListener("click", function () {
       var pkg = {
         id: "p" + (_priserPkgIdSeq++) + "-" + Date.now().toString(36), name: "Ny pakke", price: 0, setupCost: 0, desc: "",
@@ -1852,7 +1912,13 @@ window.VwConsole = (function () {
       };
       priserBackfillCaps(pkg);
       _priserData.packages.push(pkg);
+      _priserEditSelected = pkg.id;
       renderPriserEdit(wrap);
+      // Rett i "Pakkenavn"-feltet -- vesentleg meir nyttig enn å måtte klikke
+      // seg inn manuelt kvar gong ein legg til ei ny pakke (UX-review-forslag
+      // 2026-08-04), no som berre éitt panel er synleg om gongen.
+      var nameInput = wrap.querySelector('[data-priser-field="name"][data-priser-pkg="' + pkg.id + '"]');
+      if (nameInput) { nameInput.focus(); nameInput.select(); }
     });
   }
 
@@ -1867,8 +1933,31 @@ window.VwConsole = (function () {
           priserRerenderEditPreservingFocus(wrap); // re-render for å vise/skjule avhengige felt/lister, utan å miste fokus
           return;
         }
-        if (field === "badgeColor") { pkg.badgeColor = priserSafeHex(el.value); return; }
+        if (field === "badgeColor") {
+          pkg.badgeColor = priserSafeHex(el.value);
+          // Same "punktoppdater rada, ikkje re-render"-mønster som namn/pris
+          // (UX-review-funn 2026-08-04: utan dette heldt rad-prikken fram
+          // med å vise den gamle fargen heilt til noko anna utløyste eit
+          // fullt re-render av panelet).
+          var dotEl = wrap.querySelector('[data-priser-select="' + pkg.id + '"] .pkg-row__dot');
+          if (dotEl) dotEl.style.background = pkg.badgeColor;
+          return;
+        }
         pkg[field] = (field === "price" || field === "setupCost") ? (Number(el.value) || 0) : el.value;
+        // Namn/pris vises óg i pakke-lista og panel-tittelen (master/detail) --
+        // punktoppdaterer BERRE dei to tekstnodane her i staden for eit fullt
+        // renderPriserEdit()-kall, same "aldri re-render på kvart tastetrykk"-
+        // disiplin som resten av fana (UX-review-funn 2026-08-04).
+        if (field === "name" || field === "price") {
+          var railRow = wrap.querySelector('[data-priser-select="' + pkg.id + '"]');
+          if (field === "name") {
+            var titleEl = wrap.querySelector(".edit-panel__title");
+            if (titleEl) titleEl.textContent = pkg.name || "(uten navn)";
+            if (railRow) railRow.querySelector(".pkg-row__name").textContent = pkg.name || "(uten navn)";
+          } else if (railRow) {
+            railRow.querySelector(".pkg-row__price").textContent = priserFmtPrice(pkg.price) + " kr/mnd";
+          }
+        }
       });
     });
     wrap.querySelectorAll("[data-priser-cap]").forEach(function (input) {
@@ -2128,33 +2217,70 @@ window.VwConsole = (function () {
     return '<div class="compare-card__caps">' + parts.map(function (p) { return '<span>' + C.esc(p) + '</span>'; }).join("") + '</div>';
   }
 
+  // Kva pakkar som er kryssa av for denne forhåndsvisninga -- reint
+  // økt-lokalt (aldri lagra), sidan kva ein vil vise fram kan variere frå
+  // kunde til kunde/tilbod til tilbod (brukarønske 2026-08-04). Syncar inn
+  // manglande/fjerna pakke-ID-ar ved kvar render i staden for å initialisere
+  // berre éin gong, slik at ei nyleg lagt-til pakke i "Rediger pakker" dukkar
+  // opp som avkryssa (default PÅ) utan at brukaren må huke ho av manuelt.
+  function priserSyncPreviewVisible() {
+    if (!_priserPreviewVisible) _priserPreviewVisible = {};
+    _priserData.packages.forEach(function (p) { if (!(p.id in _priserPreviewVisible)) _priserPreviewVisible[p.id] = true; });
+  }
+
   function renderPriserPreview(wrap) {
+    priserSyncPreviewVisible();
+    var visiblePkgs = _priserData.packages.filter(function (p) { return _priserPreviewVisible[p.id]; });
+
     wrap.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:.6rem">' +
-        '<p class="preview-note" style="margin-bottom:0">Slik kunne pakkene sett ut presentert som en enkel sammenligning — kun en intern forhåndsvisning, ikke en publisert side.</p>' +
+        '<p class="preview-note" style="margin-bottom:0">Slik kunne pakkene sett ut presentert som en enkel sammenligning — kun en intern forhåndsvisning, ikke en publisert side. Velg hvilke pakker som skal vises for denne kunden — kan variere fra tilbud til tilbud.</p>' +
         '<div style="text-align:right;flex-shrink:0">' +
-          C.button({ label: "Last ned som bilde", variant: "ghost", attrs: 'type="button" id="priser-export-btn"' }) +
+          C.button({ label: "Last ned som bilde", variant: "ghost", attrs: 'type="button" id="priser-export-btn"' + (visiblePkgs.length ? "" : ' disabled title="Velg minst én pakke over for å laste ned et bilde"') }) +
           '<div class="form__status" id="priser-export-status" style="margin-top:.3rem"></div>' +
         '</div>' +
       '</div>' +
-      '<div class="compare-grid">' +
+      '<div class="pv-select">' +
         _priserData.packages.map(function (pkg) {
-          var color = priserSafeHex(pkg.badgeColor);
-          var style = pkg.featured ? ' style="border-color:' + color + '"' : "";
-          var badge = pkg.featured ? '<span class="compare-card__badge" style="background:' + color + '">' + C.esc(pkg.badgeText || "Fremhevet") + '</span>' : "";
-          return '<div class="compare-card' + (pkg.featured ? " is-featured" : "") + '"' + style + '>' +
-            badge +
-            '<div class="compare-card__name">' + C.esc(pkg.name) + '</div>' +
-            '<div class="compare-card__price">' + priserFmtPrice(pkg.price) + ' kr</div>' +
-            '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>' +
-            '<div class="compare-card__desc">' + C.esc(pkg.desc || "") + '</div>' +
-            priserCapsLine(pkg) +
-            priserFeatListHtml("Nettside", pkg, "f", FEAT_LABELS) +
-            priserFeatListHtml("Workspace", pkg, "i", IFEAT_LABELS) +
-          '</div>';
+          var on = !!_priserPreviewVisible[pkg.id];
+          return '<button type="button" class="pv-chip' + (on ? " is-on" : "") + '" data-priser-pv-toggle="' + C.esc(pkg.id) + '" aria-pressed="' + (on ? "true" : "false") + '">' +
+            '<span class="box">' + (on ? "✓" : "") + '</span>' + C.esc(pkg.name || "(uten navn)") +
+          '</button>';
         }).join("") +
-      '</div>';
+      '</div>' +
+      (visiblePkgs.length
+        ? '<div class="compare-grid">' +
+            visiblePkgs.map(function (pkg) {
+              var color = priserSafeHex(pkg.badgeColor);
+              var style = pkg.featured ? ' style="border-color:' + color + '"' : "";
+              var badge = pkg.featured ? '<span class="compare-card__badge" style="background:' + color + '">' + C.esc(pkg.badgeText || "Fremhevet") + '</span>' : "";
+              return '<div class="compare-card' + (pkg.featured ? " is-featured" : "") + '"' + style + '>' +
+                badge +
+                '<div class="compare-card__name">' + C.esc(pkg.name) + '</div>' +
+                '<div class="compare-card__price">' + priserFmtPrice(pkg.price) + ' kr</div>' +
+                '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>' +
+                '<div class="compare-card__desc">' + C.esc(pkg.desc || "") + '</div>' +
+                priserCapsLine(pkg) +
+                priserFeatListHtml("Nettside", pkg, "f", FEAT_LABELS) +
+                priserFeatListHtml("Workspace", pkg, "i", IFEAT_LABELS) +
+              '</div>';
+            }).join("") +
+          '</div>'
+        : '<div class="pv-empty">Ingen pakker valgt — kryss av minst én over for å vise noe her.</div>');
 
+    wrap.querySelectorAll("[data-priser-pv-toggle]").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        var id = chip.getAttribute("data-priser-pv-toggle");
+        _priserPreviewVisible[id] = !_priserPreviewVisible[id];
+        renderPriserPreview(wrap);
+        // Same fokus-disiplin som pakke-lista i "Rediger pakker" (UX-review-
+        // funn 2026-08-04) -- utan dette hoppar fokus til <body> ved kvar
+        // avkryssing, og ein tastaturbrukar som veks/vel fleire pakkar etter
+        // kvarandre må Tab-e frå toppen på nytt for kvar av dei.
+        var newChip = wrap.querySelector('[data-priser-pv-toggle="' + id + '"]');
+        if (newChip) newChip.focus();
+      });
+    });
     var exportBtn = wrap.querySelector("#priser-export-btn");
     if (exportBtn) exportBtn.addEventListener("click", function () {
       priserExportImage(exportBtn, wrap.querySelector("#priser-export-status"));
