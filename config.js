@@ -330,5 +330,10 @@ window.SITE_CONFIG = {
     //   + api/ai/annual-wheel.js). Krev ANTHROPIC_API_KEY sett på Vercel.
     //   Same absent-konvensjon som over -- aktiver eksplisitt per kunde via
     //   Console sitt "Skreddarsydde modular"-panel, betalt AI-funksjon.
+    // "oversikt": { label: "Oversikt", enabled: true, params: {} }
+    //   -- AI-baserte behov-/avhengigheits-/påverknads-/gløymde-punkt-analyse
+    //   (workspace/module-oversikt.js + api/ai/oversikt.js). Krev same
+    //   ANTHROPIC_API_KEY som smart-aarshjul over. Same absent-konvensjon,
+    //   betalt AI-funksjon, aktiver eksplisitt per kunde.
   }
 };
