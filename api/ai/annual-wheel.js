@@ -1,8 +1,8 @@
-// api/ai/annual-wheel.js — Vercel Function (Edge Runtime) backing Workspace's
-// Smart årshjul module (workspace/module-smart-aarshjul.js). First server
-// endpoint on the platform that calls a third-party paid LLM (Anthropic) —
-// see docs/decisions/ for the ADR this warrants once the design is confirmed
-// in production.
+// api/ai/annual-wheel.js — Vercel Function (Node.js Runtime) backing
+// Workspace's Smart årshjul module (workspace/module-smart-aarshjul.js).
+// First server endpoint on the platform that calls a third-party paid LLM
+// (Anthropic) — see docs/decisions/ for the ADR this warrants once the
+// design is confirmed in production.
 //
 // Pipeline (spec section 14, kept as separate, testable functions):
 //   analyzeBusinessInput → identifyRelevantSourceQueries → searchApprovedSources
@@ -18,10 +18,24 @@
 // tenant hostnames, so "resolve by Host" is required here even though each
 // tenant's own data is single-tenant.
 //
+// Node.js runtime, NOT Edge (unlike this endpoint's tenant-config.js/
+// *-manifest.js siblings) — confirmed live in production 2026-08-05: the
+// Edge runtime has a HARD, non-configurable 25-second "must begin sending a
+// response" ceiling (Vercel docs, /docs/functions/limitations#max-duration),
+// and a real Anthropic call generating 18-30 structured tool-use suggestions
+// occasionally exceeds that, which surfaced to users as a bare platform 504
+// ("Your function was stopped as it did not return an initial response
+// within 25s") -- BEFORE this file's own 30s AbortController/graceful-error
+// path ever got a chance to run. Node.js runtime gets 300s by default on
+// every plan (Hobby included), comfortably covering this. Exported via the
+// Web Standard `fetch` handler form (Vercel docs: "Create a Node.js function
+// in /api"), not the classic (req,res) signature, so the rest of this file's
+// Fetch-API-style code (request.headers.get, request.json(),
+// `new Response(...)`) needed ZERO other changes.
+//
 // Written as plain .js using ESM import/export, matching tenant-config.js's
 // already-confirmed convention for this project shape (no "type":"module"
-// in package.json; Vercel's Edge Runtime compiles this directly, unlike
-// middleware.js's separate, already-documented .mjs pitfall).
+// in package.json).
 
 import { resolveTenantByHostname } from "../_lib/resolve-tenant.js";
 import {
@@ -35,8 +49,6 @@ import {
   generateAnnualWheelSuggestions,
   validateAnnualWheelResponse,
 } from "../_lib/annual-wheel-ai.js";
-
-export const config = { runtime: "edge" };
 
 var MAX_ACTIVITIES = 500;
 var ALLOWED_CATEGORIES = ["planning", "marketing", "seasonal", "maintenance", "purchasing", "digital", "professional", "events", "administration", "deadlines", "evaluation", "custom"];
@@ -120,7 +132,7 @@ async function verifyWorkspaceCaller(tenant, bearerToken) {
   return { ok: true, userId: user.id, role: role };
 }
 
-export default async function handler(request) {
+async function handler(request) {
   if (request.method !== "POST") return errorResponse(405, "Berre POST er støtta.");
 
   var apiKey = process.env.ANTHROPIC_API_KEY;
@@ -206,3 +218,5 @@ export default async function handler(request) {
     return errorResponse(500, "Noko gjekk gale. Dei eksisterande aktivitetane dine er urørte.");
   }
 }
+
+export default { fetch: handler };
