@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.95.2 — 2026-08-05
+
+### Smart årshjul: heva Anthropic-timeout etter framleis feil post-0.95.1
+
+Endepunktet returnerte no det ordentlege, høflege feilsvaret ("Forslaga kunne ikkje genererast akkurat no...") i staden for ein bar 504 — stadfesta at 0.95.1 sin runtime-fiks verka. Men generering feila FRAMLEIS to gonger på rad rett etter. Ekte produksjonslogg synte kvifor: `error: 'This operation was aborted'` -- IKKJE ein plattform-504 denne gongen, men fila sin EIGEN `ANTHROPIC_TIMEOUT_MS`-baserte `AbortController` som kutta kallet ved 30 sekund.
+
+30s var eit trygt val medan endepunktet framleis kjørte på Edge (25s plattformtak uansett), men i praksis for stramt for det ekte kallet -- å generere 18-30 strukturerte tool-use-forslag (`max_tokens: 8000`) frå ei fyldig verksemdskildring (708 teikn i begge feila forsøka) tok konsekvent over 30 sekund hos Anthropic sjølv. Heva til 90 sekund (`api/_lib/annual-wheel-ai.js`) -- rikeleg med rom under Node.js runtime sitt 300s-tak (0.95.1), og framleis ei rimeleg ventetid for brukaren for ei AI-generering av denne storleiken.
+
+Alle tre testsuitane grøne (676/192/63). Ingen testendring naudsynt (ingen test er kopla til den eksakte talverdien).
+
 ## 0.95.1 — 2026-08-05
 
 ### Smart årshjul: fiks 504 på ekte generering — Edge runtime → Node.js runtime
