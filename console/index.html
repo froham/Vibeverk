@@ -489,7 +489,10 @@
        kjentest "rotete/uoversiktleg"). */
     .rp-section { padding-top: 1.2rem; margin-top: 1.2rem; border-top: 1px solid var(--color-border); }
     .rp-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
-    .rp-section > .highlight-fieldset { margin-bottom: .9rem; }
+    /* 1.6rem, ikkje .9rem -- brukarønske 2026-08-04: "lag litt luft mellom
+       'fremhev...' og 'Standardmoduler'" (dei to togglane i Innstillinger
+       kjentest for tett saman). */
+    .rp-section > .highlight-fieldset { margin-bottom: 1.6rem; }
     /* 900px, ikkje 700px -- UX-review-funn 2026-08-04: ved 768px med
        skrivebord-sidemenyen framleis open (ho minimerer/skjuler seg fyrst
        ved 700px) var det att for lite plass til både 260px-lista OG eit
@@ -504,10 +507,19 @@
        fargebruken lagt til her, valt for å ikkje finne opp ny visuell
        språkbruk (brukarønske: "bruke litt farger for å skape dynamikk"). */
     .stat-row { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; }
-    .stat-box { flex: 1 1 200px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg); padding: .8rem 1rem; }
-    .stat-box label { font-size: .78rem; font-weight: 600; color: var(--color-muted); display: block; margin-bottom: .3rem; }
+    /* --color-bg var identisk med SIDA sin eigen bakgrunn (.cs-main), så
+       "ramma" forsvann heilt -- synte seg berre som ein tynn kant på grått
+       mot grått (brukarfunn 2026-08-04, "det må stå 'ut' fra bakgrunnen").
+       --color-tint (eit lyst blått slør, skil seg frå BÅDE kvit panel-
+       bakgrunn og grå sidebakgrunn) + ein synleg blå kant i staden --
+       konsekvent på alle kortlikeelement i modulen, ikkje berre desse to. */
+    .stat-box { flex: 1 1 200px; border: 1.5px solid color-mix(in srgb, var(--color-primary) 30%, transparent); background: var(--color-tint); border-radius: 10px; padding: .8rem 1rem; }
+    .stat-box label { font-size: .78rem; font-weight: 600; color: var(--color-text); display: block; margin-bottom: .3rem; }
     .stat-input-row { display: flex; align-items: baseline; gap: .3rem; }
-    .stat-input-row input { font: inherit; font-size: 1.4rem; font-weight: 700; color: var(--color-primary); border: none; background: none; padding: 0; width: 6rem; }
+    /* Sort (--color-text), ikkje --color-primary -- brukarønske 2026-08-04:
+       "trenger ikke å være den kvasse blåfargen på pris-skriftene". Sjølve
+       ramma (kant/bakgrunn over) er framleis blå -- berre TALET er sort. */
+    .stat-input-row input { font: inherit; font-size: 1.4rem; font-weight: 700; color: var(--color-text); border: none; background: none; padding: 0; width: 6rem; }
     .stat-input-row input:focus { outline: none; }
     .stat-input-row input:disabled { color: var(--color-muted); }
     .stat-input-row .unit { font-size: .8rem; color: var(--color-muted); }
@@ -519,11 +531,11 @@
        Oppstartskostnad over, flex med fast basisbreidde i staden for eit
        rutenett som tvinga korta til å fylle heile radbreidda. */
     .cap-row { display: flex; flex-wrap: wrap; gap: .8rem; }
-    .cap-card { flex: 0 1 180px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); padding: .8rem .9rem; }
-    .cap-card .cap-label { font-size: .78rem; font-weight: 600; color: var(--color-muted); display: block; margin-bottom: .3rem; }
+    .cap-card { flex: 0 1 180px; border: 1.5px solid color-mix(in srgb, var(--color-primary) 30%, transparent); background: var(--color-tint); border-radius: 10px; padding: .8rem .9rem; }
+    .cap-card .cap-label { font-size: .78rem; font-weight: 600; color: var(--color-text); display: block; margin-bottom: .3rem; }
     .cap-card .stat-input-row { margin-bottom: .5rem; }
     .cap-card .stat-input-row input { font-size: 1.2rem; width: 4rem; }
-    .cap-card .cap-unlimited { display: flex; align-items: center; gap: .35rem; font-size: .74rem; color: var(--color-muted); cursor: pointer; padding-top: .5rem; border-top: 1px solid var(--color-border); }
+    .cap-card .cap-unlimited { display: flex; align-items: center; gap: .35rem; font-size: .74rem; color: var(--color-muted); cursor: pointer; padding-top: .5rem; border-top: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent); }
     .cap-card .cap-unlimited input { margin: 0; }
 
     .feat-section-title { font-size: .76rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color: var(--color-muted); margin: .3rem 0 .5rem; }
@@ -548,7 +560,11 @@
     .feat-chip__tag::placeholder { color: var(--color-muted); }
     .addon-tag { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color: var(--color-secondary); background: color-mix(in srgb, var(--color-secondary) 15%, transparent); padding:.05rem .35rem; border-radius:999px; }
 
-    .highlight-fieldset { border:1px dashed var(--color-border); border-radius:10px; padding:.7rem .8rem; display:grid; gap:.5rem; }
+    /* Same fargebehandling som .stat-box/.cap-card -- "hele modulen"
+       (brukarønske 2026-08-04), ikkje berre dei to boksane som vart
+       kritisert direkte. Dashed-kanten (utan farge) erstatta med same
+       synlege blå kant + tint-bakgrunn. */
+    .highlight-fieldset { border: 1.5px solid color-mix(in srgb, var(--color-primary) 30%, transparent); background: var(--color-tint); border-radius:10px; padding:.7rem .9rem; display:grid; gap:.5rem; }
     .highlight-fieldset__toggle { display:flex; align-items:center; gap:.5rem; font-size:.85rem; font-weight:600; }
     .highlight-fieldset__row { display:flex; gap:.6rem; align-items:flex-end; }
     .highlight-fieldset__row .field { flex:1; }

@@ -30,6 +30,31 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.92.1 — 2026-08-04
+
+### Fiks: fargeramma "forsvann" i grått mot grått
+
+Brukar peikte på det direkte: `.stat-box`/`.cap-card` sin bakgrunnsfarge
+(`--color-bg`) var identisk med Console sin eigen sidebakgrunn (`.cs-main`)
+-- ramma synte seg berre som ein tynn grå kant på grått mot grått, i staden
+for å "stå ut" slik ho skulle. Retta, denne gongen med ein ny fargemockup
+godkjent FØR koden vart endra (same disiplin som 0.92.0-runda):
+
+- `.stat-box`/`.cap-card`/`.highlight-fieldset` (Fremhev-boksen i
+  Innstillinger) fekk alle same behandling -- `background: var(--color-tint)`
+  (eit lyst blått slør, skil seg frå BÅDE kvit panelbakgrunn og grå
+  sidebakgrunn) + ein synleg blå kant, konsekvent gjennom heile modulen
+  ("Det kan gjelde hele den modulen", eksplisitt brukarønske), ikkje berre
+  dei to boksane som vart direkte kritisert.
+- Tal-verdiane sjølve (Pris/Oppstartskostnad/Grenser) gjekk attende til
+  `--color-text` (sort) -- brukarønske: "trenger ikke å være den kvasse
+  blåfargen på pris-skriftene." Sjølve ramma (kant/bakgrunn) er framleis
+  blå, berre TALET er sort.
+- Luft lagt til mellom "Fremhev i forhåndsvisning"-boksen og
+  "Standardmoduler"-togglen (`.9rem` → `1.6rem`) -- kjentest for tett saman.
+
+Ingen `?v=N`-bump treng (berre inline CSS i `console/index.html` endra).
+
 ## 0.92.0 — 2026-08-04
 
 ### Priser: "Grenser" fekk endeleg ei ramme, Pris/Oppstartskostnad forenkla, fargeaksent
