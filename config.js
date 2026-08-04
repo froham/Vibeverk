@@ -204,7 +204,11 @@ window.SITE_CONFIG = {
     quote:         false, // ← Tilbud (frå nettsida)
     contact:       true,  // ← Kontakthenvendingar (frå nettsida)
     kb:            false, // ← Kunnskapsbase
-    mediaInternal: false  // ← Mediebank (intern)
+    mediaInternal: false, // ← Mediebank (intern)
+    smartAarshjul: false  // ← Smart årshjul (AI-baserte forslag til årsplan). Krever module-smart-aarshjul.js
+                          //   + api/ai/annual-wheel.js + ANTHROPIC_API_KEY. MÅ vere eksplisitt false som
+                          //   standard (ny, betalt AI-funksjon -- same grunngjeving som sidetelling/
+                          //   sidebygger over, ikkje aktiver for alle kundar automatisk).
   },
 
 

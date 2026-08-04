@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.92.1";
+  var VIBEVERK_VERSION = "0.94.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1596,13 +1596,21 @@ window.VwConsole = (function () {
     (iFeatureKeys || []).forEach(function (k) { var p = priserPriceEntry("i", k); monthly += p.monthly; setup += p.setup; });
     return { monthly: monthly, setup: setup };
   }
-  // Når pkg.allStandard er på: standardmodular reknast med DYNAMISK (følgjer
+  // Splitta i to uavhengige flagg (brukarfunn 2026-08-05, tidlegare ETT
+  // felles pkg.allStandard styrte BÅDE nettside- og Workspace-modular samla
+  // -- gjorde det umogleg å t.d. ha "alle standardmodular" for nettsida, men
+  // eksplisitt valde Workspace-modular for same pakke, utan at det ene valet
+  // uventa styrte det andre namnerommet også). priserBackfillStandardFlags()
+  // migrerer eksisterande lagra pakkar frå det gamle, delte feltet.
+  function priserAllStandard(pkg, ns) { return ns === "f" ? !!pkg.allStandardF : !!pkg.allStandardI; }
+
+  // Når allStandard(ns) er på: standardmodular reknast med DYNAMISK (følgjer
   // kva som til ei kvar tid er merka standard i Modulpriser), ikkje eit
   // fastfrose augeblinksbilete -- pkg.features/iFeatures held då berre styr
   // på dei eksplisitt valde TILLEGG-modulane.
   function priserEffectiveKeys(pkg, ns) {
     var explicit = ns === "f" ? pkg.features : pkg.iFeatures;
-    if (!pkg.allStandard) return explicit;
+    if (!priserAllStandard(pkg, ns)) return explicit;
     var addonPicked = explicit.filter(function (k) { return !priserPriceEntry(ns, k).standard; });
     return priserStandardKeys(ns).concat(addonPicked);
   }
@@ -1628,10 +1636,18 @@ window.VwConsole = (function () {
   // startforslag, tilpassa til kva app'en faktisk måler i dag (mediebank-
   // lagring, e-postutsending via Resend send-reply, brukarkontoar i
   // Workspace/Web-admin) -- fritt redigerbart per pakke, akkurat som pris.
+  // trafficGBPerMonth lagt til (brukarønske 2026-08-05): eit informativt tal
+  // for datatrafikk/overføring -- den faktiske kostnadsdrivaren hos Supabase
+  // utover lagring (egress-bandbreidde). Same "kun informativt, ikkje teknisk
+  // handheva"-status som dei andre grensene her -- eit reelt overvakings-/
+  // handhevingssystem mot faktisk Supabase-forbruk er eksplisitt IKKJE bygd
+  // no (ville kravd ny infrastruktur, vurdert og avslått av brukaren 2026-08-05
+  // som eiga, større oppgåve).
   var PRISER_CAP_FIELDS = [
-    { key: "storageGB",      label: "Datalagring",      unit: "GB",        deflt: [2, 10, 50] },
-    { key: "emailsPerMonth", label: "E-postutsendinger", unit: "e-post/mnd", deflt: [200, 1000, 5000] },
-    { key: "usersIncluded",  label: "Brukerkontoer",    unit: "brukere",   deflt: [2, 5, -1] }
+    { key: "storageGB",          label: "Datalagring",       unit: "GB",         deflt: [2, 10, 50] },
+    { key: "trafficGBPerMonth",  label: "Datatrafikk",       unit: "GB/mnd",     deflt: [10, 50, 200] },
+    { key: "emailsPerMonth",     label: "E-postutsendinger", unit: "e-post/mnd", deflt: [200, 1000, 5000] },
+    { key: "usersIncluded",      label: "Brukerkontoer",     unit: "brukere",    deflt: [2, 5, -1] }
   ];
   // Tre-stegs terskel basert på pris -- fungerer for dei tre eksisterande
   // pakkane (Grunnpakke/Standard/Komplett) OG for ei ukjend framtidig pakke,
@@ -1653,6 +1669,19 @@ window.VwConsole = (function () {
     });
   }
 
+  // Migrerer pakkar lagra FØR "Standardmoduler" vart splitta i to (sjå
+  // priserAllStandard()) -- det gamle, delte pkg.allStandard-feltet vinn over
+  // for BÅDE namnerom, slik at ei alt lagra pakke framleis oppfører seg
+  // nøyaktig som før, fram til operatøren eksplisitt endrar eitt av dei to
+  // nye flagga. pkg.priceOnRequest ("Pris etter avtale", brukarønske
+  // 2026-08-05) manglar heilt på alle eksisterande pakkar -- defaultar til av.
+  function priserBackfillStandardFlags(pkg) {
+    if (typeof pkg.allStandardF !== "boolean") pkg.allStandardF = !!pkg.allStandard;
+    if (typeof pkg.allStandardI !== "boolean") pkg.allStandardI = !!pkg.allStandard;
+    delete pkg.allStandard;
+    if (typeof pkg.priceOnRequest !== "boolean") pkg.priceOnRequest = false;
+  }
+
   function priserLoad(wrap) {
     if (_priserLoading) return;
     _priserLoading = true;
@@ -1667,6 +1696,7 @@ window.VwConsole = (function () {
       }
       _priserData = r.data.data;
       (_priserData.packages || []).forEach(priserBackfillCaps);
+      (_priserData.packages || []).forEach(priserBackfillStandardFlags);
       renderPriser(null, wrap);
     });
   }
@@ -1730,7 +1760,7 @@ window.VwConsole = (function () {
 
   function priserPkgFeatGroup(pkg, ns, labels, chipFn) {
     var keys = Object.keys(labels);
-    if (!pkg.allStandard) return priserGroupedGrid(keys, ns, chipFn);
+    if (!priserAllStandard(pkg, ns)) return priserGroupedGrid(keys, ns, chipFn);
     var addonKeys = keys.filter(function (k) { return !priserPriceEntry(ns, k).standard; });
     var html = '<p class="all-standard-line">Alle standardmoduler</p>';
     if (addonKeys.length) html += '<div class="feat-subgroup-title">Tillegg</div><div class="feat-grid">' + addonKeys.map(chipFn).join("") + '</div>';
@@ -1765,7 +1795,7 @@ window.VwConsole = (function () {
       '<span class="pkg-row__dot"' + dotStyle + '></span>' +
       '<span class="pkg-row__body">' +
         '<span class="pkg-row__name">' + C.esc(pkg.name || "(uten navn)") + '</span>' +
-        '<span class="pkg-row__price">' + priserFmtPrice(pkg.price) + ' kr/mnd</span>' +
+        '<span class="pkg-row__price">' + (pkg.priceOnRequest ? "Pris etter avtale" : (priserFmtPrice(pkg.price) + ' kr/mnd')) + '</span>' +
       '</span>' +
     '</button>';
   }
@@ -1794,6 +1824,23 @@ window.VwConsole = (function () {
       '</div>'
     ) : "";
 
+    // "Pris etter avtale" (brukarønske 2026-08-05, for skreddersydde
+    // pakkar/modular utan fast pris): byter ut heile stat-row-en med éin
+    // enkel tekstlinje -- ingen tal å "Hent priser" inn i eller lagre for ei
+    // pakke som per definisjon ikkje har ein fast sum.
+    var priceBlock = pkg.priceOnRequest
+      ? '<div class="stat-row"><p class="stat-onrequest">Pris etter avtale — ingen fast månedspris eller oppstartskostnad for denne pakken.</p></div>'
+      : '<div class="stat-row">' +
+          '<div class="stat-box"><label>Pris pr. mnd' + C.helpIcon("Veiledende sum fra modulpriser: " + priserFmtPrice(sum.monthly) + " kr/mnd") + '</label>' +
+            '<div class="stat-input-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span class="unit">kr</span>' +
+            C.button({ label: "Hent priser", variant: "ghost", class: "btn--sm stat-fetch-btn", attrs: 'data-priser-fetch-price="' + C.esc(pkg.id) + '" title="Sett til summen fra Modulpriser (' + priserFmtPrice(sum.monthly) + ' kr/mnd)"' }) +
+            '</div></div>' +
+          '<div class="stat-box"><label>Oppstartskostnad' + C.helpIcon("Veiledende sum fra modulpriser: " + priserFmtPrice(sum.setup) + " kr") + '</label>' +
+            '<div class="stat-input-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span class="unit">kr</span>' +
+            C.button({ label: "Hent priser", variant: "ghost", class: "btn--sm stat-fetch-btn", attrs: 'data-priser-fetch-setup="' + C.esc(pkg.id) + '" title="Sett til summen fra Modulpriser (' + priserFmtPrice(sum.setup) + ' kr)"' }) +
+            '</div></div>' +
+        '</div>';
+
     // Seksjonert i .rp-section-blokker med tydeleg skiljelinje mellom kvar
     // (UX-review-funn 2026-08-04: éin lang, udelt kolonne av felt kjentest
     // "rotete/uoversiktleg"). Pris/Oppstartskostnad er no reine "stat"-kort
@@ -1805,12 +1852,7 @@ window.VwConsole = (function () {
     return '<div class="rp-section">' +
         '<div class="feat-section-title">Grunnleggende</div>' +
         '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
-        '<div class="stat-row">' +
-          '<div class="stat-box"><label>Pris pr. mnd' + C.helpIcon("Veiledende sum fra modulpriser: " + priserFmtPrice(sum.monthly) + " kr/mnd") + '</label>' +
-            '<div class="stat-input-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span class="unit">kr</span></div></div>' +
-          '<div class="stat-box"><label>Oppstartskostnad' + C.helpIcon("Veiledende sum fra modulpriser: " + priserFmtPrice(sum.setup) + " kr") + '</label>' +
-            '<div class="stat-input-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span class="unit">kr</span></div></div>' +
-        '</div>' +
+        priceBlock +
         '<div class="field"><label>Kort beskrivelse</label><textarea rows="2" maxlength="2000" data-priser-field="desc" data-priser-pkg="' + C.esc(pkg.id) + '">' + C.esc(pkg.desc) + '</textarea></div>' +
       '</div>' +
       '<div class="rp-section">' +
@@ -1819,8 +1861,8 @@ window.VwConsole = (function () {
           '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="featured" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.featured ? "checked" : "") + '> Fremhev i forhåndsvisning (ramme + merkelapp)</label>' +
           highlightFields +
         '</div>' +
-        '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="allStandard" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.allStandard ? "checked" : "") + '> Standardmoduler</label>' +
-        C.helpIcon("Pakken følger automatisk de modulene som er merket «Standard» i Modulpriser-fanen, også etter at du har lagret og senere endrer hva som er standard der. Skru av for å velge nøyaktig hvilke moduler denne pakken skal ha.") +
+        '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="priceOnRequest" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.priceOnRequest ? "checked" : "") + '> Pris etter avtale</label>' +
+        C.helpIcon("For skreddersydde pakker/moduler uten fast pris (f.eks. «Skreddersydd modul», «Skreddersydd AI-modul»). Skjuler Pris pr. mnd og Oppstartskostnad, viser i stedet «Pris etter avtale» overalt prisen ellers ville vist seg.") +
       '</div>' +
       '<div class="rp-section">' +
         '<div class="feat-section-title">Grenser (maks inkludert)' + C.helpIcon("Vises til kunden i Forhåndsvisning som en del av pakkebeskrivelsen. Kun informative tall her — de håndheves ikke teknisk noe sted ennå.") + '</div>' +
@@ -1828,10 +1870,14 @@ window.VwConsole = (function () {
       '</div>' +
       '<div class="rp-section">' +
         '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
+        '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="allStandardF" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.allStandardF ? "checked" : "") + '> Standardmoduler — Nettside</label>' +
+        C.helpIcon("Pakken følger automatisk de nettside-/Web-admin-modulene som er merket «Standard» i Modulpriser-fanen, også etter at du har lagret og senere endrer hva som er standard der. Skru av for å velge nøyaktig hvilke nettside-moduler denne pakken skal ha. Styrer KUN nettside-modulene under — Workspace-modulene har sin egen, uavhengige bryter lenger ned.") +
         featGrid +
       '</div>' +
       '<div class="rp-section">' +
         '<div class="feat-section-title">Workspace-funksjoner</div>' +
+        '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="allStandardI" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.allStandardI ? "checked" : "") + '> Standardmoduler — Workspace</label>' +
+        C.helpIcon("Pakken følger automatisk de Workspace-modulene som er merket «Standard» i Modulpriser-fanen, uavhengig av nettside-bryteren over. Skru av for å velge nøyaktig hvilke Workspace-moduler denne pakken skal ha.") +
         iFeatGrid +
       '</div>';
   }
@@ -1884,6 +1930,10 @@ window.VwConsole = (function () {
           "data-priser-pkg": active.getAttribute("data-priser-pkg"),
           "data-priser-cap-unlimited": active.getAttribute("data-priser-cap-unlimited")
         } };
+      } else if (active.hasAttribute("data-priser-fetch-price")) {
+        restore = { selectorAttr: "[data-priser-fetch-price]", attrs: { "data-priser-fetch-price": active.getAttribute("data-priser-fetch-price") } };
+      } else if (active.hasAttribute("data-priser-fetch-setup")) {
+        restore = { selectorAttr: "[data-priser-fetch-setup]", attrs: { "data-priser-fetch-setup": active.getAttribute("data-priser-fetch-setup") } };
       }
     }
     renderPriserEdit(wrap);
@@ -1936,7 +1986,7 @@ window.VwConsole = (function () {
     wrap.querySelector("#priser-add-pkg").addEventListener("click", function () {
       var pkg = {
         id: "p" + (_priserPkgIdSeq++) + "-" + Date.now().toString(36), name: "Ny pakke", price: 0, setupCost: 0, desc: "",
-        features: [], iFeatures: [], tags: { f: {}, i: {} }, allStandard: false,
+        features: [], iFeatures: [], tags: { f: {}, i: {} }, allStandardF: false, allStandardI: false, priceOnRequest: false,
         featured: false, badgeText: "Mest valgt", badgeColor: "#2563eb"
       };
       priserBackfillCaps(pkg);
@@ -1957,7 +2007,7 @@ window.VwConsole = (function () {
       el.addEventListener(evt, function () {
         var pkg = _priserData.packages.find(function (p) { return p.id === el.getAttribute("data-priser-pkg"); });
         var field = el.getAttribute("data-priser-field");
-        if (field === "featured" || field === "allStandard") {
+        if (field === "featured" || field === "allStandardF" || field === "allStandardI" || field === "priceOnRequest") {
           pkg[field] = el.checked;
           priserRerenderEditPreservingFocus(wrap); // re-render for å vise/skjule avhengige felt/lister, utan å miste fokus
           return;
@@ -1987,6 +2037,30 @@ window.VwConsole = (function () {
             railRow.querySelector(".pkg-row__price").textContent = priserFmtPrice(pkg.price) + " kr/mnd";
           }
         }
+      });
+    });
+    // "Hent priser" (brukarønske 2026-08-05) -- set pkg.price/setupCost til
+    // den FERSKE modulsummen (same priserSum()-kall som allereie driv
+    // "Veiledande sum"-hjelpeteksten), og re-rendrar for å vise det nye
+    // tallet. Eit re-render her er trygt/enkelt (ikkje eit tastetrykk-per-
+    // tastetrykk-tilfelle som elles krev punktoppdatering) sidan dette berre
+    // skjer ved eit diskret knappeklikk.
+    wrap.querySelectorAll("[data-priser-fetch-price]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pkg = _priserData.packages.find(function (p) { return p.id === btn.getAttribute("data-priser-fetch-price"); });
+        if (!pkg) return;
+        var sum = priserSum(priserEffectiveKeys(pkg, "f"), priserEffectiveKeys(pkg, "i"));
+        pkg.price = sum.monthly;
+        priserRerenderEditPreservingFocus(wrap);
+      });
+    });
+    wrap.querySelectorAll("[data-priser-fetch-setup]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pkg = _priserData.packages.find(function (p) { return p.id === btn.getAttribute("data-priser-fetch-setup"); });
+        if (!pkg) return;
+        var sum = priserSum(priserEffectiveKeys(pkg, "f"), priserEffectiveKeys(pkg, "i"));
+        pkg.setupCost = sum.setup;
+        priserRerenderEditPreservingFocus(wrap);
       });
     });
     wrap.querySelectorAll("[data-priser-cap]").forEach(function (input) {
@@ -2176,14 +2250,15 @@ window.VwConsole = (function () {
   }
 
   // Speiler same "Standardmoduler"-kollaps som pakkeredigeringa: er
-  // pkg.allStandard på, vis "Alle standardmoduler" som éin rad i staden for
-  // kvar standardmodul, og list kun dei eksplisitt valde tillegga under.
+  // priserAllStandard(pkg, ns) på for DETTE namnerommet, vis "Alle
+  // standardmoduler" som éin rad i staden for kvar standardmodul, og list kun
+  // dei eksplisitt valde tillegga under.
   // Nettside/Workspace-overskrifter på kvar sin liste hindrar at t.d.
   // "Aktuelt" (finst i begge namnerom) dukkar opp to gonger utan skille.
   function priserFeatListHtml(title, pkg, ns, labels) {
     var keys = ns === "f" ? pkg.features : pkg.iFeatures;
     var tags = ns === "f" ? pkg.tags.f : pkg.tags.i;
-    if (!pkg.allStandard) {
+    if (!priserAllStandard(pkg, ns)) {
       if (!keys.length) return "";
       return '<div class="compare-card__group-title">' + title + '</div><ul>' + keys.map(function (k) {
         var tag = tags[k];
@@ -2239,6 +2314,10 @@ window.VwConsole = (function () {
   }
 
   function priserCapsLine(pkg) {
+    // "0 GB, 0 brukere osv." gjev feil signal for ei pris-etter-avtale-pakke
+    // (t.d. "Skreddersydd AI-modul") -- omfanget er per definisjon ikkje fastsett
+    // enno, ikkje faktisk null (brukarfunn 2026-08-05).
+    if (pkg.priceOnRequest) return "";
     var parts = PRISER_CAP_FIELDS.map(function (f) {
       var v = pkg[f.key];
       return (v === -1 ? "Ubegrenset " + f.label.toLowerCase() : v + " " + f.unit);
@@ -2286,8 +2365,10 @@ window.VwConsole = (function () {
               return '<div class="compare-card' + (pkg.featured ? " is-featured" : "") + '"' + style + '>' +
                 badge +
                 '<div class="compare-card__name">' + C.esc(pkg.name) + '</div>' +
-                '<div class="compare-card__price">' + priserFmtPrice(pkg.price) + ' kr</div>' +
-                '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>' +
+                (pkg.priceOnRequest
+                  ? '<div class="compare-card__price">Pris etter avtale</div>'
+                  : '<div class="compare-card__price">' + priserFmtPrice(pkg.price) + ' kr</div>' +
+                    '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>') +
                 '<div class="compare-card__desc">' + C.esc(pkg.desc || "") + '</div>' +
                 priserCapsLine(pkg) +
                 priserFeatListHtml("Nettside", pkg, "f", FEAT_LABELS) +
