@@ -169,14 +169,34 @@
     .lead-details[open] summary { color: var(--color-text); font-weight: 600; }
 
     /* --- Kundar (Fase 9 onboarding-sjekkliste) ------------------------------ */
+    /* Stilrefresh 2026-08-04: initial-ikon + status som pille + domene som
+       undertekst, i staden for berre eit namn og laus farga statustekst --
+       og ein "valgt"-tilstand som ikkje fanst i det heile før (einaste måten
+       å sjå kven som var vald var å sjå etter sjekklista under lista). */
     .btn--sm { padding: .4rem .8rem; font-size: .85rem; }
     .kd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
     .kd-row {
-      display: flex; align-items: center; justify-content: space-between; gap: .6rem;
-      padding: .6rem .8rem; border: 1px solid var(--color-border); border-radius: 8px;
-      background: var(--color-surface); cursor: pointer;
+      display: flex; align-items: center; gap: .7rem; min-height: 44px;
+      padding: .6rem .8rem; border: 1px solid var(--color-border); border-radius: 10px;
+      background: var(--color-surface); cursor: pointer; transition: border-color .12s, background .12s, box-shadow .12s;
     }
-    .kd-row:hover { border-color: var(--color-primary); }
+    .kd-row:hover { border-color: var(--color-primary); box-shadow: 0 2px 10px rgba(37,99,235,.08); }
+    .kd-row.is-active { border-color: var(--color-primary); background: var(--color-tint); }
+    .kd-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .kd-row__avatar {
+      width: 32px; height: 32px; border-radius: 9px; background: var(--color-tint); color: var(--color-primary);
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .76rem; flex-shrink: 0;
+    }
+    .kd-row.is-active .kd-row__avatar { background: var(--color-primary); color: #fff; }
+    .kd-row__avatar.is-archived { background: var(--color-border); color: var(--color-muted); }
+    .kd-row__body { flex: 1; min-width: 0; }
+    .kd-row__name { display: block; font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kd-row__meta { display: block; font-size: .76rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kd-pill { font-size: .68rem; font-weight: 700; padding: .2rem .55rem; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+    .kd-pill--active { background: rgba(30,132,73,.12); color: #1e8449; }
+    .kd-pill--provisioning { background: rgba(212,160,23,.14); color: #a5730f; }
+    .kd-pill--suspended { background: rgba(192,57,43,.12); color: #c0392b; }
+    .kd-pill--archived { background: var(--color-tint); color: var(--color-muted); }
     .kd-card {
       border: 1px solid var(--color-border); border-radius: 10px;
       padding: .85rem 1rem; display: grid; gap: .5rem;
@@ -462,7 +482,27 @@
     .edit-panel__sub { font-size: .8rem; color: var(--color-muted); margin-top: .15rem; }
     .edit-panel__del { background: none; border: 1px solid var(--color-border); color: var(--color-muted); font-size: .8rem; padding: .45rem .8rem; border-radius: 8px; cursor: pointer; white-space: nowrap; min-height: 44px; }
     .edit-panel__del:hover { border-color: #c0392b; color: #c0392b; background: rgba(192,57,43,.06); }
-    .edit-panel__body { padding: 1.3rem 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 1.4rem; }
+    .edit-panel__body { padding: 1.3rem 1.4rem 1.5rem; }
+    /* Kvar konseptuelle gruppe (Grunnleggande/Innstillingar/Grenser/
+       moduler) får ei tydeleg skiljelinje, ikkje berre ein uppercase-
+       mikrolabel (UX-review-funn 2026-08-04 -- éin lang, udelt kolonne
+       kjentest "rotete/uoversiktleg"). */
+    .rp-section { padding-top: 1.2rem; margin-top: 1.2rem; border-top: 1px solid var(--color-border); }
+    .rp-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
+    /* Grunnleggande-felta (namn/pris/oppstart/skildring) samla i ein tona,
+       ramma boks -- dei hadde tidlegare INGEN ramme i det heile, ulikt
+       .highlight-fieldset like under, som synte seg vere ein reell årsak
+       til at panelet kjentest ustrukturert (UX-review-funn 2026-08-04). */
+    .basics-box { border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg); padding: 1rem 1.1rem; display: grid; gap: .9rem; }
+    /* minmax(0,1fr), ikkje berre 1fr -- UX-review-funn 2026-08-04: ein bar
+       1fr-kolonne sitt automatiske minstemål er innhaldet sitt eige
+       min-content (her: eit 9rem breitt tal-felt + eining-tekst), som kan
+       tvinge .basics-box til å flyte utanfor ramma si i staden for at
+       feltet krympar, i eit reelt trongt vindaugebelte (~901-1050px). */
+    .basics-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: .8rem; }
+    @media (max-width: 560px) { .basics-grid { grid-template-columns: 1fr; } }
+    .basics-box > .field { max-width: 30rem; }
+    .rp-section > .highlight-fieldset { margin-bottom: .9rem; }
     /* 900px, ikkje 700px -- UX-review-funn 2026-08-04: ved 768px med
        skrivebord-sidemenyen framleis open (ho minimerer/skjuler seg fyrst
        ved 700px) var det att for lite plass til både 260px-lista OG eit
@@ -479,8 +519,13 @@
     .feat-subgroup-title:first-child { margin-top: 0; }
     .all-standard-line { font-size: .85rem; color: var(--color-text); background: var(--color-tint); border-radius: 8px; padding: .5rem .7rem; margin: 0 0 .3rem; font-weight:600; }
     .feat-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: .35rem; }
-    .feat-chip { display:flex; align-items:center; gap:.35rem; padding:.35rem .5rem; border-radius:8px; font-size:.82rem; flex-wrap: wrap; }
+    .feat-chip { display:flex; align-items:center; gap:.35rem; padding:.35rem .5rem; border-radius:8px; font-size:.82rem; flex-wrap: wrap; border: 1px solid transparent; }
     .feat-chip:hover { background: var(--color-tint); }
+    /* Klassen fanst alt (priserFeatChip() i console-core.js), men hadde
+       ingen matchande regel -- valde modular såg identiske ut som ikkje
+       valde, bortsett frå sjølve avkryssingsboksen (UX-review-funn
+       2026-08-04). Same "valgt"-mønster som .quote-chip.is-added like under. */
+    .feat-chip.is-checked { background: var(--color-tint); border-color: color-mix(in srgb, var(--color-primary) 25%, transparent); font-weight: 600; }
     .feat-chip__label { display:flex; align-items:center; gap:.4rem; cursor:pointer; flex:1 1 auto; min-width:0; }
     .feat-chip__label input { margin:0; flex-shrink:0; }
     .feat-chip__tag {
@@ -501,12 +546,6 @@
     .cap-field .price-row input { font-size:1rem; font-weight:600; width:5.5rem; }
     .cap-field__unlimited { display:flex; align-items:center; gap:.35rem; font-size:.76rem; color: var(--color-muted); font-weight:400; margin-top:.25rem; cursor:pointer; padding:.4rem .5rem; border-radius:8px; transition: background .1s; }
     .cap-field__unlimited:hover { background: var(--color-tint); }
-
-    /* Fritekst-/tal-felt (namn, pris, oppstartskostnad, skildring) treng
-       ikkje strekke seg til heile edit-panel si breidde -- panelet er breitt
-       (sjå .edit-layout), men eit adressefelt-liknande innskrivingsfelt les
-       best smalt, same grunngjeving som --measure-linja i typografien elles. */
-    .edit-panel__body > .field { max-width: 30rem; }
 
     .preview-note { font-size:.8rem; color: var(--color-muted); margin-bottom:1.2rem; }
 
@@ -611,6 +650,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=200"></script>
+  <script src="console-core.js?v=202"></script>
 </body>
 </html>

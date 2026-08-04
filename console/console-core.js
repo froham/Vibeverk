@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.90.0";
+  var VIBEVERK_VERSION = "0.91.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1787,24 +1787,48 @@ window.VwConsole = (function () {
       '</div>'
     ) : "";
 
-    return '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
-      '<div class="field"><label>Pris</label><div class="price-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span>kr/mnd</span></div>' +
-        '<div class="price-hint" data-priser-hint-monthly="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.monthly) + ' kr/mnd</div></div>' +
-      '<div class="field"><label>Oppstartskostnad</label><div class="price-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span>kr, engang</span></div>' +
-        '<div class="price-hint" data-priser-hint-setup="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.setup) + ' kr</div></div>' +
-      '<div class="field"><label>Kort beskrivelse</label><textarea rows="2" maxlength="2000" data-priser-field="desc" data-priser-pkg="' + C.esc(pkg.id) + '">' + C.esc(pkg.desc) + '</textarea></div>' +
-      '<div class="highlight-fieldset">' +
-        '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="featured" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.featured ? "checked" : "") + '> Fremhev i forhåndsvisning (ramme + merkelapp)</label>' +
-        highlightFields +
+    // Seksjonert i .rp-section-blokker med tydeleg skiljelinje mellom kvar
+    // (UX-review-funn 2026-08-04: éin lang, udelt kolonne av felt kjentest
+    // "rotete/uoversiktleg" -- dei fire fyrste felta hadde i tillegg ingen
+    // ramme i det heile, ulikt highlight-fieldset lenger ned, og var låst
+    // til 30rem inni eit panel som kan vere 900px+ breitt). Grunnleggande-
+    // felta samla i ein tona boks (.basics-box), Pris/Oppstartskostnad
+    // side om side i staden for kvar sin fulle rad (brukarfunn: fylte
+    // ikkje breidda, verka merkeleg med tomt rom attmed).
+    return '<div class="rp-section">' +
+        '<div class="feat-section-title">Grunnleggende</div>' +
+        '<div class="basics-box">' +
+          '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
+          '<div class="basics-grid">' +
+            '<div class="field"><label>Pris</label><div class="price-row"><input type="number" min="0" data-priser-field="price" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + pkg.price + '"><span>kr/mnd</span></div>' +
+              '<div class="price-hint" data-priser-hint-monthly="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.monthly) + ' kr/mnd</div></div>' +
+            '<div class="field"><label>Oppstartskostnad</label><div class="price-row"><input type="number" min="0" data-priser-field="setupCost" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + (pkg.setupCost || 0) + '"><span>kr, engang</span></div>' +
+              '<div class="price-hint" data-priser-hint-setup="' + C.esc(pkg.id) + '">Veiledende sum fra modulpriser: ' + priserFmtPrice(sum.setup) + ' kr</div></div>' +
+          '</div>' +
+          '<div class="field"><label>Kort beskrivelse</label><textarea rows="2" maxlength="2000" data-priser-field="desc" data-priser-pkg="' + C.esc(pkg.id) + '">' + C.esc(pkg.desc) + '</textarea></div>' +
+        '</div>' +
       '</div>' +
-      '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="allStandard" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.allStandard ? "checked" : "") + '> Standardmoduler</label>' +
-      C.helpIcon("Pakken følger automatisk de modulene som er merket «Standard» i Modulpriser-fanen, også etter at du har lagret og senere endrer hva som er standard der. Skru av for å velge nøyaktig hvilke moduler denne pakken skal ha.") +
-      '<div class="feat-section-title">Grenser (maks inkludert)' + C.helpIcon("Vises til kunden i Forhåndsvisning som en del av pakkebeskrivelsen. Kun informative tall her — de håndheves ikke teknisk noe sted ennå.") + '</div>' +
-      '<div class="cap-field-row">' + PRISER_CAP_FIELDS.map(function (f) { return priserCapFieldHtml(pkg, f); }).join("") + '</div>' +
-      '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
-      featGrid +
-      '<div class="feat-section-title">Workspace-funksjoner</div>' +
-      iFeatGrid;
+      '<div class="rp-section">' +
+        '<div class="feat-section-title">Innstillinger</div>' +
+        '<div class="highlight-fieldset">' +
+          '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="featured" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.featured ? "checked" : "") + '> Fremhev i forhåndsvisning (ramme + merkelapp)</label>' +
+          highlightFields +
+        '</div>' +
+        '<label class="highlight-fieldset__toggle"><input type="checkbox" data-priser-field="allStandard" data-priser-pkg="' + C.esc(pkg.id) + '" ' + (pkg.allStandard ? "checked" : "") + '> Standardmoduler</label>' +
+        C.helpIcon("Pakken følger automatisk de modulene som er merket «Standard» i Modulpriser-fanen, også etter at du har lagret og senere endrer hva som er standard der. Skru av for å velge nøyaktig hvilke moduler denne pakken skal ha.") +
+      '</div>' +
+      '<div class="rp-section">' +
+        '<div class="feat-section-title">Grenser (maks inkludert)' + C.helpIcon("Vises til kunden i Forhåndsvisning som en del av pakkebeskrivelsen. Kun informative tall her — de håndheves ikke teknisk noe sted ennå.") + '</div>' +
+        '<div class="cap-field-row">' + PRISER_CAP_FIELDS.map(function (f) { return priserCapFieldHtml(pkg, f); }).join("") + '</div>' +
+      '</div>' +
+      '<div class="rp-section">' +
+        '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
+        featGrid +
+      '</div>' +
+      '<div class="rp-section">' +
+        '<div class="feat-section-title">Workspace-funksjoner</div>' +
+        iFeatGrid +
+      '</div>';
   }
 
   function priserEditPanelHtml(pkg) {
@@ -2586,9 +2610,27 @@ window.VwConsole = (function () {
   // Skjult som standard, vist berre via avkryssingsboksen under.
   var _kdShowArchived = false;
 
+  // Pille i staden for laus, farga tekst -- lesast raskare ved eit blikk
+  // (stilrefresh 2026-08-04, same "status som farge+form"-idé som allereie
+  // brukast for tags/badge-tekst andre stader i Console).
+  var KD_STATUS_MAP = {
+    provisioning: { label: "Etableres",  cls: "provisioning" },
+    active:       { label: "Aktiv",      cls: "active" },
+    suspended:    { label: "Suspendert", cls: "suspended" },
+    archived:     { label: "Arkivert",   cls: "archived" }
+  };
   function kdStatusBadge(status) {
-    var map = { provisioning: "#d4a017", active: "#1e8449", suspended: "#c0392b", archived: "#64748b" };
-    return '<span style="font-size:.75rem;font-weight:700;color:' + (map[status] || "#64748b") + '">' + C.esc(status || "") + '</span>';
+    var s = KD_STATUS_MAP[status] || { label: status || "", cls: "archived" };
+    return '<span class="kd-pill kd-pill--' + s.cls + '">' + C.esc(s.label) + '</span>';
+  }
+  // Initialar til rad-ikonet -- fyrste bokstav i dei to fyrste "orda" i
+  // slug-en ("nordpunkt-regnskap" -> "NR"), elles berre dei to fyrste
+  // teikna ("sunnvask" -> "SU").
+  function kdInitials(slug) {
+    var parts = (slug || "").split(/[-_.\s]+/).filter(Boolean);
+    if (!parts.length) return "?";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
   }
 
   function renderKundar(_sc, wrap) {
@@ -2609,8 +2651,13 @@ window.VwConsole = (function () {
           : "") +
         '<ul class="kd-list">' +
           visible.map(function (t) {
-            return '<li class="kd-row" data-kd-row="' + C.esc(t.id) + '">' +
-              '<strong>' + C.esc(t.slug) + '</strong>' +
+            var domain = (t.hostnames && t.hostnames.length) ? t.hostnames[0] : "ingen domene ennå";
+            // "Valgt"-tilstand fanst ikkje i det heile før (stilrefresh
+            // 2026-08-04) -- einaste måten å sjå kven som var vald var å
+            // sjå etter sjekklista under lista.
+            return '<li class="kd-row' + (t.id === _kdSelectedId ? " is-active" : "") + '" data-kd-row="' + C.esc(t.id) + '" tabindex="0" role="button" aria-pressed="' + (t.id === _kdSelectedId ? "true" : "false") + '">' +
+              '<span class="kd-row__avatar' + (t.status === "archived" ? " is-archived" : "") + '">' + C.esc(kdInitials(t.slug)) + '</span>' +
+              '<span class="kd-row__body"><span class="kd-row__name">' + C.esc(t.slug) + '</span><span class="kd-row__meta">' + C.esc(domain) + '</span></span>' +
               kdStatusBadge(t.status) +
             '</li>';
           }).join("") +
@@ -2620,8 +2667,17 @@ window.VwConsole = (function () {
       '<div id="kd-new-form-wrap"></div>' +
       '<div id="kd-detail-wrap"></div>';
 
+    // Tastatur-operabel liste (UX-review-funn 2026-08-04) -- fanst berre ein
+    // click-lyttar frå før, som gjorde radvalet reint mus-/touch-avhengig.
+    // Same mønster som .pkg-row i "Rediger pakker" (Enter/mellomrom = klikk).
     wrap.querySelectorAll("[data-kd-row]").forEach(function (row) {
       row.addEventListener("click", function () {
+        _kdSelectedId = row.getAttribute("data-kd-row");
+        renderKundar(_sc, wrap);
+      });
+      row.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
         _kdSelectedId = row.getAttribute("data-kd-row");
         renderKundar(_sc, wrap);
       });
