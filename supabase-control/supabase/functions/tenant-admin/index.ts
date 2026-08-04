@@ -504,7 +504,12 @@ serve(async (req: Request) => {
       return null;
     }
 
-    const PKG_ALLOWED_KEYS = ["id", "name", "price", "setupCost", "desc", "features", "iFeatures", "tags", "allStandard", "featured", "badgeText", "badgeColor", "storageGB", "emailsPerMonth", "usersIncluded"];
+    // allStandard (singular) -> allStandardF/allStandardI, + priceOnRequest og
+    // trafficGBPerMonth lagt til (Priser-utvidingar 2026-08-05, sjå
+    // console-core.js sin priserBackfillStandardFlags()/PRISER_CAP_FIELDS) --
+    // klientsida sitt datamodell endra seg, denne lista MÅ endre seg med den,
+    // elles avviser denne funksjonen kvar lagring av ei elles gyldig pakke.
+    const PKG_ALLOWED_KEYS = ["id", "name", "price", "setupCost", "desc", "features", "iFeatures", "tags", "allStandardF", "allStandardI", "priceOnRequest", "featured", "badgeText", "badgeColor", "storageGB", "trafficGBPerMonth", "emailsPerMonth", "usersIncluded"];
     // -1 er ein sentinel-verdi for "ubegrensa" (klientsida sin "Ubegrenset"-
     // avkryssing, 2026-08-04) -- alt anna må vere eit ikkje-negativt tal.
     const MAX_CAP_VALUE = 1000000;
@@ -553,12 +558,16 @@ serve(async (req: Request) => {
       if (tagFErr) return json({ error: "«" + pkg.name + "»: " + tagFErr }, 400);
       const tagIErr = validateTagMap(tagsObj.i, "tags.i");
       if (tagIErr) return json({ error: "«" + pkg.name + "»: " + tagIErr }, 400);
-      if (typeof pkg.allStandard !== "boolean") return json({ error: "Ugyldig allStandard for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.allStandardF !== "boolean") return json({ error: "Ugyldig allStandardF for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.allStandardI !== "boolean") return json({ error: "Ugyldig allStandardI for «" + pkg.name + "»" }, 400);
+      if (typeof pkg.priceOnRequest !== "boolean") return json({ error: "Ugyldig priceOnRequest for «" + pkg.name + "»" }, 400);
       if (typeof pkg.featured !== "boolean") return json({ error: "Ugyldig featured for «" + pkg.name + "»" }, 400);
       if (typeof pkg.badgeText !== "string" || pkg.badgeText.length > 100) return json({ error: "Ugyldig merkelapptekst for «" + pkg.name + "»" }, 400);
       if (typeof pkg.badgeColor !== "string" || !HEX_COLOR_RE.test(pkg.badgeColor)) return json({ error: "Ugyldig farge for «" + pkg.name + "» -- må vere #rrggbb" }, 400);
       const storageErr = validateCapField(pkg.storageGB, "datalagringsgrense", pkg.name);
       if (storageErr) return json({ error: storageErr }, 400);
+      const trafficErr = validateCapField(pkg.trafficGBPerMonth, "datatrafikkgrense", pkg.name);
+      if (trafficErr) return json({ error: trafficErr }, 400);
       const emailsErr = validateCapField(pkg.emailsPerMonth, "e-postgrense", pkg.name);
       if (emailsErr) return json({ error: emailsErr }, 400);
       const usersErr = validateCapField(pkg.usersIncluded, "brukergrense", pkg.name);

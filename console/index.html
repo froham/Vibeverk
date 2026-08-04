@@ -456,14 +456,28 @@
     .edit-layout { display: grid; grid-template-columns: 260px 1fr; gap: 1.2rem; align-items: start; }
     .pkg-rail { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); overflow: hidden; position: sticky; top: 1rem; }
     .pkg-rail__head { padding: .9rem 1rem .6rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); }
+    /* .pkg-row-wrap: pil opp/ned (brukarønske 2026-08-05) sit no attmed sjølve
+       vel-knappen, i staden for inni han -- ein <button> kan ikkje inneholde
+       ein annan <button>. Rekkjefølgja her er akkurat rekkjefølgja i
+       _priserData.packages, som «Forhåndsvisning» rendrar i uendra --
+       flytt ei pakke her, og ho flytter seg med i forhåndsvisinga. */
+    .pkg-row-wrap { display: flex; align-items: stretch; }
     .pkg-row {
-      display: flex; align-items: center; gap: .65rem; width: 100%; text-align: left;
+      display: flex; align-items: center; gap: .65rem; flex: 1; min-width: 0; text-align: left;
       padding: .7rem 1rem; border: none; background: none; cursor: pointer; font: inherit;
       border-left: 3px solid transparent; color: var(--color-text); min-height: 44px;
     }
     .pkg-row:hover { background: var(--color-tint); }
     .pkg-row.is-active { background: var(--color-tint); border-left-color: var(--color-primary); }
     .pkg-row:focus-visible, .pkg-rail__add:focus-visible, .edit-panel__del:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .pkg-row__reorder { display: flex; flex-direction: column; justify-content: center; flex-shrink: 0; border-left: 1px solid var(--color-border); }
+    .pkg-row__move {
+      width: 34px; height: 22px; display: flex; align-items: center; justify-content: center;
+      border: none; background: none; color: var(--color-muted); cursor: pointer; padding: 0; font-size: .9rem;
+    }
+    .pkg-row__move:hover:not(:disabled) { background: var(--color-tint); color: var(--color-primary); }
+    .pkg-row__move:disabled { opacity: .3; cursor: not-allowed; }
+    .pkg-row__move:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
     .pkg-row__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--color-border); }
     .pkg-row__body { flex: 1; min-width: 0; }
     .pkg-row__name { display: block; font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
