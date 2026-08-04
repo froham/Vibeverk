@@ -123,9 +123,16 @@ umiddelbar reprøving):
   - `priserRefreshPkgHints()` var reelt daud kode (aldri kalla, sidan
     enkelt-pane-arkitekturen ikkje treng tverr-pane-oppdatering) -- fjerna.
 
-**INGENTING er pusha**, og migrasjonen er IKKJE køyrd mot det verkelege
-`vibeverk-control`-prosjektet -- begge krev eksplisitt brukargodkjenning per
-CLAUDE.md sitt deployment-sikringsnett.
+**Merga til main og delvis deploya (2026-08-04, brukargodkjent steg for steg):**
+PR pusha og merga (squash), `tenant-admin`-funksjonen (med den nye
+`set_pricing_config`-handlinga) er deploya til `vibeverk-control`
+(`jxoglthrnshabqmdmnui`) og stadfesta live via CLI. **Sjølve migrasjonen
+(`20260804120000_add_pricing_config.sql`) er IKKJE køyrd enno** -- krev
+pooler-connection-string-en til `vibeverk-control`, som brukaren bad om å
+vente med. Praktisk konsekvens: Console sin nye "Priser"-fane vil feile ved
+lasting (`pricing_config`-tabellen finst ikkje enno) heilt til migrasjonen
+faktisk er køyrd -- ikkje ein feil om det skjer, forventa tilstand inntil
+vidare.
 
 ### Ny: "Innsikt" -- sidetellings-panelet redesigna som eige dashboard, eigen fane
 
