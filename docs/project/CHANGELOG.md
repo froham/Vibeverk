@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.95.0 — 2026-08-05
+
+### Smart årshjul: migrert til `customModules` (skreddarsydd modul) + ekte Anthropic-nøkkel sett i produksjon
+
+Smart årshjul vart bygd (0.93.0/PR #177) bak `intranettFeatures.smartAarshjul` — ein vanleg boolsk featureflagg, aldri faktisk lagt til `IFEAT_LABELS`/`IFEAT_HELP` og difor ALDRI synleg/redigerbar i Console sitt "Modular"-panel for nokon kunde. Sidan dette er ein betalt, kunde-for-kunde-aktivert AI-funksjon (spec seksjon 6/14), er `customModules`-mekanismen (bein 3, same mønster som "spaceship", Fase 10) det rette heimen, ikkje ein delt intranettFeatures-brytar.
+
+- **Klient** (`workspace/module-smart-aarshjul.js`): gata no på `CFG.customModules["smart-aarshjul"].enabled === true` (absent = ikkje synleg, same konvensjon som spaceship) i staden for `CFG.intranettFeatures.smartAarshjul === false`. `navLabel` hentar `label` frå manifest-oppføringa (fallback "Smart årshjul"), slik at operatøren kan endre namnet frå Console utan kodeendring.
+- **Server** (`api/ai/annual-wheel.js`): entitlement-sjekken (lagt til etter tryggleiksgjennomgang, sjå 0.93.0) sjekkar no `tenant.custom_modules_manifest["smart-aarshjul"].enabled === true` i staden for `tenant.enabled_modules.intranettFeatures.smartAarshjul` — same kontrollplan-autoritative kjelde-prinsipp som før, berre nytt felt.
+- **Modul-id er kebab-case** (`smart-aarshjul`, ikkje `smartAarshjul`) — oppdaga FØR push at `tenant-admin`-funksjonen sin `CUSTOM_MODULE_ID_RE` (`/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/`) avviser store bokstavar; camelCase-varianten ville blitt avvist av Console sin eigen validator med det same operatøren prøvde å leggje til modulen.
+- `config.js`: fjerna frå `intranettFeatures` (var aldri eksponert i Console uansett), lagt til som utkommentert `customModules`-eksempel (same mønster som spaceship-eksempelet rett over).
+- **`ANTHROPIC_API_KEY` sett på Vercel-prosjektet `vibeverk` (produksjon, vibeverk.no)** — fyrste gong denne nokosinne har vore sett i eit ekte miljø. `ANTHROPIC_MODEL` sett IKKJE eksplisitt — koden fell tilbake til `DEFAULT_MODEL = "claude-haiku-4-5-20251001"` (`api/_lib/annual-wheel-ai.js`), som er tilstrekkeleg. Ingen kunde har enno `custom_modules_manifest["smart-aarshjul"]` sett, så endepunktet er framleis 403 for alle -- første ekte, kostnadsberande AI-kall skjer først når ein operatør faktisk aktiverer modulen for éin kunde via Console.
+- Testar oppdatert til å matche (`test-workspace.js`: ny eiga DOM-seksjon "AB" for PÅ-stien, speglar "AA" (spaceship) sitt mønster, i staden for å stole på hovud-DOM-en sin no-fjerna intranettFeatures-patch; "AC" (AV-stien) sin føresetnad-assert endra til å sjekke tomt `customModules`; `test-api.js` sin tenant-fixture flytta frå `enabled_modules.intranettFeatures.smartAarshjul` til `custom_modules_manifest["smart-aarshjul"]`). Alle tre suitane grøne (676/192/63).
+
+Gjenstår (ikkje del av denne endringa): faktisk aktivere `custom_modules_manifest["smart-aarshjul"]` for ein konkret kunde via Console og gjere eit ekte, verifisert end-to-end-kall -- ingen ADR er enno skrive for AI-auth-mønsteret (nemnt som anbefalt, men ikkje kravd, i 0.93.0).
+
 ## 0.94.3 — 2026-08-05
 
 ### Priser: fiks feil rekkjefølgje på modular i Forhåndsvisning og «Bygg tilbud»

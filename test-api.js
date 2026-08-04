@@ -62,16 +62,19 @@ async function main() {
           data_plane_anon_key: "tenant-anon-key",
           data_plane_storage_key: "nordpunkt",
           product_mode: "full",
-          // smartAarshjul: true her (og IKKJE i "aw-not-entitled" pga eigen
-          // gren under) -- api/ai/annual-wheel.js sin eigen entitlement-sjekk
-          // (lagt til etter tryggleiksgjennomgang) krev denne, uavhengig av
-          // rolla til kallaren. Andre forbrukarar av denne mocken
-          // (tenant-config/tenant-manifest/middleware-testane over) bryr seg
-          // ikkje om dette feltet, så det er trygt å leggje det til her.
-          enabled_modules: scenario === "aw-not-entitled"
-            ? { features: { crm: true }, intranettFeatures: { tasks: true } }
-            : { features: { crm: true }, intranettFeatures: { tasks: true, smartAarshjul: true } },
-          custom_modules_manifest: {},
+          enabled_modules: { features: { crm: true }, intranettFeatures: { tasks: true } },
+          // custom_modules_manifest.smartAarshjul.enabled: true her (og
+          // IKKJE i "aw-not-entitled" pga eigen gren under) -- api/ai/
+          // annual-wheel.js sin eigen entitlement-sjekk (lagt til etter
+          // tryggleiksgjennomgang) krev denne, uavhengig av rolla til
+          // kallaren. Smart årshjul er ein customModules-oppføring, ikkje
+          // ein intranettFeatures-brytar (sjå config.js). Andre forbrukarar
+          // av denne mocken (tenant-config/tenant-manifest/middleware-
+          // testane over) bryr seg ikkje om dette feltet, så det er trygt
+          // å leggje det til her.
+          custom_modules_manifest: scenario === "aw-not-entitled"
+            ? {}
+            : { "smart-aarshjul": { label: "Smart årshjul", enabled: true, params: {} } },
           theme: { primary: "#000000" },
         }],
       };
@@ -300,7 +303,7 @@ async function main() {
 
   scenario = "aw-not-entitled";
   r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e5b.kunde.no", authorization: "Bearer t" }, validBody));
-  assert(r.status === 403, "e5b: 403 når tenanten IKKJE har Smart årshjul aktivert i control-planet (tenant.enabled_modules), sjølv med gyldig admin/editor-innlogging -- retta etter tryggleiksgjennomgang: rolle åleine var ikkje nok, sidan éin delt Vercel-utrulling/ANTHROPIC_API_KEY betener alle tenantar (ADR-0007)");
+  assert(r.status === 403, "e5b: 403 når tenanten IKKJE har Smart årshjul aktivert i control-planet (tenant.custom_modules_manifest), sjølv med gyldig admin/editor-innlogging -- retta etter tryggleiksgjennomgang: rolle åleine var ikkje nok, sidan éin delt Vercel-utrulling/ANTHROPIC_API_KEY betener alle tenantar (ADR-0007)");
 
   scenario = "aw-auth-fail";
   r = await annualWheelHandler(fakePostRequest("https://kunde.no/api/ai/annual-wheel", { host: "e6.kunde.no", authorization: "Bearer ugyldig" }, validBody));

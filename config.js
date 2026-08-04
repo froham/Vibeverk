@@ -204,11 +204,11 @@ window.SITE_CONFIG = {
     quote:         false, // ← Tilbud (frå nettsida)
     contact:       true,  // ← Kontakthenvendingar (frå nettsida)
     kb:            false, // ← Kunnskapsbase
-    mediaInternal: false, // ← Mediebank (intern)
-    smartAarshjul: false  // ← Smart årshjul (AI-baserte forslag til årsplan). Krever module-smart-aarshjul.js
-                          //   + api/ai/annual-wheel.js + ANTHROPIC_API_KEY. MÅ vere eksplisitt false som
-                          //   standard (ny, betalt AI-funksjon -- same grunngjeving som sidetelling/
-                          //   sidebygger over, ikkje aktiver for alle kundar automatisk).
+    mediaInternal: false  // ← Mediebank (intern)
+    // NB: "Smart årshjul" (AI-baserte forslag til årsplan) er IKKJE ein
+    // intranettFeatures-brytar -- det er ein skreddarsydd modul, sjå
+    // customModules under (nøkkel "smartAarshjul"). Krev
+    // module-smart-aarshjul.js + api/ai/annual-wheel.js + ANTHROPIC_API_KEY.
   },
 
 
@@ -325,5 +325,10 @@ window.SITE_CONFIG = {
     //   modul i Workspace-menyen (standard customModules-konvensjon: absent
     //   = ikkje synleg). Uavhengig av det eksisterande trippel-klikk-easter-
     //   egget på logoen, som er urørt og alltid aktivt som før.
+    // "smart-aarshjul": { label: "Smart årshjul", enabled: true, params: {} }
+    //   -- AI-baserte forslag til årsplan (workspace/module-smart-aarshjul.js
+    //   + api/ai/annual-wheel.js). Krev ANTHROPIC_API_KEY sett på Vercel.
+    //   Same absent-konvensjon som over -- aktiver eksplisitt per kunde via
+    //   Console sitt "Skreddarsydde modular"-panel, betalt AI-funksjon.
   }
 };

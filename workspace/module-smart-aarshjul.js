@@ -5,8 +5,10 @@
    modul. Lagring: App.store (nøkkel "wsp-smart-aarshjul"), ikkje Supabase-
    tabell (spec seksjon 6). Forslag genererast av eit ekte serverkall til
    POST /api/ai/annual-wheel (api/ai/annual-wheel.js) -- ingen lokal
-   simulering lenger. Slås av/på med config.intranettFeatures.smartAarshjul
-   (standard AV -- ny, betalt AI-funksjon, sjå config.js).
+   simulering lenger. Slås av/på via config.customModules.smartAarshjul
+   (skreddarsydd modul, sjå config.js + Console sitt "Skreddarsydde
+   modular"-panel) -- standard AV/absent, same konvensjon som spaceship
+   (ny, betalt AI-funksjon, må aktiveras eksplisitt per kunde).
 
    CSS er avgrensa til modulen (alle klassar prefiksa "saa-"). Delegerte
    klikk/endrings-lyttarar vert bundne ÉIN gong per mount() på #saa-root --
@@ -24,7 +26,8 @@
   var C = window.Components;
   var CFG = window.SITE_CONFIG || {};
   if (!Intranet || !App || !C) return;
-  if (CFG.intranettFeatures && CFG.intranettFeatures.smartAarshjul === false) return;
+  var SAA_MODULE = (CFG.customModules || {})["smart-aarshjul"];
+  if (!SAA_MODULE || SAA_MODULE.enabled !== true) return;
 
   var STORE_KEY = "wsp-smart-aarshjul";
   var STYLE_ID = "saa-styles";
@@ -1056,7 +1059,7 @@
 
   Intranet.registerModule({
     id: "smart-aarshjul",
-    navLabel: "Smart årshjul",
+    navLabel: SAA_MODULE.label || "Smart årshjul",
     icon: "calendar-stats",
     order: 60,
     render: render,
