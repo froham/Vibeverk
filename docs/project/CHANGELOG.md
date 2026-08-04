@@ -30,6 +30,71 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.89.0 — 2026-08-04
+
+### Priser-forbetringar: breiddemodus, minimerbar sidemeny, biletnedlasting, datagrenser
+
+Oppfølgingsrunde rett etter at "Priser" (0.88.0, same dag) vart verifisert
+live -- brukar viste eit skjermbilete av det ferdige verktøyet og bad om tre
+ting i éin bolk ("Les tilbake før du endrer"):
+
+- **Minimerbar sidemeny + breiare Priser-fane.** Console fekk ein
+  minimer-knapp på sidemenyen, porta frå Workspace sitt eksisterande
+  `.i-sidebar.is-collapsed`-mønster (CSS-variabel `--cs-sidebar-w`,
+  `localStorage`-persistert under `cs-sidebar-collapsed`, sidan Console ikkje
+  har noko `App.store`-ekvivalent). Innhaldsbreidda på Priser-fana fekk ein
+  eigen `.cs-content--wide`-klasse (`max-width: 1400px`), togga sentralt i
+  `renderSection()` berre for `id === "priser"` -- resten av Console (tekst-
+  tunge skjema) er uendra på 720px.
+- **"Last ned som bilde"-knapp i Forhåndsvisning**, for bruk i presentasjonar.
+  Brukar valde eksplisitt ekte éin-klikks PNG-nedlasting (`html2canvas`)
+  framfor ei enklare utskrift-til-PDF-løysing, då spurt direkte. Ny pinna
+  CDN-avhengigheit `html2canvas@1.4.1` (sjekka via jsdelivr sin
+  `resolved`-endepunkt før pinning, som CLAUDE.md krev). Rasterer
+  `.compare-grid` klientsida til eit `<canvas>`, 2× skalert for skarpe bilete
+  ved projisering. Reint lokalt (`URL.createObjectURL` + `<a download>`),
+  ingen serverrundtur, ingen ny CSP-origin (alt dekt av eksisterande
+  `cdn.jsdelivr.net`-kvitelisting).
+- **Tre nye per-pakke datagrenser**: `storageGB` (datalagring), 
+  `emailsPerMonth` (e-postutsendingar), `usersIncluded` (brukarkontoar) --
+  reint informative tal vist i kunde-samanlikninga, håndhevast ikkje teknisk
+  noko stad enno (forklart via ny `helpIcon()` på feltgruppa, per
+  copy-style-guide sin regel om at nye, ikkje-opplagde felt skal ha hint).
+  `-1` er ein sentinel-verdi for "Ubegrenset" (eiga avkryssingsboks per felt,
+  deaktiverer tal-feltet når kryssa av). Eksisterande pakkar får
+  fornuftige standardverdiar attributert etter prisnivå
+  (`priserDefaultCapsFor()`, tre buckets etter `pkg.price`) ved innlasting,
+  slik at gamle lagra pakkar utan desse felta ikkje bryt valideringa neste
+  gong nokon lagrar. Ingen ny migrasjon trengst (`pricing_config.data` er
+  allereie fleksibel `jsonb`) -- berre `PKG_ALLOWED_KEYS` utvida frå 12 til 15
+  nøklar og ein ny `validateCapField()`-validator (heiltal i [-1, 1 000 000])
+  lagt til i `set_pricing_config`-handlinga i
+  `supabase-control/supabase/functions/tenant-admin/index.ts`.
+
+`?v=N`: `console-core.js` (198).
+
+**Security Auditor + UX/Mobil-reviewer gjennomført same dag, uavhengig av
+kvarandre.** Security Auditor: ingen BLOCKER/HIGH/MEDIUM (to trivielle
+LOW-notat, ingen fiks trengst). UX/Mobil-reviewer: éin HIGH, fire MEDIUM,
+alle retta:
+
+- **HIGH** -- ein "minimert sidemeny"-preferanse sett på skrivebord bløda inn
+  i mobil-hamburgermenyen (`.is-collapsed` var ikkje viewport-skopa), som
+  gøymde tenant-veljar/navn/logg-ut der menyen alt er eit eige slide-out-
+  panel. Retta med ein overstyrande regel inni `@media (max-width: 700px)`
+  som tvingar sidemenyen attende til full breidde/synlegheit uavhengig av
+  `localStorage`-verdien.
+- Deaktivert tal-felt (ved "Ubegrenset") hadde ingen visuell skilnad frå eit
+  aktivt felt -- lagt til `.field input:disabled { opacity:.55;
+  cursor:not-allowed }`.
+- "Ubegrenset"-avkryssinga sitt klikkbare område var mindre enn den
+  etablerte `.cs-checkbox-label`-padding-konvensjonen elles i same fil --
+  retta til same padding/hover-mønster.
+- Ei feila biletgenerering kunne lekke ei rå, engelsk nettlesar-/
+  html2canvas-unnataksmelding rett inn i brukarvend tekst -- retta til fast
+  norsk feiltekst, den tekniske detaljen går no berre til
+  `console.error()`.
+
 ## 0.88.0 — 2026-08-04
 
 ### Ny: "Priser" -- internt pris-/pakkeplanleggingsverktøy i Console
