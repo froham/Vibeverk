@@ -72,9 +72,15 @@ async function main() {
           // av denne mocken (tenant-config/tenant-manifest/middleware-
           // testane over) bryr seg ikkje om dette feltet, så det er trygt
           // å leggje det til her.
-          custom_modules_manifest: scenario === "aw-not-entitled"
-            ? {}
-            : { "smart-aarshjul": { label: "Smart årshjul", enabled: true, params: {} } },
+          // Kvar modul sin entitlement styrast av sin eigen "ikkje aktivert"-scenario
+          // (aw-not-entitled / ov-not-entitled) -- uavhengige av kvarandre, sidan
+          // scenario-strengen er delt men testane for kvart endepunkt køyrer i eigne,
+          // ikkje-overlappande seksjonar (E for annual-wheel, F for oversikt).
+          custom_modules_manifest: Object.assign(
+            {},
+            scenario === "aw-not-entitled" ? {} : { "smart-aarshjul": { label: "Smart årshjul", enabled: true, params: {} } },
+            scenario === "ov-not-entitled" ? {} : { "oversikt": { label: "Oversikt", enabled: true, params: {} } }
+          ),
           theme: { primary: "#000000" },
         }],
       };
@@ -109,6 +115,47 @@ async function main() {
     if (String(url).includes("api.anthropic.com")) {
       if (scenario === "aw-anthropic-http-error") return { ok: false, status: 500, json: async () => ({ error: { message: "modelloverbelastning" } }) };
       if (scenario === "aw-anthropic-bad-shape") return { ok: true, json: async () => ({ content: [{ type: "text", text: "ikkje eit tool_use-svar" }] }) };
+      if (scenario === "ov-anthropic-http-error") return { ok: false, status: 500, json: async () => ({ error: { message: "modelloverbelastning" } }) };
+      if (scenario === "ov-anthropic-bad-shape") return { ok: true, json: async () => ({ content: [{ type: "text", text: "ikkje eit tool_use-svar" }] }) };
+      if (String(scenario).indexOf("ov-") === 0) {
+        return {
+          ok: true,
+          json: async () => ({
+            content: [{
+              type: "tool_use", name: "return_overview",
+              input: {
+                detectedSituationProfile: { situationType: "Flytting av verksemd", scale: "Lite firma", keyThemes: ["lokale", "logistikk"] },
+                summary: "Oversikta er tilpassa ei flytting av verkstaden.",
+                needs: [
+                  { title: "Vurder nye lokale", description: "Sjekk areal og planløysing.", reason: "Avgjer resten av planen.", category: "premises", priority: "high" },
+                  { title: "<script>evil()</script>", description: "skal klemmast", reason: "test", category: "ukjend-kategori", priority: "ukjend" },
+                ],
+                dependencyNodes: [
+                  { title: "Sei opp gamal leigekontrakt", description: "Avslutt eksisterande avtale.", category: "premises", priority: "high", milestone: false },
+                  { title: "Flytt utstyr", description: "Flytt maskiner og inventar.", category: "logistics", priority: "normal", milestone: false },
+                  { title: "Opne dørene igjen", description: "Start normal drift i nye lokale.", category: "operations", priority: "high", milestone: true },
+                ],
+                dependencyEdges: [
+                  { fromIndex: 0, toIndex: 1, type: "required-before" },
+                  { fromIndex: 1, toIndex: 2, type: "required-before" },
+                  { fromIndex: 2, toIndex: 0, type: "required-before" }, // skal fjernast: ville skapt ein sirkel
+                  { fromIndex: 0, toIndex: 99, type: "required-before" }, // skal fjernast: peikar utanfor lista
+                  { fromIndex: 1, toIndex: 1, type: "required-before" }, // skal fjernast: sjølv-referanse
+                ],
+                impacts: [
+                  { title: "Kundar må finne fram til nytt sted", description: "Kommuniser adresseendring.", reason: "Unngå tapt oppmøte.", category: "communication", impactLevel: "medium", consequences: ["Oppdater nettside", "Send e-post til kundar"] },
+                ],
+                blindSpots: [
+                  { title: "Straum- og nettavtale på nytt sted", description: "Kontroller at avtalar er på plass.", reason: "Lett å gløyme.", category: "suppliers", priority: "normal", suggestedDestination: "needs" },
+                ],
+                nextSteps: [
+                  { title: "Gå gjennom forslaga", description: "Ta med det som er relevant." },
+                ],
+              },
+            }],
+          }),
+        };
+      }
       return {
         ok: true,
         json: async () => ({
@@ -146,6 +193,8 @@ async function main() {
   // hent ut .fetch éin gong her, resten av testane under held seg uendra.
   const { default: annualWheelModule } = await import("./api/ai/annual-wheel.js");
   const annualWheelHandler = annualWheelModule.fetch;
+  const { default: oversiktModule } = await import("./api/ai/oversikt.js");
+  const oversiktHandler = oversiktModule.fetch;
 
   /* =========================================================================
      A) api/_lib/resolve-tenant.js
@@ -367,6 +416,98 @@ async function main() {
     if (r.status === 429) rateLimited++;
   }
   assert(rateLimited > 0, "e16: gjentekne raske kall frå same tenant+brukar vert til slutt rate-limita (429) -- best-effort per-instans-vern, sjå fila sin eigen kommentar om at dette IKKJE er ein ekte distribuert avgrensar");
+
+  /* =========================================================================
+     F) api/ai/oversikt.js -- Oversikt sitt server-endepunkt. Same
+     auth-/entitlement-/valideringsmønster som E-seksjonen over (annual-wheel),
+     pluss eigne testar for kryssande-punkt-validering (dependencyEdges via
+     fromIndex/toIndex, sirkelfjerning, utanfor-lista-fjerning).
+     ====================================================================== */
+  const validOvBody = { title: "Flytte verkstedet", description: "Vi skal flytte verkstedet til større lokaler innen høsten.", scenarioType: "relocation", depth: "normal", requestedSections: ["needs", "dependencies", "impacts", "blindSpots"], existingItemTitles: [] };
+
+  scenario = "ov-full-success";
+  r = await oversiktHandler(fakeRequest("https://kunde.no/api/ai/oversikt", { host: "f1.kunde.no" }));
+  assert(r.status === 405, "f1: berre POST er støtta (GET gjev 405)");
+
+  delete process.env.ANTHROPIC_API_KEY;
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f2.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 500, "f2: 500 når ANTHROPIC_API_KEY manglar på serveren");
+  process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f3.kunde.no" }, validOvBody));
+  assert(r.status === 401, "f3: 401 utan Authorization-header");
+
+  scenario = "no-tenant";
+  r = await oversiktHandler(fakePostRequest("https://ukjend.no/api/ai/oversikt", { host: "f4.ukjend.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 404, "f4: 404 for ukjend installasjon (tenant finst ikkje)");
+
+  scenario = "hop1-http-error";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f5.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 502, "f5: 502 når kontrollplan-oppslaget feilar");
+
+  scenario = "ov-not-entitled";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f5b.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 403, "f5b: 403 når tenanten IKKJE har Oversikt aktivert i control-planet (tenant.custom_modules_manifest), sjølv med gyldig admin/editor-innlogging -- same entitlement-mønster som annual-wheel.js (ADR-0007: éin delt Vercel-utrulling/ANTHROPIC_API_KEY betener alle tenantar)");
+
+  scenario = "aw-auth-fail";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f6.kunde.no", authorization: "Bearer ugyldig" }, validOvBody));
+  assert(r.status === 401, "f6: 401 ved ugyldig/utløpt innlogging (tenantens eigen Supabase Auth avviser tokenet)");
+
+  scenario = "aw-role-member";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f7.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 403, "f7: 403 for rolla member (krev admin/editor)");
+
+  scenario = "aw-role-http-error";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f8.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 401, "f8: 401 når rolleoppslaget mot tenantens users-tabell feilar");
+
+  scenario = "ov-full-success";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f9.kunde.no", authorization: "Bearer t" }, undefined));
+  assert(r.status === 400, "f9: 400 ved ugyldig JSON i førespurnaden");
+
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f10.kunde.no", authorization: "Bearer t" }, { scenarioType: "relocation" }));
+  assert(r.status === 400, "f10: 400 når description manglar");
+
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f11.kunde.no", authorization: "Bearer t" }, { description: "x".repeat(1501) }));
+  assert(r.status === 400, "f11: 400 når description er for lang");
+
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f12.kunde.no", authorization: "Bearer t" }, { description: "Test", requestedSections: ["ukjend-seksjon"] }));
+  assert(r.status === 400, "f12: 400 ved ugyldig verdi i requestedSections");
+
+  scenario = "ov-anthropic-http-error";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f13.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 502, "f13: 502 når Anthropic-kallet feilar med HTTP-feil (eksisterande punkt er urørte -- ingen tilstand vert skriven server-side i det heile)");
+  body = await r.json();
+  assert(typeof body.error === "string" && body.error.length > 0, "f13b: feilrespons har ei lesbar norsk feilmelding");
+
+  scenario = "ov-anthropic-bad-shape";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f14.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 502, "f14: 502 når Anthropic-svaret manglar tool_use-blokka (ikkje tekst-parsing av eit vanleg svar)");
+
+  scenario = "ov-full-success";
+  r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f15.kunde.no", authorization: "Bearer t" }, validOvBody));
+  assert(r.status === 200, "f15: 200 ved fullt vellykka generering");
+  body = await r.json();
+  assert(body.detectedSituationProfile && body.detectedSituationProfile.situationType === "Flytting av verksemd", "f15b: detectedSituationProfile kjem med frå modellsvaret");
+  assert(Array.isArray(body.needs) && body.needs.length === 2, "f15c: begge needs frå modellen kjem gjennom valideringa");
+  const badNeed = body.needs[1];
+  assert(badNeed.category === "custom" && badNeed.priority === "normal", "f15d: ugyldige enum-verdiar frå modellen (kategori/prioritet) vert klemte til trygge standardverdiar, aldri sleppte gjennom rått");
+  assert(body.dependencyNodes.length === 3, "f15e: alle tre dependencyNodes frå modellen kjem gjennom");
+  assert(body.dependencyEdges.length === 2, "f15f: berre dei to gyldige, ikkje-sykliske kantane kjem gjennom -- sirkelkanten (2→0), utanfor-lista-kanten (0→99) og sjølv-referansen (1→1) er alle fjerna");
+  const stepIds = body.dependencyNodes.map(n => n.id);
+  assert(body.dependencyEdges.every(e => stepIds.includes(e.from) && stepIds.includes(e.to)), "f15g: kvar kant peikar på ekte, server-genererte id-ar (aldri modellen sin eigen fromIndex/toIndex rått)");
+  assert(body.dependencyNodes.every(n => n.approvalStatus === "suggested" && n.status === "not-started"), "f15h: alle AI-genererte steg startar som «Forslag», aldri «Aktiv» -- ingenting skal telje i kart/oppsummering/eksport før brukaren tek dei med");
+  assert(body.needs.every(n => typeof n.id === "string" && n.id.length > 0), "f15i: kvart punkt får ein server-generert id (stolar ikkje på modellen sin eigen)");
+  assert(typeof body.disclaimer === "string" && body.disclaimer.length > 0, "f15j: svaret har alltid ei fast fråskrivingstekst");
+  assert(body.title === validOvBody.title && body.description === validOvBody.description && body.scenarioType === validOvBody.scenarioType, "f15k: title/description/scenarioType frå den ORIGINALE førespurnaden kjem med i svaret uendra (retta tryggleiksgjennomgang-funn: desse gjekk tidlegare tapt, klienten viste alltid det generiske «Ny oversikt»)");
+
+  scenario = "ov-full-success";
+  let ovRateLimited = 0;
+  for (let i = 0; i < 8; i++) {
+    r = await oversiktHandler(fakePostRequest("https://kunde.no/api/ai/oversikt", { host: "f16.kunde.no", authorization: "Bearer t" }, validOvBody));
+    if (r.status === 429) ovRateLimited++;
+  }
+  assert(ovRateLimited > 0, "f16: gjentekne raske kall frå same tenant+brukar vert til slutt rate-limita (429) -- same best-effort per-instans-vern som annual-wheel.js");
 
   console.log("\nResultat: OK " + __ok + " / FEIL " + __err);
 }

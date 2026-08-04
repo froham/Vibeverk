@@ -26,7 +26,8 @@ const html = fs.readFileSync("workspace/index.html", "utf8")
   .replace(/src="module-links\.js"/g,     'src="workspace/module-links.js"')
   .replace(/src="module-workspaceship\.js[^"]*"/g, 'src="workspace/module-workspaceship.js"')
   .replace(/src="module-users\.js[^"]*"/g,   'src="workspace/module-users.js"')
-  .replace(/src="module-smart-aarshjul\.js[^"]*"/g, 'src="workspace/module-smart-aarshjul.js"');
+  .replace(/src="module-smart-aarshjul\.js[^"]*"/g, 'src="workspace/module-smart-aarshjul.js"')
+  .replace(/src="module-oversikt\.js[^"]*"/g, 'src="workspace/module-oversikt.js"');
 
 const dom = new JSDOM(html, {
   runScripts: "outside-only", pretendToBeVisual: true,
@@ -63,7 +64,8 @@ window.confirm = () => true;
   "workspace/module-links.js",
   "workspace/module-workspaceship.js",
   "workspace/module-users.js",
-  "workspace/module-smart-aarshjul.js"
+  "workspace/module-smart-aarshjul.js",
+  "workspace/module-oversikt.js"
 ].forEach(f => {
   let src = fs.readFileSync(f, "utf8");
   // For testmiljøet: skru på alle intranett-features
@@ -129,6 +131,7 @@ assert(!navIds.includes("workspaceship"),"b5: workspaceship skjult");
 assert(navIds.includes("users"),         "b6: users i nav for admin");
 assert(!navIds.includes("spaceship"),    "b7: spaceship-modulen skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
 assert(!navIds.includes("smart-aarshjul"),"b8: smart-aarshjul skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
+assert(!navIds.includes("oversikt"),      "b9: oversikt skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
 
 /* --- C) INGEN OFFENTLEG INNHALD ------------------------------------------ */
 assert(!doc.querySelector(".site-header"), "c1: ingen site-header");
@@ -882,6 +885,119 @@ nav("#/notes"); nav("#/dashboard");
   assert(!navThrew4, "ac3: direkte navigering til #/smart-aarshjul krasjar ikkje sjølv om modulen aldri registrerte seg");
   assert(doc4.getElementById("intranet-main").textContent.indexOf("Modul ikke funnet") > -1,
     "ac4: #/smart-aarshjul fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
+})();
+
+/* --- AD) OVERSIKT SOM CUSTOMMODULES-EKSEMPEL --------------------------------
+   Same mønster som AB-seksjonen over (Smart årshjul): patch config.js sin
+   customModules for å stadfeste PÅ-stien -- at ei eksplisitt { enabled: true
+   }-oppføring faktisk får modulen til å registrere seg i navigasjonen og
+   rendere oppsettskjemaet (ingen aktiv analyse enno). Eigen, separat DOM av
+   same grunn (App.ready() sin gate vert avgjort éin gong ved skriptlasting).
+   Nettverkskall (POST /api/ai/oversikt) vert IKKJE testa her -- det høyrer
+   heime i test-api.js (server-sida), ikkje i denne jsdom-hurtigsjekken. ---- */
+(function () {
+  const dom5 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window5 = dom5.window;
+  window5.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window5.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window5.scrollTo = () => {};
+  window5.HTMLElement.prototype.scrollIntoView = () => {};
+  window5.URL.createObjectURL = window5.URL.createObjectURL || (() => "blob:mock");
+  window5.URL.revokeObjectURL = window5.URL.revokeObjectURL || (() => {});
+  window5.confirm = () => true;
+
+  [
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js",
+    "workspace/module-oversikt.js"
+  ].forEach(f => {
+    let src = fs.readFileSync(f, "utf8");
+    if (f === "config.js") {
+      src = src.replace(/customModules:\s*\{/, 'customModules: { "oversikt": { label: "Oversikt", enabled: true, params: {} },');
+    }
+    window5.eval(src);
+  });
+
+  const _NS5 = window5.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window5.eval(`sessionStorage.setItem("${_NS5}:admin","admin")`);
+  window5.document.dispatchEvent(new window5.Event("DOMContentLoaded", { bubbles: true }));
+  const doc5 = window5.document;
+
+  function nav5(hash) {
+    window5.location.hash = hash;
+    window5.dispatchEvent(new window5.Event("hashchange"));
+  }
+
+  const navIds5 = [...doc5.querySelectorAll(".i-nav__link")].map(a => a.getAttribute("data-inav"));
+  assert(navIds5.includes("oversikt"),
+    "ad1: oversikt-modulen VISES i navigasjonen når customModules.oversikt.enabled er true");
+  nav5("#/oversikt");
+  assert(!!doc5.querySelector("#ov-root"), "ad2: #ov-root rendrar ved navigering");
+  assert(!!doc5.querySelector("#ov-title"), "ad3: tittelfelt finst i oppsettskjemaet");
+  assert(!!doc5.querySelector("#ov-description"), "ad4: skildringsfelt finst i oppsettskjemaet");
+  assert(doc5.querySelectorAll('input[name="sections"]').length === 4, "ad5: alle fire analyseområde-avkryssingane (behov/avhengigheter/påvirkning/glemte punkter) finst");
+  assert(doc5.querySelectorAll(".ov-example").length === 5, "ad6: alle fem eksempel-knappane finst i oppsettskjemaet");
+})();
+
+/* --- AE) OVERSIKT AV: customModules.oversikt absent (dagens faktiske
+   standard i config.js) skal skjule modulen heilt -- same mønster som
+   AC-seksjonen over for Smart årshjul. Eigen, separat DOM av same grunn
+   (App.ready() sin gate vert avgjort éin gong ved skriptlasting). -------- */
+(function () {
+  const dom6 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window6 = dom6.window;
+  window6.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window6.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window6.scrollTo = () => {};
+  window6.HTMLElement.prototype.scrollIntoView = () => {};
+  window6.URL.createObjectURL = window6.URL.createObjectURL || (() => "blob:mock");
+  window6.URL.revokeObjectURL = window6.URL.revokeObjectURL || (() => {});
+  window6.confirm = () => true;
+
+  // Ingen customModules-patching her -- poenget er nettopp å teste config.js
+  // sin ekte, upatcha standard (customModules: {}, ingen oversikt-oppføring).
+  [
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js",
+    "workspace/module-oversikt.js"
+  ].forEach(f => window6.eval(fs.readFileSync(f, "utf8")));
+
+  const _NS6 = window6.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window6.eval(`sessionStorage.setItem("${_NS6}:admin","admin")`);
+  window6.document.dispatchEvent(new window6.Event("DOMContentLoaded", { bubbles: true }));
+  const doc6 = window6.document;
+
+  function nav6(hash) {
+    window6.location.hash = hash;
+    window6.dispatchEvent(new window6.Event("hashchange"));
+  }
+
+  assert(Object.keys(window6.SITE_CONFIG.customModules || {}).length === 0,
+    "ae1: føresetnad for denne seksjonen -- config.js sin ekte standard har eit tomt customModules-objekt (ingen oversikt-oppføring)");
+  assert(!doc6.querySelector('[data-inav="oversikt"]'),
+    "ae2: «Oversikt» finst ikkje i sidebar-navigasjonen når funksjonen er av");
+
+  let navThrew6 = false;
+  try { nav6("#/oversikt"); } catch (e) { navThrew6 = true; }
+  assert(!navThrew6, "ae3: direkte navigering til #/oversikt krasjar ikkje sjølv om modulen aldri registrerte seg");
+  assert(doc6.getElementById("intranet-main").textContent.indexOf("Modul ikke funnet") > -1,
+    "ae4: #/oversikt fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
 })();
 
 /* --- RESULTAT ------------------------------------------------------------- */
