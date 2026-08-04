@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.94.1 — 2026-08-05
+
+### Priser: retta punkt 4 — "Nettside"/"Workspace"/"Skreddersydd..." skal vere MODULAR, ikkje pakkar
+
+Brukaren las tilbake 0.94.0 sin punkt 4 og retta kursen FØR noko blei endra (per eksplisitt instruks): desse fire skulle vore prisingslinjer i Modulpriser, "akkurat som moduler" — ikkje eigne pakke-rader med eit pakke-nivå "pris etter avtale"-flagg.
+
+- Ny, rein prisings-katalog (`PRICING_ONLY_F_LABELS`/`PRICING_ONLY_I_LABELS` + tilhøyrande hjelpetekst) merga inn FØRST i eit nytt `PRISER_F_LABELS`/`PRISER_I_LABELS`-sett som ALLE Priser sine eigne funksjonar no bruker (Modulpriser-tabellen, pakke-redigering sine modul-rutenett, "Bygg tilbud", Forhåndsvisning sine sjekklister) — fire nye rader:
+  - Nettside: **"Hosting og vedlikehold av nettside"** (Standard, først i lista, før "Aktuelt")
+  - Workspace: **"Hosting og vedlikehold av Workspace"** (Standard, først), deretter **"Skreddersydd modul"** og **"Skreddersydd AI-modul"** (begge Tillegg, 0 kr til operatøren prisar dei per konkret avtale)
+- **Viktig skilje, oppdaga under implementasjonen**: `FEAT_LABELS`/`IFEAT_LABELS` (dei ekte, konfig-baserte featureflagga) blir ATT attbrukt uendra av "Modular"-fana (`renderModular`), som styrer faktiske av/på-brytarar for kunden. Dei fire nye radene har INGEN tilsvarande ekte brytar i `config.js` — dei er rein fakturerings-/prisingskatalog. Difor eit HEILT SEPARAT, merga sett (`PRISER_F_LABELS`/`PRISER_I_LABELS`) berre for Priser sine eigne funksjonar, slik at "Modular"-fana ALDRI viser desse fire som togglar (ville vore ein togglar som ikkje gjer noko når klikka).
+- `pkg.priceOnRequest` (pakke-nivå "Pris etter avtale") frå 0.94.0 er FRAMLEIS der, urørt — behalde etter eksplisitt brukarønske, i tilfelle ein heil skreddersydd PAKKE (ikkje berre enkeltmodul) skal seljast utan fast pris ein annan gong.
+
+Verifisert visuelt (same mocka Console-økt-teknikk som 0.94.0): stadfesta at "Modular"-fana ikkje inneheld "Hosting"/"Skreddersydd" i det heile, og at Modulpriser-tabellen viser dei fire nye radene i rett rekkjefølgje og med rette standard/tillegg-forvalte verdiar.
+
 ## 0.94.0 — 2026-08-04
 
 ### Priser (Console): fem brukarønska rettingar/utvidingar
