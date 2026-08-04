@@ -140,7 +140,12 @@ async function main() {
   const { default: siteManifestHandler } = await import("./api/site-manifest.js");
   const { default: adminManifestHandler } = await import("./api/admin-manifest.js");
   const { default: middleware } = await import("./middleware.js");
-  const { default: annualWheelHandler } = await import("./api/ai/annual-wheel.js");
+  // annual-wheel.js sitt default-eksport er no { fetch(request) {...} } (Node.js
+  // runtime sin Web Standard-form, sjå fila sin eigen header-kommentar for kvifor),
+  // ikkje ein bar funksjon lenger (det var Edge runtime sin eigen konvensjon) --
+  // hent ut .fetch éin gong her, resten av testane under held seg uendra.
+  const { default: annualWheelModule } = await import("./api/ai/annual-wheel.js");
+  const annualWheelHandler = annualWheelModule.fetch;
 
   /* =========================================================================
      A) api/_lib/resolve-tenant.js

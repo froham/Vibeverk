@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.95.1 — 2026-08-05
+
+### Smart årshjul: fiks 504 på ekte generering — Edge runtime → Node.js runtime
+
+Brukaren aktiverte Smart årshjul for ein ekte kunde (fyrste ekte, kostnadsberande forsøk etter 0.95.0) og fekk ein bar `504` rett frå nettlesaren, ikkje det venta, høflege norske feilsvaret frå `api/ai/annual-wheel.js` sin eigen `try/catch`. Verifisert direkte mot produksjonslogg (`vercel logs vibeverk.no`): **"Error: Your function was stopped as it did not return an initial response within 25s."**
+
+**Rotårsak, stadfesta mot Vercel sin eigen dokumentasjon** (henta live, ikkje frå minne): Edge runtime har eit HARDKODA, IKKJE-konfigurerbart 25-sekunders tak for å starte svaret (`/docs/functions/limitations#max-duration`) — dette er ein plattformgrense, ikkje noko `maxDuration` kan endre for Edge. Denne fila sin eigen `ANTHROPIC_TIMEOUT_MS = 30000`-basert `AbortController`/graceful-feilmelding fekk difor ALDRI sjansen til å køyre -- Vercel drap funksjonen 5 sekund FØR vår eigen timeout ville trigga, og returnerte sin eigen generiske 504 i staden.
+
+Node.js runtime har 300 sekund standard OG maksimum på Hobby-planen (stadfesta same dokumentasjon) — meir enn nok for eit ekte Anthropic-kall som ber om 18-30 strukturerte tool-use-forslag. Retta ved å byte KUN denne eine endepunktet (ikkje søsknene `tenant-config.js`/`*-manifest.js`, som er raske og har ingen grunn til å flytte) frå Edge til Node.js runtime:
+- Fjerna `export const config = { runtime: "edge" }`.
+- Eksport endra frå Edge sin bare-funksjon-konvensjon (`export default async function handler(request)`) til Node.js sin Web Standard-form (`export default { fetch: handler }`, stadfesta i Vercel sin eigen dokumentasjon under "Create a Node.js function in /api") — resten av fila (Fetch-API-stilen med `request.headers.get()`, `request.json()`, `new Response(...)`) trong INGEN andre endringar, sidan Node.js runtime sine Request/Response-objekt er dei same standard Web-API-objekta.
+- `test-api.js` sin import oppdatert til å hente ut `.fetch` frå default-eksporten før testane kallar han, elles uendra.
+
+Alle tre testsuitane grøne (676/192/63). Deployert til produksjon (`vibeverk`) etter denne fiksen — neste ekte aktiveringsforsøk bør IKKJE lenger treffe 25-sekundstaket.
+
 ## 0.95.0 — 2026-08-05
 
 ### Smart årshjul: migrert til `customModules` (skreddarsydd modul) + ekte Anthropic-nøkkel sett i produksjon
