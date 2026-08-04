@@ -151,7 +151,15 @@ function buildToolSchema() {
 }
 
 var DEFAULT_MODEL = "claude-haiku-4-5-20251001";
-var ANTHROPIC_TIMEOUT_MS = 30000;
+// 30000 var trygt nok under Edge sitt gamle 25s-plattformtak, men var i
+// praksis for stramt for det ekte kallet: generering av 18-30 strukturerte
+// tool-use-forslag (max_tokens 8000) med ei fyldig verksemdskildring tok i
+// praksis over 30s og vart avbrote av VÅR EIGEN AbortController (stadfesta
+// mot ekte produksjonslogg 2026-08-05: "error: 'This operation was aborted'",
+// ikkje ein plattform-504) -- no som endepunktet køyrer på Node.js runtime
+// (300s tak, sjå annual-wheel.js sin eigen kommentar), er det rikeleg med
+// rom til å gje det ekte kallet meir tid i staden for å kutte det kunstig.
+var ANTHROPIC_TIMEOUT_MS = 90000;
 
 export async function generateAnnualWheelSuggestions(profile, sourceResults, opts) {
   var apiKey = (opts && opts.apiKey) || process.env.ANTHROPIC_API_KEY;
