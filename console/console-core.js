@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.94.0";
+  var VIBEVERK_VERSION = "0.94.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -450,6 +450,38 @@ window.VwConsole = (function () {
     quote:         "Sjå og handtere tilbodsførespurnadar frå Workspace.",
     contact:       "Sjå og svare på kontakthenvendingar frå Workspace."
   };
+
+  // Rein PRISINGS-katalog (brukarønske 2026-08-05) -- Hosting/vedlikehold
+  // (nettside og Workspace) og to skreddersydde Workspace-tillegg. Desse har
+  // INGEN tilsvarande reell av/på-brytar i config.js (i motsetnad til ALT i
+  // FEAT_LABELS/IFEAT_LABELS over, som "Modular"-fana (renderModular)
+  // attbruker for å styre faktiske kundefunksjonar). Difor EIT MERGA sett,
+  // berre for Priser sine eigne funksjonar -- Modular-fana bruker framleis
+  // FEAT_LABELS/IFEAT_LABELS direkte, urørt, aldri disse nye nøklane. Utan
+  // dette skiljet ville "Hosting og vedlikehold" og "Skreddersydd..." dukke
+  // opp som togglar i Modular som ikkje gjer noko når dei klikkast.
+  var PRICING_ONLY_F_LABELS = { hosting: "Hosting og vedlikehold av nettside" };
+  var PRICING_ONLY_F_HELP = {
+    hosting: "Løpande hosting, oppdateringar og teknisk drift av nettsida. Dette er IKKJE ein ekte av/på-brytar i appen -- eit rent prisingslinjeelement for tilbod og pakkar."
+  };
+  var PRICING_ONLY_I_LABELS = {
+    hosting: "Hosting og vedlikehold av Workspace",
+    customModule: "Skreddersydd modul",
+    customAiModule: "Skreddersydd AI-modul"
+  };
+  var PRICING_ONLY_I_HELP = {
+    hosting: "Løpande hosting, oppdateringar og teknisk drift av Workspace. Dette er IKKJE ein ekte av/på-brytar i appen -- eit rent prisingslinjeelement for tilbod og pakkar.",
+    customModule: "Ein bestilt, tilpassa funksjon bygd spesielt for denne kunden. Ingen fast katalogpris -- sett ein pris her når modulen faktisk brukast i eit konkret tilbod.",
+    customAiModule: "Ein bestilt, tilpassa AI-driven funksjon (t.d. i stil med Smart årshjul) bygd spesielt for denne kunden. Ingen fast katalogpris -- sett ein pris her når modulen faktisk brukast i eit konkret tilbod."
+  };
+  // Merga sett, KUN brukt av Priser-funksjonane under (aldri av renderModular
+  // over). Object.assign() bevarer kvar kildes nøkkel-rekkjefølgje -- dei tre
+  // nye prisingselementa hamnar difor FØR "Aktuelt" og resten, akkurat som
+  // etterspurt.
+  var PRISER_F_LABELS = Object.assign({}, PRICING_ONLY_F_LABELS, FEAT_LABELS);
+  var PRISER_F_HELP   = Object.assign({}, PRICING_ONLY_F_HELP, FEAT_HELP);
+  var PRISER_I_LABELS = Object.assign({}, PRICING_ONLY_I_LABELS, IFEAT_LABELS);
+  var PRISER_I_HELP   = Object.assign({}, PRICING_ONLY_I_HELP, IFEAT_HELP);
   var NAV_ITEMS = [
     { id: "kundar",     icon: "building",    label: "Kundar" },
     { id: "produkt",    icon: "package",     label: "Produkt" },
@@ -1587,7 +1619,7 @@ window.VwConsole = (function () {
     return src[key] || { monthly: 0, setup: 0, standard: true };
   }
   function priserStandardKeys(ns) {
-    var labels = ns === "f" ? FEAT_LABELS : IFEAT_LABELS;
+    var labels = ns === "f" ? PRISER_F_LABELS : PRISER_I_LABELS;
     return Object.keys(labels).filter(function (k) { return priserPriceEntry(ns, k).standard; });
   }
   function priserSum(featureKeys, iFeatureKeys) {
@@ -1682,6 +1714,25 @@ window.VwConsole = (function () {
     if (typeof pkg.priceOnRequest !== "boolean") pkg.priceOnRequest = false;
   }
 
+  // Fyller inn dei nye, rein-prisings-katalogelementa (Hosting/Skreddersydd,
+  // brukarønske 2026-08-05) med faste, meiningsfulle standardverdiar den
+  // FYRSTE gongen dei møter lagra data som ikkje kjenner dem -- utan dette
+  // ville priserPriceEntry() sin generiske fallback ({monthly:0,setup:0,
+  // standard:TRUE}) gjort BÅDE "Skreddersydd modul" og "Skreddersydd AI-
+  // modul" til Standard ved fyrste opning, feil for to eksplisitt opt-in-
+  // tillegg. Idempotent -- gjer ingenting om verdiane alt finst (t.d. etter
+  // operatøren sjølv har lagra ei endring på dem).
+  function priserBackfillPricingOnlyEntries() {
+    function ensure(ns, key, standard) {
+      if (!_priserData.prices[ns]) _priserData.prices[ns] = {};
+      if (!_priserData.prices[ns][key]) _priserData.prices[ns][key] = { monthly: 0, setup: 0, standard: standard };
+    }
+    ensure("f", "hosting", true);
+    ensure("i", "hosting", true);
+    ensure("i", "customModule", false);
+    ensure("i", "customAiModule", false);
+  }
+
   function priserLoad(wrap) {
     if (_priserLoading) return;
     _priserLoading = true;
@@ -1697,6 +1748,7 @@ window.VwConsole = (function () {
       _priserData = r.data.data;
       (_priserData.packages || []).forEach(priserBackfillCaps);
       (_priserData.packages || []).forEach(priserBackfillStandardFlags);
+      priserBackfillPricingOnlyEntries();
       renderPriser(null, wrap);
     });
   }
@@ -1737,12 +1789,14 @@ window.VwConsole = (function () {
     return section("Standard", std) + section("Tillegg", addon);
   }
 
-  // FEAT_LABELS/IFEAT_LABELS er attbrukt her frå Modular-fana (sjå
-  // renderPriser() sin eigen kommentar), og same gjeld FEAT_HELP/IFEAT_HELP
-  // -- UX-review-funn 2026-08-04: forklaringane fanst alt for kvar nøkkel,
-  // men vart aldri vist på Priser sine chips, sjølv om ei rekkje modular
-  // (t.d. "crmFull"→"Native e-post") ikkje er sjølvforklarande av namnet åleine.
-  function priserHelpFor(ns, key) { return (ns === "f" ? FEAT_HELP : IFEAT_HELP)[key]; }
+  // PRISER_F_LABELS/PRISER_I_LABELS er FEAT_LABELS/IFEAT_LABELS (attbrukt frå
+  // Modular-fana) MERGA med den rene prisings-katalogen (Hosting/Skreddersydd
+  // -- sjå PRICING_ONLY_*-konstantane over), same gjeld PRISER_F_HELP/
+  // PRISER_I_HELP -- UX-review-funn 2026-08-04: forklaringane fanst alt for
+  // kvar nøkkel, men vart aldri vist på Priser sine chips, sjølv om ei
+  // rekkje modular (t.d. "crmFull"→"Native e-post") ikkje er sjølvforklarande
+  // av namnet åleine.
+  function priserHelpFor(ns, key) { return (ns === "f" ? PRISER_F_HELP : PRISER_I_HELP)[key]; }
 
   function priserFeatChip(key, label, checked, pkgId, group, tagValue) {
     var help = priserHelpFor(group, key);
@@ -1806,14 +1860,14 @@ window.VwConsole = (function () {
   }
 
   function priserPkgFieldsHtml(pkg) {
-    var featGrid = priserPkgFeatGroup(pkg, "f", FEAT_LABELS, function (k) {
-      return priserFeatChip(k, FEAT_LABELS[k], pkg.features.indexOf(k) > -1, pkg.id, "f", pkg.tags.f[k]);
+    var featGrid = priserPkgFeatGroup(pkg, "f", PRISER_F_LABELS, function (k) {
+      return priserFeatChip(k, PRISER_F_LABELS[k], pkg.features.indexOf(k) > -1, pkg.id, "f", pkg.tags.f[k]);
     });
     // Workspace-funksjoner vises på lik linje med Nettside-funksjoner --
     // samme rutenett, alltid synlig, ingen "Inkluderer Workspace"-sperre
     // foran (brukarønske 2026-08-03).
-    var iFeatGrid = priserPkgFeatGroup(pkg, "i", IFEAT_LABELS, function (k) {
-      return priserFeatChip(k, IFEAT_LABELS[k], pkg.iFeatures.indexOf(k) > -1, pkg.id, "i", pkg.tags.i[k]);
+    var iFeatGrid = priserPkgFeatGroup(pkg, "i", PRISER_I_LABELS, function (k) {
+      return priserFeatChip(k, PRISER_I_LABELS[k], pkg.iFeatures.indexOf(k) > -1, pkg.id, "i", pkg.tags.i[k]);
     });
     var sum = priserSum(priserEffectiveKeys(pkg, "f"), priserEffectiveKeys(pkg, "i"));
 
@@ -2133,9 +2187,9 @@ window.VwConsole = (function () {
         '<thead><tr><th>Modul</th><th>Standard</th><th>Månedspris (kr)</th><th>Oppstartskostnad (kr, engang)</th></tr></thead>' +
         '<tbody>' +
           '<tr class="group-row"><td colspan="4">Nettside-/Web-admin-funksjoner</td></tr>' +
-          Object.keys(FEAT_LABELS).map(function (k) { return row(k, FEAT_LABELS[k], "f"); }).join("") +
+          Object.keys(PRISER_F_LABELS).map(function (k) { return row(k, PRISER_F_LABELS[k], "f"); }).join("") +
           '<tr class="group-row"><td colspan="4">Workspace-funksjoner</td></tr>' +
-          Object.keys(IFEAT_LABELS).map(function (k) { return row(k, IFEAT_LABELS[k], "i"); }).join("") +
+          Object.keys(PRISER_I_LABELS).map(function (k) { return row(k, PRISER_I_LABELS[k], "i"); }).join("") +
         '</tbody>' +
       '</table></div>' +
       priserSaveRowHtml();
@@ -2197,8 +2251,8 @@ window.VwConsole = (function () {
   }
 
   function renderPriserQuote(wrap) {
-    var fCartItems = _priserQuote.f.map(function (k) { return { label: FEAT_LABELS[k], monthly: priserPriceEntry("f", k).monthly, ns: "f", key: k }; });
-    var iCartItems = _priserQuote.i.map(function (k) { return { label: IFEAT_LABELS[k], monthly: priserPriceEntry("i", k).monthly, ns: "i", key: k }; });
+    var fCartItems = _priserQuote.f.map(function (k) { return { label: PRISER_F_LABELS[k], monthly: priserPriceEntry("f", k).monthly, ns: "f", key: k }; });
+    var iCartItems = _priserQuote.i.map(function (k) { return { label: PRISER_I_LABELS[k], monthly: priserPriceEntry("i", k).monthly, ns: "i", key: k }; });
     // "til venstre" var feil på alle skjermar ≤800px, der plukkeren stables
     // OVER handlekurven, ikkje til venstre for han (UX-review-funn).
     var cartHtml = (!fCartItems.length && !iCartItems.length)
@@ -2212,9 +2266,9 @@ window.VwConsole = (function () {
       '<div class="quote-layout">' +
         '<div class="quote-picker">' +
           '<div class="feat-section-title">Nettside-/Web-admin-funksjoner</div>' +
-          priserGroupedGrid(Object.keys(FEAT_LABELS), "f", function (k) { return priserQuoteChip(k, FEAT_LABELS[k], "f"); }, "") +
+          priserGroupedGrid(Object.keys(PRISER_F_LABELS), "f", function (k) { return priserQuoteChip(k, PRISER_F_LABELS[k], "f"); }, "") +
           '<div class="feat-section-title">Workspace-funksjoner</div>' +
-          priserGroupedGrid(Object.keys(IFEAT_LABELS), "i", function (k) { return priserQuoteChip(k, IFEAT_LABELS[k], "i"); }, "") +
+          priserGroupedGrid(Object.keys(PRISER_I_LABELS), "i", function (k) { return priserQuoteChip(k, PRISER_I_LABELS[k], "i"); }, "") +
         '</div>' +
         '<div class="quote-cart">' +
           '<h4>Valgte moduler</h4>' +
@@ -2371,8 +2425,8 @@ window.VwConsole = (function () {
                     '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>') +
                 '<div class="compare-card__desc">' + C.esc(pkg.desc || "") + '</div>' +
                 priserCapsLine(pkg) +
-                priserFeatListHtml("Nettside", pkg, "f", FEAT_LABELS) +
-                priserFeatListHtml("Workspace", pkg, "i", IFEAT_LABELS) +
+                priserFeatListHtml("Nettside", pkg, "f", PRISER_F_LABELS) +
+                priserFeatListHtml("Workspace", pkg, "i", PRISER_I_LABELS) +
               '</div>';
             }).join("") +
           '</div>'
