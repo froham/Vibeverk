@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.98.0 — 2026-08-05
+
+**Ny funksjonalitet:** «Budsjett»-fane i Console sin Priser-modul — ein 12-månaders inntektsprognose-kalkulator. Brukaren set eit forventa NYSAL PER MÅNAD for kvar pakke (henta med reelle pakketerte prisar frå `_priserData.packages`), og verktøyet syner:
+- Ein SVG-graf: MRR-linje som AKKUMULERER månad for månad (kundar frå tidlegare månadar held fram å betale — klassisk lineær SaaS-vekstmodell), pluss stolpar for eingongsinntekt (flatt kvar månad, berre frå den månaden sine nye sal), pluss ei valfri stipla mål-linje (kr/mnd).
+- Ein "Når nås målet?"-indikator (`Math.ceil(mål / ny-MRR-per-månad)`, med eksplisitte tilstandar for "aldri med denne salstakta" og "målet er alt nådd").
+- Ein tal-tabell under grafen (same 12 månadar, alltid synleg — grafen sin tooltip er eit tillegg, aldri einaste vegen til dataen).
+
+`priceOnRequest`-pakkar ("Skreddersydde moduler") er synlege i salsplan-tabellen (informativt) men ekskluderte frå berekninga, sidan dei ikkje har ein fast pris å multiplisere med eit tal. Reint økt-lokalt state (`_priserBudget`), same mønster som "Bygg tilbud" — ALDRI lagra til `pricing_config`/databasen.
+
+Fargane i grafen (`#2a78d6` MRR-linje, `#008300` eingongs-stolpar) er henta frå `dataviz`-skillen sin validerte standardpalett, stadfesta med `scripts/validate_palette.js` mot Console sin faktiske kvite overflate (`#ffffff`) — alle sjekkar (lysheit, kroma, CVD-skilje, normalsyn-golv, kontrast) PASS.
+
+Fana vart undervegs presisert av brukaren frå ein enklare éin-periode-kalkulator (statisk "hvis bare denne pakken"-nedbryting) til ei ekte 12-månaders vekstprognose med graf, midt i implementeringa — sjå tilhøyrande plan-fil-historikk. `renderPriser` sin fane-dispatch vart samstundes retta frå eit implisitt catch-all (trygt berre ved nøyaktig 4 verdiar) til ei eksplisitt if/else-kjede med dokumentert fallback, no som ei 5. fane finst.
+
+Kjørt gjennom UX/Mobile Reviewer før merge, som fann og fekk retta fleire reelle funn: `role="img"` på sjølve SVG-en kunne skjule dei individuelt merkelappa `.budget-hit`-borna for ein skjermlesar sin virtuell-markør-navigasjon (endra til `role="group"` + ein eigen `<title>`); y-akse-talet sin venstremarg var fast (60px) og kunne klippe av dei fremste sifra på store kr-beløp (no dynamisk, breidde-tilpassa `niceMax`); tooltipen hadde ingen vassrett/loddrett klemming og kunne stikke utanfor kortet ved månad 1/12 (retta); eit mål sett høgt over reell prognose kunne klemme grafen flat utan forklaring (ny åtvaringstekst); "MRR" stod uforklart fem stader (utvida i to `helpIcon()`-tooltipar); og "Målet er 0 kr/mnd eller alt nådd" synte feilaktig FØR brukaren i det heile hadde skrive inn eit mål (delt `priserBudgetMttText()`-funksjon skil no eksplisitt "ikkje sett" frå "nådd", og varslar eksplisitt når svaret ligg utanfor dei synlege 12 månadane).
+
+Console har ingen automatisert testsuite — verifisert med syntakssjekk og eit frittståande Node-skript som stadfestar sjølve kompoundingsmatematikken (MRR/eingongsinntekt/månader-til-mål) mot handrekna forventa verdiar, ikkje ein live login-test. Cache-bust: `console-core.js?v=216`.
+
 ## 0.97.0 — 2026-08-05
 
 **Ny funksjonalitet:** «Spar kr X»-merking i Console sin Priser-fane. Når ei pakke sin SETTE pris (`pkg.price`/`setupCost`) er lågare enn den KALKULERTE modulsummen (same tal som alt vart vist i ein `helpIcon()`-tooltip via "Veiledande sum"), vises no ei automatisk utrekna innsparing:
