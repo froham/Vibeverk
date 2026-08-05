@@ -29,6 +29,7 @@ const STAGING_ANON_KEY = process.env.VW_STAGING_SUPABASE_ANON_KEY;
 const ADMIN_EMAIL = process.env.VW_STAGING_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.VW_STAGING_ADMIN_PASSWORD;
 const STAGING_DB_URL = process.env.VW_STAGING_DB_URL;
+const STAGING_SERVICE_ROLE_KEY = process.env.VW_STAGING_SERVICE_ROLE_KEY;
 
 // ── Direct SQL against vibeverk-staging (arrange/assert steps only -- the
 // actual code path under test always goes through the real UI/Edge Function,
@@ -208,6 +209,161 @@ async function loginWebAdmin(page) {
   // form proved flaky; direct form submission did not).
   await page.evaluate(() => document.querySelector("[data-login]").requestSubmit());
   await page.waitForSelector(".admin-catbar, .tabs", { timeout: 15000 });
+}
+
+// ── Admin API: real session as an existing staging user, no email needed ──
+// TEST-MATRIX.md B8.1/B8.2's own gap note: this suite invites throwaway
+// members via the real UI but never actually logs in AS them, so role-gated
+// UI visibility was never exercised, only the invite/remove mechanics.
+// generate_link (magiclink) gives a real, verifiable action_link for an
+// EXISTING user without sending/waiting on a real email -- exactly the
+// technique SKILL.md itself names as the right approach (also usable later
+// for the Console OTP bypass, not built yet). service_role key is used ONLY
+// here, server-side via Node's own fetch -- it bypasses RLS entirely and
+// must never reach a page.evaluate() context or a log line.
+async function generateMagicLink(email) {
+  if (!STAGING_SERVICE_ROLE_KEY) {
+    console.error("Set VW_STAGING_SERVICE_ROLE_KEY first (Admin API -- see SKILL.md).");
+    process.exit(1);
+  }
+  const res = await fetch(STAGING_URL + "/auth/v1/admin/generate_link", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: STAGING_SERVICE_ROLE_KEY,
+      Authorization: "Bearer " + STAGING_SERVICE_ROLE_KEY,
+    },
+    // redirect_to is a TOP-LEVEL field on this raw REST endpoint, NOT nested
+    // under `options` -- that nesting is a supabase-js SDK-only convenience
+    // (its client-side signInWithOtp()/etc. wrappers accept options.redirectTo
+    // and translate it internally). Confirmed live 2026-08-05: nesting it
+    // under options here is silently ignored by the endpoint, so redirect_to
+    // falls back to the project's default Site URL instead (a real deployed
+    // Vercel URL, not this local static server) with NO error surfaced.
+    body: JSON.stringify({ type: "magiclink", email: email, redirect_to: BASE_URL + "/workspace/" }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error("generate_link feila (" + res.status + "): " + JSON.stringify(data));
+  const link = data.action_link || (data.properties && data.properties.action_link);
+  if (!link) throw new Error("generate_link svarte utan action_link: " + JSON.stringify(data));
+  return link;
+}
+
+// Visits the action_link in a FRESH context on the SAME browser instance --
+// never the admin's own page/context, since that would just reuse the
+// admin's already-authenticated session/localStorage on the same origin and
+// defeat the entire point of checking what a DIFFERENT role's session
+// actually sees. core.js's createClient(cfg.url, cfg.anonKey) call passes no
+// explicit auth options, so supabase-js v2's default detectSessionInUrl:true
+// picks up the #access_token=... hash the verify redirect lands with, no
+// extra client-side code needed for this to work.
+async function loginViaMagicLink(browser, email) {
+  const link = await generateMagicLink(email);
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
+  await page.goto(link, { waitUntil: "networkidle" });
+  await page.waitForSelector("#intranet-nav, .i-nav", { timeout: 15000 });
+  return { context, page, errors };
+}
+
+// ── Flow: role-scoped nav/access check (member/editor) ─────────────────────
+// Closes the B8.1/B8.2 gap above: invite a throwaway user with a SPECIFIC
+// role via the real "Brukere" UI, then actually log in AS them (not the
+// admin) and assert role-gated UI behaves correctly from that user's own
+// session -- not just that the invite/remove mechanics work.
+//
+// As of this writing only ONE module is role-gated at all
+// (workspace/module-users.js, roles:["admin"]) -- every other module has no
+// roles restriction, so "member" and "editor" currently produce IDENTICAL
+// assertions here. That's not a bug in this test: it's real regression
+// coverage for the one gate that exists today, run once per role so a future
+// accidental loosening for EITHER role is caught, not proof the two roles
+// differ in the product today (TEST-MATRIX.md's B8.2 "editor-appropriate UI"
+// scope is broader than what's actually implemented yet).
+async function flowRoleScope(page, role) {
+  await loginWorkspaceAdmin(page);
+
+  const email = "smoketest-" + STAMP + "-" + role + "@vibeverk-test.invalid";
+  const name = TAG + "-" + role;
+  let uid = null;
+  let memberSession = null;
+
+  try {
+    await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
+    await page.waitForSelector("#u-email", { timeout: 10000 });
+    await page.fill("#u-email", email);
+    await page.fill("#u-name", name);
+    await page.selectOption("#u-role", role);
+    await page.click("#u-invite-btn");
+    await page.waitForFunction(() => {
+      const t = (document.getElementById("u-invite-status") || {}).textContent || "";
+      return t.length > 0 && t !== "Sender…";
+    }, { timeout: 15000 }).catch(() => {});
+    const inviteStatusText = await page.textContent("#u-invite-status");
+    if (!inviteStatusText || inviteStatusText.indexOf("sendt") === -1) {
+      throw new Error('Invitasjon feila -- statustekst: "' + (inviteStatusText || "(tom)") + '"');
+    }
+    const rowSelector = '.u-remove-btn[data-name="' + name + '"]';
+    await page.waitForSelector(rowSelector, { timeout: 10000 });
+    uid = await page.getAttribute(rowSelector, "data-uid");
+    if (!uid) throw new Error("Kunne ikkje lese data-uid for den nyinviterte brukaren");
+    console.log("Throwaway " + role + " invitert, id:", uid);
+
+    // Real session as that user, in a separate browser context.
+    memberSession = await loginViaMagicLink(page.context().browser(), email);
+    await memberSession.page.screenshot({ path: shotPath("role-scope-" + role + "-logged-in") });
+    console.log(role + " logga inn via ekte generate_link-økt (ikkje admin sitt eige, ikkje passord/e-post): OK");
+
+    // Admin-only "Brukere" must be absent from nav for this role.
+    const usersNavCount = await memberSession.page.locator('[data-inav="users"]').count();
+    if (usersNavCount !== 0) throw new Error('"Brukere" er synleg i nav-en for rolla "' + role + '" -- skal vere admin-only');
+    console.log('"Brukere" er korrekt fråverande i nav-en for rolla "' + role + '": OK');
+
+    // Direct navigation to the admin-only route must be denied, not silently render the list.
+    await memberSession.page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
+    const deniedText = await memberSession.page.textContent("#intranet-main");
+    if (!deniedText || deniedText.indexOf("ikkje tilgang") === -1) {
+      throw new Error('Direkte navigering til #/users synte ikkje avvisingsteksten for rolla "' + role + '" -- fann: "' + (deniedText || "").slice(0, 200) + '"');
+    }
+    console.log('Direkte navigering til #/users vert korrekt avvist for rolla "' + role + '": OK');
+
+    // Sanity check the session is genuinely functional, not just failing
+    // everything -- an ungated module must still be reachable.
+    const dashboardNavCount = await memberSession.page.locator('[data-inav="dashboard"]').count();
+    if (dashboardNavCount === 0) throw new Error('"Dashboard" (eit ikkje-rolle-avgrensa modul) er uventa fråverande for rolla "' + role + '" -- økta ser ut til å vere heilt broten, ikkje berre korrekt avgrensa');
+    console.log('Ikkje-rolle-avgrensa modul ("Dashboard") framleis synleg for rolla "' + role + '" -- økta er reelt funksjonell, ikkje berre generelt broten: OK');
+  } finally {
+    if (memberSession) {
+      console.log(role + "-økt sine konsollfeil:", memberSession.errors.length);
+      memberSession.errors.forEach((e) => console.log("  -", e));
+      await memberSession.context.close().catch(() => {});
+    }
+    // Remove the throwaway user via the real UI (same pattern as
+    // flowUserDeletion), with the same orphan-safety-net fallback.
+    try {
+      await loginWorkspaceAdmin(page);
+      await page.goto(BASE_URL + "/workspace/#/users", { waitUntil: "networkidle" });
+      const rowSelector = '.u-remove-btn[data-name="' + name + '"]';
+      const stillThere = await page.waitForSelector(rowSelector, { timeout: 10000 }).catch(() => null);
+      if (stillThere) {
+        page.once("dialog", (d) => d.accept());
+        await page.click(rowSelector);
+        await page.waitForSelector(rowSelector, { state: "detached", timeout: 10000 });
+        console.log("Throwaway " + role + " fjerna via ekte UI: OK");
+      }
+    } catch (e) { console.error("Cleanup warning: kunne ikkje fjerne throwaway-brukaren via UI:", e.message); }
+    if (uid) {
+      try {
+        const check = runStagingSql("select id from users where id = '" + uid + "';");
+        if (check && (check.rows || []).length > 0) {
+          runStagingSql("delete from auth.users where id = '" + uid + "';");
+          console.log("Cleanup: fjerna orphaned throwaway-" + role + " (UI-fjerninga fullførte ikkje denne køyringa)");
+        }
+      } catch (e) { console.error("Cleanup warning: kunne ikkje verifisere/fjerne throwaway-brukaren:", e.message); }
+    }
+  }
 }
 
 // ── Flow: dashboard shortcuts (KB + announcements) ──────────────────────────
@@ -645,6 +801,8 @@ const FLOWS = {
   "user-deletion": flowUserDeletion,
   "backup-restore": flowBackupRestore,
   "crm-documents": flowCrmDocuments,
+  "member-role-scope": (page) => flowRoleScope(page, "member"),
+  "editor-role-scope": (page) => flowRoleScope(page, "editor"),
 };
 
 (async () => {

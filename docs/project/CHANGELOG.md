@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.98.6 — 2026-08-05
+
+**Testing/QA, ingen produktendring:** Lukka hovudhòlet i "full innloggingsmatrise" (roadmapens "Next" item 2) — dei eksisterande smoke-vibeverk-flytane inviterte/fjerna kastebrukarar via ekte UI, men logga aldri inn SOM dei, så rolle-avgrensa UI-synlegheit var aldri faktisk testa, berre invitasjons-/fjernings-mekanikken.
+
+To nye flytar i `.claude/skills/smoke-vibeverk/runner.js`: **`member-role-scope`** og **`editor-role-scope`**. Brukar Supabase sin Admin API (`generate_link`, `type: "magiclink"`) til å hente ei ekte, fungerande økt som ein nyinvitert brukar med gitt rolle — utan passord, utan ekte e-post — i ein SEPARAT nettlesarkontekst (aldri admin sin eigen, sidan det berre ville attbrukt admin si alt-innlogga økt på same opphav). Stadfester: «Brukere»-navigasjonspunktet (admin-only, `workspace/module-users.js`) er fråverande for rolla, direkte navigering til `#/users` vert avvist med rett tekst (ikkje den ekte lista), og eit ikkje-rolle-avgrensa modul framleis er nåbart (stadfester at økta er reelt funksjonell, ikkje berre generelt broten).
+
+To reelle feil vart funne og retta undervegs, begge stadfesta live, ingen av dei kodefeil i sjølve produktet:
+1. **`redirect_to` må vere eit TOPPNIVÅ-felt** på det rå REST-endepunktet, ikkje nesta under `options` (den nestinga er berre ein supabase-js SDK-bekvemmelegheit for klientsidevindaugo sine eigne wrapperar). Nesta feilaktig førte til at `redirect_to` stille vart ignorert og fall attende til prosjektet sin standard Site URL (ei ekte utrulla Vercel-adresse, ikkje den lokale statiske testserveren) — ingen feil vart synt.
+2. **`vibeverk-staging` sin Auth → URL Configuration → Redirect URLs mangla `http://localhost:8080/**`** — utan denne vart `redirect_to` stille ignorert av same grunn som over. Lagt til av brukaren via Dashboard (stadfesta med skjermbilete).
+
+**Merk (dokumentert i SKILL.md/TEST-MATRIX.md)**: berre ÉIN modul i heile appen er rolle-avgrensa i det heile i dag (`workspace/module-users.js`, `roles:["admin"]`) — `member` og `editor` gjev difor identiske testresultat no. Dette er reell regresjonsdekning for den eine porten som finst, ikkje prov på at rollene skil seg i produktet (TEST-MATRIX.md sin B8.2 "editor-tilpassa UI"-scope er breiare enn det som faktisk er implementert).
+
+Alle testbrukarar stadfesta fjerna (0 att, sjekka via `SELECT ... WHERE email LIKE 'smoketest-%'`), `config.js` stadfesta uendra etter kvar køyring. Attståande i "full innloggingsmatrise": Console sitt eige OTP-gate (E.2), som krev sin eigen engangs-kontrollplan-tenant. Alle tre testsuitane (`test.js`/`test-workspace.js`/`test-api.js`) framleis 0 FEIL. Cache-bust: `console-core.js?v=222`.
+
+---
+
 ## 0.98.5 — 2026-08-05
 
 **Testing/QA, ingen produktendring:** Full gjennomkøyring av begge Playwright-testverktøya, som del av pilotkunde-modningsarbeidet brukaren etterspurde.
