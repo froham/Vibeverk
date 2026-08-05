@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.98.2 — 2026-08-05
+
+**Ny funksjonalitet:** «Regn ut årsinntekt fra antall kunder» — ein tredje, sjølvstendig kalkulator i Budsjett-fana, same økt som 0.98.1. Motsett rekneretning av «Hvor mange kunder for et årsmål?»: brukaren fyller inn talet på kundar SJØLV, per pakke, HEILT UAVHENGIG av `monthlyQty`-miksen i salgsplanen — årsinntekta vert generert, ikkje sett som mål. Same "full førsteårsverdi"-prinsipp (`12×price + setupCost` per kunde). Ny pure-funksjonar `priserBudgetAnnualCountRows()`/`priserBudgetAnnualCountTotal()`, nytt state `_priserBudget.annualCount` (reint økt-lokalt, aldri lagra, same mønster som resten av fana).
+
+Unngjekk medvite ein fokus-tap-feil under implementeringa: talet-på-kundar-input-cellene vert bygde ÉIN gong i `renderPriserBudget()` sin `wrap.innerHTML`, og punktoppdateringsfunksjonen `priserRefreshAnnualCount()` rører BERRE per-rad "Sum"-cellene og totalsummen — aldri `<tbody>`-en eller `<input>`-elementa sjølve (same disiplin som er etablert og handheva overalt elles i denne fana sidan UX-funna 2026-08-04/05).
+
+Stadfesta med eit frittståande Node-skript (3 pakkar med ulik pris/oppstartskostnad, inkl. éi `price===0`-pakke). `priceOnRequest`-pakkar ekskludert. UX/Mobile Reviewer-funn retta: tom-tilstand-teksten skilde ikkje mellom "ingen pakkar i det heile" og "alle pakkar er «Avtales separat»" (viste feilaktig "Ingen pakker ennå." i sistnemnde tilfelle, sjølv om pakkar faktisk finst). Alle tre testsuitane (`test.js`/`test-workspace.js`/`test-api.js`) framleis 0 FEIL. Cache-bust: `console-core.js?v=218`.
+
+---
+
 ## 0.98.1 — 2026-08-05
 
 **Ny funksjonalitet:** «Hvor mange kunder for et årsmål?» — eit tillegg til Budsjett-fana, same økt. Attbruker DEI SAME `monthlyQty`-tala frå salgsplanen som forholdet mellom pakkane i miksen (ingen ny miks-input) — brukaren set berre eitt nytt tal: eit ÅRSmål (kr/år). Reknar UTAN tidsfasing: kvar kunde tel med full førsteårsverdi (oppstartskostnad + 12×månedspris), akkurat slik brukaren sjølv rekna for hand ("Grunnpakken: 4990 + 12×990 = 16870 per kunde, 1 mill / 16870 ≈ 59"). Viser talet på kundar som trengs PER PAKKE (`Math.ceil` for å garantere at målet faktisk vert nådd, same idiom som "når nås målet?") + eit totaltal.
