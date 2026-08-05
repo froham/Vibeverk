@@ -423,7 +423,7 @@
 
   function renderWorkspaceShell() {
     var a = state.analysis;
-    return '<div class="ov-shell-head"><div><div class="ov-kicker">Automatisk strukturert</div><h1>' + esc(a.title) + "</h1><p>" + esc(a.summary) + "</p></div>" +
+    return '<div class="ov-shell-head"><div><div class="ov-kicker">Automatisk strukturert</div><h1>' + esc(a.title) + "</h1><p>" + esc(a.summary) + '</p><p class="ov-shell-disclaimer">' + esc(a.disclaimer) + "</p></div>" +
       '<div class="ov-shell-head-actions"><button type="button" class="btn btn--ghost btn--sm" id="ov-edit-source">Rediger beskrivelse</button><button type="button" class="btn btn--primary btn--sm" id="ov-update-analysis">Oppdater oversikten</button></div></div>' +
       topActions() + viewNav() + '<div id="ov-view-root"></div>';
   }
@@ -630,8 +630,7 @@
   function renderDashboard() {
     var a = state.analysis;
     var priority = allItems().filter(activeItem).filter(function (x) { return x.important || x.priority === "high" || x.impactLevel === "high"; }).slice(0, 6);
-    return '<div class="ov-card ov-summary-strip"><div><strong>' + esc(a.summary) + "</strong><p>" + esc(a.disclaimer) + "</p></div></div>" +
-      '<div class="ov-stat-grid">' + statCard(countActive(a.needs), "Aktive behov", "needs") + statCard(countActive(a.dependencyNodes), "Aktive steg i flyten", "dependencies") + statCard(countActive(a.impacts), "Aktive påvirkningsområder", "impacts") + statCard(countActive(a.blindSpots), "Aktive glemte punkter", "blindSpots") + "</div>" +
+    return '<div class="ov-stat-grid">' + statCard(countActive(a.needs), "Aktive behov", "needs") + statCard(countActive(a.dependencyNodes), "Aktive steg i flyten", "dependencies") + statCard(countActive(a.impacts), "Aktive påvirkningsområder", "impacts") + statCard(countActive(a.blindSpots), "Aktive glemte punkter", "blindSpots") + "</div>" +
       '<div class="ov-dashboard-grid"><div class="ov-stack"><div class="ov-card ov-panel"><div class="ov-section-head"><div><h2>Prioriterte punkter</h2><p>Aktive punkter med høy prioritet eller påvirkning.</p></div><button type="button" class="btn btn--ghost btn--sm" data-go="workshop">Åpne analyseverkstedet</button></div>' +
       '<div class="ov-stack">' + (priority.length ? priority.map(function (x) { return '<button type="button" class="ov-priority-item" data-action="details" data-id="' + x.id + '"><span class="ov-priority-mark"></span><span><strong>' + esc(x.title) + "</strong><small>" + esc(SECTION_LABELS[x._section]) + " · " + esc(CATEGORIES[x.category]) + "</small></span></button>"; }).join("") : '<div class="ov-empty">Ingen aktive punkter med høy prioritet ennå.</div>') + "</div></div>" +
       '<div class="ov-card ov-panel"><div class="ov-section-head"><div><h2>Aktiv rekkefølge</h2><p>En forenklet visning av stegene som er tatt med.</p></div><button type="button" class="btn btn--ghost btn--sm" data-go-map="dependencies">Se kart</button></div>' +
@@ -1158,13 +1157,20 @@
     var s = document.createElement("style");
     s.id = STYLE_ID;
     s.textContent = [
-      "#ov-root{--ov-blue-soft:color-mix(in srgb,var(--color-primary) 12%,var(--color-surface));--ov-purple-soft:#f0edf4;--ov-success:#2f7258;--ov-success-soft:#e8f3ee;--ov-warning:#946b22;--ov-warning-soft:#fbf2df;--ov-danger:#9a4a52;--ov-danger-soft:#faeaec;position:relative}",
+      "#ov-root{--ov-blue-soft:color-mix(in srgb,var(--color-primary) 12%,var(--color-surface));--ov-purple-soft:#f0edf4;--ov-success:#2f7258;--ov-success-soft:#e8f3ee;--ov-warning:#946b22;--ov-warning-soft:#fbf2df;--ov-danger:#9a4a52;--ov-danger-soft:#faeaec;--ov-ink:color-mix(in srgb,var(--color-text) 82%,var(--color-muted) 18%);position:relative}",
       "#ov-root,#ov-root *{box-sizing:border-box}",
+      // Mjukare "blekk" for feit tekst/overskrifter -- rå var(--color-text) er ofte nesten
+      // svart, og saman med nettlesaren sin standard fete vekt vart alt frå kort-titlar til
+      // modal-overskrifter unødig hardt (UX-tilbakemelding 2026-08-05). To unntak held fram
+      // med kvit tekst på farga bakgrunn (sjå .ov-hero h1 og .ov-impact-center strong nedanfor),
+      // sidan dei er meir spesifikke selektorar og difor vinn over denne globale regelen.
+      "#ov-root strong,#ov-root h1,#ov-root h2,#ov-root h3{color:var(--ov-ink)}",
+      "#ov-root strong:not(h1 strong):not(h2 strong):not(h3 strong){font-weight:650}",
       "#ov-root .ov-hidden{display:none!important}#ov-root .ov-sr-only{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important}",
       "#ov-root .ov-kicker{text-transform:uppercase;font-size:.72rem;letter-spacing:.09em;font-weight:800;color:var(--color-primary)}",
       "#ov-root .ov-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:14px}#ov-root .ov-panel{padding:1.1rem}",
       "#ov-root .ov-hero{background:linear-gradient(135deg,var(--color-primary),color-mix(in srgb,var(--color-primary) 60%,#1a2b45));color:#fff;padding:1.5rem;border-radius:16px;margin-bottom:1rem}",
-      "#ov-root .ov-hero h1{font-size:1.5rem;margin:.3rem 0 .5rem}#ov-root .ov-hero p{margin:0;opacity:.92}#ov-root .ov-hero .ov-kicker{color:#dbe6f3}",
+      "#ov-root .ov-hero h1{font-size:1.5rem;margin:.3rem 0 .5rem;color:#fff}#ov-root .ov-hero p{margin:0;opacity:.92}#ov-root .ov-hero .ov-kicker{color:#dbe6f3}",
       "#ov-root .ov-start-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:1rem;align-items:start}",
       "#ov-root .ov-section-head{margin-bottom:.9rem}#ov-root .ov-section-head h2{margin:0 0 .2rem;font-size:1.05rem}#ov-root .ov-section-head p{margin:0;color:var(--color-muted);font-size:.85rem}",
       "#ov-root .ov-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}#ov-root .ov-field{display:grid;gap:.35rem}#ov-root .ov-field-full{grid-column:1/-1}",
@@ -1183,18 +1189,18 @@
       "#ov-root .ov-loader-orbit{width:56px;height:56px;margin:0 auto .9rem;border:2px solid var(--color-border);border-top-color:var(--color-primary);border-radius:50%;animation:ov-spin 1s linear infinite}",
       "@keyframes ov-spin{to{transform:rotate(360deg)}}",
       "#ov-root .ov-progress{height:7px;background:var(--color-bg);border-radius:99px;margin-top:1rem;overflow:hidden}#ov-root .ov-progress span{display:block;height:100%;background:var(--color-primary);border-radius:99px;transition:width .3s}",
-      "#ov-root .ov-shell-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:.7rem;flex-wrap:wrap}#ov-root .ov-shell-head h1{margin:0 0 .2rem;font-size:1.4rem}#ov-root .ov-shell-head p{margin:0;color:var(--color-muted);max-width:560px}",
+      "#ov-root .ov-shell-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap}#ov-root .ov-shell-head h1{margin:0 0 .3rem;font-size:1.35rem}#ov-root .ov-shell-head p{margin:0 0 .3rem;color:var(--color-text);max-width:620px;font-size:.92rem}",
+      "#ov-root .ov-shell-head p.ov-shell-disclaimer{margin:0;color:var(--color-muted);font-size:.74rem;max-width:620px}",
       "#ov-root .ov-shell-head-actions{display:flex;gap:.5rem;flex-wrap:wrap}#ov-root .ov-top-actions{display:flex;gap:.4rem;justify-content:flex-end;margin-bottom:.6rem;flex-wrap:wrap}",
       "#ov-root .ov-viewnav{display:inline-flex;background:var(--color-bg);border:1px solid var(--color-border);border-radius:11px;padding:3px;gap:2px;margin-bottom:1rem;flex-wrap:wrap}",
       "#ov-root .ov-viewnav-btn{border:0;background:transparent;border-radius:8px;padding:.5rem .8rem;color:var(--color-muted);font-weight:700;font-size:.85rem}",
       "#ov-root .ov-viewnav-btn[aria-current=\"page\"]{background:var(--color-surface);color:var(--color-text);box-shadow:0 2px 8px rgba(15,34,56,.08)}",
-      "#ov-root .ov-summary-strip{padding:1rem 1.1rem;margin-bottom:1rem}#ov-root .ov-summary-strip p{margin:.3rem 0 0;color:var(--color-muted);font-size:.85rem}",
       "#ov-root .ov-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;margin-bottom:1rem}#ov-root .ov-stat{padding:.9rem;text-align:left}",
       "#ov-root .ov-stat-top strong{font-size:1.6rem;letter-spacing:-.02em}#ov-root .ov-stat span{font-size:.78rem;color:var(--color-muted);display:block;margin-top:.4rem}",
       "#ov-root .ov-dashboard-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:1rem}#ov-root .ov-stack{display:grid;gap:.9rem}",
       "#ov-root .ov-priority-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.7rem;align-items:center;padding:.7rem;border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);width:100%;text-align:left;min-height:44px}",
-      "#ov-root .ov-priority-mark{width:8px;height:34px;border-radius:99px;background:var(--ov-warning)}#ov-root .ov-priority-item strong{display:block}#ov-root .ov-priority-item small{color:var(--color-muted)}",
-      "#ov-root .ov-chip{display:inline-flex;align-items:center;gap:.3rem;border-radius:99px;padding:.25rem .5rem;background:var(--color-bg);color:var(--color-text);font-size:.7rem;font-weight:750;white-space:nowrap}",
+      "#ov-root .ov-priority-mark{width:9px;height:9px;border-radius:50%;background:var(--ov-warning);box-shadow:0 0 0 4px color-mix(in srgb,var(--ov-warning) 15%,var(--color-surface))}#ov-root .ov-priority-item strong{display:block}#ov-root .ov-priority-item small{color:var(--color-muted)}",
+      "#ov-root .ov-chip{display:inline-flex;align-items:center;gap:.35rem;border-radius:99px;padding:.32rem .7rem;background:var(--color-bg);color:var(--color-text);font-size:.7rem;font-weight:700;white-space:nowrap}",
       "#ov-root .ov-chip-high{background:var(--ov-warning-soft);color:#7a561a}#ov-root .ov-chip-normal{background:var(--ov-blue-soft);color:var(--color-primary)}#ov-root .ov-chip-low{background:var(--color-bg);color:var(--color-muted)}",
       "#ov-root .ov-chip-approved,#ov-root .ov-chip-ready,#ov-root .ov-chip-completed{background:var(--ov-success-soft);color:var(--ov-success)}",
       "#ov-root .ov-chip-rejected,#ov-root .ov-chip-blocked{background:var(--ov-danger-soft);color:var(--ov-danger)}",
@@ -1238,7 +1244,7 @@
       "#ov-root .ov-edge{stroke:var(--color-muted);stroke-width:2;fill:none}#ov-root .ov-edge-recommended{stroke-dasharray:6 5}#ov-root .ov-edge-arrow{fill:var(--color-muted)}",
       "#ov-root .ov-impact-stage{position:relative;width:100%;min-width:0;min-height:400px;overflow:hidden;border:1px solid var(--color-border);border-radius:12px;background:var(--color-bg);display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));grid-template-rows:repeat(3,minmax(120px,auto));gap:.9rem;padding:1.1rem;align-items:center}",
       "#ov-root .ov-impact-stage svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}",
-      "#ov-root .ov-impact-center{position:relative;grid-column:2;grid-row:2;z-index:3;width:min(100%,190px);min-height:100px;border-radius:16px;background:var(--color-primary);color:#fff;padding:.8rem;text-align:center;display:grid;place-items:center;justify-self:center}",
+      "#ov-root .ov-impact-center{position:relative;grid-column:2;grid-row:2;z-index:3;width:min(100%,190px);min-height:100px;border-radius:16px;background:var(--color-primary);color:#fff;padding:.8rem;text-align:center;display:grid;place-items:center;justify-self:center}#ov-root .ov-impact-center strong{color:#fff}",
       "#ov-root .ov-impact-node{position:relative;z-index:2;width:min(100%,200px);min-height:95px;border-radius:11px;border:1px solid var(--color-border);background:var(--color-surface);padding:.6rem;box-shadow:0 3px 10px rgba(15,34,56,.06);text-align:left;justify-self:center}",
       "#ov-root .ov-impact-node[data-slot=\"0\"]{grid-column:1;grid-row:1}#ov-root .ov-impact-node[data-slot=\"1\"]{grid-column:2;grid-row:1}#ov-root .ov-impact-node[data-slot=\"2\"]{grid-column:3;grid-row:1}#ov-root .ov-impact-node[data-slot=\"3\"]{grid-column:3;grid-row:2}#ov-root .ov-impact-node[data-slot=\"4\"]{grid-column:3;grid-row:3}#ov-root .ov-impact-node[data-slot=\"5\"]{grid-column:2;grid-row:3}#ov-root .ov-impact-node[data-slot=\"6\"]{grid-column:1;grid-row:3}#ov-root .ov-impact-node[data-slot=\"7\"]{grid-column:1;grid-row:2}",
       "#ov-root .ov-impact-line{stroke:var(--color-muted);stroke-width:2;fill:none}",

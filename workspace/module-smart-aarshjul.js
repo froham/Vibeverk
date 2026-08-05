@@ -249,8 +249,14 @@
     s.textContent = [
       "#saa-root{--saa-q1:#668db8;--saa-q1-soft:#d9e7f3;--saa-q2:#5d967b;--saa-q2-soft:#dcece4;--saa-q3:#b28a4d;--saa-q3-soft:#f0e5cf;--saa-q4:#8b688f;--saa-q4-soft:#eadfed;" +
       "--saa-cat-planning:#dbe6f3;--saa-cat-marketing:#e6dff0;--saa-cat-seasonal:#eee5d0;--saa-cat-maintenance:#dce9e1;--saa-cat-purchasing:#eadfd9;--saa-cat-digital:#d9e8ec;" +
-      "--saa-cat-professional:#e6e7d8;--saa-cat-events:#eee0e5;--saa-cat-administration:#e4e7ed;--saa-cat-deadlines:#f0e3d8;--saa-cat-evaluation:#e7dfd8;--saa-cat-custom:#e3e1eb;position:relative}",
+      "--saa-cat-professional:#e6e7d8;--saa-cat-events:#eee0e5;--saa-cat-administration:#e4e7ed;--saa-cat-deadlines:#f0e3d8;--saa-cat-evaluation:#e7dfd8;--saa-cat-custom:#e3e1eb;" +
+      "--saa-ink:color-mix(in srgb,var(--color-text) 82%,var(--color-muted) 18%);position:relative}",
       "#saa-root,#saa-root *{box-sizing:border-box}",
+      // Same mjukare "blekk" for feit tekst/overskrifter som i module-oversikt.js
+      // (UX-tilbakemelding 2026-08-05). .saa-selection strong held fram kvit på
+      // farga bakgrunn sidan den meir spesifikke selektoren vinn over denne.
+      "#saa-root strong,#saa-root h1,#saa-root h2,#saa-root h3{color:var(--saa-ink)}",
+      "#saa-root strong:not(h1 strong):not(h2 strong):not(h3 strong){font-weight:650}",
       "#saa-root .saa-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1.1rem}",
       "#saa-root .saa-step{width:100%;font:inherit;text-align:left;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:.75rem .9rem;display:flex;gap:.6rem;align-items:center;color:var(--color-muted);cursor:pointer}",
       "#saa-root .saa-step:hover:not(:disabled){border-color:var(--color-primary)}",
@@ -279,7 +285,7 @@
       "#saa-root .saa-filters h2{font-size:.95rem;margin:0 0 .8rem}",
       "#saa-root .saa-filterbuttons{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}",
       "#saa-root .saa-selection{background:var(--color-primary);color:#fff;padding:.8rem;border-radius:10px;margin:.5rem 0}",
-      "#saa-root .saa-selection strong{font-size:1.5rem;display:block}",
+      "#saa-root .saa-selection strong{font-size:1.5rem;display:block;color:#fff}",
       "#saa-root .saa-selection span{font-size:.72rem;opacity:.85}",
       "#saa-root .saa-catlines{display:grid;gap:.4rem;max-height:220px;overflow:auto}",
       "#saa-root .saa-catline{display:flex;justify-content:space-between;gap:.5rem;font-size:.75rem;color:var(--color-muted)}",
@@ -294,7 +300,7 @@
       "#saa-root .saa-check{width:19px;height:19px;flex:0 0 auto;margin-top:2px}",
       "#saa-root .saa-sug h3,#saa-root .saa-activity h3{margin:0;font-size:.92rem;line-height:1.35}",
       "#saa-root .saa-badges{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.4rem}",
-      "#saa-root .saa-badge,#saa-root .saa-origin,#saa-root .saa-lock,#saa-root .saa-status{display:inline-flex;padding:.2rem .45rem;border-radius:99px;font-size:.66rem;font-weight:700}",
+      "#saa-root .saa-badge,#saa-root .saa-origin,#saa-root .saa-lock,#saa-root .saa-status{display:inline-flex;padding:.3rem .65rem;border-radius:99px;font-size:.66rem;font-weight:700}",
       "#saa-root .saa-badge{background:var(--saa-cat)}",
       "#saa-root .saa-badge--verify{background:#f5ead6;color:#76551e}",
       "#saa-root .saa-badge--dup{background:#f1dfc6;color:#73501c}",
@@ -319,7 +325,7 @@
       "#saa-root .saa-tab.is-on{background:var(--color-surface);color:var(--color-text)}",
       "#saa-root .saa-wlayout{display:grid;grid-template-columns:minmax(400px,1.15fr) minmax(280px,.85fr);gap:1rem;align-items:start}",
       "#saa-root .saa-wheelintro{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}",
-      "#saa-root .saa-qlegend span{display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .45rem;border-radius:99px;font-size:.66rem;font-weight:800}",
+      "#saa-root .saa-qlegend span{display:inline-flex;align-items:center;gap:.3rem;padding:.32rem .6rem;border-radius:99px;font-size:.66rem;font-weight:800}",
       "#saa-root .saa-qlegend i{width:7px;height:7px;border-radius:50%}",
       "#saa-root .saa-qlegend .saa-q1{background:var(--saa-q1-soft);color:#365b82}",
       "#saa-root .saa-qlegend .saa-q2{background:var(--saa-q2-soft);color:#376650}",
@@ -330,8 +336,8 @@
       "#saa-root .saa-wcenter{position:absolute;inset:35%;display:grid;place-items:center;text-align:center;z-index:5;border:1px solid var(--color-border);border-radius:50%;background:var(--color-surface)}",
       "#saa-root .saa-wcenter strong{font-size:1.7rem}",
       "#saa-root .saa-wcenter small{color:var(--color-muted)}",
-      "#saa-root .saa-currentq{display:inline-flex;margin-top:.35rem;padding:.2rem .45rem;border-radius:99px;background:var(--saa-current-q-soft);color:var(--saa-current-q);font-size:.62rem;font-weight:800}",
-      "#saa-root .saa-qlabel{--saa-quarter-color:var(--saa-q1);position:absolute;left:50%;top:50%;z-index:3;transform:translate(-50%,-50%) rotate(var(--saa-angle)) translateY(-116px) rotate(calc(-1 * var(--saa-angle)));display:flex;align-items:center;justify-content:center;min-width:38px;padding:.2rem .4rem;border-radius:99px;background:var(--color-surface);color:var(--saa-quarter-color);border:1px solid var(--color-border);font-size:.66rem;font-weight:800;pointer-events:none}",
+      "#saa-root .saa-currentq{display:inline-flex;margin-top:.35rem;padding:.3rem .6rem;border-radius:99px;background:var(--saa-current-q-soft);color:var(--saa-current-q);font-size:.62rem;font-weight:800}",
+      "#saa-root .saa-qlabel{--saa-quarter-color:var(--saa-q1);position:absolute;left:50%;top:50%;z-index:3;transform:translate(-50%,-50%) rotate(var(--saa-angle)) translateY(-116px) rotate(calc(-1 * var(--saa-angle)));display:flex;align-items:center;justify-content:center;min-width:38px;padding:.28rem .5rem;border-radius:99px;background:var(--color-surface);color:var(--saa-quarter-color);border:1px solid var(--color-border);font-size:.66rem;font-weight:800;pointer-events:none}",
       "#saa-root .saa-qlabel.saa-q1{--saa-quarter-color:var(--saa-q1)}#saa-root .saa-qlabel.saa-q2{--saa-quarter-color:var(--saa-q2)}#saa-root .saa-qlabel.saa-q3{--saa-quarter-color:var(--saa-q3)}#saa-root .saa-qlabel.saa-q4{--saa-quarter-color:var(--saa-q4)}",
       "#saa-root .saa-mnode{--saa-node-accent:var(--color-primary);position:absolute;left:50%;top:50%;z-index:4;width:78px;min-height:56px;transform:translate(-50%,-50%) rotate(calc(var(--saa-i)*30deg)) translateY(-184px) rotate(calc(var(--saa-i)*-30deg));border:1px solid color-mix(in srgb,var(--saa-node-accent) 35%,var(--color-border));border-radius:11px;background:var(--color-surface);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:.5rem .35rem;overflow:hidden;cursor:pointer}",
       "#saa-root .saa-mnode:before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--saa-node-accent)}",
