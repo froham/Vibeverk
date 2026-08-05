@@ -471,7 +471,7 @@
       '<option value="workflow"' + sel(i.scenarioType, "workflow") + '>Ny arbeidsflyt</option>' +
       '<option value="digital"' + sel(i.scenarioType, "digital") + '>Digitalisering</option>' +
       '<option value="custom"' + sel(i.scenarioType, "custom") + '>Annet</option>' +
-      '</select></div>' +
+      '</select><small>Brukes til å tilpasse forslagene til situasjonen din.</small></div>' +
       '<div class="ov-field"><label for="ov-depth">Omfang</label><select id="ov-depth"><option value="simple"' + sel(i.depth, "simple") + '>Enkel oversikt</option><option value="normal"' + sel(i.depth, "normal") + '>Normal oversikt</option><option value="thorough"' + sel(i.depth, "thorough") + '>Grundig oversikt</option></select><small>Styrer hvor mange forslag og hvor mye detalj du får.</small></div>' +
       '<fieldset class="ov-field ov-field-full ov-fieldset"><legend>Hva ønsker du oversikt over?</legend><div class="ov-check-grid">' +
       section("needs", "Hva trenger vi?", "Mulige behov og forberedelser", i) + section("dependencies", "Hva må skje først?", "Rekkefølge og avhengigheter", i) +

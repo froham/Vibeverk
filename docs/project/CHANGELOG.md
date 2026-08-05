@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.96.5 — 2026-08-05
+
+**Fiks:** Oppsettskjemaet i Oversikt hadde ei linje der «Type situasjon» og «Omfang» stod side ved side, men berre «Omfang» hadde ei hjelpetekst under nedtrekksmenyen. Sidan begge felta ligg i same grid-rad, vart heile rada like høg som det høgaste feltet (`Omfang`), og «Type situasjon» fekk eit ubrukt tomrom under seg før neste seksjon — brukarrapport: "Teksten pusher boksen utav posisjon". Retta ved å gje «Type situasjon» ei tilsvarande, reelt nyttig hjelpetekst ("Brukes til å tilpasse forslagene til situasjonen din.") i staden for eit usynleg fyllstoff-hack — same mønster som `Omfang` sin eigen hjelpetekst, så begge felta no har lik naturleg høgde.
+
+Sjekka Smart årshjul for same mønster (to felt side ved side der berre eitt har hjelpetekst) — fann ingen tilsvarande tilfelle der, ingen endring nødvendig i den modulen denne runda.
+
+Ingen datamodell- eller API-endringar. Alle tre testsuitene er framleis 0 FEIL (209/676/91). Cache-bust: `module-oversikt.js?v=5`, `console-core.js?v=213`.
+
 ## 0.96.4 — 2026-08-05
 
 **Fiks:** Etter brukarrapport om at (1) Smart årshjul viste ei feilmelding om at lokal lagring ikkje fungerte, og (2) begge modulane falt tilbake til oppsettskjemaet ("steg 1") berre ved å byte fane til eit anna modul og komme attende, sjølv etter ei ekte, vellykka generering — same rotårsak i begge:
