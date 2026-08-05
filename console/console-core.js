@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.97.0";
+  var VIBEVERK_VERSION = "0.98.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1605,11 +1605,19 @@ window.VwConsole = (function () {
      ====================================================================== */
   var _priserData = null;              // { prices, packages } -- null til fyrste lasting er ferdig
   var _priserLoading = false;
-  var _priserView = "edit";            // "edit" | "prices" | "quote" | "preview"
+  var _priserView = "edit";            // "edit" | "prices" | "quote" | "preview" | "budget"
   var _priserQuote = { f: [], i: [] }; // "Bygg tilbud" -- reint økt-lokalt, aldri lagra
   var _priserPkgIdSeq = 1;
   var _priserEditSelected = null;      // vald pakke-id i "Rediger pakker" -- master/detail (brukarønske 2026-08-04: alle pakkane opne samtidig var "rotete og uoversiktleg")
   var _priserPreviewVisible = null;    // { pkgId: true } -- kva pakkar som vert vist i Forhåndsvisning, reint økt-lokalt (kan variere per kunde/tilbod, aldri lagra i pricing_config)
+  // "Budsjett" -- monthlyQty: { pkgId: forventa talet på NYE sal PER MÅNAD },
+  // target: månadleg inntektsmål (kr/mnd). Driv ein 12-månaders prognose der
+  // MRR AKKUMULERER (kundar frå tidlegare månadar held fram å betale) medan
+  // eingongsinntekt held seg FLAT kvar månad (berre frå den månaden sine nye
+  // sal) -- sjå priserBudgetForecast(). Reint økt-lokalt, aldri lagra
+  // (brukarønske 2026-08-05, presisert frå ein enkel éin-periode-kalkulator
+  // til ein 12-månaders vekstprognose med graf undervegs i same økt).
+  var _priserBudget = { monthlyQty: {}, target: 0 };
 
   function priserPriceEntry(ns, key) {
     var src = (ns === "f" ? _priserData.prices.f : _priserData.prices.i) || {};
@@ -1643,6 +1651,64 @@ window.VwConsole = (function () {
     if (s.monthly) return "Spar " + priserFmtPrice(s.monthly) + " kr/mnd";
     return "Spar " + priserFmtPrice(s.setup) + " kr i oppstart";
   }
+
+  /* =========================================================================
+     BUDSJETT -- 12-månaders inntektsprognose (brukarønske 2026-08-05)
+     ====================================================================== */
+  // "Avtales separat"-pakkar har ingen fast pris å multiplisere med eit
+  // salsantal -- einaste staden denne ekskluderinga skal leve, attbrukt av
+  // både salsplan-tabellen og prognosen.
+  function priserBudgetSellablePackages() {
+    return _priserData.packages.filter(function (p) { return !p.priceOnRequest; });
+  }
+  // Éin månad sitt bidrag frå NYE sal DEN månaden, ved konstant salstakt:
+  // ny MRR lagt til (akkumulerer over tid, sjå priserBudgetForecast) og
+  // eingongsinntekt (gjentek seg ALDRI -- kvar månad sine nye kundar betaler
+  // oppstartskostnaden sin éin gong, ikkje kvar månad).
+  function priserBudgetMonthlyNew() {
+    var newMrr = 0, oneTime = 0;
+    priserBudgetSellablePackages().forEach(function (p) {
+      var qty = Number(_priserBudget.monthlyQty[p.id]) || 0;
+      newMrr += qty * (p.price || 0);
+      oneTime += qty * (p.setupCost || 0);
+    });
+    return { newMrr: newMrr, oneTime: oneTime };
+  }
+  // 12 månadar framover ved KONSTANT salstakt: MRR i månad m er m × ny-MRR-
+  // per-månad (månad 1 sine kundar betaler også i månad 2, 3, ... -- klassisk
+  // lineær SaaS-vekstmodell), medan eingongsinntekt er FLAT kvar månad.
+  function priserBudgetForecast() {
+    var monthly = priserBudgetMonthlyNew();
+    var months = [];
+    for (var m = 1; m <= 12; m++) {
+      months.push({ month: m, mrr: m * monthly.newMrr, oneTime: monthly.oneTime, total: m * monthly.newMrr + monthly.oneTime });
+    }
+    return months;
+  }
+  // Kor mange månadar (ved denne salstakta) før MRR-en når målet.
+  // null = "aldri med denne salstakta" (skil frå 0 = "målet er alt 0/nådd").
+  function priserBudgetMonthsToTarget() {
+    var target = Number(_priserBudget.target) || 0;
+    if (target <= 0) return 0;
+    var monthly = priserBudgetMonthlyNew();
+    if (monthly.newMrr <= 0) return null;
+    return Math.ceil(target / monthly.newMrr);
+  }
+  // Delt tekst-tolking for "Når nås målet?" -- brukt begge stadene
+  // (fyrste render og punktoppdatering) slik at dei aldri kan gli frå
+  // kvarandre. Skil eksplisitt "ingen mål sett enno" frå "målet er alt nådd"
+  // (UX-review-funn 2026-08-05: mtt===0 dekkjer BERRE target<=0-tilfellet,
+  // så det las tidlegare feilaktig som "målet nådd" før brukaren i det heile
+  // hadde skrive inn eit mål), og varslar eksplisitt når svaret ligg UTANFOR
+  // dei synlege 12 månadane i staden for berre å vise eit stort tal utan
+  // samanheng med grafen/tabellen under.
+  function priserBudgetMttText(mtt, target) {
+    if (target <= 0) return "Sett et mål over for å se når du når det.";
+    if (mtt === null) return "Aldri med denne salstakta.";
+    if (mtt > 12) return "Ikke innen 12 måneder (måned " + mtt + " ved denne takta).";
+    return "Måned " + mtt;
+  }
+
   // Splitta i to uavhengige flagg (brukarfunn 2026-08-05, tidlegare ETT
   // felles pkg.allStandard styrte BÅDE nettside- og Workspace-modular samla
   // -- gjorde det umogleg å t.d. ha "alle standardmodular" for nettsida, men
@@ -2366,6 +2432,211 @@ window.VwConsole = (function () {
     });
   }
 
+  /* =========================================================================
+     BUDSJETT-FANE (brukarønske 2026-08-05)
+     ====================================================================== */
+  // Rundar opp til næraste "fine" tal (1/2/5 × 10^n) for y-akse-taket --
+  // same prinsipp som eit vanleg diagram-bibliotek sin auto-skalering.
+  function priserBudgetNiceMax(v) {
+    if (v <= 0) return 1000;
+    var pow = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+    var n = v / pow;
+    var nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+    return nice * pow;
+  }
+  // Fargane er henta frå den validerte standardpaletten (dataviz-skill,
+  // 2026-08-05): #2a78d6 (blå, MRR-linja) og #008300 (grøn, eingongs-
+  // stolpane) -- stadfesta med scripts/validate_palette.js mot Console sin
+  // faktiske kvite overflate (--color-surface:#ffffff): alle sjekkar
+  // (lysheit, kroma, CVD-skilje, normalsyn-golv, kontrast) PASS.
+  function priserBudgetChartHtml(forecast, target) {
+    var W = 720, H = 300, padR = 16, padT = 16, padB = 30;
+    var n = forecast.length;
+    var maxMrr = forecast[n - 1] ? forecast[n - 1].mrr : 0;
+    var maxOneTime = forecast[0] ? forecast[0].oneTime : 0;
+    var niceMax = priserBudgetNiceMax(Math.max(target, maxMrr, maxOneTime, 1));
+    // padL må vekse med breidda på det STØRSTE y-akse-talet -- elles klipper
+    // SVG-en (som IKKJE viser overflow som standard) av dei fremste sifra på
+    // det viktigaste talet i heile grafen (toppgitterlinja), nøyaktig når
+    // brukaren har sett eit ambisiøst mål/høg salstakt (UX-review-funn
+    // 2026-08-05: fast padL=60 klippa 6-7-sifra kr-beløp).
+    var padL = Math.max(48, 18 + priserFmtPrice(niceMax).length * 7);
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    function yScale(v) { return padT + plotH - (v / niceMax) * plotH; }
+    var slotW = plotW / n;
+    var barW = Math.min(24, slotW * 0.45);
+    // Åtvaring når målet dreg y-aksen SÅ mykje høgare enn den faktiske
+    // prognosen at MRR-linja/stolpane vert klemde ned i eit tynt felt nedst
+    // (UX-review-funn 2026-08-05) -- unngår at "nesten flat graf" vert
+    // mistolka som "nesten ingen vekst" når det eigentleg berre er skalert
+    // mot eit fjernt mål.
+    var scaleWarning = (target > 0 && maxMrr > 0 && target > maxMrr * 3)
+      ? '<p class="budget-scale-note">Grafen er skalert til målet ditt (' + priserFmtPrice(target) + ' kr/mnd) -- den faktiske prognosen ligg langt under, og kan difor se flatare ut enn veksten faktisk er.</p>'
+      : "";
+
+    var gridSteps = 4, gridSvg = "";
+    for (var g = 0; g <= gridSteps; g++) {
+      var gv = niceMax * g / gridSteps, gy = yScale(gv);
+      gridSvg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (W - padR) + '" y2="' + gy + '" stroke="var(--color-border)" stroke-width="1"/>' +
+        '<text x="' + (padL - 8) + '" y="' + (gy + 4) + '" text-anchor="end" font-size="11" fill="var(--color-muted)">' + priserFmtPrice(Math.round(gv)) + '</text>';
+    }
+
+    var barsSvg = "", dotsSvg = "", xLabelsSvg = "", hitsSvg = "", linePts = [];
+    forecast.forEach(function (mo, i) {
+      var cx = padL + slotW * i + slotW / 2;
+      var barY = yScale(mo.oneTime), barH = Math.max(0, (padT + plotH) - barY);
+      barsSvg += '<rect x="' + (cx - barW / 2) + '" y="' + barY + '" width="' + barW + '" height="' + barH + '" rx="4" fill="#008300"/>';
+      linePts.push([cx, yScale(mo.mrr)]);
+      xLabelsSvg += '<text x="' + cx + '" y="' + (H - padB + 16) + '" text-anchor="middle" font-size="11" fill="var(--color-muted)">' + mo.month + '</text>';
+      hitsSvg += '<rect class="budget-hit" tabindex="0" data-month="' + mo.month + '" data-mrr="' + mo.mrr + '" data-onetime="' + mo.oneTime + '" data-total="' + mo.total + '" ' +
+        'x="' + (padL + slotW * i) + '" y="' + padT + '" width="' + slotW + '" height="' + plotH + '" fill="transparent" ' +
+        'aria-label="Måned ' + mo.month + ': MRR ' + priserFmtPrice(mo.mrr) + ' kr, eingongsinntekt ' + priserFmtPrice(mo.oneTime) + ' kr, totalt ' + priserFmtPrice(mo.total) + ' kr"></rect>';
+    });
+    linePts.forEach(function (p, i) {
+      dotsSvg += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="4" fill="#2a78d6" stroke="var(--color-surface)" stroke-width="2"/>';
+    });
+    var linePath = linePts.map(function (p, i) { return (i === 0 ? "M" : "L") + p[0] + " " + p[1]; }).join(" ");
+
+    // niceMax >= target alltid (sjå priserBudgetNiceMax), så target ligg
+    // aldri utanfor plottet -- ingen clamp nødvendig her.
+    var targetSvg = "";
+    if (target > 0) {
+      var ty = yScale(target);
+      targetSvg = '<line x1="' + padL + '" y1="' + ty + '" x2="' + (W - padR) + '" y2="' + ty + '" stroke="var(--color-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>' +
+        '<text x="' + (W - padR) + '" y="' + (ty - 6) + '" text-anchor="end" font-size="11" fill="var(--color-muted)">Mål: ' + priserFmtPrice(target) + ' kr/mnd</text>';
+    }
+
+    return (
+      '<div class="budget-legend">' +
+        '<span class="budget-legend__item"><span class="budget-legend__line" style="background:#2a78d6"></span>MRR (akkumulert)</span>' +
+        '<span class="budget-legend__item"><span class="budget-legend__swatch" style="background:#008300"></span>Eingongsinntekt (ny per månad)</span>' +
+      '</div>' +
+      scaleWarning +
+      // role="group", IKKJE "img" -- ein "img"-rolle flatar ut/kan skjule dei
+      // individuelt fokuserbare/merkelappa .budget-hit-borna for ein skjerm-
+      // lesar sin virtuell-markør-navigasjon (UX-review-funn 2026-08-05).
+      // Sjølve grafen sin overordna omtale ligg no i ein eigen <title>.
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" class="budget-chart-svg" role="group" aria-label="Inntektsprognose neste 12 månadar">' +
+        '<title>Inntektsprognose neste 12 månadar</title>' +
+        gridSvg + barsSvg +
+        '<path d="' + linePath + '" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+        dotsSvg + targetSvg + xLabelsSvg + hitsSvg +
+      '</svg>' +
+      '<div class="budget-tooltip" id="priser-budget-tooltip" hidden></div>'
+    );
+  }
+  // Punktoppdaterer heile tal-/graf-/tabell-utgangen frå input-felta --
+  // sjølve skjemafelta (antal, mål) rører denne funksjonen ALDRI, så
+  // tastaturfokus held fram akkurat som priserRefreshQuoteTotals().
+  function priserRefreshBudgetTotals(wrap) {
+    var monthly = priserBudgetMonthlyNew();
+    var forecast = priserBudgetForecast();
+    var target = Number(_priserBudget.target) || 0;
+    var mttText = priserBudgetMttText(priserBudgetMonthsToTarget(), target);
+
+    var newMrrEl = wrap.querySelector("#priser-budget-newmrr-display");
+    if (newMrrEl) newMrrEl.textContent = priserFmtPrice(monthly.newMrr);
+    var mttEl = wrap.querySelector("#priser-budget-monthstotarget");
+    if (mttEl) mttEl.textContent = mttText;
+
+    var chartEl = wrap.querySelector("#priser-budget-chart");
+    if (chartEl) chartEl.innerHTML = priserBudgetChartHtml(forecast, target);
+
+    var tbody = wrap.querySelector("#priser-budget-table-body");
+    if (tbody) tbody.innerHTML = forecast.map(function (mo) {
+      return '<tr><td>' + mo.month + '</td><td>' + priserFmtPrice(mo.mrr) + '</td><td>' + priserFmtPrice(mo.oneTime) + '</td><td>' + priserFmtPrice(mo.total) + '</td></tr>';
+    }).join("");
+
+    priserBindBudgetTooltip(wrap);
+  }
+  // Tooltip via getBoundingClientRect() (verkar korrekt uansett viewBox-
+  // skalering, ingen manuell piksel-rekning). Kvar treffe-rect er tilgjengeleg
+  // for tastaturbrukarar (tabindex+aria-label), OG same 12 tal ligg alltid
+  // synlege i tabellen under grafen -- tooltipen er difor eit tillegg, aldri
+  // einaste vegen til dataen (dataviz-skill sitt "tooltips enhance, never gate").
+  function priserBindBudgetTooltip(wrap) {
+    var chartWrap = wrap.querySelector("#priser-budget-chart");
+    var tip = wrap.querySelector("#priser-budget-tooltip");
+    if (!chartWrap || !tip) return;
+    function show(hit) {
+      var month = hit.getAttribute("data-month"), mrr = hit.getAttribute("data-mrr"), oneTime = hit.getAttribute("data-onetime"), total = hit.getAttribute("data-total");
+      tip.innerHTML =
+        '<div class="budget-tt-row"><span class="budget-tt-key" style="background:#2a78d6"></span><strong>' + priserFmtPrice(mrr) + ' kr</strong><span>MRR</span></div>' +
+        '<div class="budget-tt-row"><span class="budget-tt-key" style="background:#008300"></span><strong>' + priserFmtPrice(oneTime) + ' kr</strong><span>Eingongsinntekt</span></div>' +
+        '<div class="budget-tt-row is-total"><strong>' + priserFmtPrice(total) + ' kr</strong><span>Totalt, månad ' + C.esc(month) + '</span></div>';
+      tip.hidden = false;
+      var wrapRect = chartWrap.getBoundingClientRect(), hitRect = hit.getBoundingClientRect();
+      var tipW = tip.offsetWidth, tipH = tip.offsetHeight;
+      // Vassrett: klem sentrum mellom tipW/2 og wrapRect.width-tipW/2 slik at
+      // tooltipen aldri stikk ut av kortet ved månad 1/12 (UX-review-funn
+      // 2026-08-05 -- ingen klemming fanst frå før).
+      var centerX = hitRect.left - wrapRect.left + hitRect.width / 2;
+      var left = Math.min(Math.max(centerX, tipW / 2), wrapRect.width - tipW / 2);
+      // Loddrett: føretrekk over punktet; fell tilbake til INNI plottet
+      // (nær toppen av treffesona) i staden for å stikke over kortkanten
+      // dersom det ikkje er nok plass over (UX-review-funn 2026-08-05).
+      var topAbove = hitRect.top - wrapRect.top - tipH - 8;
+      var top = topAbove >= 0 ? topAbove : Math.max(0, hitRect.top - wrapRect.top + 4);
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+      tip.style.transform = "translateX(-50%)";
+    }
+    function hide() { tip.hidden = true; }
+    wrap.querySelectorAll(".budget-hit").forEach(function (hit) {
+      hit.addEventListener("pointerenter", function () { show(hit); });
+      hit.addEventListener("pointermove", function () { show(hit); });
+      hit.addEventListener("pointerleave", hide);
+      hit.addEventListener("focus", function () { show(hit); });
+      hit.addEventListener("blur", hide);
+    });
+  }
+  function renderPriserBudget(wrap) {
+    var pkgs = _priserData.packages;
+    var startTarget = Number(_priserBudget.target) || 0;
+    var mttText = priserBudgetMttText(priserBudgetMonthsToTarget(), startTarget);
+
+    var rows = pkgs.length ? pkgs.map(function (p) {
+      if (p.priceOnRequest) {
+        return '<tr><td>' + C.esc(p.name || "(uten navn)") + '</td><td colspan="2">Avtales separat</td>' +
+          '<td><input type="number" value="0" disabled title="Denne pakken har ikke en fast pris, så den telles ikke med i budsjettet."></td></tr>';
+      }
+      var qty = _priserBudget.monthlyQty[p.id] || 0;
+      return '<tr><td>' + C.esc(p.name || "(uten navn)") + '</td><td>' + priserFmtPrice(p.price) + ' kr</td><td>' + priserFmtPrice(p.setupCost || 0) + ' kr</td>' +
+        '<td><input type="number" min="0" step="1" data-priser-budget-qty="' + C.esc(p.id) + '" value="' + qty + '"></td></tr>';
+    }).join("") : '<tr><td colspan="4" style="text-align:center;color:var(--color-muted)">Ingen pakker ennå.</td></tr>';
+
+    wrap.innerHTML =
+      '<p class="preview-note">Sett forventet nysalg per pakke <strong>per måned</strong> for å se hvordan inntekten vokser de neste 12 månedene. Lagres ikke, kun en økt-lokal kalkulator.</p>' +
+      '<div class="price-table-wrap"><table class="price-table">' +
+        '<thead><tr><th>Pakke</th><th>Pris/mnd</th><th>Oppstart</th><th>Forventet nysalg/mnd</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table></div>' +
+      '<div class="stat-row">' +
+        '<div class="stat-box"><label>Målsetting' + C.helpIcon("Den faste, tilbakevendende inntekten (kalt MRR) du sikter mot per måned. Dette er beløpet kunder betaler løpende hver måned -- ikke engangskostnader som oppstartsgebyr.") + '</label>' +
+          '<div class="stat-input-row"><input type="number" min="0" id="priser-budget-target" value="' + (Number(_priserBudget.target) || 0) + '"><span class="unit">kr/mnd</span></div></div>' +
+        '<div class="stat-box"><label>Ny fast inntekt per måned' + C.helpIcon("MRR = Monthly Recurring Revenue, altså løpende inntekt kundene betaler hver måned. Dette er hvor mye NY løpende inntekt den planlagte salgstakten din legger til hver eneste måned.") + '</label><div class="stat-input-row"><strong id="priser-budget-newmrr-display" style="font-size:1.4rem">0</strong><span class="unit">kr/mnd</span></div></div>' +
+        '<div class="stat-box"><label>Når nås målet?</label><div class="stat-input-row"><strong id="priser-budget-monthstotarget" style="font-size:1.05rem">' + C.esc(mttText) + '</strong></div></div>' +
+      '</div>' +
+      '<div class="budget-chart-wrap" id="priser-budget-chart"></div>' +
+      '<div class="price-table-wrap"><table class="price-table">' +
+        '<thead><tr><th>Måned</th><th>MRR (kr)</th><th>Eingongsinntekt (kr)</th><th>Totalt (kr)</th></tr></thead>' +
+        '<tbody id="priser-budget-table-body"></tbody>' +
+      '</table></div>';
+
+    priserRefreshBudgetTotals(wrap);
+
+    wrap.querySelectorAll("[data-priser-budget-qty]").forEach(function (input) {
+      input.addEventListener("input", function () {
+        _priserBudget.monthlyQty[input.getAttribute("data-priser-budget-qty")] = Number(input.value) || 0;
+        priserRefreshBudgetTotals(wrap); // ALDRI eit fullt renderPriserBudget()-kall her -- sjå priserRefreshQuoteTotals sin eigen kommentar
+      });
+    });
+    wrap.querySelector("#priser-budget-target").addEventListener("input", function (e) {
+      _priserBudget.target = Number(e.target.value) || 0;
+      priserRefreshBudgetTotals(wrap);
+    });
+  }
+
   // Speiler same "Standardmoduler"-kollaps som pakkeredigeringa: er
   // priserAllStandard(pkg, ns) på for DETTE namnerommet, vis "Alle
   // standardmoduler" som éin rad i staden for kvar standardmodul, og list kun
@@ -2537,7 +2808,7 @@ window.VwConsole = (function () {
       priserLoad(wrap);
       return;
     }
-    var views = [["edit", "Rediger pakker"], ["prices", "Modulpriser"], ["quote", "Bygg tilbud"], ["preview", "Forhåndsvisning"]];
+    var views = [["edit", "Rediger pakker"], ["prices", "Modulpriser"], ["quote", "Bygg tilbud"], ["budget", "Budsjett"], ["preview", "Forhåndsvisning"]];
     wrap.innerHTML =
       '<div class="seg" id="priser-view-toggle" style="margin-bottom:1.4rem">' +
         views.map(function (v) {
@@ -2557,7 +2828,8 @@ window.VwConsole = (function () {
     if (_priserView === "edit") renderPriserEdit(pane);
     else if (_priserView === "prices") renderPriserPrices(pane);
     else if (_priserView === "quote") renderPriserQuote(pane);
-    else renderPriserPreview(pane);
+    else if (_priserView === "budget") renderPriserBudget(pane);
+    else renderPriserPreview(pane); // "preview" og enhver ukjend/framtidig verdi -- eksplisitt fallback, ikkje ein implisitt catch-all for ein 6. fane
   }
 
   function renderAnalyse(sc, wrap) {

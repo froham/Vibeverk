@@ -643,6 +643,26 @@
     .quote-extra label { font-size:.78rem; font-weight:600; color: var(--color-muted); display:block; margin-bottom:.3rem; }
     .quote-extra input { font: inherit; width:100%; padding:.5rem .6rem; border-radius:8px; border:1.5px solid var(--color-border); background: var(--color-bg); color: var(--color-text); }
 
+    /* Budsjett-fana sin 12-månaders prognosegraf (brukarønske 2026-08-05).
+       Seriefargane (#2a78d6/#008300) er henta frå den validerte
+       standardpaletten i dataviz-skillen, ikkje frå --color-primary --
+       kontrast/CVD-sjekkane vart køyrt mot nøyaktig desse to hex-verdiane. */
+    .budget-chart-wrap { position:relative; border:1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); padding:1rem; margin-bottom:1rem; }
+    .budget-chart-svg { width:100%; height:auto; display:block; }
+    .budget-hit { cursor:pointer; }
+    .budget-hit:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .budget-legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-bottom:.8rem; font-size:.82rem; color: var(--color-text); }
+    .budget-legend__item { display:inline-flex; align-items:center; gap:.4rem; }
+    .budget-legend__line { display:inline-block; width:16px; height:2px; border-radius:1px; }
+    .budget-legend__swatch { display:inline-block; width:10px; height:10px; border-radius:2px; }
+    .budget-tooltip { position:absolute; pointer-events:none; background: var(--color-text); color: var(--color-surface); border-radius:8px; padding:.5rem .65rem; font-size:.78rem; box-shadow:0 6px 20px rgba(0,0,0,.18); white-space:nowrap; z-index:20; }
+    .budget-tooltip[hidden] { display:none; }
+    .budget-tt-row { display:flex; align-items:center; gap:.4rem; padding:.1rem 0; }
+    .budget-tt-row.is-total { border-top:1px solid rgba(255,255,255,.2); margin-top:.25rem; padding-top:.3rem; font-weight:700; }
+    .budget-tt-row strong { font-variant-numeric: tabular-nums; }
+    .budget-tt-key { display:inline-block; width:12px; height:3px; border-radius:1px; flex-shrink:0; }
+    .budget-scale-note { font-size:.78rem; color: var(--color-muted); margin:0 0 .6rem; }
+
     /* Forhåndsvisning */
     /* Hvilke pakker som vises kan variere frå kunde til kunde (brukarønske
        2026-08-04) -- avkryssingsbrikker over sjølve rutenettet. */
@@ -714,6 +734,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=215"></script>
+  <script src="console-core.js?v=216"></script>
 </body>
 </html>
