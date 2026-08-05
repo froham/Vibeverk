@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.96.6";
+  var VIBEVERK_VERSION = "0.97.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1628,6 +1628,21 @@ window.VwConsole = (function () {
     (iFeatureKeys || []).forEach(function (k) { var p = priserPriceEntry("i", k); monthly += p.monthly; setup += p.setup; });
     return { monthly: monthly, setup: setup };
   }
+  // "Spar kr X" (brukarønske 2026-08-05) -- syner differansen når SETT pris
+  // (pkg.price/setupCost) er lågare enn den KALKULERTE modulsummen (sum,
+  // frå priserSum() over). Berre positive differansar tel som ei faktisk
+  // "spart" innsparing -- ein pakke SETT høgare enn modulsummen (t.d. eit
+  // medvite prispåslag) skal ikkje vise ei negativ "spar"-tekst.
+  function priserSavings(pkg, sum) {
+    return { monthly: Math.max(0, sum.monthly - pkg.price), setup: Math.max(0, sum.setup - (pkg.setupCost || 0)) };
+  }
+  function priserSavingsText(pkg, sum) {
+    var s = priserSavings(pkg, sum);
+    if (!s.monthly && !s.setup) return "";
+    if (s.monthly && s.setup) return "Spar " + priserFmtPrice(s.monthly) + " kr/mnd + " + priserFmtPrice(s.setup) + " kr i oppstart";
+    if (s.monthly) return "Spar " + priserFmtPrice(s.monthly) + " kr/mnd";
+    return "Spar " + priserFmtPrice(s.setup) + " kr i oppstart";
+  }
   // Splitta i to uavhengige flagg (brukarfunn 2026-08-05, tidlegare ETT
   // felles pkg.allStandard styrte BÅDE nettside- og Workspace-modular samla
   // -- gjorde det umogleg å t.d. ha "alle standardmodular" for nettsida, men
@@ -1919,6 +1934,7 @@ window.VwConsole = (function () {
         '<div class="feat-section-title">Grunnleggende</div>' +
         '<div class="field"><label>Pakkenavn</label><input type="text" maxlength="200" data-priser-field="name" data-priser-pkg="' + C.esc(pkg.id) + '" value="' + C.esc(pkg.name) + '"></div>' +
         priceBlock +
+        (!pkg.priceOnRequest ? '<p class="stat-row-savings" data-priser-savings="' + C.esc(pkg.id) + '"' + (priserSavingsText(pkg, sum) ? "" : ' hidden') + '>' + C.esc(priserSavingsText(pkg, sum) + " sammenlignet med modulsum") + '</p>' : "") +
         '<div class="field"><label>Kort beskrivelse</label><textarea rows="2" maxlength="2000" data-priser-field="desc" data-priser-pkg="' + C.esc(pkg.id) + '">' + C.esc(pkg.desc) + '</textarea></div>' +
       '</div>' +
       '<div class="rp-section">' +
@@ -2121,6 +2137,19 @@ window.VwConsole = (function () {
             if (railRow) railRow.querySelector(".pkg-row__name").textContent = pkg.name || "(uten navn)";
           } else if (railRow) {
             railRow.querySelector(".pkg-row__price").textContent = priserFmtPrice(pkg.price) + " kr/mnd";
+          }
+        }
+        if (field === "price" || field === "setupCost") {
+          // "Spar kr X"-linja (brukarønske 2026-08-05) må halde seg synkron
+          // medan admin skriv, same punktoppdaterings-disiplin som namn/pris
+          // over -- elles ville ho vist eit forelda tal heilt til neste fulle
+          // re-render (t.d. "Hent priser" eller pakkebyte).
+          var savingsEl = wrap.querySelector('[data-priser-savings="' + pkg.id + '"]');
+          if (savingsEl) {
+            var freshSum = priserSum(priserEffectiveKeys(pkg, "f"), priserEffectiveKeys(pkg, "i"));
+            var text = priserSavingsText(pkg, freshSum);
+            savingsEl.hidden = !text;
+            if (text) savingsEl.textContent = text + " sammenlignet med modulsum";
           }
         }
       });
@@ -2463,6 +2492,9 @@ window.VwConsole = (function () {
               var color = priserSafeHex(pkg.badgeColor);
               var style = pkg.featured ? ' style="border-color:' + color + '"' : "";
               var badge = pkg.featured ? '<span class="compare-card__badge" style="background:' + color + '">' + C.esc(pkg.badgeText || "Fremhevet") + '</span>' : "";
+              // "Spar kr X" (brukarønske 2026-08-05) -- automatisk utrekna,
+              // ikkje ein manuelt sett merkelapp som featured-badgen over.
+              var savingsText = pkg.priceOnRequest ? "" : priserSavingsText(pkg, priserSum(priserEffectiveKeys(pkg, "f"), priserEffectiveKeys(pkg, "i")));
               return '<div class="compare-card' + (pkg.featured ? " is-featured" : "") + '"' + style + '>' +
                 badge +
                 '<div class="compare-card__name">' + C.esc(pkg.name) + '</div>' +
@@ -2470,6 +2502,7 @@ window.VwConsole = (function () {
                   ? '<div class="compare-card__price">Pris etter avtale</div>'
                   : '<div class="compare-card__price">' + priserFmtPrice(pkg.price) + ' kr</div>' +
                     '<div class="compare-card__unit">per måned' + (pkg.setupCost ? ' + ' + priserFmtPrice(pkg.setupCost) + ' kr i oppstartskostnad' : '') + '</div>') +
+                (savingsText ? '<div><span class="compare-card__savings">' + C.esc(savingsText) + '</span></div>' : "") +
                 '<div class="compare-card__desc">' + C.esc(pkg.desc || "") + '</div>' +
                 priserCapsLine(pkg) +
                 priserFeatListHtml("Nettside", pkg, "f", PRISER_F_LABELS) +

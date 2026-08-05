@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.97.0 — 2026-08-05
+
+**Ny funksjonalitet:** «Spar kr X»-merking i Console sin Priser-fane. Når ei pakke sin SETTE pris (`pkg.price`/`setupCost`) er lågare enn den KALKULERTE modulsummen (same tal som alt vart vist i ein `helpIcon()`-tooltip via "Veiledande sum"), vises no ei automatisk utrekna innsparing:
+- **Forhåndsvisning** (kundevendt samanlikningskort): ein grøn pille rett under prisen, t.d. "Spar 340 kr/mnd".
+- **Rediger pakker** (admin-redigering): ei diskret tekstlinje UNDER (ikkje inni) sjølve pris-boksane — bevisst plassert utanfor boksane, sidan brukaren eksplisitt bad om at desse skulle ha "ikke noe mer" i seg (2026-08-04). Linja punktoppdaterer medan admin skriv, same disiplin som namn/pris-felta elles i fana (aldri eit fullt re-render per tastetrykk).
+
+Berre POSITIVE differansar tel — ei pakke sett HØGARE enn modulsummen (eit medvite prispåslag) syner ingen "spar"-tekst. Ny funksjon `priserSavingsText()` i `console-core.js`, delt mellom begge fanene.
+
+**Prisgjennomgang** (rådgivande, ikkje vedteke): full manuell gjennomgang av alle Nettside- og Workspace-modular sine mnd-/engangsprisar, levert direkte i samtalen (ikkje i ein fil) etter brukaren si eiga screenshot-visning av gjeldande Modulpriser-tal. Viktigaste funnet: "Skreddersydd modul" og "Skreddersydd AI-modul" står på 0/0 sjølv om dei representerer reelt, variabelt utviklingsarbeid (og for AI-varianten: løpande Anthropic-kostnad) — tilrådd anten "Pris etter avtale" (same mekanisme som pakkar alt har) eller eit veiledande golvbeløp. Ingen av tala er endra i koden — dette er berre ei tilråding brukaren kan velje å bruke i Modulpriser-fana.
+
+Console har ingen automatisert testsuite (verken jsdom eller anna) -- verifisert ved kodegjennomgang + syntakssjekk (`node -e "new Function(...)"`), ikkje ein live login-test (Console krev OTP mot kontrollplanet, ikkje mogleg å simulere i denne økta). Cache-bust: `console-core.js?v=215`.
+
 ## 0.96.6 — 2026-08-05
 
 **Fiks:** Brukarrapport — Smart årshjul synte feilmelding om at lokal lagring ikkje fungerte, medan Oversikt "verka som han fungerte" (ingen feilmelding) for det som truleg er nøyaktig same underliggjande lagringssvikt — og etter ein hard nettlesar-reload var ei tidlegare generert oversikt borte, medan oppsettskjemaet sin tittel/skildring framleis stod att.
