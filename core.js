@@ -160,7 +160,19 @@ window.App = (function () {
     },
     set: function (name, value) {
       try { localStorage.setItem(this._key(name), JSON.stringify(value)); return true; }
-      catch (e) { return false; }
+      catch (e) {
+        // Feilen vart tidlegare svelgd heilt utan logging -- umogleg å skilje
+        // fullt lagringskvote frå andre feil (privat nettlesing, deaktivert
+        // localStorage) når det faktisk skjedde i produksjon (brukarrapport
+        // 2026-08-05: lagring feila berre for store payloadar, som peika på
+        // kvote, men utan logging kunne det ikkje stadfestast). Berre logging
+        // lagt til her -- returverdien er uendra, alle kallarar oppfører seg
+        // som før.
+        var totalChars = 0;
+        try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); totalChars += (k ? k.length : 0) + (localStorage.getItem(k) || "").length; } } catch (e2) {}
+        console.error("[App.store] lagring feila for \"" + name + "\":", e && e.name, e && e.message, "-- estimert total localStorage-bruk for dette opphavet: ~" + Math.round(totalChars / 1024) + " KB");
+        return false;
+      }
     },
     remove: function (name) { try { localStorage.removeItem(this._key(name)); } catch (e) {} }
   };

@@ -193,7 +193,16 @@
   var pendingExistingAnalysis = null;
   var lastDuplicate = { id: "", at: 0 };
   var generating = false;
-
+  // Sann etter fyrste vellykka innlasting denne sideøkta -- hindrar at eit
+  // etterfølgjande mount() (dvs. kvar gong brukaren navigerer INN i modulen
+  // att) overskriv ein god state i minnet med ei ELDRE lagra utgåve dersom
+  // ei tidlegare save() faktisk feila (t.d. fullt localStorage-kvote, sjå
+  // App.store sin nye feillogging i core.js). Brukarrapport 2026-08-05:
+  // eit ekte generert årshjul/oversikt kunne forsvinne heilt ved berre å
+  // byte fane og komme attende, sjølv om objektet i minnet framleis var
+  // korrekt -- state = defaultState()/resetState() nullstiller denne
+  // sjølv, så eit ekte "Ny oversikt"/"Nullstill" fungerer som før.
+  var _loadedThisSession = false;
   function load() { state = validateState(App.store.get(STORE_KEY, null)); }
   function save(show) {
     state.updatedAt = new Date().toISOString();
@@ -1292,7 +1301,7 @@
     toastsEl = root.querySelector("#ov-toasts");
     modalEl = root.querySelector("#ov-modal");
     generating = false;
-    load();
+    if (!_loadedThisSession) { load(); _loadedThisSession = true; }
     renderApp();
   }
 

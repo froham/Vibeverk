@@ -136,6 +136,12 @@
   var state = defaultState();
   var generating = false;
   var pendingImport = null;
+  // Sann etter fyrste vellykka innlasting denne sideøkta -- same grunngjeving
+  // som i module-oversikt.js: hindrar at eit etterfølgjande mount() overskriv
+  // ein god state i minnet med ei ELDRE lagra utgåve dersom ei tidlegare
+  // save() faktisk feila (brukarrapport 2026-08-05: eit ekte generert
+  // årshjul kunne forsvinne ved berre å byte fane og komme attende).
+  var _loadedThisSession = false;
 
   function load() { state = validateState(App.store.get(STORE_KEY, null)); }
   function save() {
@@ -1063,7 +1069,7 @@
     toastsEl = root.querySelector("#saa-toasts");
     modalEl = root.querySelector("#saa-modal");
     generating = false;
-    load();
+    if (!_loadedThisSession) { load(); _loadedThisSession = true; }
     renderContent();
     bindEvents(root);
   }
