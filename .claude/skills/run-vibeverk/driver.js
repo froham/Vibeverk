@@ -168,6 +168,7 @@ async function flowChat(page) {
   await page.waitForTimeout(500);
   await page.screenshot({ path: shotPath("chat-widget-open") });
   const startBtn = page.locator("#vw-start-btn");
+  const offEmail = page.locator("#vw-off-email");
   if (await startBtn.count()) {
     await page.fill("#vw-name-inp", TAG);
     await page.fill("#vw-email-inp", "pwtest+" + STAMP + "-chat@example.com");
@@ -175,8 +176,20 @@ async function flowChat(page) {
     if (await terms.count()) await terms.check();
     await page.click("#vw-start-btn");
     await page.waitForTimeout(1200);
+  } else if (await offEmail.count()) {
+    // Offline lead-capture fallback (chat-availability stale/off) — writes a
+    // real `leads` row via App.addLead(), source "chat-offline". Cleanup:
+    // same `leads` query as the kontakt/tilbud flows (email LIKE 'pwtest+%').
+    console.log("Offline lead-capture form detected (chat-availability stale/off) — testing that path instead.");
+    await page.fill("#vw-off-email", "pwtest+" + STAMP + "-chat@example.com");
+    await page.fill("#vw-off-msg", "Driver smoke test (offline fallback) — " + TAG);
+    await page.click("#vw-off-send");
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: shotPath("chat-offline-after-send") });
+    console.log("Offline success message:", await page.locator(".vw-msg--op").last().textContent().catch(() => null));
+    return;
   } else {
-    console.log("No start form — likely the offline fallback (see note above), or a conversation is already active.");
+    console.log("No start form and no offline form — likely a conversation is already active.");
   }
   const inp = page.locator("#vw-inp");
   await inp.waitFor({ timeout: 8000 }).catch(() => {});

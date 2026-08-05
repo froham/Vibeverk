@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.98.5 — 2026-08-05
+
+**Testing/QA, ingen produktendring:** Full gjennomkøyring av begge Playwright-testverktøya, som del av pilotkunde-modningsarbeidet brukaren etterspurde.
+
+- **`run-vibeverk`** (anonyme flytar, alltid mot produksjon): alle fem flytar (`home`/`kontakt`/`tilbud`/`booking`/`chat`) køyrde og PASSA. Chat-flyten (`flowChat` i `driver.js`) hadde tidlegare INGEN dekning for offline lead-capture-fallbacken (`#vw-off-*`) — testa berre den ferske-chat-availability-vegen, som i praksis aldri var aktiv (`chat-availability` i produksjon synte seg å vere 454 timar gamal, langt utanfor 8-timars-fristen klienten handhevar). Utvida `flowChat` til å oppdage og teste offline-skjemaet når det live-skjemaet ikkje finst — stadfesta at det faktisk fungerer (skriv ein ekte `leads`-rad via `App.addLead()`, `source: "chat-offline"`). Alle 4 test-rader (3 leads + 1 booking, som verkeleg oppteok ein ekte kalender-slot) stadfesta med eksplisitt `id`-liste og sletta, etterfølgt av ein uavhengig verifiseringsspørring (0 attverande rader) — aldri stola på ein rein exit-kode.
+- **`smoke-vibeverk`** (autentiserte flytar mot `vibeverk-staging`): `dashboard-shortcuts`, `user-deletion` og `backup-restore` køyrde alle på nytt og PASSA. **Retta eit dokumentasjons-etterslep**: `docs/roadmap/ROADMAP.md` og `docs/project/CURRENT_STATE.md` lista feilaktig `backup-restore` som attståande, sjølv om `SKILL.md` sin eigen statustabell alt viste han som implementert og verifisert PASS 2026-07-18 — no retta til å reflektere faktisk status, med 2026-08-05-re-stadfestinga notert. `config.js` stadfesta uendra (`git diff`) etter kvar køyring.
+- Undervegs vart ein reell tilkoplingsfeil i staging sin `--db-url`-arbeidsflyt diagnostisert og fiksa av brukaren: Dashboard sin standard "Connection string"-boks peikar på det DIREKTE databasehostnamnet (`db.<ref>.supabase.co`), som Supabase berre eksponerer over IPv6 -- feilar med `ENETUNREACH` i eit miljø utan IPv6-rute. Rett kjelde er **Connection pooling**-boksen (`aws-0-<region>.pooler.supabase.com`), som er dual-stack. Ikkje ein kodefeil, men verdt å notere for neste person som set opp `VW_STAGING_DB_URL`.
+
+Ingen `console-core.js`/modul-endring i denne oppføringa — berre testverktøy (`.claude/skills/run-vibeverk/driver.js`) og dokumentasjonsretting.
+
+---
+
 ## 0.98.4 — 2026-08-05
 
 **Ny funksjonalitet:** «Regn ut årsinntekt fra antall kunder» (0.98.2/0.98.3, same økt) fekk to nye måltal-felt (`Måltall 1. år`, `Måltall år 2+`) og eit søylediagram som viser dei faktiske summane mot desse måltala — brukarønske: "sette eit måltall for 1. år og 2. år og lage ein graf, lignende den akkumulerte". Valde design stadfesta med brukaren via `AskUserQuestion` (søyler + mållinje, ikkje fremdriftslinjer).
