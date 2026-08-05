@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.96.3 — 2026-08-05
+
+**UI-opprydding:** Smart årshjul og Oversikt fekk ein visuell gjennomgang etter brukartilbakemelding om at fleire visningar (dashboard, analyseverksted, kart, modalar) verka "rotete" — nokre tydelege småfeil, ikkje éin stor feil:
+- **Dobbel tekst fjerna** (Oversikt): AI-samandraget vart vist to gongar — ein gong i toppen (`ov-shell-head`), og igjen ord for ord i ein eigen boks lenger ned i dashboardet (`ov-summary-strip`). Boksen er fjerna; fråskrivingsteksten flytta opp til toppen som ei mindre, dempa linje under samandraget.
+- **Mjukare feit tekst**: alle `<strong>`/`<h1-h3>` i begge modulane arva rå `var(--color-text)` (nesten svart) ved full nettlesar-standardvekt — kort-titlar, listerad-titlar, kart-node-namn, modal-overskrifter, alt saman. Ny `--ov-ink`/`--saa-ink`-token (ei `color-mix` mot den dempa fargen) mjukar dette opp, og ikkje-overskrift `<strong>` gjekk frå vekt 700 til 650. To stader med kvit tekst på farga bakgrunn (`.ov-hero h1`, `.ov-impact-center strong`, `.saa-selection strong`) fekk eksplisitt `color:#fff` att, sidan dei elles ville arva den nye mørke blekk-fargen frå den globale regelen.
+- **Luftigare bobler**: `.ov-chip` gjekk frå `.25rem .5rem` til `.32rem .7rem` padding; tilsvarande for `.saa-badge/.saa-origin/.saa-lock/.saa-status`, `.saa-currentq`, `.saa-qlabel` og `.saa-qlegend span` i Smart årshjul.
+- Prioritets-markøren i Oversikt sitt dashboard gjekk frå ei full-metta loddrett stolpe til ein liten prikk med mjuk glorie (same åtvaringsfarge, mindre visuell vekt). Glorien brukar `color-mix()` mot `--color-surface` i staden for den faste `--ov-warning-soft`-fargen, sidan UX-gjennomgangen fann at sistnemnde nesten er usynleg mot ei kvit kortoverflate i lyst tema.
+
+Kjørt gjennom UX/Mobile Reviewer før merge (per fast rutine for meiningsfulle UI-endringar): ingen blokkerande funn, kontrastrekning på den nye `--ov-ink`/`--saa-ink`-blekk-fargen ligg godt over WCAG AA (~14.8:1 lyst tema, ~11.6:1 mørkt) mot begge standardtema.
+
+Ingen datamodell- eller API-endringar. `test-workspace.js` (207/207), `test.js` (676/676) og `test-api.js` (91/91) er framleis 0 FEIL. Cache-bust: `module-oversikt.js?v=3`, `module-smart-aarshjul.js?v=4`.
+
 ## 0.96.2 — 2026-08-05
 
 **Fiks:** Smart årshjul og Oversikt sine oppsettskjema mista utfylt-men-ikkje-sendt tekst ved fanebyte. Rotårsak: `bindStartEvents()`/`root.addEventListener("input", ...)` i høvesvis `workspace/module-oversikt.js` og `workspace/module-smart-aarshjul.js` skreiv berre skjemaverdiane til `state` ved innsending (`submit`), ikkje undervegs — sjølve lagrings-/gjenopprettingsmekanismen (`App.store` → `localStorage` + batcha Supabase-`upsert`, sjå `core.js`) var alltid korrekt, det var berre feltverdiane som aldri nådde `state` før brukaren trykte «Generer». Retta ved å skriva kvart felt (tittel/skildring/type/omfang/analyseområde for Oversikt; skildring/sesongar/fokus for Smart årshjul) inn i `state` + kalla `save()` fortløpande på `input`/`change`, same mønster som feltet for bransje og søk allereie brukte. To nye regresjonstestar lagt til i `test-workspace.js` (ab8/ab9, ad7/ad8) som simulerer akkurat dette scenarioet (skriv i felt → byt fane → kom attende → sjekk verdien overlevde). Cache-bust: `module-smart-aarshjul.js?v=3`, `module-oversikt.js?v=2`.
