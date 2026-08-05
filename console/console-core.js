@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.98.2";
+  var VIBEVERK_VERSION = "0.98.3";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1747,17 +1747,27 @@ window.VwConsole = (function () {
   }
   // Den OMVENDE retninga (brukarønske 2026-08-05): brukaren fyller inn talet
   // på kundar sjølv, PER PAKKE, HEILT UAVHENGIG av monthlyQty-miksen over --
-  // årsinntekta vert generert, ikkje sett som mål. Same "full førsteårsverdi"-
-  // prinsipp (12×price + setupCost) per kunde, berre motsett rekneretning.
+  // årsinntekta vert generert, ikkje sett som mål. Skil no eksplisitt mellom
+  // 1. år (oppstartskostnaden kjem berre éin gong, ved teiknedato) og år 2+
+  // (rein løpande abonnementsinntekt, ingen oppstartskostnad) -- brukarønske
+  // 2026-08-05, tillegg til same kalkulator.
   function priserBudgetAnnualCountRows() {
     return priserBudgetSellablePackages().map(function (p) {
-      var perCustomer = 12 * (p.price || 0) + (p.setupCost || 0);
+      var perCustomerYear1 = 12 * (p.price || 0) + (p.setupCost || 0);
+      var perCustomerYear2 = 12 * (p.price || 0);
       var count = Number(_priserBudget.annualCount[p.id]) || 0;
-      return { pkg: p, perCustomer: perCustomer, count: count, value: perCustomer * count };
+      return {
+        pkg: p, count: count,
+        perCustomerYear1: perCustomerYear1, perCustomerYear2: perCustomerYear2,
+        year1: perCustomerYear1 * count, year2: perCustomerYear2 * count
+      };
     });
   }
-  function priserBudgetAnnualCountTotal() {
-    return priserBudgetAnnualCountRows().reduce(function (s, r) { return s + r.value; }, 0);
+  function priserBudgetAnnualCountTotals() {
+    return priserBudgetAnnualCountRows().reduce(function (s, r) {
+      s.year1 += r.year1; s.year2 += r.year2; s.count += r.count;
+      return s;
+    }, { year1: 0, year2: 0, count: 0 });
   }
 
   // Splitta i to uavhengige flagg (brukarfunn 2026-08-05, tidlegare ETT
@@ -2636,11 +2646,17 @@ window.VwConsole = (function () {
   function priserRefreshAnnualCount(wrap) {
     var rows = priserBudgetAnnualCountRows();
     rows.forEach(function (r) {
-      var cell = wrap.querySelector('[data-priser-budget-annualcount-sum="' + r.pkg.id + '"]');
-      if (cell) cell.textContent = priserFmtPrice(r.value) + " kr";
+      var y1cell = wrap.querySelector('[data-priser-budget-annualcount-y1="' + r.pkg.id + '"]');
+      if (y1cell) y1cell.textContent = priserFmtPrice(r.year1) + " kr";
+      var y2cell = wrap.querySelector('[data-priser-budget-annualcount-y2="' + r.pkg.id + '"]');
+      if (y2cell) y2cell.textContent = priserFmtPrice(r.year2) + " kr";
     });
+    var totals = priserBudgetAnnualCountTotals();
     var totalEl = wrap.querySelector("#priser-budget-annualcount-total");
-    if (totalEl) totalEl.innerHTML = '<div class="quote-cart__row is-total"><span>Total årsinntekt</span><span>' + priserFmtPrice(priserBudgetAnnualCountTotal()) + ' kr</span></div>';
+    if (totalEl) totalEl.innerHTML =
+      '<div class="quote-cart__row"><span>Sum antall kunder</span><span>' + priserFmtPrice(totals.count) + '</span></div>' +
+      '<div class="quote-cart__row is-total"><span>Sum 1. år (inkl. oppstart)</span><span>' + priserFmtPrice(totals.year1) + ' kr</span></div>' +
+      '<div class="quote-cart__row is-total"><span>Sum år 2+ (per år)</span><span>' + priserFmtPrice(totals.year2) + ' kr</span></div>';
   }
   // Tooltip via getBoundingClientRect() (verkar korrekt uansett viewBox-
   // skalering, ingen manuell piksel-rekning). Kvar treffe-rect er tilgjengeleg
@@ -2706,10 +2722,13 @@ window.VwConsole = (function () {
     // i denne fana).
     var annualCountRows = priserBudgetAnnualCountRows();
     var annualCountBody = annualCountRows.length ? annualCountRows.map(function (r) {
-      return '<tr><td>' + C.esc(r.pkg.name || "(uten navn)") + '</td><td>' + priserFmtPrice(r.perCustomer) + ' kr</td>' +
+      return '<tr><td>' + C.esc(r.pkg.name || "(uten navn)") + '</td>' +
+        '<td>' + priserFmtPrice(r.perCustomerYear1) + ' kr</td>' +
+        '<td>' + priserFmtPrice(r.perCustomerYear2) + ' kr</td>' +
         '<td><input type="number" min="0" step="1" data-priser-budget-annualcount="' + C.esc(r.pkg.id) + '" value="' + r.count + '"></td>' +
-        '<td data-priser-budget-annualcount-sum="' + C.esc(r.pkg.id) + '">' + priserFmtPrice(r.value) + ' kr</td></tr>';
-    }).join("") : '<tr><td colspan="4" style="text-align:center;color:var(--color-muted)">' +
+        '<td data-priser-budget-annualcount-y1="' + C.esc(r.pkg.id) + '">' + priserFmtPrice(r.year1) + ' kr</td>' +
+        '<td data-priser-budget-annualcount-y2="' + C.esc(r.pkg.id) + '">' + priserFmtPrice(r.year2) + ' kr</td></tr>';
+    }).join("") : '<tr><td colspan="6" style="text-align:center;color:var(--color-muted)">' +
       (pkgs.length ? "Ingen pakker med fast pris -- pakker merket «Avtales separat» kan ikke telles her." : "Ingen pakker ennå.") +
       '</td></tr>';
 
@@ -2743,7 +2762,7 @@ window.VwConsole = (function () {
         '<div class="feat-section-title">Regn ut årsinntekt fra antall kunder</div>' +
         '<p class="preview-note">Fyll inn selv hvor mange kunder du planlegger å selge av hver pakke i løpet av året -- helt uavhengig av salgsplanen over -- så regnes årsinntekten ut automatisk.</p>' +
         '<div class="price-table-wrap"><table class="price-table">' +
-          '<thead><tr><th>Pakke</th><th>Verdi per kunde/år</th><th>Antall kunder i år</th><th>Sum</th></tr></thead>' +
+          '<thead><tr><th>Pakke</th><th>Verdi 1. år/kunde' + C.helpIcon("12 måneders abonnement pluss oppstartskostnad -- det kunden faktisk betaler i sitt første år.") + '</th><th>Verdi år 2+/kunde' + C.helpIcon("12 måneders abonnement UTEN oppstartskostnad -- den løpende verdien fra og med andre året, siden oppstart bare betales én gang.") + '</th><th>Antall kunder i år</th><th>Sum 1. år</th><th>Sum år 2+</th></tr></thead>' +
           '<tbody>' + annualCountBody + '</tbody>' +
         '</table></div>' +
         '<div class="quote-cart__totals" id="priser-budget-annualcount-total"></div>' +
