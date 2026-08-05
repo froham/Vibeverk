@@ -488,9 +488,22 @@
         $("#ov-title").value = state.input.title; $("#ov-description").value = state.input.description; $("#ov-type").value = state.input.scenarioType;
         $("#ov-char-count").textContent = String(state.input.description.length);
         $("#ov-title").focus();
+        save();
       });
     });
-    $("#ov-description").addEventListener("input", function (e) { $("#ov-char-count").textContent = String(e.target.value.length); });
+    // Skriv skjemaverdiane inn i state og lagra fortløpande, ikkje berre ved
+    // innsending -- elles går utfylt-men-ikkje-sendt tekst tapt om brukaren
+    // byter fane og kjem attende før generering er starta.
+    $("#ov-title").addEventListener("input", function (e) { state.input.title = e.target.value; save(); });
+    $("#ov-description").addEventListener("input", function (e) { state.input.description = e.target.value; $("#ov-char-count").textContent = String(e.target.value.length); save(); });
+    $("#ov-type").addEventListener("change", function (e) { state.input.scenarioType = e.target.value; save(); });
+    $("#ov-depth").addEventListener("change", function (e) { state.input.depth = e.target.value; save(); });
+    $$('input[name="sections"]').forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        state.input.requestedSections = $$('input[name="sections"]').filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+        save();
+      });
+    });
     $("#ov-start-form").addEventListener("submit", handleGenerate);
   }
 
