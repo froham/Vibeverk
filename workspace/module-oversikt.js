@@ -206,7 +206,16 @@
   function load() { state = validateState(App.store.get(STORE_KEY, null)); }
   function save(show) {
     state.updatedAt = new Date().toISOString();
-    if (!App.store.set(STORE_KEY, state) && show) toast("Endringene kunne ikke lagres lokalt.", "error");
+    // Feil vert ALLTID varsla, uavhengig av show -- ein stille save() (dei
+    // fleste rutinehandlingane i modulen brukar denne) skal framleis fortelje
+    // brukaren om noko faktisk ikkje vart lagra (brukarrapport 2026-08-05:
+    // Oversikt verka som han "fungerte" -- ingen feilmelding -- medan Smart
+    // årshjul synte feilboksen for nøyaktig same underliggjande lagringsfeil,
+    // fordi Årshjul sin eigen save() manglar dette show-vernet i det heile).
+    // Berre den POSITIVE stadfestinga ("lagra lokalt") held fram å vere stille
+    // med mindre show er sett, for å ikkje spamme ein toast for kvar rutinemessige
+    // endring (avkryssing, statusbyte, osb.).
+    if (!App.store.set(STORE_KEY, state)) toast("Endringene kunne ikke lagres lokalt.", "error");
     else if (show) toast("Oversikten er lagret lokalt.");
   }
   function resetState() {

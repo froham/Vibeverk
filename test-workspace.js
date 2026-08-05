@@ -1002,6 +1002,17 @@ nav("#/notes"); nav("#/dashboard");
   nav5("#/oversikt");
   assert(doc5.querySelector("#ov-title")?.value === "Ny tittel som ALDRI når disk fordi lagring feiler",
     "ad9: state i minnet overlever fanebyte sjølv om siste lagring til localStorage feila (regresjon 2026-08-05)");
+
+  /* Regresjonstest for ein reell feil (2026-08-05): dei 25 stille save()-kalla
+     (utan show=true) i denne modulen synte ALDRI feilmelding, sjølv ved ekte
+     lagringsfeil -- Oversikt "verka som han fungerte" medan Smart årshjul
+     synte feilboksen for nøyaktig same underliggjande feil, fordi Årshjul sin
+     eigen save() manglar dette show-vernet heilt. Skriv i eit felt att (ny
+     stille save()) og sjekk at feiltoasten no dukkar opp. */
+  doc5.querySelector("#ov-title").value = "Enda ein tekst som ikkje kan lagrast";
+  doc5.querySelector("#ov-title").dispatchEvent(new window5.Event("input", { bubbles: true }));
+  assert(!!doc5.querySelector("#ov-toasts .ov-toast-error"),
+    "ad10: ein stille save() (utan show=true) varslar no om feil ved reell lagringssvikt (regresjon 2026-08-05)");
   window5.App.store.set = realStoreSet5b;
 })();
 

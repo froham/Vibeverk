@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.96.6 — 2026-08-05
+
+**Fiks:** Brukarrapport — Smart årshjul synte feilmelding om at lokal lagring ikkje fungerte, medan Oversikt "verka som han fungerte" (ingen feilmelding) for det som truleg er nøyaktig same underliggjande lagringssvikt — og etter ein hard nettlesar-reload var ei tidlegare generert oversikt borte, medan oppsettskjemaet sin tittel/skildring framleis stod att.
+
+Rotårsak: Oversikt sin `save(show)` synte berre feilmeldinga når `show===true`. Av dei 25 kallstadene til `save()` i modulen brukar berre éin (den eksplisitte "Lagre"-knappen) `show=true` — alle dei andre 24 (avkryssing, statusbyte, godkjenning, **og dei nye felt-for-felt-lagringane frå 0.96.2**) var difor heilt stille ved feil. Smart årshjul sin eigen `save()` har aldri hatt dette `show`-vernet, difor synte han feilboksen for identisk feil. Retta ved at Oversikt no ALLTID varslar ved reell lagringssvikt, uavhengig av `show` — `show` styrer framleis berre om ei VELLUKKA lagring skal stadfestast med ein "lagra lokalt"-toast (uendra, for å ikkje spamme det ved kvar rutinehandling).
+
+Dette forklarer også det observerte "hard reset"-mønsteret: mindre lagringar (t.d. tittel/skildring) hadde truleg lykkast tidlegare (før lagringsplassen vart pressa), medan ei seinare, større lagring (heile den genererte analysen) feila stille — usynleg heilt fram til no. Sjølve den underliggjande årsaka til kvifor lagring feilar (truleg nær kvote for det delte `nordpunkt:*`-namnerommet) er FRAMLEIS ikkje løyst; denne endringa gjer berre feilen synleg i begge modulane likt, som første steg mot å diagnostisera vidare via `console.error`-loggen frå 0.96.4.
+
+Ny regresjonstest i `test-workspace.js` (ad10) som stadfestar ein stille `save()`-feil no varslar — verifisert til å faktisk feile utan fiksen.
+
+Ingen datamodell- eller API-endringar. Alle tre testsuitene er framleis 0 FEIL (210/676/91). Cache-bust: `module-oversikt.js?v=6`, `console-core.js?v=214`.
+
 ## 0.96.5 — 2026-08-05
 
 **Fiks:** Oppsettskjemaet i Oversikt hadde ei linje der «Type situasjon» og «Omfang» stod side ved side, men berre «Omfang» hadde ei hjelpetekst under nedtrekksmenyen. Sidan begge felta ligg i same grid-rad, vart heile rada like høg som det høgaste feltet (`Omfang`), og «Type situasjon» fekk eit ubrukt tomrom under seg før neste seksjon — brukarrapport: "Teksten pusher boksen utav posisjon". Retta ved å gje «Type situasjon» ei tilsvarande, reelt nyttig hjelpetekst ("Brukes til å tilpasse forslagene til situasjonen din.") i staden for eit usynleg fyllstoff-hack — same mønster som `Omfang` sin eigen hjelpetekst, så begge felta no har lik naturleg høgde.
