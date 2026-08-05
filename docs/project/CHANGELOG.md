@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.98.1 — 2026-08-05
+
+**Ny funksjonalitet:** «Hvor mange kunder for et årsmål?» — eit tillegg til Budsjett-fana, same økt. Attbruker DEI SAME `monthlyQty`-tala frå salgsplanen som forholdet mellom pakkane i miksen (ingen ny miks-input) — brukaren set berre eitt nytt tal: eit ÅRSmål (kr/år). Reknar UTAN tidsfasing: kvar kunde tel med full førsteårsverdi (oppstartskostnad + 12×månedspris), akkurat slik brukaren sjølv rekna for hand ("Grunnpakken: 4990 + 12×990 = 16870 per kunde, 1 mill / 16870 ≈ 59"). Viser talet på kundar som trengs PER PAKKE (`Math.ceil` for å garantere at målet faktisk vert nådd, same idiom som "når nås målet?") + eit totaltal.
+
+Matematisk elegant attbruk: verdien av éin runde av miksen (`12×newMrr + oneTime`) er algebraisk identisk med `Σ qty_i × (12×price_i + setupCost_i)` — nøyaktig den handrekna forma brukaren sjølv brukte. Stadfesta med eit frittståande Node-skript mot brukaren sitt eige talelsempel (60 kundar, avrunda opp frå 59,3) og eit todelt-miks-eksempel.
+
+`priceOnRequest`-pakkar ekskludert (attbruker `priserBudgetSellablePackages()`), reint økt-lokalt state (`_priserBudget.annualTarget`), aldri lagra. Cache-bust: `console-core.js?v=217`.
+
 ## 0.98.0 — 2026-08-05
 
 **Ny funksjonalitet:** «Budsjett»-fane i Console sin Priser-modul — ein 12-månaders inntektsprognose-kalkulator. Brukaren set eit forventa NYSAL PER MÅNAD for kvar pakke (henta med reelle pakketerte prisar frå `_priserData.packages`), og verktøyet syner:

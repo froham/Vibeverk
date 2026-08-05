@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.98.0";
+  var VIBEVERK_VERSION = "0.98.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1617,7 +1617,12 @@ window.VwConsole = (function () {
   // sal) -- sjå priserBudgetForecast(). Reint økt-lokalt, aldri lagra
   // (brukarønske 2026-08-05, presisert frå ein enkel éin-periode-kalkulator
   // til ein 12-månaders vekstprognose med graf undervegs i same økt).
-  var _priserBudget = { monthlyQty: {}, target: 0 };
+  // annualTarget: eit ÅRSmål (kr/år), driv ein separat kalkulator (brukar-
+  // ønske 2026-08-05, tillegg same økt) -- attbrukar dei SAME monthlyQty-
+  // tala som forholdet mellom pakkane i miksen, men reknar utan tidsfasing:
+  // kvar kunde tel med FULL førsteårsverdi (oppstartskostnad + 12×månedspris),
+  // skalert opp til årsmålet. Sjå priserBudgetAnnualBreakdown().
+  var _priserBudget = { monthlyQty: {}, target: 0, annualTarget: 0 };
 
   function priserPriceEntry(ns, key) {
     var src = (ns === "f" ? _priserData.prices.f : _priserData.prices.i) || {};
@@ -1707,6 +1712,34 @@ window.VwConsole = (function () {
     if (mtt === null) return "Aldri med denne salstakta.";
     if (mtt > 12) return "Ikke innen 12 måneder (måned " + mtt + " ved denne takta).";
     return "Måned " + mtt;
+  }
+  // "Hvor mange kunder for eit årsmål?" (brukarønske 2026-08-05, tillegg til
+  // 12-månaders-prognosen). Attbruker DEI SAME monthlyQty-tala som forholdet
+  // mellom pakkane -- ingen ny miks-input. Reknar UTAN tidsfasing: verdien av
+  // éin runde av miksen er 12×newMrr + oneTime, som er algebraisk identisk
+  // med qty_i × (12×price_i + setupCost_i) summert -- altså nøyaktig "kvar
+  // kunde tel med full oppstartskostnad + 12 månader" slik brukaren sjølv
+  // rekna for hand (t.d. Grunnpakken: 4990 + 12×990 = 16870 per kunde).
+  function priserBudgetAnnualMixValue() {
+    var monthly = priserBudgetMonthlyNew();
+    return 12 * monthly.newMrr + monthly.oneTime;
+  }
+  // null = uråd å rekne (ingen miks sett, eller ikkje noko mål sett enno).
+  // Elles: { scale, mixValue, totalCustomers, rows: [{pkg, count}] }, der
+  // count er talet på kundar av DEN pakken (Math.ceil per pakke, same
+  // "rund opp for å garantere at målet faktisk vert nådd"-idiom som
+  // priserBudgetMonthsToTarget()). Pakkar med 0 i miksen er ekskluderte frå
+  // rows (skalerer framleis til 0, ingenting å vise).
+  function priserBudgetAnnualBreakdown(annualTarget) {
+    var mixValue = priserBudgetAnnualMixValue();
+    if (annualTarget <= 0 || mixValue <= 0) return null;
+    var scale = annualTarget / mixValue;
+    var rows = priserBudgetSellablePackages().map(function (p) {
+      var qty = Number(_priserBudget.monthlyQty[p.id]) || 0;
+      return { pkg: p, count: Math.ceil(qty * scale) };
+    }).filter(function (r) { return r.count > 0; });
+    var totalCustomers = rows.reduce(function (s, r) { return s + r.count; }, 0);
+    return { scale: scale, mixValue: mixValue, totalCustomers: totalCustomers, rows: rows };
   }
 
   // Splitta i to uavhengige flagg (brukarfunn 2026-08-05, tidlegare ETT
@@ -2549,6 +2582,35 @@ window.VwConsole = (function () {
 
     priserBindBudgetTooltip(wrap);
   }
+  // Punktoppdaterer berre "Hvor mange kunder for et årsmål?"-resultatet --
+  // same disiplin som priserRefreshBudgetTotals, aldri eit fullt re-render.
+  function priserRefreshAnnualBreakdown(wrap) {
+    var el = wrap.querySelector("#priser-budget-annual-result");
+    if (!el) return;
+    var annualTarget = Number(_priserBudget.annualTarget) || 0;
+    var mixValue = priserBudgetAnnualMixValue();
+    if (mixValue <= 0) {
+      el.innerHTML = '<p class="preview-note">Fyll inn forventet salg for minst én pakke i salgsplanen over.</p>';
+      return;
+    }
+    if (annualTarget <= 0) {
+      el.innerHTML = '<p class="preview-note">Sett et årsmål over for å se hvor mange kunder du trenger.</p>';
+      return;
+    }
+    var b = priserBudgetAnnualBreakdown(annualTarget);
+    if (!b || !b.rows.length) {
+      el.innerHTML = '<p class="preview-note">Fyll inn forventet salg for minst én pakke i salgsplanen over.</p>';
+      return;
+    }
+    el.innerHTML =
+      '<p class="preview-note">Du trenger totalt <strong>' + priserFmtPrice(b.totalCustomers) + ' kunder</strong> i denne miksen for å nå ' + priserFmtPrice(annualTarget) + ' kr i året:</p>' +
+      '<div class="price-table-wrap"><table class="price-table">' +
+        '<thead><tr><th>Pakke</th><th>Antall kunder trengs</th></tr></thead>' +
+        '<tbody>' + b.rows.map(function (r) {
+          return '<tr><td>' + C.esc(r.pkg.name || "(uten navn)") + '</td><td>' + priserFmtPrice(r.count) + '</td></tr>';
+        }).join("") + '</tbody>' +
+      '</table></div>';
+  }
   // Tooltip via getBoundingClientRect() (verkar korrekt uansett viewBox-
   // skalering, ingen manuell piksel-rekning). Kvar treffe-rect er tilgjengeleg
   // for tastaturbrukarar (tabindex+aria-label), OG same 12 tal ligg alltid
@@ -2621,19 +2683,34 @@ window.VwConsole = (function () {
       '<div class="price-table-wrap"><table class="price-table">' +
         '<thead><tr><th>Måned</th><th>MRR (kr)</th><th>Eingongsinntekt (kr)</th><th>Totalt (kr)</th></tr></thead>' +
         '<tbody id="priser-budget-table-body"></tbody>' +
-      '</table></div>';
+      '</table></div>' +
+      '<div class="rp-section">' +
+        '<div class="feat-section-title">Hvor mange kunder for et årsmål?</div>' +
+        '<p class="preview-note">Bruker <strong>samme miks</strong> som salgsplanen over -- forholdet mellom pakkene der. Hver kunde telles med full førsteårsverdi (oppstartskostnad + 12 måneder), uten hensyn til når på året de tegner avtale.</p>' +
+        '<div class="stat-row">' +
+          '<div class="stat-box"><label>Årsmål' + C.helpIcon("Total inntekt du ønsker å oppnå i løpet av ett år, fra denne pakke-miksen -- summen av alle nye kunders oppstartskostnad og 12 måneders abonnement.") + '</label>' +
+            '<div class="stat-input-row"><input type="number" min="0" id="priser-budget-annual-target" value="' + (Number(_priserBudget.annualTarget) || 0) + '"><span class="unit">kr/år</span></div></div>' +
+        '</div>' +
+        '<div id="priser-budget-annual-result"></div>' +
+      '</div>';
 
     priserRefreshBudgetTotals(wrap);
+    priserRefreshAnnualBreakdown(wrap);
 
     wrap.querySelectorAll("[data-priser-budget-qty]").forEach(function (input) {
       input.addEventListener("input", function () {
         _priserBudget.monthlyQty[input.getAttribute("data-priser-budget-qty")] = Number(input.value) || 0;
         priserRefreshBudgetTotals(wrap); // ALDRI eit fullt renderPriserBudget()-kall her -- sjå priserRefreshQuoteTotals sin eigen kommentar
+        priserRefreshAnnualBreakdown(wrap); // same miks driv begge seksjonane
       });
     });
     wrap.querySelector("#priser-budget-target").addEventListener("input", function (e) {
       _priserBudget.target = Number(e.target.value) || 0;
       priserRefreshBudgetTotals(wrap);
+    });
+    wrap.querySelector("#priser-budget-annual-target").addEventListener("input", function (e) {
+      _priserBudget.annualTarget = Number(e.target.value) || 0;
+      priserRefreshAnnualBreakdown(wrap);
     });
   }
 
