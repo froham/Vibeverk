@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.98.3 — 2026-08-05
+
+**Utviding:** «Regn ut årsinntekt fra antall kunder» (0.98.2, same økt) skil no eksplisitt mellom **1. år** (`12×price + setupCost` per kunde — oppstartskostnaden kjem berre éin gong, ved teiknedato) og **år 2+** (`12×price` per kunde — rein løpande abonnementsinntekt, ingen oppstartskostnad att). Tabellen viser begge verdiane per pakke (`Verdi 1. år/kunde`/`Verdi år 2+/kunde`, med forklarande hjelpeikon) og begge radsummane (`Sum 1. år`/`Sum år 2+`), attgjeve i `priserBudgetAnnualCountRows()`. Ny `priserBudgetAnnualCountTotals()` (erstattar `priserBudgetAnnualCountTotal()`) returnerer alle tre totalane samla: sum 1. år, sum år 2+, og sum tal på kundar — vist under tabellen i `#priser-budget-annualcount-total`.
+
+Punktoppdateringsdisiplinen frå 0.98.2 er uendra: `priserRefreshAnnualCount()` rører framleis berre dei to per-rad sum-cellene (no `data-priser-budget-annualcount-y1`/`-y2`, i staden for éin felles `-sum`) og totalsummen, aldri `<tbody>`-en eller sjølve talet-på-kundar-input-en. Stadfesta med eit oppdatert frittståande Node-skript (same 3-pakkars eksempel som 0.98.2, no verifiserer år 1/år 2/tal-på-kundar kvar for seg). Alle tre testsuitane framleis 0 FEIL. Cache-bust: `console-core.js?v=219`.
+
+---
+
 ## 0.98.2 — 2026-08-05
 
 **Ny funksjonalitet:** «Regn ut årsinntekt fra antall kunder» — ein tredje, sjølvstendig kalkulator i Budsjett-fana, same økt som 0.98.1. Motsett rekneretning av «Hvor mange kunder for et årsmål?»: brukaren fyller inn talet på kundar SJØLV, per pakke, HEILT UAVHENGIG av `monthlyQty`-miksen i salgsplanen — årsinntekta vert generert, ikkje sett som mål. Same "full førsteårsverdi"-prinsipp (`12×price + setupCost` per kunde). Ny pure-funksjonar `priserBudgetAnnualCountRows()`/`priserBudgetAnnualCountTotal()`, nytt state `_priserBudget.annualCount` (reint økt-lokalt, aldri lagra, same mønster som resten av fana).
