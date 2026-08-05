@@ -30,6 +30,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.96.1 — 2026-08-05
+
+Oversikt: byta AI-modell frå Haiku 4.5 til Sonnet 5 (`api/_lib/oversikt-ai.js`, `DEFAULT_MODEL`), for å testa om svarkvaliteten betrar seg (brukar opplevde Haiku-outputen som svak, jf. tilsvarande tilbakemelding på Smart årshjul). Kan overstyrast med `ANTHROPIC_MODEL`-miljøvariabelen som før. `test-api.js` er framleis 0 FEIL (91/91) — ingen test låser modellstrengen.
+
 ## 0.96.0 — 2026-08-05
 
 ### Ny modul: Oversikt (Workspace) — AI-basert behovs-/avhengigheits-/påvirkningsanalyse
