@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.98.4 — 2026-08-05
+
+**Ny funksjonalitet:** «Regn ut årsinntekt fra antall kunder» (0.98.2/0.98.3, same økt) fekk to nye måltal-felt (`Måltall 1. år`, `Måltall år 2+`) og eit søylediagram som viser dei faktiske summane mot desse måltala — brukarønske: "sette eit måltall for 1. år og 2. år og lage ein graf, lignende den akkumulerte". Valde design stadfesta med brukaren via `AskUserQuestion` (søyler + mållinje, ikkje fremdriftslinjer).
+
+Ny `priserAnnualCountChartHtml(totals, target1, target2)`: to kategoriar (ikkje ein tidsakse som `priserBudgetChartHtml` sin 12-månaders prognose), kvar med si eiga stipla mållinje avgrensa til søyla sin eigen x-sone (sidan dei to måltala er uavhengige og kan vere svært ulike). Attbruker det same validerte fargeparet (#2a78d6/#008300) på same kvite overflate — ingen ny dataviz-validering nødvendig. Ny `priserBindAnnualCountTooltip()` følgjer nøyaktig same `getBoundingClientRect()`-mønster (klemming/fallback) som `priserBindBudgetTooltip()`. Nytt state `_priserBudget.annualCountTargets = { year1, year2 }`, reint økt-lokalt, aldri lagra.
+
+Same punktoppdateringsdisiplin: `priserRefreshAnnualCount()` skriv trygt om heile graf-`<div>`-en kvar gong (han inneheld ingen input-born, i motsetnad til `<tbody>`-en over) og bind tooltipen på nytt, men rører framleis aldri talet-på-kundar-input-a.
+
+UX/Mobile Reviewer-funn retta: (1) verdi-etiketten over søyla og mål-etiketten over mållinja kolliderte nettopp når verdien var nær målet -- det ein brukar opnar grafen FOR å sjekke -- retta ved å flytte mål-etiketten under linja når dei to ligg for tett; (2) mållinja spente over heile kategori-sona (langt breiare enn sjølve søyla), så to nære måltal kunne møtast midt mellom søylene og lese ut som ÉI delt linje over heile grafen -- retta ved å avgrense linja til søylebreidda + litt margin. Stadfesta med eit frittståande Node-skript (niceMax-skalering, prosent-av-mål, skala-åtvaring). Alle tre testsuitane framleis 0 FEIL. Cache-bust: `console-core.js?v=220`.
+
+---
+
 ## 0.98.3 — 2026-08-05
 
 **Utviding:** «Regn ut årsinntekt fra antall kunder» (0.98.2, same økt) skil no eksplisitt mellom **1. år** (`12×price + setupCost` per kunde — oppstartskostnaden kjem berre éin gong, ved teiknedato) og **år 2+** (`12×price` per kunde — rein løpande abonnementsinntekt, ingen oppstartskostnad att). Tabellen viser begge verdiane per pakke (`Verdi 1. år/kunde`/`Verdi år 2+/kunde`, med forklarande hjelpeikon) og begge radsummane (`Sum 1. år`/`Sum år 2+`), attgjeve i `priserBudgetAnnualCountRows()`. Ny `priserBudgetAnnualCountTotals()` (erstattar `priserBudgetAnnualCountTotal()`) returnerer alle tre totalane samla: sum 1. år, sum år 2+, og sum tal på kundar — vist under tabellen i `#priser-budget-annualcount-total`.

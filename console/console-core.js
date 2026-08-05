@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.98.3";
+  var VIBEVERK_VERSION = "0.98.4";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1626,7 +1626,11 @@ window.VwConsole = (function () {
   // OMVENDE retninga (brukarønske 2026-08-05, endå eit tillegg): her fyller
   // brukaren inn talet sjølv, HEILT UAVHENGIG av monthlyQty-miksen over, og
   // årsinntekta vert generert. Sjå priserBudgetAnnualCountRows().
-  var _priserBudget = { monthlyQty: {}, target: 0, annualTarget: 0, annualCount: {} };
+  // annualCountTargets: { year1, year2 } -- to måltal (kr) for høvesvis Sum
+  // 1. år og Sum år 2+ frå kalkulatoren over, vist mot dei faktiske summane
+  // i eit eige søylediagram (brukarønske 2026-08-05, endå eit tillegg same
+  // økt). Sjå priserAnnualCountChartHtml().
+  var _priserBudget = { monthlyQty: {}, target: 0, annualTarget: 0, annualCount: {}, annualCountTargets: { year1: 0, year2: 0 } };
 
   function priserPriceEntry(ns, key) {
     var src = (ns === "f" ? _priserData.prices.f : _priserData.prices.i) || {};
@@ -2639,10 +2643,116 @@ window.VwConsole = (function () {
         }).join("") + '</tbody>' +
       '</table></div>';
   }
-  // Punktoppdaterer BERRE per-rad "Sum"-cella + totalen -- ALDRI heile
-  // <tbody>-en, sidan den inneheld sjølve talet-på-kundar-input-en brukaren
-  // nettopp skreiv i (sjå kommentaren ved annualCountBody i
-  // renderPriserBudget() for full grunngjeving).
+  // Søylediagram som viser Sum 1. år / Sum år 2+ mot to uavhengige måltal
+  // (brukarønske 2026-08-05: "sette eit måltall for 1. år og 2. år og lage
+  // ein graf, lignende den akkumulerte"). Ingen tidsakse her (i motsetnad
+  // til priserBudgetChartHtml sin 12-månaders prognose) -- berre to faste
+  // kategoriar, difor éi mållinje PER SØYLE (avgrensa til søyla sin eigen
+  // x-sone) i staden for éi delt mållinje over heile plottet. Same validerte
+  // fargepar som resten av fana (#2a78d6/#008300, sjå kommentaren ved
+  // priserBudgetChartHtml).
+  function priserAnnualCountChartHtml(totals, target1, target2) {
+    var W = 720, H = 280, padR = 16, padT = 16, padB = 30;
+    var cats = [
+      { label: "1. år", value: totals.year1, target: target1, color: "#2a78d6" },
+      { label: "år 2+", value: totals.year2, target: target2, color: "#008300" }
+    ];
+    var maxVal = Math.max(cats[0].value, cats[1].value, target1, target2, 1);
+    var niceMax = priserBudgetNiceMax(maxVal);
+    var padL = Math.max(48, 18 + priserFmtPrice(niceMax).length * 7);
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    function yScale(v) { return padT + plotH - (v / niceMax) * plotH; }
+    var slotW = plotW / cats.length;
+    var barW = Math.min(90, slotW * 0.35);
+    var maxActual = Math.max(cats[0].value, cats[1].value, 1);
+    var scaleWarning = ((target1 > 0 && target1 > maxActual * 3) || (target2 > 0 && target2 > maxActual * 3))
+      ? '<p class="budget-scale-note">Grafen er skalert til det høgaste måltalet du har sett -- søylene kan difor sjå lågare ut enn dei eigentleg er i forhold til kvarandre.</p>'
+      : "";
+
+    var gridSteps = 4, gridSvg = "";
+    for (var g = 0; g <= gridSteps; g++) {
+      var gv = niceMax * g / gridSteps, gy = yScale(gv);
+      gridSvg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (W - padR) + '" y2="' + gy + '" stroke="var(--color-border)" stroke-width="1"/>' +
+        '<text x="' + (padL - 8) + '" y="' + (gy + 4) + '" text-anchor="end" font-size="11" fill="var(--color-muted)">' + priserFmtPrice(Math.round(gv)) + '</text>';
+    }
+
+    var barsSvg = "", labelsSvg = "", xLabelsSvg = "", targetSvg = "", hitsSvg = "";
+    cats.forEach(function (c, i) {
+      var slotX = padL + slotW * i, cx = slotX + slotW / 2;
+      var barY = yScale(c.value), barH = Math.max(0, (padT + plotH) - barY);
+      barsSvg += '<rect x="' + (cx - barW / 2) + '" y="' + barY + '" width="' + barW + '" height="' + barH + '" rx="4" fill="' + c.color + '"/>';
+      labelsSvg += '<text x="' + cx + '" y="' + (barY - 8) + '" text-anchor="middle" font-size="12" font-weight="600" fill="var(--color-text)">' + priserFmtPrice(c.value) + ' kr</text>';
+      xLabelsSvg += '<text x="' + cx + '" y="' + (H - padB + 18) + '" text-anchor="middle" font-size="12" fill="var(--color-muted)">' + C.esc(c.label) + '</text>';
+      var pct = c.target > 0 ? Math.round((c.value / c.target) * 100) : null;
+      if (c.target > 0) {
+        var ty = yScale(c.target);
+        // Mållinja er avgrensa til søyla si eiga breidde + litt margin, IKKJE
+        // heile slot-breidda -- elles kan to nære måltal (frå to uavhengige
+        // kategoriar) møtast midt mellom søylene og lese ut som ÉI delt
+        // mållinje over heile grafen (UX-review-funn 2026-08-05).
+        var tLineHalf = (barW + 20) / 2;
+        // Verdi-etiketten (over søyla) og mål-etiketten (over mållinja) kolliderer
+        // nettopp når verdien er nær målet -- det ein brukar opnar denne grafen
+        // FOR å sjekke. Flytt mål-etiketten under linja i staden for over når
+        // dei to ligg for tett (UX-review-funn 2026-08-05).
+        var tooClose = Math.abs(barY - ty) < 16;
+        var tLabelY = tooClose ? ty + 14 : ty - 6;
+        targetSvg += '<line x1="' + (cx - tLineHalf) + '" y1="' + ty + '" x2="' + (cx + tLineHalf) + '" y2="' + ty + '" stroke="var(--color-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>' +
+          '<text x="' + cx + '" y="' + tLabelY + '" text-anchor="middle" font-size="11" fill="var(--color-muted)">Mål: ' + priserFmtPrice(c.target) + ' kr</text>';
+      }
+      hitsSvg += '<rect class="budget-hit" tabindex="0" data-label="' + C.esc(c.label) + '" data-value="' + c.value + '" data-target="' + c.target + '" data-pct="' + (pct === null ? "" : pct) + '" ' +
+        'x="' + slotX + '" y="' + padT + '" width="' + slotW + '" height="' + plotH + '" fill="transparent" ' +
+        'aria-label="' + C.esc(c.label) + ': ' + priserFmtPrice(c.value) + ' kr' + (c.target > 0 ? ", mål " + priserFmtPrice(c.target) + " kr (" + pct + " % nådd)" : "") + '"></rect>';
+    });
+
+    return (
+      scaleWarning +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" class="budget-chart-svg" role="group" aria-label="Sum 1. år og år 2+ mot måltal">' +
+        '<title>Sum 1. år og år 2+ mot måltal</title>' +
+        gridSvg + barsSvg + labelsSvg + targetSvg + xLabelsSvg + hitsSvg +
+      '</svg>' +
+      '<div class="budget-tooltip" id="priser-budget-annualcount-tooltip" hidden></div>'
+    );
+  }
+  // Same getBoundingClientRect()-mønster som priserBindBudgetTooltip, berre
+  // for dei to søylene her (kategori/verdi/mål/prosent i staden for
+  // månad/MRR/eingongsinntekt/totalt).
+  function priserBindAnnualCountTooltip(wrap) {
+    var chartWrap = wrap.querySelector("#priser-budget-annualcount-chart");
+    var tip = wrap.querySelector("#priser-budget-annualcount-tooltip");
+    if (!chartWrap || !tip) return;
+    function show(hit) {
+      var label = hit.getAttribute("data-label"), value = hit.getAttribute("data-value");
+      var target = Number(hit.getAttribute("data-target")) || 0, pct = hit.getAttribute("data-pct");
+      tip.innerHTML =
+        '<div class="budget-tt-row is-total"><strong>' + priserFmtPrice(value) + ' kr</strong><span>' + C.esc(label) + '</span></div>' +
+        (target > 0 ? '<div class="budget-tt-row"><span>Mål: ' + priserFmtPrice(target) + ' kr (' + C.esc(pct) + ' % nådd)</span></div>' : '<div class="budget-tt-row"><span>Ingen mål sett</span></div>');
+      tip.hidden = false;
+      var wrapRect = chartWrap.getBoundingClientRect(), hitRect = hit.getBoundingClientRect();
+      var tipW = tip.offsetWidth, tipH = tip.offsetHeight;
+      var centerX = hitRect.left - wrapRect.left + hitRect.width / 2;
+      var left = Math.min(Math.max(centerX, tipW / 2), wrapRect.width - tipW / 2);
+      var topAbove = hitRect.top - wrapRect.top - tipH - 8;
+      var top = topAbove >= 0 ? topAbove : Math.max(0, hitRect.top - wrapRect.top + 4);
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+      tip.style.transform = "translateX(-50%)";
+    }
+    function hide() { tip.hidden = true; }
+    wrap.querySelectorAll("#priser-budget-annualcount-chart .budget-hit").forEach(function (hit) {
+      hit.addEventListener("pointerenter", function () { show(hit); });
+      hit.addEventListener("pointermove", function () { show(hit); });
+      hit.addEventListener("pointerleave", hide);
+      hit.addEventListener("focus", function () { show(hit); });
+      hit.addEventListener("blur", hide);
+    });
+  }
+  // Punktoppdaterer BERRE per-rad "Sum"-cella + totalen + grafen -- ALDRI
+  // heile <tbody>-en, sidan den inneheld sjølve talet-på-kundar-input-en
+  // brukaren nettopp skreiv i (sjå kommentaren ved annualCountBody i
+  // renderPriserBudget() for full grunngjeving). Sjølve grafen (eit rein
+  // frittståande <div>, ingen input-born) vert trygt fullt omskriven kvar
+  // gong, akkurat som priserBudgetChartHtml-grafen over.
   function priserRefreshAnnualCount(wrap) {
     var rows = priserBudgetAnnualCountRows();
     rows.forEach(function (r) {
@@ -2657,6 +2767,13 @@ window.VwConsole = (function () {
       '<div class="quote-cart__row"><span>Sum antall kunder</span><span>' + priserFmtPrice(totals.count) + '</span></div>' +
       '<div class="quote-cart__row is-total"><span>Sum 1. år (inkl. oppstart)</span><span>' + priserFmtPrice(totals.year1) + ' kr</span></div>' +
       '<div class="quote-cart__row is-total"><span>Sum år 2+ (per år)</span><span>' + priserFmtPrice(totals.year2) + ' kr</span></div>';
+    var target1 = Number(_priserBudget.annualCountTargets.year1) || 0;
+    var target2 = Number(_priserBudget.annualCountTargets.year2) || 0;
+    var chartEl = wrap.querySelector("#priser-budget-annualcount-chart");
+    if (chartEl) {
+      chartEl.innerHTML = priserAnnualCountChartHtml(totals, target1, target2);
+      priserBindAnnualCountTooltip(wrap);
+    }
   }
   // Tooltip via getBoundingClientRect() (verkar korrekt uansett viewBox-
   // skalering, ingen manuell piksel-rekning). Kvar treffe-rect er tilgjengeleg
@@ -2766,6 +2883,13 @@ window.VwConsole = (function () {
           '<tbody>' + annualCountBody + '</tbody>' +
         '</table></div>' +
         '<div class="quote-cart__totals" id="priser-budget-annualcount-total"></div>' +
+        '<div class="stat-row" style="margin-top:1rem">' +
+          '<div class="stat-box"><label>Måltall 1. år' + C.helpIcon("Hva du ønsker Sum 1. år skal nå -- vises som en stiplet linje i grafen under.") + '</label>' +
+            '<div class="stat-input-row"><input type="number" min="0" id="priser-budget-annualcount-target1" value="' + (Number(_priserBudget.annualCountTargets.year1) || 0) + '"><span class="unit">kr</span></div></div>' +
+          '<div class="stat-box"><label>Måltall år 2+' + C.helpIcon("Hva du ønsker Sum år 2+ skal nå -- vises som en stiplet linje i grafen under.") + '</label>' +
+            '<div class="stat-input-row"><input type="number" min="0" id="priser-budget-annualcount-target2" value="' + (Number(_priserBudget.annualCountTargets.year2) || 0) + '"><span class="unit">kr</span></div></div>' +
+        '</div>' +
+        '<div class="budget-chart-wrap" id="priser-budget-annualcount-chart"></div>' +
       '</div>';
 
     priserRefreshBudgetTotals(wrap);
@@ -2802,6 +2926,14 @@ window.VwConsole = (function () {
         _priserBudget.annualCount[input.getAttribute("data-priser-budget-annualcount")] = Number(input.value) || 0;
         priserRefreshAnnualCount(wrap); // ALDRI eit fullt renderPriserBudget()-kall her
       });
+    });
+    wrap.querySelector("#priser-budget-annualcount-target1").addEventListener("input", function (e) {
+      _priserBudget.annualCountTargets.year1 = Number(e.target.value) || 0;
+      priserRefreshAnnualCount(wrap);
+    });
+    wrap.querySelector("#priser-budget-annualcount-target2").addEventListener("input", function (e) {
+      _priserBudget.annualCountTargets.year2 = Number(e.target.value) || 0;
+      priserRefreshAnnualCount(wrap);
     });
   }
 
