@@ -966,7 +966,12 @@
     var searchTimer;
     root.addEventListener("input", function (e) {
       var t = e.target;
-      if (t.id === "saa-description") { var c = contentEl.querySelector("#saa-dcount"); if (c) c.textContent = t.value.length; }
+      // Skriv skjemaverdiane inn i state og lagra fortløpande, ikkje berre
+      // ved innsending -- elles går utfylt-men-ikkje-sendt tekst tapt om
+      // brukaren byter fane og kjem attende før generering er starta.
+      if (t.id === "saa-description") { var c = contentEl.querySelector("#saa-dcount"); if (c) c.textContent = t.value.length; state.business.description = t.value; save(); }
+      if (t.id === "saa-seasons") { state.business.seasons = t.value; save(); }
+      if (t.id === "saa-focus") { state.business.focus = t.value; save(); }
       if (t.id === "saa-search") {
         clearTimeout(searchTimer);
         state.filters.search = t.value;

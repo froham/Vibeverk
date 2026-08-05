@@ -831,6 +831,20 @@ nav("#/notes"); nav("#/dashboard");
     "ab6: steg 2 er deaktivert før det finst forslag");
   assert(doc5.querySelector('[data-a="stepNav"][data-step="3"]')?.hasAttribute("disabled"),
     "ab7: steg 3 er deaktivert før det finst aktivitetar");
+
+  /* Regresjonstest for ein reell feil (2026-08-05): oppsettskjemaet sine
+     tekstfelt vart berre skrivne til state ved innsending, ikkje undervegs
+     -- byte fane før innsending nullstilte alt utfylt-men-ikkje-sendt. */
+  doc5.querySelector("#saa-description").value = "Ei mellombels skildring før innsending";
+  doc5.querySelector("#saa-description").dispatchEvent(new window5.Event("input", { bubbles: true }));
+  doc5.querySelector("#saa-seasons").value = "Jul og sommar";
+  doc5.querySelector("#saa-seasons").dispatchEvent(new window5.Event("input", { bubbles: true }));
+  nav5("#/dashboard");
+  nav5("#/smart-aarshjul");
+  assert(doc5.querySelector("#saa-description")?.value === "Ei mellombels skildring før innsending",
+    "ab8: skildring skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
+  assert(doc5.querySelector("#saa-seasons")?.value === "Jul og sommar",
+    "ab9: sesong-feltet skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
 })();
 
 /* --- AC) SMART ÅRSHJUL AV: customModules.smartAarshjul absent (dagens
@@ -945,6 +959,20 @@ nav("#/notes"); nav("#/dashboard");
   assert(!!doc5.querySelector("#ov-description"), "ad4: skildringsfelt finst i oppsettskjemaet");
   assert(doc5.querySelectorAll('input[name="sections"]').length === 4, "ad5: alle fire analyseområde-avkryssingane (behov/avhengigheter/påvirkning/glemte punkter) finst");
   assert(doc5.querySelectorAll(".ov-example").length === 5, "ad6: alle fem eksempel-knappane finst i oppsettskjemaet");
+
+  /* Regresjonstest for ein reell feil (2026-08-05): oppsettskjemaet sine
+     felt vart berre skrivne til state ved innsending, ikkje undervegs --
+     byte fane før innsending nullstilte alt utfylt-men-ikkje-sendt. */
+  doc5.querySelector("#ov-title").value = "Ein mellombels tittel";
+  doc5.querySelector("#ov-title").dispatchEvent(new window5.Event("input", { bubbles: true }));
+  doc5.querySelector("#ov-description").value = "Ei mellombels skildring før innsending";
+  doc5.querySelector("#ov-description").dispatchEvent(new window5.Event("input", { bubbles: true }));
+  nav5("#/dashboard");
+  nav5("#/oversikt");
+  assert(doc5.querySelector("#ov-title")?.value === "Ein mellombels tittel",
+    "ad7: tittel skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
+  assert(doc5.querySelector("#ov-description")?.value === "Ei mellombels skildring før innsending",
+    "ad8: skildring skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
 })();
 
 /* --- AE) OVERSIKT AV: customModules.oversikt absent (dagens faktiske

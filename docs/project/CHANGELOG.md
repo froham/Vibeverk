@@ -30,6 +30,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.96.2 — 2026-08-05
+
+**Fiks:** Smart årshjul og Oversikt sine oppsettskjema mista utfylt-men-ikkje-sendt tekst ved fanebyte. Rotårsak: `bindStartEvents()`/`root.addEventListener("input", ...)` i høvesvis `workspace/module-oversikt.js` og `workspace/module-smart-aarshjul.js` skreiv berre skjemaverdiane til `state` ved innsending (`submit`), ikkje undervegs — sjølve lagrings-/gjenopprettingsmekanismen (`App.store` → `localStorage` + batcha Supabase-`upsert`, sjå `core.js`) var alltid korrekt, det var berre feltverdiane som aldri nådde `state` før brukaren trykte «Generer». Retta ved å skriva kvart felt (tittel/skildring/type/omfang/analyseområde for Oversikt; skildring/sesongar/fokus for Smart årshjul) inn i `state` + kalla `save()` fortløpande på `input`/`change`, same mønster som feltet for bransje og søk allereie brukte. To nye regresjonstestar lagt til i `test-workspace.js` (ab8/ab9, ad7/ad8) som simulerer akkurat dette scenarioet (skriv i felt → byt fane → kom attende → sjekk verdien overlevde). Cache-bust: `module-smart-aarshjul.js?v=3`, `module-oversikt.js?v=2`.
+
 ## 0.96.1 — 2026-08-05
 
 Oversikt: byta AI-modell frå Haiku 4.5 til Sonnet 5 (`api/_lib/oversikt-ai.js`, `DEFAULT_MODEL`), for å testa om svarkvaliteten betrar seg (brukar opplevde Haiku-outputen som svak, jf. tilsvarande tilbakemelding på Smart årshjul). Kan overstyrast med `ANTHROPIC_MODEL`-miljøvariabelen som før. `test-api.js` er framleis 0 FEIL (91/91) — ingen test låser modellstrengen.
