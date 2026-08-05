@@ -845,6 +845,21 @@ nav("#/notes"); nav("#/dashboard");
     "ab8: skildring skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
   assert(doc5.querySelector("#saa-seasons")?.value === "Jul og sommar",
     "ab9: sesong-feltet skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
+
+  /* Regresjonstest for ein reell feil (2026-08-05): mount() kalla load()
+     ubetinga kvar gong -- dersom ei tidlegare save() faktisk feila (fullt
+     localStorage-kvote e.l.), overskreiv NESTE mount() ein god state i
+     minnet med den ELDRE (feila) lagra utgåva, og eit ekte generert
+     årshjul kunne "forsvinne" berre ved å byte fane og komme attende. */
+  var realStoreSet5 = window5.App.store.set;
+  window5.App.store.set = function () { return false; }; // simulerer at localStorage.setItem kasta (fullt kvote e.l.)
+  doc5.querySelector("#saa-description").value = "Ny tekst som ALDRI når disk fordi lagring feiler";
+  doc5.querySelector("#saa-description").dispatchEvent(new window5.Event("input", { bubbles: true }));
+  nav5("#/dashboard");
+  nav5("#/smart-aarshjul");
+  assert(doc5.querySelector("#saa-description")?.value === "Ny tekst som ALDRI når disk fordi lagring feiler",
+    "ab10: state i minnet overlever fanebyte sjølv om siste lagring til localStorage feila (regresjon 2026-08-05)");
+  window5.App.store.set = realStoreSet5;
 })();
 
 /* --- AC) SMART ÅRSHJUL AV: customModules.smartAarshjul absent (dagens
@@ -973,6 +988,21 @@ nav("#/notes"); nav("#/dashboard");
     "ad7: tittel skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
   assert(doc5.querySelector("#ov-description")?.value === "Ei mellombels skildring før innsending",
     "ad8: skildring skriven inn men ikkje sendt overlever fanebyte (regresjon 2026-08-05)");
+
+  /* Regresjonstest for ein reell feil (2026-08-05): mount() kalla load()
+     ubetinga kvar gong -- dersom ei tidlegare save() faktisk feila (fullt
+     localStorage-kvote e.l.), overskreiv NESTE mount() ein god state i
+     minnet med den ELDRE (feila) lagra utgåva, og ei ekte generert
+     oversikt kunne "forsvinne" berre ved å byte fane og komme attende. */
+  var realStoreSet5b = window5.App.store.set;
+  window5.App.store.set = function () { return false; }; // simulerer at localStorage.setItem kasta (fullt kvote e.l.)
+  doc5.querySelector("#ov-title").value = "Ny tittel som ALDRI når disk fordi lagring feiler";
+  doc5.querySelector("#ov-title").dispatchEvent(new window5.Event("input", { bubbles: true }));
+  nav5("#/dashboard");
+  nav5("#/oversikt");
+  assert(doc5.querySelector("#ov-title")?.value === "Ny tittel som ALDRI når disk fordi lagring feiler",
+    "ad9: state i minnet overlever fanebyte sjølv om siste lagring til localStorage feila (regresjon 2026-08-05)");
+  window5.App.store.set = realStoreSet5b;
 })();
 
 /* --- AE) OVERSIKT AV: customModules.oversikt absent (dagens faktiske

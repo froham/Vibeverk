@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.96.4 — 2026-08-05
+
+**Fiks:** Etter brukarrapport om at (1) Smart årshjul viste ei feilmelding om at lokal lagring ikkje fungerte, og (2) begge modulane falt tilbake til oppsettskjemaet ("steg 1") berre ved å byte fane til eit anna modul og komme attende, sjølv etter ei ekte, vellykka generering — same rotårsak i begge:
+
+- `mount()` i både `module-oversikt.js` og `module-smart-aarshjul.js` kalla `load()` (som les frå `App.store`/localStorage) **ubetinga kvar gong** brukaren navigerte inn i modulen, ikkje berre fyrste gong denne sideøkta. Dersom ei tidlegare `save()` faktisk hadde feila (t.d. fullt localStorage-kvote for dette opphavet, som deler `nordpunkt:*`-namnerommet med alle andre Workspace-modular), var objektet i minnet framleis korrekt, men neste `mount()` overskreiv det ubetinga med den ELDRE (feila) lagra utgåva frå disk — sett utanfrå såg det ut som generert innhald "forsvann" berre ved fanebyte. Retta ved å berre lasta frå lagring éin gong per sideøkt (`_loadedThisSession`-flagg); eit ekte "Nullstill"/"Ny oversikt" set framleis `state` direkte og er upåverka.
+- `App.store.set` i `core.js` svelgde tidlegare enhver lagringsfeil heilt utan logging, umogleg å diagnostisera. Lagt til `console.error` med feilnamn/-melding og eit grovt estimat av total localStorage-bruk for opphavet — reint diagnostisk, ingen endring i returverdi eller åtferd for nokon av dei mange kallarane i appen.
+
+To nye regresjonstestar i `test-workspace.js` (ab10, ad9) som simulerer ei feila lagring (ved å midlertidig la `App.store.set` returnera `false`) og stadfestar at state i minnet overlever eit påfølgjande fanebyte — verifisert til å faktisk feile utan fiksen (ikkje berre grøn av tilfelle).
+
+Ingen datamodell- eller API-endringar. Alle tre testsuitene er framleis 0 FEIL (209/676/91). Cache-bust: `core.js?v=87` (alle fire html-filer som lastar han), `module-oversikt.js?v=4`, `module-smart-aarshjul.js?v=5`.
+
 ## 0.96.3 — 2026-08-05
 
 **UI-opprydding:** Smart årshjul og Oversikt fekk ein visuell gjennomgang etter brukartilbakemelding om at fleire visningar (dashboard, analyseverksted, kart, modalar) verka "rotete" — nokre tydelege småfeil, ikkje éin stor feil:
