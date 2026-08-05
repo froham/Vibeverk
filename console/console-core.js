@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.98.1";
+  var VIBEVERK_VERSION = "0.98.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1622,7 +1622,11 @@ window.VwConsole = (function () {
   // tala som forholdet mellom pakkane i miksen, men reknar utan tidsfasing:
   // kvar kunde tel med FULL førsteårsverdi (oppstartskostnad + 12×månedspris),
   // skalert opp til årsmålet. Sjå priserBudgetAnnualBreakdown().
-  var _priserBudget = { monthlyQty: {}, target: 0, annualTarget: 0 };
+  // annualCount: { pkgId: talet på kundar DU planlegg for året } -- den
+  // OMVENDE retninga (brukarønske 2026-08-05, endå eit tillegg): her fyller
+  // brukaren inn talet sjølv, HEILT UAVHENGIG av monthlyQty-miksen over, og
+  // årsinntekta vert generert. Sjå priserBudgetAnnualCountRows().
+  var _priserBudget = { monthlyQty: {}, target: 0, annualTarget: 0, annualCount: {} };
 
   function priserPriceEntry(ns, key) {
     var src = (ns === "f" ? _priserData.prices.f : _priserData.prices.i) || {};
@@ -1740,6 +1744,20 @@ window.VwConsole = (function () {
     }).filter(function (r) { return r.count > 0; });
     var totalCustomers = rows.reduce(function (s, r) { return s + r.count; }, 0);
     return { scale: scale, mixValue: mixValue, totalCustomers: totalCustomers, rows: rows };
+  }
+  // Den OMVENDE retninga (brukarønske 2026-08-05): brukaren fyller inn talet
+  // på kundar sjølv, PER PAKKE, HEILT UAVHENGIG av monthlyQty-miksen over --
+  // årsinntekta vert generert, ikkje sett som mål. Same "full førsteårsverdi"-
+  // prinsipp (12×price + setupCost) per kunde, berre motsett rekneretning.
+  function priserBudgetAnnualCountRows() {
+    return priserBudgetSellablePackages().map(function (p) {
+      var perCustomer = 12 * (p.price || 0) + (p.setupCost || 0);
+      var count = Number(_priserBudget.annualCount[p.id]) || 0;
+      return { pkg: p, perCustomer: perCustomer, count: count, value: perCustomer * count };
+    });
+  }
+  function priserBudgetAnnualCountTotal() {
+    return priserBudgetAnnualCountRows().reduce(function (s, r) { return s + r.value; }, 0);
   }
 
   // Splitta i to uavhengige flagg (brukarfunn 2026-08-05, tidlegare ETT
@@ -2611,6 +2629,19 @@ window.VwConsole = (function () {
         }).join("") + '</tbody>' +
       '</table></div>';
   }
+  // Punktoppdaterer BERRE per-rad "Sum"-cella + totalen -- ALDRI heile
+  // <tbody>-en, sidan den inneheld sjølve talet-på-kundar-input-en brukaren
+  // nettopp skreiv i (sjå kommentaren ved annualCountBody i
+  // renderPriserBudget() for full grunngjeving).
+  function priserRefreshAnnualCount(wrap) {
+    var rows = priserBudgetAnnualCountRows();
+    rows.forEach(function (r) {
+      var cell = wrap.querySelector('[data-priser-budget-annualcount-sum="' + r.pkg.id + '"]');
+      if (cell) cell.textContent = priserFmtPrice(r.value) + " kr";
+    });
+    var totalEl = wrap.querySelector("#priser-budget-annualcount-total");
+    if (totalEl) totalEl.innerHTML = '<div class="quote-cart__row is-total"><span>Total årsinntekt</span><span>' + priserFmtPrice(priserBudgetAnnualCountTotal()) + ' kr</span></div>';
+  }
   // Tooltip via getBoundingClientRect() (verkar korrekt uansett viewBox-
   // skalering, ingen manuell piksel-rekning). Kvar treffe-rect er tilgjengeleg
   // for tastaturbrukarar (tabindex+aria-label), OG same 12 tal ligg alltid
@@ -2667,6 +2698,21 @@ window.VwConsole = (function () {
         '<td><input type="number" min="0" step="1" data-priser-budget-qty="' + C.esc(p.id) + '" value="' + qty + '"></td></tr>';
     }).join("") : '<tr><td colspan="4" style="text-align:center;color:var(--color-muted)">Ingen pakker ennå.</td></tr>';
 
+    // "Regn ut årsinntekt fra antall kunder" -- input-cellene vert bygde HER,
+    // ÉIN gong, og ALDRI rørt av priserRefreshAnnualCount() (som berre
+    // punktoppdaterer "Sum"-cella + totalen) -- elles ville kvart tastetrykk
+    // øydelagt og gjenskapt akkurat den input-en brukaren skriv i, med tap av
+    // tastaturfokus som følgje (same feilklasse som er unngått overalt elles
+    // i denne fana).
+    var annualCountRows = priserBudgetAnnualCountRows();
+    var annualCountBody = annualCountRows.length ? annualCountRows.map(function (r) {
+      return '<tr><td>' + C.esc(r.pkg.name || "(uten navn)") + '</td><td>' + priserFmtPrice(r.perCustomer) + ' kr</td>' +
+        '<td><input type="number" min="0" step="1" data-priser-budget-annualcount="' + C.esc(r.pkg.id) + '" value="' + r.count + '"></td>' +
+        '<td data-priser-budget-annualcount-sum="' + C.esc(r.pkg.id) + '">' + priserFmtPrice(r.value) + ' kr</td></tr>';
+    }).join("") : '<tr><td colspan="4" style="text-align:center;color:var(--color-muted)">' +
+      (pkgs.length ? "Ingen pakker med fast pris -- pakker merket «Avtales separat» kan ikke telles her." : "Ingen pakker ennå.") +
+      '</td></tr>';
+
     wrap.innerHTML =
       '<p class="preview-note">Sett forventet nysalg per pakke <strong>per måned</strong> for å se hvordan inntekten vokser de neste 12 månedene. Lagres ikke, kun en økt-lokal kalkulator.</p>' +
       '<div class="price-table-wrap"><table class="price-table">' +
@@ -2692,10 +2738,20 @@ window.VwConsole = (function () {
             '<div class="stat-input-row"><input type="number" min="0" id="priser-budget-annual-target" value="' + (Number(_priserBudget.annualTarget) || 0) + '"><span class="unit">kr/år</span></div></div>' +
         '</div>' +
         '<div id="priser-budget-annual-result"></div>' +
+      '</div>' +
+      '<div class="rp-section">' +
+        '<div class="feat-section-title">Regn ut årsinntekt fra antall kunder</div>' +
+        '<p class="preview-note">Fyll inn selv hvor mange kunder du planlegger å selge av hver pakke i løpet av året -- helt uavhengig av salgsplanen over -- så regnes årsinntekten ut automatisk.</p>' +
+        '<div class="price-table-wrap"><table class="price-table">' +
+          '<thead><tr><th>Pakke</th><th>Verdi per kunde/år</th><th>Antall kunder i år</th><th>Sum</th></tr></thead>' +
+          '<tbody>' + annualCountBody + '</tbody>' +
+        '</table></div>' +
+        '<div class="quote-cart__totals" id="priser-budget-annualcount-total"></div>' +
       '</div>';
 
     priserRefreshBudgetTotals(wrap);
     priserRefreshAnnualBreakdown(wrap);
+    priserRefreshAnnualCount(wrap);
 
     wrap.querySelectorAll("[data-priser-budget-qty]").forEach(function (input) {
       input.addEventListener("input", function () {
@@ -2708,9 +2764,25 @@ window.VwConsole = (function () {
       _priserBudget.target = Number(e.target.value) || 0;
       priserRefreshBudgetTotals(wrap);
     });
+    // "change" i tillegg til "input" -- brukarrapport 2026-08-05 synte eit
+    // avvik mellom talet i feltet og talet i resultatteksten som ikkje let
+    // seg forklare av sjølve utrekninga (same variabel driv begge); eit
+    // sannsynleg forklaring er nettlesar-autoutfylling/scroll-på-tal-felt som
+    // ikkje alltid utløyser "input" i alle nettlesarar -- "change" dekkjer
+    // desse tilfella som eit vern, sjølv om rotårsaka ikkje er stadfesta.
     wrap.querySelector("#priser-budget-annual-target").addEventListener("input", function (e) {
       _priserBudget.annualTarget = Number(e.target.value) || 0;
       priserRefreshAnnualBreakdown(wrap);
+    });
+    wrap.querySelector("#priser-budget-annual-target").addEventListener("change", function (e) {
+      _priserBudget.annualTarget = Number(e.target.value) || 0;
+      priserRefreshAnnualBreakdown(wrap);
+    });
+    wrap.querySelectorAll("[data-priser-budget-annualcount]").forEach(function (input) {
+      input.addEventListener("input", function () {
+        _priserBudget.annualCount[input.getAttribute("data-priser-budget-annualcount")] = Number(input.value) || 0;
+        priserRefreshAnnualCount(wrap); // ALDRI eit fullt renderPriserBudget()-kall her
+      });
     });
   }
 
