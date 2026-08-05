@@ -168,7 +168,7 @@ function buildToolSchema() {
   };
 }
 
-var DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+var DEFAULT_MODEL = "claude-sonnet-5";
 // 90s frå fyrste dag -- IKKJE 30s, som var det opphavlege (feilaktige) valet
 // for annual-wheel.js sin eigen AbortController og førte til ein reell
 // produksjonsfeil (sjå docs/project/CHANGELOG.md 0.95.2). Denne endepunktet
