@@ -419,6 +419,11 @@
     .an-heading { margin: 0 0 .6rem; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--color-muted); }
     .an-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; margin-bottom: 1.5rem; }
     .an-card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.1rem 1.2rem; background: var(--color-surface); }
+    /* Sanntids besøkstal (2026-08-06): einaste kortet som IKKJE er periode-
+       filtrert -- UX-review-funn (HIGH) synte at operatøren utan denne
+       visuelle skilnaden lett kunne tru talet var periode-avhengig, sidan
+       alle fem korta elles ser identiske ut. */
+    .an-card--live { border-left: 3px solid var(--color-primary); }
     .an-card__val { font-size: 1.9rem; font-weight: 700; line-height: 1; color: var(--color-text); letter-spacing: -.02em; }
     .an-card__label { font-size: .8rem; color: var(--color-muted); margin: .45rem 0 .3rem; font-weight: 500; }
     .an-card__diff { font-size: .77rem; line-height: 1.5; }

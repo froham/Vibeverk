@@ -3077,6 +3077,13 @@ const __asyncTests = (async () => {
     assert(days7Btn.classList.contains("is-active"), "periodevalg: «7 dager»-knappen markeres aktiv");
     assert(panel8.querySelectorAll(".an-card__val")[1].textContent === "1",
       "periodevalg: bytte til 7 dager filtrerer bort den 20 dager gamle sidevisningen, uten ny spørring (samme rader, kun ny slicing): " + panel8.querySelectorAll(".an-card__val")[1].textContent);
+    // UX-review-funn (2026-08-06, HIGH), retta: periodeval byggjer heile
+    // Oversikt-fana sitt DOM på nytt (fersk data-an-live-count-node), som
+    // utan fiksen ville blitt ståande på "–"-plasshaldaren heilt til neste
+    // 20-sekunders-tick -- talet er periode-UAVHENGIG og skal difor IKKJE
+    // blenke tomt berre fordi periodevalet endra seg.
+    assert(panel8.querySelector("[data-an-live-count]").textContent === "2",
+      "sanntids besøkstal: hentast på nytt synkront ved periodeval, blenkar ikkje tomt: " + panel8.querySelector("[data-an-live-count]").textContent);
     fire8(panel8.querySelector('[data-an-days="30"]'), "click"); // tilbake til 30 dager
 
     // -- Søyle-tooltip: klikk (tap) --

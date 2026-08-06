@@ -232,7 +232,10 @@
     if (!isStagingProject()) q = q.eq("is_test", false);
     q = q.eq("is_bot", false);
     q.gte("created_at", since).then(function (r) {
-      if (r.error) { cb(null); return; }
+      // UX-review-funn (MEDIUM): loggar feilen, i staden for å svelgje ho
+      // heilt stille -- utan dette var "lastar enno" og "har feila for godt"
+      // visuelt umogleg å skilje frå kvarandre (begge synte berre "–").
+      if (r.error) { console.error("[sidetelling] henting av sanntids besøkstal feila:", r.error); cb(null); return; }
       var seen = {};
       (r.data || []).forEach(function (row) { seen[row.session_id] = true; });
       cb(Object.keys(seen).length);
@@ -466,7 +469,7 @@
     var ctaBars = barsHtml(byBucketCta, ctaBuckets, mode);
 
     return '<div class="an-cards">' +
-        '<div class="an-card"><div class="an-card__val" data-an-live-count>–</div><div class="an-card__label">Besøkende akkurat nå ' + C.helpIcon("Antall unike besøksgrupper med aktivitet de siste 5 minuttene. Oppdateres automatisk hvert 20. sekund.") + '</div></div>' +
+        '<div class="an-card an-card--live"><div class="an-card__val" data-an-live-count role="status" aria-live="polite">–</div><div class="an-card__label">Besøkende akkurat nå ' + C.helpIcon("Antall unike besøksgrupper med aktivitet de siste 5 minuttene. Oppdateres automatisk hvert 20. sekund.") + '</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + pageviews.length + '</div><div class="an-card__label">Sidevisninger</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + conversionRate + '%</div><div class="an-card__label">Konverteringsrate</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + bounceRate + '%</div><div class="an-card__label">Avvisningsrate ' + C.helpIcon("Andel besøk der den besøkende bare så én side før de forlot nettsiden.") + '</div></div>' +
@@ -659,6 +662,14 @@
         container.querySelectorAll("[data-an-days]").forEach(function (b) { b.classList.remove("is-active"); });
         btn.classList.add("is-active");
         renderPanes(container, rows, state.days);
+        // UX-review-funn (2026-08-06, HIGH): renderPanes() byggjer Oversikt-
+        // fana sitt DOM heilt på nytt (fersk data-an-live-count-node, tilbake
+        // til "–"-plasshaldaren), men sanntids-intervallet (starta éin gong i
+        // mountPanel()) oppdaterer han ikkje att før neste 20-sekunders-tick
+        // -- talet blenka difor tomt ved kvart periodeval, sjølv om det
+        // korrekte, alt kjende talet er periode-uavhengig. Hent på nytt med
+        // ein gong i staden for å vente.
+        updateLiveVisitorCount(container);
       });
     });
 
