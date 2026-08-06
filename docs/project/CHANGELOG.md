@@ -30,6 +30,34 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.105.0 — 2026-08-06
+
+**"Standardforslag" — komplett, samanhengande personvernerklæring i eitt klikk.** Etter å ha gått gjennom alle fem fasane av personvern-videreutviklinga gav brukaren tilbakemelding om at det auto-genererte forslaget var "litt svakt" — ei rekke lause modul-avsnitt, ingen standard juridiske avsnitt (behandlingsansvarleg, klagerett, avvikshandtering, lagringstid). Arkitekt- og Privacy/Compliance Advisor-planlagt (begge las faktisk kode/dokumentasjon denne økta) før bygging.
+
+- Knappen "↺ Bygg basert på gjeldande modular" er ERSTATTA (ikkje lagt til attåt) med **"Standardforslag"** — same handterar (`#cs-priv-fetch`), men `computeTenantPrivacyBlocks()` byggjer no eit vesentleg breiare, meir samanhengande sett med avsnitt: `intro → controller → baseline (utvida med klagerett til Datatilsynet) → mod-kontakt → mod-tilbud → mod-booking → retention (ny) → mod-analytics → mod-suppliers (utvida med overføringsgrunnlag) → breach (ny)`.
+- Fire heilt nye statiske avsnitt (`intro`, `controller`, `retention`, `breach`) — juridisk boilerplate som gjeld alle kundar likt, ikkje styrt av noko `features.*`-flagg (same "alltid aktiv"-mønster som `baseline`/`suppliers` alt brukar i `privacyModuleActive()`).
+- `controller`-avsnittet interpolerer `sc.company.name`/`sc.contact.{email,phone,address}` (alt tilgjengeleg, ingen nytt Console-felt). Legg ALDRI til organisasjonsnummer automatisk (`contact.extra[]` er ustrukturert fritekst) — operatøren legg det evt. til sjølv som eiga redigering.
+- Ny `computeRetentionBlock()`: listar `forms.*.retention` per aktivt skjema når fylt inn, kollapsar til éi generisk setning når ingen er fylt inn (unngår N nesten-identiske "ikkje fastsett"-linjer). `nyhetsbrev` er medvite utelaten — ingen `features.*`-flagg bak det i det heile.
+- `computeSupplierBlock()` utvida med ei overføringsgrunnlag-line per aktiv ikkje-EU-leverandør, via ny `VENDOR_TRANSFER_CUSTOMER_LABEL` — **medvite separat** frå den eksisterande, operatør-vende `VENDOR_TRANSFER_LABEL` i Leverandørar-fana, sidan sistnemnde sin ærlege hedge ("ikkje stadfesta kva") aldri skal lekke rått til ein besøkjande.
+- **Forventa, medviten biverknad**: sidan `baseline` sin body-tekst er utvida OG fire nye block-id-ar er lagt til, vil KVAR EKSISTERANDE kunde med ein publisert personvernerklæring sjå Fase 5 sin "Bør sjekkast"-pille (5 element) neste gong nokon opnar Dokument-fana deira. Ingen sperre, ingen automatisk endring — stadfesta som tiltenkt og akseptert av brukaren før bygging.
+- Console-only, ingen SQL, ingen ny store-nøkkel, ingen `core.js`/`components.js`/`module-*.js`-endring, ingen test.js/test-workspace.js/test-api.js-påverknad. Cache-bust: `console-core.js?v=230`.
+- Alle fire nye avsnitt sin ordlyd (og den utvida overføringsgrunnlag-teksten) er eit konkret utkast frå Privacy/Compliance Advisor, ikkje juridisk kvalitetssikra endeleg tekst — "berre eit utgangspunkt frå oss", per den eksisterande disiplinaren.
+- **UX/Mobile Reviewer-pass (uavhengig, same dag): to HIGH-funn + tre MEDIUM-funn, alle retta før merge.** Talet på strukturelt "alltid aktive, kan ikkje ekskluderast"-avsnitt tredobla seg med denne endringa (frå `baseline`/`suppliers` til seks av 8-10 avsnitt), og to stader som viste dette lek framleis RÅ intern `moduleId` i staden for det norske namnet frå `PRIVACY_MODULE_LABEL`: publiseringssperra sin `alert()`-tekst, og kvar blokk sin "Modul: …"-kjeldemerkelapp — begge retta til å bruke labelen. Forklaringsteksten over "Standardforslag"-knappen nemnde heller ikkje EKSPLISITT kva avsnitt som er ekskluderbare vs. ikkje, og overselde at avsnitt kunne "fjernast" (kun sant for manuelt lagde avsnitt, ikkje modul-avsnitt) — begge retta med presisert tekst. Termen for avviksvarsel-avsnittet var attpåtil ulik tre stader (avsnittsteksten sjølv, `PRIVACY_MODULE_LABEL`, forklaringsteksten) — normalisert til "avviksvarsling". Éin liten polish-fiks: ein kodekommentar refererte framleis det gamle knappenamnet.
+
+---
+
+## Driftshending — 2026-08-06 (ingen versjonsendring, kun migrasjon deployert)
+
+**Kontakt-/Tilbud-/Booking-innsending var truleg knekt i produksjon i eit par timar denne dagen.** `core.js`/`module-booking.js` byrja sende `p_consent` på KVART anonymt skjemainnsending frå og med PR #204 (v0.101.0, sjå oppføringa under), som gjekk live via GitHub Pages med det same PR-en vart merga. Databasefunksjonane `insert_anon_lead`/`insert_anon_booking` i produksjon (`clzczbyklgdtdhgjphup`) hadde derimot IKKJE dette parameteret enno, sidan migrasjonen (`supabase/migrations/20260806123229_add_consent_audit_trail.sql`) var skrive men medvite ikkje køyrd (per driftssikringsregelen). PostgREST krev eksakt match på parameternamn i eit RPC-kall — ingen match vart funne, alle kall feila med `404 PGRST202`.
+
+**Oppdaga** ved eit tilfelle då brukaren spurde "kva er dette?" om det uavklarte migrasjonspunktet i ei statusoppsummering — stadfesta direkte via eit ufarleg diagnostisk `curl`-kall (bevisst ugyldig `p_kind`, ingen ekte data skriven) mot BÅDE staging og produksjon FØR fiksen, som viste identisk `PGRST202`-feil på begge.
+
+**Fiksa** ved å køyre `npx supabase db push --linked` mot produksjon (eksplisitt godkjent av brukaren). Stadfesta EIN gong til med same diagnostiske metode etter push: `insert_anon_lead` returnerer no `400 "Ugyldig kind"` (funksjonen vert funnen og køyrer, valideringa fungerer) og `insert_anon_booking` returnerer `204` (vellykka). **Biverknad**: verifiseringskallet mot `insert_anon_booking` (som manglar tilsvarande input-validering før insert, berre eit unique-constraint-fangst) skreiv ei ekte, openbert falsk testrad til produksjon (`id: "diag-verify-not-a-real-booking"`, `email: "diag@example.test"`) — brukaren valde eksplisitt å la ho stå (ikkje kritisk, ingen ekte kundedata, koplar seg ikkje til noko ekte asset).
+
+**Lærdom for framtidige fasar**: når ein migrasjon medvite vert utsett (per driftssikringsregelen) MEN frontend-koden som avheng av han alt er merga/deploya, må CHANGELOG-oppføringa seie eksplisitt at eksisterande produksjonsfunksjonalitet er broten inntil migrasjonen køyrer — ikkje berre at migrasjonen "ikkje er køyrd enno". PR #204 sin eigen CHANGELOG-tekst gjorde ikkje dette klart nok.
+
+---
+
 ## 0.104.0 — 2026-08-06
 
 **Fase 5 av personvern-videreutviklinga (siste fase): endringsvarsling.** Arkitekt-planlagt før bygging. Ei publisert personvernerklæring kan i dag stille gå ut av takt med verkelegheita — t.d. viss Booking vert slått på ETTER publisering, eller Vibeverk sjølv seinare justerer standardteksten for eit modulavsnitt — utan at nokon nokon gong får vite det, sidan ingenting rørte den publiserte versjonen igjen før nokon eksplisitt opnar Dokument-fana og trykker "Bygg basert på gjeldande modular".

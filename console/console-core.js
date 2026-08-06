@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.104.0";
+  var VIBEVERK_VERSION = "0.105.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3264,7 +3264,9 @@ window.VwConsole = (function () {
   // interne id-en ("booking") rått.
   var PRIVACY_MODULE_LABEL = {
     baseline: "Generelt", contactForm: "Kontaktskjema", quote: "Tilbud",
-    booking: "Booking", analytics: "Cookies/analyse", suppliers: "Leverandørar"
+    booking: "Booking", analytics: "Cookies/analyse", suppliers: "Leverandørar",
+    intro: "Innledning", controller: "Behandlingsansvarlig",
+    retention: "Lagringstid", breach: "Avviksvarsling"
   };
 
   // Fase 3 (leverandørregister, 2026-08-06): Vibeverk-heile leverandørfakta
@@ -3323,6 +3325,14 @@ window.VwConsole = (function () {
     scc_or_dpf: "SCC og/eller EU–US Data Privacy Framework (ikkje stadfesta kva)"
   };
   var VENDOR_DPA_LABEL = { confirmed: "Stadfesta", likely_confirmed: "Truleg alt i kraft", unconfirmed: "Ikkje stadfesta" };
+  // Kundevendt (offentleg publisert) ordlyd for overføringsgrunnlag --
+  // MEDVITE ULIK VENDOR_TRANSFER_LABEL over, som er skriven for OPERATØREN
+  // (Leverandørar-fana) og difor hedgar ærleg ("ikkje stadfesta kva"). Den
+  // hedginga skal ALDRI lekke rått til ein besøkjande -- sjå computeSupplierBlock().
+  var VENDOR_TRANSFER_CUSTOMER_LABEL = {
+    scc: "overføringen er dekket av EUs standardavtaler (SCC)",
+    scc_or_dpf: "overføringen er dekket av EUs standardavtaler og/eller tilsvarende godkjente overføringsmekanismer"
+  };
 
   function privacyNewId(prefix) {
     return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
@@ -3490,6 +3500,10 @@ window.VwConsole = (function () {
     // skal difor ALDRI kunne hybrid-vakt-blokkerast bort, ulikt dei
     // funksjonsflagg-styrte modulane over.
     if (moduleId === "suppliers")   return true;
+    // Fase "Standardforslag" (2026-08-06): faste juridiske standardavsnitt,
+    // ikkje styrt av noko features.*-flagg -- same "alltid aktiv"-grunngjeving
+    // som baseline/suppliers over.
+    if (moduleId === "intro" || moduleId === "controller" || moduleId === "retention" || moduleId === "breach") return true;
     return false; // ukjend/fjerna modul-id -- tving ikkje inkludering
   }
 
@@ -3515,6 +3529,43 @@ window.VwConsole = (function () {
   // versjon: den hadde eit sidetelling-medvite cookieText-steg (3-vegs:
   // Plausible/sidetelling/ingen) som denne fila sin gamle
   // computeTenantPrivacyDefault() mangla (berre 2-vegs Plausible/ingen).
+  // "Standardforslag" (2026-08-06): kunden ("litt svakt" var tilbakemeldinga
+  // på det forrige forslaget) ønska EIT komplett, samanhengande utkast i eitt
+  // klikk -- ikkje berre modul-avsnitt, men òg dei faste juridiske avsnitta
+  // ein reell personvernerklæring treng (behandlingsansvarleg, klagerett,
+  // avvikshandtering, lagringstid). Innhaldet er Privacy/Compliance Advisor
+  // sitt konkrete utkast (køyrt denne økta, las faktisk kode/dokumentasjon
+  // FØR forslaget vart skrive) -- framleis "berre eit utgangspunkt frå oss",
+  // ikkje juridisk kvalitetssikra åleine.
+  function computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) {
+    var forms = sc.privacy.forms || {};
+    // "nyhetsbrev" MEDVITE utelaten -- ingen features.*-flagg bak det i det
+    // heile (stadfesta: ingen module-newsletter.js, ingen features.newsletter),
+    // risiko for å skildre eit skjema som ikkje finst for denne kunden.
+    var activeIds = [];
+    if (hasContactForm) activeIds.push("kontakt");
+    if (hasTilbud)       activeIds.push("tilbud");
+    if (hasBooking)      activeIds.push("booking");
+
+    var filled = activeIds.filter(function (id) { return forms[id] && forms[id].retention; });
+    var lines = ["Hvor lenge lagrer vi opplysningene?"];
+
+    if (!activeIds.length || !filled.length) {
+      // Ingen aktive skjema, ELLER ingen av dei har fylt inn lagringstid --
+      // kollaps til ÉI generisk setning i staden for N nesten-identiske
+      // "ikkje fastsett"-linjer (Advisor sin eigen "svakt/repeterande"-åtvaring).
+      lines.push("Vi lagrer opplysningene dine så lenge det er nødvendig for formålet de ble samlet inn for, og sletter dem deretter uten ugrunnet opphold, med mindre vi har en lovpålagt plikt til å lagre dem lenger.");
+    } else {
+      filled.forEach(function (id) {
+        var label = PRIVACY_FORM_TYPES.filter(function (t) { return t.id === id; })[0].label;
+        lines.push(label + ": " + forms[id].retention);
+      });
+      var unfilled = activeIds.filter(function (id) { return filled.indexOf(id) === -1; });
+      if (unfilled.length) lines.push("For øvrige henvendelser lagrer vi ikke opplysningene lenger enn nødvendig for formålet.");
+    }
+    return App.ui.textToRichHtml(lines.join("\n\n"));
+  }
+
   function computeTenantPrivacyBlocks(sc, an) {
     var ft = sc.features || {};
     var hasContactForm = ft.contactForm !== false;
@@ -3522,11 +3573,19 @@ window.VwConsole = (function () {
     var hasBooking       = !!ft.booking;
     var hasAnalytics     = !!(an && (an.plausible || an.plausibleEmbed));
     var hasSidetelling   = !hasAnalytics && ft.sidetelling === true;
+    var contactInfo = [sc.contact.email, sc.contact.phone, sc.contact.address].filter(Boolean);
 
     var blocks = [];
+    blocks.push({ id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: App.ui.textToRichHtml(
+      "Om denne personvernerklæringen\nDenne personvernerklæringen forteller deg hvilke personopplysninger vi samler inn gjennom denne nettsiden, hva vi bruker dem til, hvor lenge vi lagrer dem, og hvilke rettigheter du har. Den gjelder for alle som besøker nettsiden eller tar kontakt med oss via skjemaene her."
+    ) });
+    blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: App.ui.textToRichHtml(
+      "Hvem er behandlingsansvarlig?\n" + sc.company.name + " er behandlingsansvarlig for personopplysningene som samles inn gjennom denne nettsiden. Det betyr at det er " + sc.company.name + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
+      (contactInfo.length ? " Har du spørsmål om personvern, kan du kontakte oss på " + contactInfo.join(", ") + "." : "")
+    ) });
     blocks.push({ id: "baseline", source: "module", moduleId: "baseline", included: true, edited: false, body: App.ui.textToRichHtml(
       "Hvor lagres opplysningene?\nNettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
-      "Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold."
+      "Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold. Du har også rett til å klage til Datatilsynet dersom du mener vi behandler personopplysningene dine i strid med regelverket. Du finner informasjon om hvordan du klager på datatilsynet.no."
     ) });
     if (hasContactForm) blocks.push({ id: "mod-kontakt", source: "module", moduleId: "contactForm", included: true, edited: false, body: App.ui.textToRichHtml(
       "Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, og deles ikke med tredjeparter for markedsføringsformål."
@@ -3537,6 +3596,7 @@ window.VwConsole = (function () {
     if (hasBooking) blocks.push({ id: "mod-booking", source: "module", moduleId: "booking", included: true, edited: false, body: App.ui.textToRichHtml(
       "Booking\nNår du reserverer en time/booking, lagrer vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding. Opplysningene brukes til å gjennomføre avtalen."
     ) });
+    blocks.push({ id: "retention", source: "module", moduleId: "retention", included: true, edited: false, body: computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) });
     var cookieText = hasAnalytics
       ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
       : hasSidetelling
@@ -3544,6 +3604,9 @@ window.VwConsole = (function () {
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
     blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: App.ui.textToRichHtml("Bruker vi cookies?\n" + cookieText) });
     blocks.push({ id: "mod-suppliers", source: "module", moduleId: "suppliers", included: true, edited: false, body: computeSupplierBlock(sc, an) });
+    blocks.push({ id: "breach", source: "module", moduleId: "breach", included: true, edited: false, body: App.ui.textToRichHtml(
+      "Melding ved brudd på personopplysningssikkerheten\nDersom det skulle oppstå et brudd på personopplysningssikkerheten — for eksempel uautorisert tilgang til eller tap av opplysninger — som medfører risiko for dine rettigheter og friheter, vil vi varsle Datatilsynet uten unødig opphold og senest innen 72 timer etter at vi ble kjent med bruddet, i tråd med personvernforordningen (GDPR) artikkel 33. Dersom bruddet innebærer høy risiko for deg, vil vi også varsle deg direkte."
+    ) });
     return blocks;
   }
 
@@ -3564,13 +3627,23 @@ window.VwConsole = (function () {
   function computeSupplierBlock(sc, an) {
     var region = (sc.privacy.suppliers && sc.privacy.suppliers.supabaseRegion) || "";
     var lines = ["Hvilke leverandører behandler opplysningene dine?"];
+    var transferLines = [];
     VIBEVERK_VENDORS.forEach(function (v) {
       if (!v.isActive(an)) return;
       var whereText = v.id === "supabase"
         ? (region ? "Data er plassert i " + region + "." : "Data er plassert i EU.")
         : (VENDOR_COUNTRY_LABEL[v.country] === "USA" ? "Leverandøren er etablert i USA." : "Leverandøren er etablert i EU/EØS.");
       lines.push(v.name + " — " + v.whatItDoes + ". " + whereText);
+      // "Standardforslag": VENDOR_TRANSFER_CUSTOMER_LABEL, ALDRI VENDOR_TRANSFER_LABEL
+      // -- sistnemnde sin operatør-vende hedge ("ikkje stadfesta kva") skal
+      // aldri lekke rått til ein besøkjande, sjå notatet ved definisjonen.
+      if (v.transferMechanism && v.transferMechanism !== "none" && VENDOR_TRANSFER_CUSTOMER_LABEL[v.transferMechanism]) {
+        transferLines.push(v.name + ": " + VENDOR_TRANSFER_CUSTOMER_LABEL[v.transferMechanism] + ".");
+      }
     });
+    if (transferLines.length) {
+      lines.push("Overføring av opplysninger utenfor EU/EØS\nNoen av leverandørene våre er etablert utenfor EU/EØS. Vi sørger for at slike overføringer skjer i tråd med personvernregelverket:\n" + transferLines.join("\n"));
+    }
     return App.ui.textToRichHtml(lines.join("\n\n"));
   }
 
@@ -3774,7 +3847,7 @@ window.VwConsole = (function () {
     var blocksHtml = blocks.length ? blocks.map(function (b) {
       var isModule = b.source === "module";
       var moduleActive = isModule && privacyModuleActive(sc, sc._privacyAn || {}, b.moduleId);
-      var sourceLabel = isModule ? ("Modul: " + (b.moduleId || "")) : "Manuelt lagt til";
+      var sourceLabel = isModule ? ("Modul: " + (PRIVACY_MODULE_LABEL[b.moduleId] || b.moduleId || "")) : "Manuelt lagt til";
       return '<div class="admin-group" data-privacy-block="' + C.esc(b.id) + '" style="margin-bottom:1rem">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.5rem">' +
           '<span style="font-size:.76rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.03em">' + C.esc(sourceLabel) + '</span>' +
@@ -3784,17 +3857,17 @@ window.VwConsole = (function () {
         C.richTextField({ id: "privacy-block-" + b.id, label: "Innhold", value: b.body }) +
         (isModule ? "" : '<button type="button" class="btn btn--ghost btn--sm" data-privacy-block-remove="' + C.esc(b.id) + '" style="margin-top:.5rem">Fjern avsnitt</button>') +
       '</div>';
-    }).join("") : '<p style="color:var(--color-muted)">Ingen avsnitt ennå — bruk "Bygg basert på gjeldande modular" eller legg til eit eige.</p>';
+    }).join("") : '<p style="color:var(--color-muted)">Ingen avsnitt ennå — bruk "Standardforslag" eller legg til eit eige.</p>';
 
     pane.innerHTML =
       '<fieldset class="admin-group"><legend>Personvernerklæring — <span class="kd-pill kd-pill--provisioning">Utkast</span></legend>' +
         '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, og via «Personvern»-lenka i footer, ETTER publisering.</p>' +
         C.field({ id: "cs-priv-heading", label: "Overskrift", value: version.heading || "" }) +
         '<div style="margin:.6rem 0 1rem;display:flex;gap:.6rem;flex-wrap:wrap">' +
-          C.button({ label: "↺ Bygg basert på gjeldande modular", variant: "ghost", attrs: 'type="button" id="cs-priv-fetch"' }) +
+          C.button({ label: "Standardforslag", variant: "ghost", attrs: 'type="button" id="cs-priv-fetch"' }) +
           C.button({ label: "+ Legg til eige avsnitt", variant: "ghost", attrs: 'type="button" id="cs-priv-add"' }) +
         '</div>' +
-        '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 1rem">Kvart avsnitt er anten henta frå ein aktiv modul (kan varslast mot, sjå under, men ikkje tvingast bort) eller lagt til manuelt. <strong>Dette er berre eit utgangspunkt frå oss</strong> — kunden er juridisk ansvarleg for at teksten faktisk stemmer.</p>' +
+        '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 1rem">"Standardforslag" set saman eit fullstendig utkast: avsnitt for kvar aktiv modul (kontaktskjema, tilbud, booking, cookies/analyse, leverandørar) pluss Vibeverk sine faste standardavsnitt (innleiing, behandlingsansvarleg, lagringstid, avviksvarsling). Alle desse avsnitta kan redigerast fritt, men — i likskap med «Generelt» og «Leverandørar» — kan dei IKKJE ekskluderast frå publisert tekst med avkryssingsboksen, sidan dei gjeld alle kundar likt. Manuelt lagde avsnitt kan derimot fjernast heilt. <strong>Dette er berre eit utgangspunkt frå oss</strong> — kunden er juridisk ansvarleg for at teksten faktisk stemmer.</p>' +
         '<div id="privacy-blocks">' + blocksHtml + '</div>' +
       '</fieldset>' +
       '<fieldset class="admin-group"><legend>Godkjenning frå kunden</legend>' +
@@ -3970,7 +4043,7 @@ window.VwConsole = (function () {
         captureFieldEdits();
         var blocked = privacyGuardBlockedBlocks(sc, an, version.bodyBlocks);
         if (blocked.length) {
-          alert('Kan ikkje publisere: ' + blocked.length + ' avsnitt knytt til ein aktiv modul er ekskludert (' + blocked.map(function (b) { return b.moduleId; }).join(", ") + '). Inkluder dei att, eller fjern/deaktiver modulen for kunden fyrst i Modular-fana.');
+          alert('Kan ikkje publisere: ' + blocked.length + ' avsnitt knytt til ein aktiv modul er ekskludert (' + blocked.map(function (b) { return PRIVACY_MODULE_LABEL[b.moduleId] || b.moduleId; }).join(", ") + '). Inkluder dei att, eller fjern/deaktiver modulen for kunden fyrst i Modular-fana.');
           return;
         }
         if (!confirm("Publisere denne versjonen? Han vert synleg for besøkjande på nettsida med ein gong. Den nåverande publiserte teksten (om nokon) forsvinn ikkje -- ho held fram i Historikk, og du kan alltid rette opp ein feil ved å publisere ein ny versjon seinare.")) return;
@@ -4135,8 +4208,8 @@ window.VwConsole = (function () {
   function renderPersonvernLeverandorer(sc, pane, wrap) {
     var suppliers = sc.privacy.suppliers || { supabaseRegion: "" };
     // "analytics" er si EIGA store-nøkkel (ikkje eit felt på sc/superconfig),
-    // same henting som Dokument-fana sin "Bygg basert på gjeldande modular"/
-    // publiser-handterar brukar -- syner "Laster …" til svaret kjem attende.
+    // same henting som Dokument-fana sin "Standardforslag"/publiser-
+    // handterar brukar -- syner "Laster …" til svaret kjem attende.
     pane.innerHTML = '<p style="color:var(--color-muted)">Laster leverandørinformasjon…</p>';
     // Security Auditor-funn (Fase 3, 2026-08-06, MEDIUM): denne fana er den
     // EINASTE av Personvern sine underfaner som hentar noko asynkront FØR ho
