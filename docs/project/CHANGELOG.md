@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.104.0 — 2026-08-06
+
+**Fase 5 av personvern-videreutviklinga (siste fase): endringsvarsling.** Arkitekt-planlagt før bygging. Ei publisert personvernerklæring kan i dag stille gå ut av takt med verkelegheita — t.d. viss Booking vert slått på ETTER publisering, eller Vibeverk sjølv seinare justerer standardteksten for eit modulavsnitt — utan at nokon nokon gong får vite det, sidan ingenting rørte den publiserte versjonen igjen før nokon eksplisitt opnar Dokument-fana og trykker "Bygg basert på gjeldande modular".
+
+- Ny `privacyPublishedDrift(sc, an, version)`: samanliknar `computeTenantPrivacyBlocks()` sitt FRISKE forslag mot den PUBLISERTE versjonen sine faktiske modul-avsnitt, med to medvite avgrensa signal — (a) eit modul-avsnitt manglar heilt (ny funksjon aktivert etter publisering, eller ein versjon eldre enn sjølve modulen/blokka), (b) eit `edited:false`-avsnitt sitt lagra innhald matchar ikkje lenger dagens forslag (t.d. cookie-teksten sin 3-vegs Plausible/sidetelling/ingen-gren). Medvite IKKJE flagga: operatør-redigerte (`edited:true`) avsnitt (heile poenget med `mergePrivacyBlocks()` er at desse ALDRI vert samanlikna mot forslaget att), eller eit no-inaktivt sitt avsnitt som framleis står att (eit anna, alt akseptert "operatøren fjernar sjølv"-mønster, ikkje denne fasen sitt problem).
+- Syner som ei rein informativ "Bør sjekkast"-pille (attbruker `kd-pill--provisioning`, same amber som Fase 4 sin "innhald endra sidan"-pille) i Dokument-fana sin PUBLISERT-visning, pluss éi setning som listar opp kva avsnitt det gjeld på klårspråk (`PRIVACY_MODULE_LABEL`). **Ingen sperre, ingen automatisk tekstendring** — berre eit varsel om at eit nytt utkast bør lagast for å sjå eit oppdatert forslag.
+- Heilt derivert, ingen ny lagra tilstand — ingen SQL-migrasjon, ingen ny store-nøkkel, ingen `core.js`/`components.js`/`module-*.js`-endring. `analytics`-nøkkelen hentast lat (kun éin gong per fane-opning, cacha på `sc._privacyAn`) via `getStoreKeyOrError()` (ikkje `getStoreKey()`, av same grunn som Fase 3 sin tilsvarande fiks — ein forbigåande nettverksfeil skal ALDRI stille cachast som "ingen analyse", som kunne gitt ei feilaktig varsling for ein kunde som faktisk har Plausible aktivt).
+- Console-only, cache-bust: `console-core.js?v=229`.
+- Ingen eigen Security Auditor-runde denne fasen — reint derivert, read-only visning (ingen ny skriving, ingen ny lagra tilstand, ingen anon-vend flate), vurdert til å ikkje krysse CLAUDE.md si terskel for tryggleiksnær endring.
+- **UX/Mobile Reviewer-pass (uavhengig, ekte rendra HTML+CSS på fleire breidder): to MEDIUM-funn, retta før merge.** Dei to pillene ("Publisert" + "Bør sjekkast") stabla til 3 rader i `<legend>` på 375px (målt i faktisk rendering) -- retta ved å flytte drift-pilla ut av overskrifta og inn i avsnittet under, som alt wrappar fint. Den attkomande fane-opninga synte inga forklaring på kvifor sida "hoppa" eit augeblikk etter fyrste rendering (svaret frå `analytics`-henting kjem attende asynkront) -- retta med ei mellombels "Sjekkar om innhaldet framleis stemmer med aktive modular…"-linje synleg til svaret er der. Éin liten polish-fiks teken med: `PRIVACY_MODULE_LABEL` sa "Tilbod" (nynorsk) der resten av Console (`FEAT_LABELS`) alltid seier "Tilbud" (bokmål) for same modul -- retta til konsekvent "Tilbud".
+- Dette fullfører alle fem fasane frå den opphavlege planen (versjonering → samtykke-revisjonsspor → leverandørregister → godkjenning/eksport → endringsvarsling). Det tidlegare utsette "standardinnhald i modulane"-forslaget (sjå 2026-08-06-notatet tidlegare denne økta) står framleis ope, ikkje starta.
+
+---
+
 ## 0.103.0 — 2026-08-06
 
 **Fase 4 av personvern-videreutviklinga: godkjenning + eksport.** Arkitekt-planlagt før bygging — Arkitekten flagga at "godkjenning/eksport" ALDRI hadde vore gjennom beslutningsmøtet 2026-08-06 (berre 8 andre saker er dokumentert der), og at brifen sitt opphavlege ordval var reelt fleirtydig på tre uavhengige aksar. Løyst med ein eigen `AskUserQuestion`-runde før noko vart bygd, same disiplin som resten av dette prosjektet:

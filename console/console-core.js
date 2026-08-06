@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.103.0";
+  var VIBEVERK_VERSION = "0.104.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3259,6 +3259,14 @@ window.VwConsole = (function () {
   ];
   var APPROVAL_CHANNEL_LABEL = { epost: "e-post", telefon: "telefon", mote: "møte", anna: "anna kanal" };
 
+  // Fase 5 (endringsvarsling): brukarvende namn på moduleId, til bruk i
+  // "desse avsnitta bør sjekkast"-lista -- operatøren skal aldri sjå den
+  // interne id-en ("booking") rått.
+  var PRIVACY_MODULE_LABEL = {
+    baseline: "Generelt", contactForm: "Kontaktskjema", quote: "Tilbud",
+    booking: "Booking", analytics: "Cookies/analyse", suppliers: "Leverandørar"
+  };
+
   // Fase 3 (leverandørregister, 2026-08-06): Vibeverk-heile leverandørfakta
   // -- IKKJE per-kunde-data, IKKJE Console-redigerbart nokon stad. Dette er
   // Vibeverk sitt EIGE forhold til kvar leverandør (data-map-vibeverk.md sin
@@ -3594,6 +3602,49 @@ window.VwConsole = (function () {
     });
   }
 
+  // Fase 5 (endringsvarsling, 2026-08-06): kva modul-avsnitt kan ha drive
+  // vekk frå verkelegheita SIDAN denne versjonen vart publisert -- ALDRI ei
+  // sperre, ALDRI ei automatisk tekstendring, berre eit varsel om at ein NY
+  // draft bør lagast for å sjå eit oppdatert forslag.
+  //
+  // To signal, medvite avgrensa (Arkitekt-planlagt, sjå CHANGELOG 0.104.0):
+  //  (a) manglar heilt -- eit modul-avsnitt computeTenantPrivacyBlocks()
+  //      ville generert i dag finst ikkje i det heile i den publiserte
+  //      teksten (ny funksjon slått på ETTER publisering, eller ein versjon
+  //      publisert før akkurat den modulen/blokka fanst i det heile).
+  //  (b) uendra tekst har drive -- eit `edited:false`-avsnitt (aldri redigert
+  //      av operatøren) sitt lagra innhald matchar ikkje lenger det
+  //      computeTenantPrivacyBlocks() ville generert for same blokk i dag
+  //      (t.d. cookie-teksten sin 3-vegs Plausible/sidetelling/ingen-gren).
+  //
+  // Medvite IKKJE flagga:
+  //  - `edited:true`-avsnitt (operatøren sin eigen tekst -- mergePrivacyBlocks()
+  //    sin heile føremål er at desse ALDRI vert samanlikna mot forslaget att).
+  //  - Eit no-inaktivt sitt avsnitt som framleis står att i publisert tekst
+  //    (mergePrivacyBlocks() sitt eksisterande, medvitne "operatøren fjernar
+  //    sjølv"-mønster -- eit anna, alt akseptert problem, ikkje denne fasen).
+  //  - `included:false` i det heile -- strukturelt uråd på ein publisert
+  //    versjon, sidan privacyGuardBlockedBlocks() alt nekta publisering av
+  //    ein ekskludert-men-aktiv modul-blokk i utgangspunktet.
+  function privacyPublishedDrift(sc, an, version) {
+    var fresh = computeTenantPrivacyBlocks(sc, an);
+    var freshById = {};
+    fresh.forEach(function (f) { freshById[f.id] = f; });
+    var published = (version.bodyBlocks || []).filter(function (b) { return b.source === "module"; });
+    var publishedIds = {};
+    published.forEach(function (b) { publishedIds[b.id] = true; });
+
+    var driftedModuleIds = fresh
+      .filter(function (f) { return !publishedIds[f.id]; })
+      .map(function (f) { return f.moduleId; });
+    published.forEach(function (b) {
+      if (!b.edited && freshById[b.id] && freshById[b.id].body !== b.body && driftedModuleIds.indexOf(b.moduleId) === -1) {
+        driftedModuleIds.push(b.moduleId);
+      }
+    });
+    return driftedModuleIds;
+  }
+
   function privacyBlocksToFlatHtml(blocks) {
     return (blocks || []).filter(function (b) { return b.included; }).map(function (b) { return b.body; }).join("");
   }
@@ -3654,9 +3705,27 @@ window.VwConsole = (function () {
 
     if (version.status === "published") {
       if (wrap) wrap._privacyFlush = null; // ingenting redigerbart i denne greina
+      // Fase 5 (endringsvarsling, 2026-08-06): sc._privacyAn er berre sett
+      // etter fyrste vellykka henting (sjå fetch-blokka under) -- fyrste
+      // rendering i ei fersk fane-opning har han difor ikkje enno, og
+      // drift-sjekken hoppar trygt over (tom liste, ingen falsk pille) til
+      // svaret kjem attende og paneet vert bedt om å rendre seg sjølv på
+      // nytt éin gong.
+      var an = sc._privacyAn || null;
+      var drift = an ? privacyPublishedDrift(sc, an, version) : [];
+      var driftLabels = drift.map(function (id) { return PRIVACY_MODULE_LABEL[id] || id; });
+      // UX-funn (Fase 5, MEDIUM): pilla flytta UT av <legend> og inn i
+      // avsnittet under -- to piller i sjølve overskrifta stabla til 3 rader
+      // på 375px (målt i faktisk rendering), medan avsnittsteksten alt
+      // wrappar fint på smale skjermar. "Sjekkar …"-linja under (vist FØR
+      // svaret kjem attende) fjernar òg det uforklarte layout-hoppet --
+      // operatøren ser no KVIFOR noko endrar seg eit augeblikk seinare.
       pane.innerHTML =
         '<fieldset class="admin-group"><legend>Personvernerklæring — <span class="kd-pill kd-pill--active">Publisert</span></legend>' +
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Publisert ' + C.esc(new Date(version.publishedAt).toLocaleString("nb-NO")) + '. Ei publisert versjon kan ikkje redigerast direkte — trykk "Rediger" for å opprette eit nytt utkast basert på henne. Historikken held fram uendra.</p>' +
+          (driftLabels.length
+            ? '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem"><span class="kd-pill kd-pill--provisioning">Bør sjekkast</span> Sidan denne teksten vart publisert kan desse avsnitta ha endra seg: <strong>' + C.esc(driftLabels.join(", ")) + '</strong>. Teksten er ikkje endra automatisk — opprett eit nytt utkast for å sjå eit oppdatert forslag.</p>'
+            : (an ? '' : '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 .8rem">Sjekkar om innhaldet framleis stemmer med aktive modular…</p>')) +
           '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(version.bodyBlocks) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
         '</fieldset>' +
         '<div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">' +
@@ -3681,6 +3750,23 @@ window.VwConsole = (function () {
       pane.querySelector("#cs-priv-export").addEventListener("click", function () {
         privacyExportPublishedHtml(version, _activeTenant && _activeTenant.slug);
       });
+      // Fase 5: hentar "analytics" lat, kun om ikkje alt i minnet -- éin
+      // rendering til med drift-sjekken påslått, aldri ei blokkerande
+      // innlasting av sjølve visinga over. getStoreKeyOrError(), IKKJE
+      // getStoreKey() -- same grunn som Leverandørar-fana sin tilsvarande
+      // fiks (Fase 3, MEDIUM): ein forbigåande nettverksfeil skal ALDRI
+      // stille cachast som "{}" (tolka som "ingen analyse konfigurert"),
+      // sidan det kunne slå ut ei feilaktig "Cookies/analyse bør sjekkast"-
+      // varsling for ein kunde som faktisk har Plausible aktivt. Ved feil:
+      // ikkje cache noko, berre prøv på nytt neste gong nokon opnar fana.
+      if (!an) {
+        getStoreKeyOrError("analytics", function (fetchedAn, err) {
+          if (_privacyView !== "dokument") return; // same navigert-vekk-vakt som resten av fila
+          if (err) { console.error("[console] kunne ikkje hente analytics for endringsvarsling:", err); return; }
+          sc._privacyAn = fetchedAn || {};
+          renderPersonvernDokument(sc, pane, wrap);
+        });
+      }
       return;
     }
 
