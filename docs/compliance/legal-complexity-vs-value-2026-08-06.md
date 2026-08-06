@@ -64,4 +64,21 @@ Dette er det klart mest kritiske punktet, og det som mest openbert kvalifiserer 
 
 ---
 
+## 5. Beslutningar frå møtet (2026-08-06)
+
+Brukaren gjekk gjennom alle åtte punkta systematisk same dag desse vart lista. Endelege avgjerder:
+
+1. **Sidetelling — sessionStorage-lagring**: **Pause for reelle kundar no** (behald for Vibeverk sjølv/Sunnvask-demo). Langsiktig plan: bygg om mekanismen til ein server-side, dagleg-roterande salta hash av IP+User-Agent (same prinsipp som Plausible sin eigen offentleg dokumenterte metode, stadfesta via `plausible.io/data-policy` 2026-08-06 — "We do not use cookies, browser cache or local storage", i staden `hash(daily_salt + domain + ip + user_agent)`, aldri persistert). Dette fjernar heile §3-15-spørsmålet strukturelt (ingen lagring i/tilgang til brukaren sitt utstyr i det heile), i staden for å argumentere for eit usikkert unntak eller bryte "ingen banner"-prinsippet. Realistisk å byggje (enklare enn dei tidlegare avviste HLL-/token-tilnærmingane, sjå ADR-0013 — treng ikkje persistent lagring eller nøkkelrotasjon sidan saltet kan reknast deterministisk). **Ikkje bygd no** — eit framtidig prosjekt. Viktig: løyser IKKJE sak 2 (sjå punkt 2 under, dei er sjølvstendige spørsmål).
+2. **Konverteringskobling (sesjon → namngjeven lead/booking)**: **Fjernast no** — slutt å skrive `analytics_session_id` ved skjemainnsending. Ope for å byggje ein ordentleg, juridisk gjennomtenkt versjon av konverteringssporing seinare som ein eigen, bevisst funksjon (t.d. eksplisitt samtykke ved innsending), ikkje som ein biverknad slik det er i dag.
+3. **Automatisk retensjon/sletting**: **Byggjast** — reelle sletteregler per datatype (chat/CRM/leads/bookingar/tilsettdata).
+4. **Anthropic (Oversikt/Smart årshjul)**: **Utanfor scope denne runda, teke opp separat.** Grunngjeving: modulane er framleis i test-/utprøvingsfase, ikkje levert til nokon reell kunde enno. Modulane skal IKKJE fjernast, men skal ikkje gjerast tilgjengelege for ekte kundar før spørsmålet er avklart OG kunden sjølv har fått meine/ta stilling (kunden bør ha eit ord med i laget her, ikkje berre Vibeverk).
+5. **Behandlingsgrunnlag per skjematype**: **Bygg strukturen no** (tomme `legalBasis`/`retention`-felt per skjematype i den nye datamodellen), ikkje ei påstand om kva verdi som er rett. Brukaren vurderer sjølv om denne konkrete vurderinga treng kvalifisert juridisk rådgjeving, eller om Datatilsynet si normale rettleiing er tilstrekkeleg — teke opp att seinare.
+6. **Ansattdata i Workspace**: **Byggjast med standardformulering** (arbeidsforhold/legitim interesse) — låg tvil, ikkje verdt å vente på jurist for.
+7. **Domeneshop si rolle per kunde**: **Fjerna frå scope.** Oppklart under møtet: Domeneshop finst berre i Vibeverk sin EIGEN leverandørbruk (for `vibeverk.no`), ikkje i noko arkitektur der Vibeverk handterer kundedomene på vegner av kundar (kundar peikar sin eigen DNS mot Vercel, uansett kor dei kjøpte domenet). Høyrer difor heime i Vibeverk sin eigen interne personvernerklæring, IKKJE i leverandørregisteret som genererer kundane sine personvernerklæringar.
+8. **Supabase-region per kunde**: **Byggjast som eit felt** Vibeverk fyller inn per kunde-onboarding (ikkje ein hardkoda global verdi, sidan kvart kunde-prosjekt i prinsippet kan liggje i ein annan region).
+
+**Konsekvens for byggjearbeidet (Arkitekt sine fasar)**: Fase 2 (samtykke-revisjonsspor) vert mindre enn opphavleg tenkt, sidan konverteringskoblinga (som var hovudårsaka til å trenge samtykke-sporing i utgangspunktet) no er fjerna. Fase 1 (versjonert dokument + skjema-tekster) inkluderer no eksplisitt tomme `legalBasis`/`retention`-felt (sak 5) og standardtekst for tilsettdata (sak 6). Fase 3 (leverandørregister) ekskluderer Domeneshop (sak 7) og inkluderer eit per-kunde Supabase-region-felt (sak 8). Anthropic (sak 4) er eksplisitt halde utanfor heile denne runda.
+
+---
+
 *Ingen personvernerklærings-tekst er utforma i dette dokumentet. Ikkje juridisk godkjenning eller samsvarsgaranti.*
