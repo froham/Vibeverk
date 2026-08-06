@@ -3,6 +3,8 @@
 > Første reelle, kodegrunngjevne utfylling av `data-map-template.md`, gjort 2026-07-16 av Privacy and Compliance Advisor. Dette er **framleis ikkje ei juridisk godkjenning** — sjå README.md i denne mappa. Felt merka **[ÅPENT]** krev stadfesting utanfor repoet (Supabase Dashboard, avtaledokument, DNS/e-postoppsett). Felt utan merking er verifisert direkte mot koden på tidspunktet dette dokumentet vart skrive.
 >
 > Sjå òg `docs/compliance/data-map-sunnvask-notes.md` for kva som er ulikt/ope for showcase-tenanten Sunnvask.
+>
+> **Oppdatert 2026-08-06** (nytt Privacy Advisor-pass, del av eit oppdrag om å byggje eit heilskapleg personvern-system i Console): la til sidetelling (fanst ikkje 2026-07-16), Anthropic som femte tredjepart (Oversikt/Smart årshjul), retta ei feilaktig lovtilvising (sjå `docs/architecture/sidetelling.md`), og stadfesta at det ikkje finst automatisk retensjon/sletting nokon stad i koden. Sjå `docs/compliance/legal-complexity-vs-value-2026-08-06.md` for ei samla vurdering av kva som bør byggjast vidare på vs. forenklast/fjernast.
 
 ---
 
@@ -99,6 +101,28 @@ Same struktur som malen (uendra frå malen sin generelle skildring) — verifise
 
 **Ope for Vibeverk sjølv i repoets `config.js`**: `analytics.plausible: ""` (tom streng) — Plausible er altså **ikkje konfigurert/aktiv** for denne tenanten i den lesne konfigurasjonen. Dersom Console/superconfig har sett ein verdi for den live tenanten (jf. punkt 3a over om dei to konfigurasjonslaga), er dette **[ÅPENT — stadfest via Console → Analyse-fana for den faktiske `vibeverk.no`-tenanten]**. Koden (`core.js`) viser at når Plausible ER konfigurert, genererer plattforma automatisk eit personvernforslag som nemner Plausible eksplisitt (verifisert i `test.js` linje 1528-1530) — mekanismen fungerer, men om den er PÅSLÅTT for denne tenanten er ikkje stadfesta av dette passet.
 
+### Sidetelling / "Innsikt" (module-sidetelling.js) — lagt til 2026-08-06
+
+**Fanst ikkje enno då dette datakartet vart skrive 2026-07-16** — bygd i fleire rundar 2026-07-31 til 2026-08-03, sjå `docs/architecture/sidetelling.md` for full arkitektur.
+
+| Felt | Detalj |
+|---|---|
+| Data samla inn | `session_id` (i `sessionStorage`, ikkje ein cookie, forsvinn ved fanelukking), sidesti (hash), `referrer` (kun vertsnamn), CTA-type, `device_type` (kategorisk, utleia klientsida — IKKJE rå User-Agent), `is_bot` (regex mot kjende signaturar). Ved konvertering: `analytics_session_id` skriven på `leads`/`bookings`. |
+| Kor lagra | `analytics_events`-tabellen, kundens eigen data-plane. |
+| Rettsleg grunnlag | **[ÅPENT — SKJERPA 2026-08-06]** Sjå `docs/architecture/sidetelling.md` sitt "Ope juridisk spørsmål"-avsnitt: den opphavlege "ekomlova §3-1"-tilvisinga var feil paragraf og oppheva lov. Gjeldande heimel (§3-15, ny ekomlov LOV-2024-12-13-76) krev GDPR-gyldig samtykke for lagring/tilgang i brukaren sitt utstyr, uavhengig av om opplysninga er anonym — dette svekker grunnlaget for HEILE sidetellingsfunksjonen, ikkje berre konverteringskoblinga. To sjølvstendige spørsmål: (1) kan `sessionStorage`-lagringa skje utan samtykke under §3-15 sitt "strengt nødvendig"-unntak, (2) krev sesjons→lead-koblinga sitt eige GDPR-grunnlag. |
+| Retensjon | **[ÅPENT]** — ingen automatisk sletting/anonymisering funne i koden (stadfesta 2026-08-06, grundig søk etter `pg_cron`/TTL/planlagd opprydding — ingen treff). |
+
+### AI-modular i Workspace (Oversikt, Smart årshjul) — lagt til 2026-08-06, sender brukarinput til ein femte tredjepart
+
+**Anthropic er ikkje tidlegare lista som tredjepart i dette dokumentet** — reelt funn frå kodegjennomgang 2026-08-06, ikkje tidlegare identifisert.
+
+| Felt | Detalj |
+|---|---|
+| Data samla inn/sendt | Brukarskriven situasjons-/årshjul-skildring (opptil ~1500 teikn), sendt til Anthropic sitt API (`api.anthropic.com/v1/messages`). Oversikt brukar `claude-sonnet-5`, Smart årshjul brukar `claude-haiku-4-5-20251001`. Teksten KAN innehalde persondata dersom brukaren sjølv skriv inn slikt (t.d. namn på tilsette/kundar i skildringa). |
+| Kor lagra | Sjølve AI-kallet går via `api/ai/oversikt.js`/`api/ai/annual-wheel.js` (Vercel Functions). Resultatet lagrast i kundens `store`-tabell (`wsp-oversikt` osv.). Full skildringstekst vert IKKJE logga ved feil (berre metadata) — stadfesta i kode. |
+| API-nøkkel | Delt `ANTHROPIC_API_KEY` på Vercel-nivå (ADR-0007), ikkje per-kunde. |
+| Rettsleg grunnlag | **[ÅPENT — krev juridisk vurdering]** — Anthropic må vurderast som eigen underdatabehandlar (DPA, underdatabehandlarliste, overføringsgrunnlag USA→EØS ikkje henta i dette passet), og brukarane må informerast om at fritekst dei skriv kan sendast til ein US-basert AI-leverandør. |
+
 ### Tidio
 
 **Finst ikkje i kodebasen.** Grundig søk (`grep -i tidio` over heile repoet utanom `node_modules`) fann **ingen treff** i faktisk kode (`.js`, `.ts`, `.html`) — berre i malen sjølv (`data-map-template.md`, `customer-go-live-checklist.md`) og i denne rådgjevaragenten sin eigen instruksjonsfil. **Dette er ein reell avdekt feil i malverket**, ikkje eit ope spørsmål: Tidio er IKKJE ei reell, verdifri integrasjon som "kan vere PÅ eller AV" — det finst rett og slett ingen kode som lastar Tidio noko stad i repoet i dag. Sjå punkt 4/5 under handling.
@@ -125,6 +149,7 @@ Brukar har stadfesta eit aktivt val om å bruke Plausible, grunngjeve med EU-lag
 | Google LLC | Google Fonts-levering | **LØYST 2026-07-16 for Vibeverk sine to eigne fontar** (Poppins/Nunito Sans) — no sjølv-hosta, ingen førespurnad til Google i det heile, sjå punkt 3. Framleis relevant berre om ein KUNDE via Console vel eit anna Google Font-namn (då: besøkjande sin IP, hendeleg, ved fontførespurnad) | Delvis — sjå merknad | USA (for framleis-dynamiske fontval hos andre kundar) | **[ÅPENT, sannsynlegvis Google sine standardvilkår]** |
 | Plausible Analytics | Web-analyse | Sidevisingar, ikkje-cookiebasert | **[ÅPENT for DENNE tenanten om PÅSLÅTT — sjå punkt 3a, ikkje konfigurert i repoets `config.js`, men brukar har stadfesta eit AKTIVT VAL om å bruke Plausible]** | **NEI — stadfesta 2026-07-16 via Plausible sine eigne offentlege sider: "Visitor data does not leave the EU", selskap registrert i Estland** | **[ÅPENT — sjekk faktisk avtale, men Plausible tilbyr normalt standardvilkår]** |
 | Tidio | Live chat SaaS | — | **NEI — inga kode finst, sjå punkt 3 over** | Ikkje relevant | Ikkje relevant |
+| Anthropic PBC | AI-generering for Oversikt/Smart årshjul (Workspace) | Brukarskriven fritekst (situasjons-/årshjul-skildring, opptil ~1500 teikn), kan innehalde persondata om brukaren sjølv skriv inn slikt | **JA — lagt til her 2026-08-06, ikkje tidlegare identifisert som tredjepart. `api/ai/oversikt.js`/`api/ai/annual-wheel.js` kallar `api.anthropic.com/v1/messages` direkte** | **[ÅPENT — ikkje henta i dette passet, Anthropic sin DPA/underdatabehandlarliste/overføringsgrunnlag USA→EØS må undersøkast]** | **[ÅPENT]** |
 
 **Oppsummert kritikalitet (brukar spurde eksplisitt om dette 2026-07-16):** **Resend er den mest kritiske av dei to attverande ikkje-EU-prosessorane**, sidan han faktisk handterer INNHALDET i personopplysningar (e-postadresser, meldingstekst i utgåande e-postar) — ikkje berre metadata. Vercel handterer til samanlikning berre `Host`-headeren (hostnamnet) ved ruting, aldri besøkjande sitt faktiske namn/e-post/meldingsinnhald — ein monaleg mindre eksponering, sjølv om begge er amerikanske selskap med SCC som overføringsgrunnlag. Supabase (all lagring) og Plausible (analyse) er begge stadfesta reint EU-baserte. Google Fonts er løyst for Vibeverk sjølv, framleis eit ope, men lite kritisk, punkt for andre kundar sitt frie fontval.
 
@@ -176,6 +201,9 @@ Dette er noko malen ikkje dekker i det heile, sidan det ikkje eksisterte då mal
 - [ ] Retensjonsperiodar for chat/CRM/leads/bookingar/tilsettdata — ingen er koda inn, alt er driftsavgjerder som må dokumenterast.
 - [ ] `admin.password`-verdien for den faktiske live-tenanten (repoets `config.js` har placeholder `"test"` — dette er malen/lokal-dev, IKKJE nødvendigvis kva som faktisk er sett i superconfig for `vibeverk.no` i dag, men bør stadfestast at eit sterkt, unikt passord faktisk er sett før dette blir brukt som eit reelt personvern-/tryggingsgrunnlag).
 - [ ] `SITE_LOCK_PASSWORD` sin faktiske noverande verdi (uansett historisk placeholder nemnt i `CURRENT_STATE.md`) — irrelevant for GDPR-vurdering direkte, men bør ikkje forvekslast med ein reell tilgangskontroll i noko kundevendt dokument.
+- [ ] **Lagt til 2026-08-06**: Sidetelling sitt §3-15-spørsmål (både sjølve `sessionStorage`-lagringa og konverteringskoblinga) — sjå `docs/architecture/sidetelling.md` og `docs/compliance/legal-complexity-vs-value-2026-08-06.md`. Det klart mest kritiske opne punktet per dette passet.
+- [ ] **Lagt til 2026-08-06**: Anthropic sin DPA/underdatabehandlarliste/overføringsgrunnlag for Oversikt/Smart årshjul-modulane — ikkje henta i noko pass enno.
+- [ ] **Lagt til 2026-08-06**: automatisk retensjon/sletting finst IKKJE i det heile i koden (stadfesta ved grundig søk etter `pg_cron`/TTL/planlagd opprydding) — retensjon er i dag utelukkande manuelt/driftsavgjerd for alle datakategoriar, ikkje berre "ikkje dokumentert."
 
 ---
 
