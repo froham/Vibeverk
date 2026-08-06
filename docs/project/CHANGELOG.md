@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.103.0 — 2026-08-06
+
+**Fase 4 av personvern-videreutviklinga: godkjenning + eksport.** Arkitekt-planlagt før bygging — Arkitekten flagga at "godkjenning/eksport" ALDRI hadde vore gjennom beslutningsmøtet 2026-08-06 (berre 8 andre saker er dokumentert der), og at brifen sitt opphavlege ordval var reelt fleirtydig på tre uavhengige aksar. Løyst med ein eigen `AskUserQuestion`-runde før noko vart bygd, same disiplin som resten av dette prosjektet:
+- **Godkjenningsflate**: rein intern journalføring — INGEN ny kundevendt flate/lenke/e-post. Operatøren fyller inn tre felt i Console sjølv, etter ein ekte samtale (telefon/e-post/møte).
+- **Publiser-sperre**: reint informativt — "Publiser" er ALDRI blokkert av manglande godkjenning.
+- **Eksport**: éin nedlastbar HTML-fil av DEN PUBLISERTE versjonen, til kunden sitt eige compliance-arkiv. Ingen revisjonseksport/JSON i denne fasen.
+
+Alt i `console/console-core.js`, ingen SQL-migrasjon, ingen ny store-nøkkel:
+- `version.approval` (skaffa som `null` sidan Fase 1, aldri lese/skrive før no) får no reell form: `{ approvedBy, channel, note, approvedAt }`. Ny inline fieldset i Dokument-fana sitt utkast-steg ("Godkjenning frå kunden") — tre felt + ein eksplisitt "Registrer godkjenning"-knapp. `approvedAt` vert BERRE stempla ved eksplisitt klikk, aldri berre av å skrive i eit felt (feltverdiane sjølve syncar likevel inn via `captureFieldEdits()`/`wrap._privacyFlush`, så eit fanebyte ikkje mistar det som alt er skrive).
+- Godkjenningsstatus vist read-only i Historikk-fana sitt per-versjon-rad ("✓ Godkjent av X (kanal), dato").
+- Ny `privacyExportPublishedHtml()` — "Last ned som HTML"-knapp i Dokument-fana sin publisert-visning, same Blob+ObjectURL-nedlastingsmønster som Priser sin "Last ned som bilde" (`priserExportImage`). Sjølvstendig, statisk HTML-dokument, ingen ekstern avhengigheit.
+- Console-only endring, ingen `core.js`/`components.js`/`module-*.js`-endring, ingen test.js/test-workspace.js/test-api.js-påverknad. Cache-bust: `console-core.js?v=228`.
+- **Security Auditor-pass (uavhengig, same dag): eitt reelt MEDIUM-funn, retta før merge.** `privacyExportPublishedHtml()` limte `bodyBlocks` rått inn i den nedlastbare fila utan å sanere på nytt -- termsField() (components.js) sanerer ALLTID same type innhald ved kvar rendering til ein ekte besøkjande nettopp fordi gamal migrert `priv.text` (frå FØR versjonssystemet, `migrateLegacyPrivacyText()`) kan innehalde usanert HTML som aldri vart rørt igjen om ein operatør aldri opna og lagra akkurat den blokka. Sidan den eksporterte fila er MEINT å opnast i ein nettlesar seinare (kunden sitt eige arkiv), var dette ein reell, om enn smal, XSS-veg. Retta med `C.sanitizeRichHtml()` (idempotent, ingen kostnad for det vanlege, alt trygge tilfellet).
+- **UX/Mobile Reviewer-pass (uavhengig, same dag, ekte rendra HTML+CSS): to HIGH-funn, retta før merge.** Den nye Kanal-nedtrekkslista hadde ingen matchande CSS i det heile (`.field select` mangla frå stilarket -- retta for BÅDE denne og eit tilsvarande, alt eksisterande hòl i Skjematekster-fana sin Behandlingsgrunnlag-nedtrekk, éin fiks for begge). Meir alvorleg: ei registrert godkjenning heldt fram å vise ein grøn "Godkjent"-pille UENDRA sjølv etter at avsnitta faktisk vart redigert (og publisert!) etterpå -- kunden godkjende IKKJE den nye teksten, men UI-et sa ingenting om det. Retta med eit lettvekt "har innhaldet endra seg sidan"-fingeravtrykk (`privacyApprovalContentSnapshot()`, ingen hashing, berre den flate teksten sjølv) -- ei sidan-endra godkjenning viser no ei gul "Godkjent (innhald endra sidan)"-merking i staden, utan å fjerne sjølve journalposten (dato/kven/kanal er framleis sann historie). Tre attverande MEDIUM-funn òg retta: eit tomt klikk på "Registrer" kunne skape ei "godkjent av (ikkje oppgitt)"-oppføring som ser ut som korrupt data (retta med eit påkravd namn-felt); ingen veg tilbake til "ikkje registrert" ved feilregistrering (retta med ei ny, Tier A "Fjern godkjenning"-lenke); og eksportfila sitt filnamn hadde ingen kundeidentifikator, kolliderer på tvers av kundar same dag (retta med tenant-slug i filnamnet).
+
+---
+
 ## 0.102.0 — 2026-08-06
 
 **Fase 3 av personvern-videreutviklinga: leverandørregister.** Arkitekt-planlagt før bygging (sjå denne oppføringa for kva som vart bestemt). Console får ei 5. fane i Personvern ("Leverandørar"), mellom Samtykker og Historikk.

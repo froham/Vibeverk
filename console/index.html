@@ -93,13 +93,18 @@
     .help-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-border); color: var(--color-muted); font-size: .72rem; font-weight: 700; border: none; cursor: pointer; vertical-align: middle; margin-left: .35rem; padding: 0; line-height: 1; }
     .help-icon__pop { display: none; position: absolute; bottom: 135%; left: 50%; transform: translateX(-50%); width: 230px; background: var(--color-text); color: #fff; font-size: .78rem; font-weight: 400; line-height: 1.45; padding: .65rem .75rem; border-radius: 8px; z-index: 20; text-align: left; }
     .help-icon.is-open .help-icon__pop { display: block; }
-    .field input:not([type="color"]), .field textarea {
+    /* .field select er MEDVITE lagt til her (UX-funn, Fase 4, 2026-08-06) --
+       fanst frå før for éin annan &lt;select&gt; i same fana (Behandlingsgrunnlag,
+       renderPersonvernSkjema) utan nokon matchande regel, og den nye
+       Kanal-veljaren i Godkjenning-fieldsetet arva same hòl -- rett éin gong
+       for begge i staden for å lappe kvar for seg. */
+    .field input:not([type="color"]), .field textarea, .field select {
       font: inherit; padding: .7rem .85rem; border-radius: 10px;
       border: 1.5px solid var(--color-border); background: var(--color-surface);
       color: var(--color-text); width: 100%; resize: vertical;
       transition: border-color .2s, box-shadow .2s;
     }
-    .field input:not([type="color"]):focus, .field textarea:focus {
+    .field input:not([type="color"]):focus, .field textarea:focus, .field select:focus {
       outline: none; border-color: var(--color-primary);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
     }
@@ -746,6 +751,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=227"></script>
+  <script src="console-core.js?v=228"></script>
 </body>
 </html>
