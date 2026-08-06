@@ -25,7 +25,7 @@ Eit forslag som bryt eitt av desse prinsippa (t.d. geolokasjon, som krev anten e
 | `is_bot` | boolean | Enkel regex mot kjende bot-signaturar i User-Agent, ingen ekstern deteksjonsteneste |
 | `is_test` | boolean | Syntetiske rader, kun frå `seed_test_pageviews()` (staging-only, sjå eige avsnitt) |
 
-`leads`/`bookings` (`supabase/migrations/20260803142700_add_analytics_session_conversion.sql`): nullbar `analytics_session_id text`-kolonne på begge, ingen FOREIGN KEY (same laus-kopling-mønster som `leads.chat_id` — `analytics_events.session_id` er ein grupperingsnøkkel, ikkje unik, så ein ekte FK er ikkje mogleg).
+`leads`/`bookings` (`supabase/migrations/20260803142700_add_analytics_session_conversion.sql`): nullbar `analytics_session_id text`-kolonne på begge, ingen FOREIGN KEY (same laus-kopling-mønster som `leads.chat_id` — `analytics_events.session_id` er ein grupperingsnøkkel, ikkje unik, så ein ekte FK er ikkje mogleg). **FJERNA frå skrivesida 2026-08-06** (sjå "Ope juridisk spørsmål" under) — kolonna står att i skjemaet (ingen migrasjon køyrd for å droppe henne, berre klientkoden slutta å sende verdien, `DEFAULT NULL` i RPC-en gjer dette trygt), men vert aldri fylt ut for nye rader lenger.
 
 **Personvernsprinsipp for `device_type`/`is_bot`**: begge er førehandsrekna, kategoriske felt — same mønster som `chat_conversations.browser/os` (`module-chat.js` sin `getBrowserInfo()`) alt bruker. Den rå User-Agent-strengen vert ALDRI lagra server-sida (ho er ein fingerprinting-vektor; ein kategorisk verdi som "mobil"/"pc" er det ikkje).
 
@@ -52,7 +52,7 @@ Grunnmodul: pageview/CTA-fangst, `insert_analytics_event()` (SECURITY DEFINER, a
 1. **Steg 1**: `device_type`/`is_bot` (sjå datamodell over).
 2. **Steg 2 — "Trender"**: rein periode-mot-periode-samanlikning (siste 7 dagar mot dei 7 før), same "rule-based, ingen AI"-filosofi som `computeWebsiteHealth()` (`docs/architecture/website-health-scoring.md`). Ingen ny spørring — samanlikningsvindauget (14 dagar) er innanfor dei 30 dagane panelet alt hentar. **Sjå Fase 3 under — dette faste 7-dagars-vindauget er sidan generalisert til å skalere med periodevalet.**
 3. **Steg 3a**: `App.getAnalyticsSessionId()` i `core.js` — session-ID-generering flytta ut av `module-sidetelling.js` sjølv, sidan Kontakt-/Tilbod-/Booking-skjemaa fungerer heilt uavhengig av om `features.sidetelling` er på/av, og treng tilgang til same ID for steg 3b. Returnerer `null` når funksjonen er av.
-4. **Steg 3b — konverteringskobling**: `leads`/`bookings.analytics_session_id`, kopla mot inngangsside i adminpanelet ("Henvendelser fra disse sidene"). **Sjå Fase 3 under — denne per-inngangsside-topplista er sidan erstatta med ein samla trakt.** Sjå "Ope juridisk spørsmål" under.
+4. **Steg 3b — konverteringskobling (FJERNA 2026-08-06)**: `leads`/`bookings.analytics_session_id`, kopla mot inngangsside i adminpanelet ("Henvendelser fra disse sidene"). Vart sidan erstatta med ein samla trakt (`.an-funnel` i `renderSiderPane()`) — og denne trakten sjølv er no fjerna att, saman med heile skrivesida av koplinga, etter beslutningsmøtet 2026-08-06 (sjå "Ope juridisk spørsmål" under). `App.getAnalyticsSessionId()` (steg 3a) står framleis att, brukt kun til sidetellinga sin eigen pageview-/CTA-sporing.
 
 ### Fase 3 — Innsikt-redesign (0.87.0, 2026-08-03)
 
@@ -89,11 +89,13 @@ Konsekvens: dette er **ikkje lenger berre eit spørsmål om steg 3b (konverterin
 
 For sesjonar som faktisk konverterer (steg 3b, sender eit skjema), kjem eit **andre, sjølvstendig** spørsmål i tillegg: koplinga skapar ein indirekte veg frå elles anonyme pageview-rader til ein namngjeven person (via lead/booking sine kontaktopplysningar) — dette er sitt eige GDPR-behandlingsgrunnlag-spørsmål, ikkje berre ein §3-15-variant. Eit spesifikt, uavhuka samtykke ved sjølve skjemainnsendinga kan vere ein plausibel veg til eit gyldig grunnlag for NETTOPP koplinga (sjå `docs/compliance/` sitt oppdaterte notat), men eit slikt samtykke kjem for seint til å dekkje §3-15-spørsmålet om sjølve `sessionStorage`-lagringa, som uansett skjer FØR nokon skjemainnsending. Dei to laga må ikkje blandast saman.
 
-Ingen av desse spørsmåla kan avgjerast av kodegjennomgang åleine — krev kvalifisert juridisk rådgivar. Sjå `docs/compliance/` for full kjeldegrunngjeving og ei eksplisitt verdi-vs-kompleksitet-vurdering (er sjølve funksjonen verdt den juridiske kompleksiteten, eller bør omfanget/funksjonen reduserast før vidare byggjearbeid).
+Ingen av desse spørsmåla kunne avgjerast av kodegjennomgang åleine — krevde kvalifisert vurdering. Sjå `docs/compliance/legal-complexity-vs-value-2026-08-06.md` for full kjeldegrunngjeving og verdi-vs-kompleksitet-vurderinga som låg til grunn for beslutningane under.
 
-Deployert til produksjon 2026-08-03 likevel (brukarval) sidan ingen ekte kundar er påverka i dag (kun Vibeverk sjølv og Sunnvask-demo). Sjå `docs/roadmap/ROADMAP.md` "Next" for det fulle, eksplisitte "MÅ AVKLARAST FØR NOKON EKTE KUNDE"-punktet.
+**Beslutningsmøte 2026-08-06 — begge spørsmåla avgjorde (sjå `docs/compliance/legal-complexity-vs-value-2026-08-06.md` del 5 for full grunngjeving):**
+1. **Konverteringskoblinga (steg 3b) er FJERNA i kode** — `core.js` sin `addLead()`/`module-booking.js` sin booking-innsending sluttar å sende `p_analytics_session_id`, og `module-sidetelling.js` sin `.an-funnel`-trakt (som viste koplinga) er fjerna att saman med henne. Opning for å byggje ein ordentleg, juridisk gjennomtenkt versjon seinare som eiga, bevisst funksjon.
+2. **Sjølve `sessionStorage`-lagringa (grunnprinsipp 3) er pausa for reelle kundar** (held fram for Vibeverk sjølv/Sunnvask-demo). Langsiktig plan: byt mekanismen ut med ein server-side, dagleg-roterande salta hash av IP+User-Agent (stadfesta 2026-08-06 at dette er nøyaktig metoden Plausible sjølv nyttar, `plausible.io/data-policy`: "We do not use cookies, browser cache or local storage") — fjernar heile §3-15-spørsmålet strukturelt i staden for å stole på eit usikkert unntak eller bryte "ingen banner"-prinsippet. **Ikkje bygd enno**, eit framtidig prosjekt.
 
-**Verifisert trygt i implementasjonen sjølv**: `analytics_session_id` er bevisst haldt utanfor `dbLeadToJs`/`dbBookingToJs` sine kvitelister — vert ALDRI vist i Web-admin sitt UI, CSV- eller JSON-eksport. GDPR-sletting av ein lead/booking slettar heile rada, inkludert kolonna, automatisk.
+**Verifisert trygt i implementasjonen sjølv (historisk, gjeld dei gamle radene)**: `analytics_session_id` var bevisst haldt utanfor `dbLeadToJs`/`dbBookingToJs` sine kvitelister — vart ALDRI vist i Web-admin sitt UI, CSV- eller JSON-eksport. GDPR-sletting av ein lead/booking slettar heile rada, inkludert kolonna, automatisk. Kolonna finst framleis i skjemaet (ingen migrasjon køyrd), men vert ikkje lenger fylt ut for nye rader.
 
 ## Bevisst ikkje bygd (bryt eitt av dei tre grunnprinsippa, eller vurdert og avvist av andre grunnar)
 

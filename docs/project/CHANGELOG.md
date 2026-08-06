@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.99.0 — 2026-08-06
+
+**Personvern-endring, avgjort i beslutningsmøte same dag (sjå `docs/compliance/legal-complexity-vs-value-2026-08-06.md` del 5):** sidetelling sin konverteringskobling (Fase 2 steg 3b) er fjerna. Kobla elles anonyme pageview-rader til ein namngjeven lead/booking ved skjemainnsending — eit eige, sjølvstendig GDPR-behandlingsgrunnlag-spørsmål for lita verdi (funksjonen var alt bevisst dempa i UI, ikkje ein hovudmetrikk).
+
+- `core.js` sin `addLead()` og `module-booking.js` sin booking-innsending sluttar å sende `p_analytics_session_id` til `insert_anon_lead`/`insert_anon_booking` — RPC-ane sitt `DEFAULT NULL` gjer dette trygt, ingen migrasjon nødvendig. Kolonna `analytics_session_id` står att i `leads`/`bookings`-skjemaet (historiske rader), men vert ikkje fylt ut for nye.
+- `module-sidetelling.js` sin `.an-funnel`-trakt ("Fra besøk til henvendelse") er fjerna heilt saman med `fetchConversions()` og all vegen gjennom rendringskjeda (`renderSiderPane`/`renderPanes`/`mountPanel`/`bindPanel` mista `conversions`-parameteren). Dødt `.an-funnel*`-CSS fjerna frå `index.html`/`admin/index.html`.
+- `App.getAnalyticsSessionId()` (steg 3a) står framleis att, no berre brukt til sidetellinga sin eigen pageview-/CTA-sporing.
+- Test.js sin tidlegare "konverteringskobling"-testblokk (testa `.an-funnel`) fjerna som genuint obsolet -- funksjonen ho testa finst ikkje lenger. Ny/endra assertion stadfestar i staden at `addLead()` IKKJE lenger sender `p_analytics_session_id`. 672 OK / 0 FEIL (ned frå 676, nøyaktig dei fire fjerna funnel-assertions).
+
+**Framleis ope, ikkje ein del av denne endringa**: sjølve `sessionStorage`-baserte pageview-lagringa (grunnprinsipp 3) er pausa for reelle kundar (heldt fram for Vibeverk sjølv/Sunnvask-demo) i påvente av ein planlagt ombygging til ein server-side salta IP+User-Agent-hash (same prinsipp som Plausible sjølv nyttar) -- IKKJE bygd i denne oppføringa, sjå `docs/architecture/sidetelling.md`.
+
+Cache-bust: `core.js?v=88`, `module-booking.js?v=19` (index.html/admin/index.html), `?v=12` (workspace/index.html), `module-sidetelling.js?v=9`, `console-core.js?v=223`.
+
+---
+
 ## 0.98.6 — 2026-08-05
 
 **Testing/QA, ingen produktendring:** Lukka hovudhòlet i "full innloggingsmatrise" (roadmapens "Next" item 2) — dei eksisterande smoke-vibeverk-flytane inviterte/fjerna kastebrukarar via ekte UI, men logga aldri inn SOM dei, så rolle-avgrensa UI-synlegheit var aldri faktisk testa, berre invitasjons-/fjernings-mekanikken.

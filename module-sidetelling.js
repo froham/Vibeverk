@@ -217,33 +217,14 @@
       .then(function (r) { cb(r.error ? null : (r.data || [])); });
   }
 
-  // Fase 2 (steg 3b) -- konverteringskobling. Egen, tolerant spørring (feiler
-  // IKKE hele panelet om denne feiler -- kun selve konverteringsdelen
-  // uteblir, se mountPanel()). Henter kun analytics_session_id + tidspunkt
-  // fra leads/bookings, aldri navn/e-post/melding -- selve koblingen (mot
-  // pageview-radene) skjer klientsiden i renderSiderPane().
-  function fetchConversions(cb) {
-    var since = new Date(Date.now() - MAX_LOOKBACK_DAYS * 86400000).toISOString();
-    // Manuell join-teljar i staden for Promise.all() -- held seg til same
-    // synkron-når-mogleg callback-stil som resten av fila (den falske
-    // Supabase-klienten i test.js svarer synkront; ekte Supabase gjer det
-    // ikkje, men denne teljaren er korrekt uansett rekkjefølgje/timing).
-    var leadsRows = null, bookingsRows = null, pending = 2, failed = false;
-    function maybeDone() {
-      if (--pending > 0) return;
-      if (failed) { cb(null); return; }
-      var rows = (leadsRows || []).concat(bookingsRows || []).filter(function (r) { return r.analytics_session_id; });
-      cb(rows);
-    }
-    _sb.from("leads").select("analytics_session_id,created_at").gte("created_at", since).then(function (r) {
-      if (r.error) failed = true; else leadsRows = r.data || [];
-      maybeDone();
-    });
-    _sb.from("bookings").select("analytics_session_id,created_at").gte("created_at", since).then(function (r) {
-      if (r.error) failed = true; else bookingsRows = r.data || [];
-      maybeDone();
-    });
-  }
+  // Fase 2 steg 3b (konverteringskobling, fetchConversions()) er FJERNA
+  // (beslutningsmøte 2026-08-06, sjå docs/compliance/legal-complexity-vs-
+  // value-2026-08-06.md del 5) -- kobla elles anonyme pageview-rader til ein
+  // namngjeven henvendelse, eit eige GDPR-spørsmål for lita verdi. Sjå
+  // core.js sin addLead()-kommentar for tilsvarande grunngjeving på
+  // skrivesida. Historiske analytics_session_id-verdiar frå før denne
+  // endringa kan framleis finnast i databasen, men vert ikkje lenger lest
+  // eller vist her.
 
   function esc(s) { return C.esc(String(s == null ? "" : s)); }
 
@@ -449,7 +430,7 @@
   }
 
   /* --- Sider-fane ------------------------------------------------------------ */
-  function renderSiderPane(rows, conversions, days) {
+  function renderSiderPane(rows, days) {
     var pageviews = rows.filter(function (r) { return r.type === "pageview"; });
     var ctas      = rows.filter(function (r) { return r.type === "cta"; });
 
@@ -479,33 +460,6 @@
         }).join("") + '</div>'
       : '<p class="an-hint">Ingen CTA-klikk i valgt periode.</p>';
 
-    // Konverteringskobling -- kun sesjonar sidetellinga faktisk har sett
-    // (bySession) tel med -- ein konvertering utan matchande pageview-
-    // sesjon (t.d. innsending like utanfor perioden) vert stille utelate.
-    // Vist som ein samla, TONA NED trakt (sidevisning -> CTA-klikk ->
-    // henvendelse) i staden for ei topplista etter inngangsside -- kobling
-    // mellom besøksdata og ein namngjeven henvendelse er framleis eit ope
-    // juridisk spørsmål internt (sjå ADR-0013-området/roadmap), skal difor
-    // aldri få meir visuell vekt enn resten av panelet.
-    var conversionCount = 0;
-    (conversions || []).forEach(function (c) {
-      if (bySession[c.analytics_session_id] && bySession[c.analytics_session_id].length) conversionCount++;
-    });
-    var funnelHtml = conversionCount ? (
-      '<div class="an-funnel">' +
-        '<h5>Fra besøk til henvendelse ' + C.helpIcon(
-          conversionCount + " henvendelse" + (conversionCount === 1 ? "" : "r") + " (kontakt, tilbud eller booking) kan spores til besøk i valgt periode. Vises tonet ned bevisst -- koblingen mellom besøksdata og en navngitt henvendelse er fortsatt en uavklart problemstilling internt, ikke en hovedmetrikk."
-        ) + '</h5>' +
-        '<div class="an-funnel__row">' +
-          '<div class="an-funnel__step"><div class="an-funnel__n">' + pageviews.length + '</div><div class="an-funnel__l">Sidevisninger</div></div>' +
-          '<div class="an-funnel__arrow">→</div>' +
-          '<div class="an-funnel__step"><div class="an-funnel__n">' + ctas.length + '</div><div class="an-funnel__l">CTA-klikk</div></div>' +
-          '<div class="an-funnel__arrow">→</div>' +
-          '<div class="an-funnel__step"><div class="an-funnel__n">' + conversionCount + '</div><div class="an-funnel__l">Henvendelser</div></div>' +
-        '</div>' +
-      '</div>'
-    ) : "";
-
     return '<h4 class="an-heading">Sidebruk</h4>' +
       '<div class="an-list-grid">' +
         toplistHtml("Mest besøkte sider", topPaths, function (i) { return displayPath(i.key); }) +
@@ -513,8 +467,7 @@
         toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siden en besøkende forlot nettsiden fra") +
       '</div>' +
       '<h4 class="an-heading">CTA-klikk etter type</h4>' +
-      ctaChipsHtml +
-      (funnelHtml ? '<h4 class="an-heading">Henvendelser</h4>' + funnelHtml : "");
+      ctaChipsHtml;
   }
 
   /* --- Kilder & enheter-fane ------------------------------------------------- */
@@ -576,18 +529,18 @@
     '</div>';
   }
 
-  function renderPanes(container, rows, conversions, days) {
+  function renderPanes(container, rows, days) {
     var sliced = sliceRowsToPeriod(rows, days);
     container.querySelector('[data-an-pane="oversikt"]').innerHTML = renderOversiktPane(sliced, days);
-    container.querySelector('[data-an-pane="sider"]').innerHTML = renderSiderPane(sliced, conversions, days);
+    container.querySelector('[data-an-pane="sider"]').innerHTML = renderSiderPane(sliced, days);
     container.querySelector('[data-an-pane="kilder"]').innerHTML = renderKilderPane(sliced);
   }
 
-  function mountPanel(container, rows, conversions) {
+  function mountPanel(container, rows) {
     var state = { days: DEFAULT_PERIOD_DAYS };
     container.innerHTML = shellHtml(state.days) + testDataButtonHtml();
-    renderPanes(container, rows, conversions, state.days);
-    bindPanel(container, rows, conversions, state);
+    renderPanes(container, rows, state.days);
+    bindPanel(container, rows, state);
     bindBarTooltips(container);
     var seedBtn = container.querySelector("[data-sidetelling-seed]");
     if (seedBtn) seedBtn.addEventListener("click", function () { runSeedTestData(container, seedBtn); });
@@ -624,7 +577,7 @@
     });
   }
 
-  function bindPanel(container, rows, conversions, state) {
+  function bindPanel(container, rows, state) {
     // Sub-faner (Oversikt/Sider/Kilder & enheter) -- egen attributt/klasse,
     // IKKE C.tabbar()/.tab: en tablist nøstet inne i den øverste admin-
     // fanens .tab/.tabbar ville både kollidert med test.js sine
@@ -650,7 +603,7 @@
         state.days = Number(btn.getAttribute("data-an-days"));
         container.querySelectorAll("[data-an-days]").forEach(function (b) { b.classList.remove("is-active"); });
         btn.classList.add("is-active");
-        renderPanes(container, rows, conversions, state.days);
+        renderPanes(container, rows, state.days);
       });
     });
 
@@ -681,12 +634,7 @@
         if (retryBtn) retryBtn.addEventListener("click", function () { renderAdminPanel(container); });
         return;
       }
-      // Konverteringskobling hentast tolerant -- feilar denne (t.d. RLS/
-      // nettverk), skal resten av panelet framleis rendrast normalt.
-      fetchConversions(function (conversions) {
-        if (!container.ownerDocument || !container.ownerDocument.contains(container)) return;
-        mountPanel(container, rows, conversions || []);
-      });
+      mountPanel(container, rows);
     });
   }
 
