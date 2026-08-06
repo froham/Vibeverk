@@ -36,8 +36,8 @@ const assert = (cond, msg) => { if (!cond) { globalThis.__err=(globalThis.__err|
 // config.js) -- modulen skal ikke eksponere seg selv i det hele tatt, uansett
 // om Supabase er konfigurert eller ikke i dette miljøet.
 assert(typeof window.VwSidetelling === "undefined", "sidetelling er av som standard -- ingen VwSidetelling eksponert");
-assert(window.App.getAnalyticsSessionId() === null,
-  "App.getAnalyticsSessionId() returnerer null når features.sidetelling er av (Fase 2 steg 3a) -- Kontakt-/Tilbod-/Booking-skjema skal fungere uendra uten den");
+assert(typeof window.App.getAnalyticsSessionId === "undefined",
+  "App eksponerer ikkje lenger ein klient-side analyse-ID -- sesjonsgrupperinga skjer berre på serveren");
 
 // 2) Nav har 5 lenker i rekkefølge
 const navIds = [...doc.querySelectorAll(".nav__link")].map(a => a.getAttribute("data-nav"));
@@ -180,7 +180,8 @@ assert(JSON.stringify(catLabels) === JSON.stringify(["Innhold","Henvendelser","I
   assert(/Flere moduler tilgjengelig/.test(manualRoot.textContent), "seksjon for ikkje-aktive modular vises");
   assert(/Med Design-modulen kan du selv style hele nettsiden/.test(manualRoot.textContent), "inaktiv modul (Design) viser kort, fristande oppsummering (teaser)");
   assert(!/Med Design-modulen har du full kontroll over hvordan nettsiden ser ut/.test(manualRoot.textContent), "inaktiv modul (Design) viser IKKJE den fulle, aktive kapittelteksten");
-  assert(/Lurer du på hvor mange som faktisk besøker nettsiden/.test(manualRoot.textContent), "inaktiv modul (Analyse) viser teaser-teksten");
+  assert(/sidevisninger og daglige besøksanslag/.test(manualRoot.textContent),
+    "inaktiv modul (Analyse) viser presis teaser om sidevisningar og daglege anslag");
   var navLinks = [].slice.call(manualRoot.querySelectorAll(".vw-manual__nav a")).map(function (a) { return a.textContent.trim(); });
   assert(navLinks.indexOf("Booking") > -1 && navLinks.indexOf("Design") === -1, "sidebar-navigasjonen listar aktive kapittel, ikkje inaktive (Design manglar): " + navLinks.join(","));
   manualRoot.querySelector("[data-manual-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -2355,18 +2356,27 @@ const __asyncTests = (async () => {
   })();
 
   // --- computeDefaultPrivacyText: egen gren for intern sidetelling (module-
-  // sidetelling.js, 2026-07-31) -- må IKKE gjenbruke Plausible-teksten, sidan
-  // sessionStorage juridisk sett er ein annan, svakare påstand enn Plausible
-  // sin "ingen lagring i det heile" (sjå Arkitekt-vurderinga same dato). ---
+  // sidetelling.js, ombygd 2026-08-06) -- må IKKE gjenbruke Plausible-
+  // teksten, men skal skildre den faktiske, server-side dagsgrupperinga utan
+  // å påstå at ein identifikator vert lagra i nettlesaren. ---
   console.log("\n— Personvern-standardtekst og intern sidetelling —");
   (function () {
     window.App.store.set("superconfig", { features: { sidetelling: true } });
     window.App.reloadConfig();
     var textSide = window.App.computeDefaultPrivacyText();
-    assert(/midlertidig kode lagres/i.test(textSide), "standardtekst forklarer den midlertidige koden i vanlig språk (ikke teknisk «sessionStorage»-jargong): " + textSide.slice(0, 200));
+    assert(/sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering/i.test(textSide),
+      "standardtekst avgrensar påstanden om ingen nettleserlagring presist til sidetellinga si analysegruppering: " + textSide.slice(0, 260));
+    assert(/På serveren lager vi en kode/i.test(textSide) && /koden endres automatisk hver dag/i.test(textSide),
+      "standardtekst forklarer server-side dagskoden i vanleg språk: " + textSide.slice(0, 300));
+    assert(/klikk på kontaktknapper/i.test(textSide) && /grov enhetskategori/i.test(textSide) && /filtrering av automatisert trafikk/i.test(textSide) &&
+      /Selve hendelsen og dagskoden lagres/i.test(textSide),
+      "standardtekst opplyser presist om hendingsfelta og at både hending + dagskode vert lagra: " + textSide.slice(0, 520));
     assert(!/Plausible/i.test(textSide), "standardtekst nevner IKKE Plausible når det er sidetelling (ikke Plausible) som er aktiv");
-    assert(!/sessionStorage/i.test(textSide), "standardtekst unngår teknisk fagterminologi («sessionStorage») i tekst rettet mot ikke-tekniske besøkende");
-    assert(/ingen cookies/i.test(textSide), "standardtekst sier eksplisitt at ingen cookies brukes for sidetelling");
+    assert(!/sessionStorage|localStorage|midlertidig kode|lukker fanen/i.test(textSide),
+      "standardtekst inneheld ingen restar av den fjerna nettlesarlagringsmekanismen");
+    assert(/ingen separat analyseleverandør/i.test(textSide) && /Supabase-database hos driftsleverandøren/i.test(textSide) &&
+      !/deler ikke sidetellingsdata med tredjeparter|ingen tredjepart involvert/i.test(textSide),
+      "standardtekst skil analyseleverandør frå den faktiske Supabase-databehandlaren: " + textSide.slice(0, 520));
 
     window.App.store.set("superconfig", { features: { sidetelling: false } });
     window.App.reloadConfig();
@@ -2776,6 +2786,12 @@ const __asyncTests = (async () => {
       then:   function (cb) { cb(opts.forceError ? { error: { message: "simulert feil" } } : { error: null, data: fakeRows }); }
     };
     return {
+      functions: {
+        invoke: function (name, invokeOpts) {
+          rpcCalls.push({ name: name, params: (invokeOpts && invokeOpts.body) || {}, via: "functions.invoke" });
+          return Promise.resolve({ data: { ok: true }, error: null });
+        }
+      },
       rpc: function (name, params) {
         rpcCalls.push({ name: name, params: params });
         return { then: function (cb) { cb({ error: null }); } };
@@ -2820,8 +2836,44 @@ const __asyncTests = (async () => {
     window4.URL.revokeObjectURL = window4.URL.revokeObjectURL || (() => {});
 
     var rpcCalls = [];
+    var edgeCalls4 = [];
     var eqCalls4 = [];
     var fakeSb = makeFakeSb(rpcCalls, FAKE_ROWS, { eqCalls: eqCalls4 });
+    window4.fetch = function (url, init) {
+      edgeCalls4.push({ url: String(url), init: init });
+      return Promise.resolve({ ok: true, status: 202 });
+    };
+    // Instrumenter den delte Storage-prototypen, ikkje berre instansen
+    // (jsdom kan ignorere direkte overskriving av sessionStorage.getItem).
+    // Loggen skil sessionStorage/localStorage og vert nullstilt etter at
+    // core.js er lasta, slik at legitim auth-lagring ikkje vert feilaktig
+    // rekna som sidetelling. Ein gammal analyse-ID vert medvite liggjande som
+    // sentinel: den nye modulen skal korkje lese, skrive eller rydde han.
+    var storageProto4 = Object.getPrototypeOf(window4.sessionStorage);
+    var originalStorageGet4 = storageProto4.getItem;
+    var originalStorageSet4 = storageProto4.setItem;
+    var originalStorageRemove4 = storageProto4.removeItem;
+    var storageOps4 = [];
+    storageProto4.getItem = function (key) {
+      storageOps4.push({ op: "get", key: String(key), area: this === window4.sessionStorage ? "session" : "local" });
+      return originalStorageGet4.call(this, key);
+    };
+    storageProto4.setItem = function (key, value) {
+      storageOps4.push({ op: "set", key: String(key), area: this === window4.sessionStorage ? "session" : "local" });
+      return originalStorageSet4.call(this, key, value);
+    };
+    storageProto4.removeItem = function (key) {
+      storageOps4.push({ op: "remove", key: String(key), area: this === window4.sessionStorage ? "session" : "local" });
+      return originalStorageRemove4.call(this, key);
+    };
+    originalStorageSet4.call(window4.sessionStorage, "vw-sidetelling-session", "legacy-client-id");
+    // Ein regressjon tilbake til Supabase SDK-en skal gjere testen raud: den
+    // ekte functions.invoke()-vegen les auth-storage før Edge-kallet.
+    fakeSb.functions.invoke = function (name, invokeOpts) {
+      window4.localStorage.getItem("sb-test-auth-token");
+      rpcCalls.push({ name: name, params: (invokeOpts && invokeOpts.body) || {}, via: "functions.invoke" });
+      return Promise.resolve({ data: { ok: true }, error: null });
+    };
     // core.js sin egen _sb (brukt av addLead() m.fl.) er en lukket variabel
     // fanget FØR "App.supabase = ..." kan overstyre den i etterkant -- ulikt
     // module-sidetelling.js, som leser App.supabase friskt ved egen (senere)
@@ -2837,27 +2889,53 @@ const __asyncTests = (async () => {
       window4.eval(src);
     });
     window4.App.supabase = fakeSb; // for module-sidetelling.js, som leser App.supabase friskt ved egen (senere) lasting
+    storageOps4.length = 0;
+    edgeCalls4.length = 0;
     window4.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    assert(storageOps4.length === 0,
+      "første pageview gjer ingen lesing/skriving/fjerning i sessionStorage eller localStorage: " + JSON.stringify(storageOps4));
     window4.document.dispatchEvent(new window4.Event("DOMContentLoaded", { bubbles: true }));
     var doc4 = window4.document;
 
     assert(typeof window4.VwSidetelling === "object", "features.sidetelling=true + Supabase konfigurert -- VwSidetelling eksponeres");
-    assert(rpcCalls.length === 1 && rpcCalls[0].name === "insert_analytics_event" && rpcCalls[0].params.p_type === "pageview",
-      "sidevisning sendes automatisk ved sidelast: " + JSON.stringify(rpcCalls[0]));
-    assert(["mobil", "nettbrett", "pc"].indexOf(rpcCalls[0].params.p_device_type) > -1 && rpcCalls[0].params.p_is_bot === false,
-      "sidevisning sender med device_type og is_bot=false (jsdom er ikke en bot): " + JSON.stringify(rpcCalls[0]));
+    var pageviewCall4 = edgeCalls4[0];
+    var pageviewPayload4 = pageviewCall4 ? JSON.parse(pageviewCall4.init.body) : {};
+    assert(edgeCalls4.length === 1 && /\/functions\/v1\/sidetelling-event$/.test(pageviewCall4.url) && pageviewPayload4.type === "pageview",
+      "sidevisning sendes automatisk med direkte fetch til Edge Function-en ved sidelast: " + pageviewCall4.url + " " + JSON.stringify(pageviewPayload4));
+    assert(pageviewCall4.init.credentials === "omit" && pageviewCall4.init.cache === "no-store" &&
+      pageviewCall4.init.headers.apikey === window4.SITE_CONFIG.supabase.anonKey &&
+      pageviewCall4.init.headers.authorization === "Bearer " + window4.SITE_CONFIG.supabase.anonKey,
+      "Edge-transporten sender anon-JWT utan cookies/cache eller auth-medviten Supabase-klient");
+    assert(rpcCalls.length === 0,
+      "sidevisninga brukar ikkje Supabase SDK functions.invoke() (som ville lese auth-storage)");
+    assert(!Object.prototype.hasOwnProperty.call(pageviewPayload4, "p_session_id") &&
+      !Object.prototype.hasOwnProperty.call(pageviewPayload4, "session_id"),
+      "pageview sender ingen klientgenerert session-ID -- Edge-funksjonen grupperer hendinga: " + JSON.stringify(pageviewPayload4));
+    assert(["ip", "user_agent", "origin", "site", "domain"].every(function (key) {
+      return !Object.prototype.hasOwnProperty.call(pageviewPayload4, key);
+    }), "pageview sender heller ikkje IP, UA eller domene som klientparametrar: " + JSON.stringify(pageviewPayload4));
+    assert(["mobil", "nettbrett", "pc"].indexOf(pageviewPayload4.device_type) > -1 && pageviewPayload4.is_bot === false,
+      "sidevisning sender med device_type og is_bot=false (jsdom er ikke en bot): " + JSON.stringify(pageviewPayload4));
 
     var telLink = doc4.createElement("a");
     telLink.setAttribute("href", "tel:12345678");
     telLink.textContent = "Ring oss";
     doc4.body.appendChild(telLink);
+    storageOps4.length = 0;
     telLink.dispatchEvent(new window4.MouseEvent("click", { bubbles: true }));
-    assert(rpcCalls.length === 2 && rpcCalls[1].params.p_type === "cta" && rpcCalls[1].params.p_cta_id === "tel",
-      "klikk på tel:-lenke sendes som CTA-hendelse med riktig cta_id: " + JSON.stringify(rpcCalls[1]));
-
-    assert(typeof window4.App.getAnalyticsSessionId === "function", "App.getAnalyticsSessionId() er eksponert på App (Fase 2 steg 3a)");
-    assert(window4.App.getAnalyticsSessionId() === rpcCalls[0].params.p_session_id,
-      "App.getAnalyticsSessionId() gir samme session-ID som sidetellingen selv sendte -- éin einaste kjelde til sanning");
+    var ctaCall4 = edgeCalls4[1];
+    var ctaPayload4 = ctaCall4 ? JSON.parse(ctaCall4.init.body) : {};
+    assert(edgeCalls4.length === 2 && ctaPayload4.type === "cta" && ctaPayload4.cta_id === "tel",
+      "klikk på tel:-lenke sendes som CTA-hendelse med riktig cta_id: " + JSON.stringify(ctaPayload4));
+    assert(!Object.prototype.hasOwnProperty.call(ctaPayload4, "p_session_id") &&
+      !Object.prototype.hasOwnProperty.call(ctaPayload4, "session_id"),
+      "CTA sender ingen klientgenerert session-ID -- Edge-funksjonen grupperer hendinga: " + JSON.stringify(ctaPayload4));
+    assert(storageOps4.length === 0,
+      "CTA-kall gjer ingen lesing/skriving/fjerning i sessionStorage eller localStorage: " + JSON.stringify(storageOps4));
+    assert(originalStorageGet4.call(window4.sessionStorage, "vw-sidetelling-session") === "legacy-client-id",
+      "gammal vw-sidetelling-session-verdi vert ikkje lesen, overskriven eller fjerna av den nye mekanismen");
+    assert(typeof window4.App.getAnalyticsSessionId === "undefined",
+      "App.getAnalyticsSessionId() er heilt fjerna når sidetelling er aktiv");
 
     // Fase 2 steg 3b (konverteringskobling) er FJERNA (beslutningsmøte
     // 2026-08-06, sjå docs/compliance/legal-complexity-vs-value-2026-08-06.md
@@ -2885,6 +2963,8 @@ const __asyncTests = (async () => {
       "adminpanel: inngangssider viser første side i hver av de to øktene (#hjem -> «Hjem» for s1, #tjenester -> «Tjenester» for s2)");
     assert(/Utgangssider[\s\S]*Tjenester/.test(panel.innerHTML), "adminpanel: utgangsside (#tjenester -> «Tjenester», siste i begge økter) vises -- uten egen fangst-hendelse, kun en spørring");
     assert(/Telefon-klikk/.test(panel.innerHTML), "adminpanel: CTA-tallkort for telefon-klikk vises");
+    assert(/Anslått avvisningsrate/.test(panel.textContent) && /Anslåtte sider per besøk/.test(panel.textContent),
+      "adminpanel: besøksbaserte KPI-ar er synleg merkte som anslag, ikkje berre forklarte i skjult hjelpetekst");
     assert(!panel.querySelector("[data-sidetelling-seed]"),
       "test-data-knappen vises IKKE når prosjektets Supabase-URL ikke er vibeverk-staging (produksjonsref i config.js her)");
     assert(eqCalls4.some(function (c) { return c[0] === "is_test" && c[1] === false; }),
@@ -2893,10 +2973,73 @@ const __asyncTests = (async () => {
       "is_bot-rader filtreres alltid bort i spørringen, uavhengig av staging/produksjon: " + JSON.stringify(eqCalls4));
     assert(/Enheter[\s\S]*Mobil/.test(panel.innerHTML) && /Enheter[\s\S]*PC/.test(panel.innerHTML),
       "adminpanel: enhetsfordeling (Mobil/PC) vises i topplisten");
+    storageProto4.getItem = originalStorageGet4;
+    storageProto4.setItem = originalStorageSet4;
+    storageProto4.removeItem = originalStorageRemove4;
     // "Trender vises IKKE for gammel data" flyttet til en egen, dedikert
     // sjekk under (FAKE_ROWS er nå relativt daterte for å overleve reelt
     // periodevalg -- se daysAgoIso() -- så den gamle absolutt-daterte
     // antakelsen her passer ikke lenger for DENNE fixturen).
+  })();
+
+  // Server-side grupperingskontrakt. Edge-handteraren får eigne åtferdstestar
+  // i test-api.js; her låser vi klient-/migrasjonsgrensa statisk. Faktiske
+  // proxy-headerar og tilgangar må i tillegg verifiserast på staging før
+  // kundestart (remote handling krev eksplisitt godkjenning).
+  console.log("\n— Sidetelling: Edge-dagshash og service-only migrasjon —");
+  (function () {
+    var migrationPath = "supabase/migrations/20260806170936_server_side_daily_analytics_hash.sql";
+    var migrationSql = fs.readFileSync(migrationPath, "utf8");
+    var migrationCode = migrationSql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    var compatDef = (migrationCode.match(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+insert_analytics_event\s*\([\s\S]*?\$\$;/i) || [""])[0];
+    var serviceDef = (migrationCode.match(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+insert_analytics_event_service\s*\([\s\S]*?\$\$;/i) || [""])[0];
+    var edgeEntry = fs.readFileSync("supabase/functions/sidetelling-event/index.ts", "utf8");
+    var edgeHandler = fs.readFileSync("supabase/functions/sidetelling-event/handler.js", "utf8");
+    var edgeCode = (edgeEntry + "\n" + edgeHandler).replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    var sidetellingClientCode = fs.readFileSync("module-sidetelling.js", "utf8").replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    var apiTestCode = fs.readFileSync("test-api.js", "utf8");
+    var supabaseConfig = fs.readFileSync("supabase/config.toml", "utf8");
+
+    assert(/p_session_id\s+text\s+DEFAULT\s+NULL/i.test(compatDef) && /\bSTABLE\b/i.test(compatDef) &&
+      !/INSERT\s+INTO/i.test(compatDef),
+      "gammal anon-RPC er ein STABLE kompatibilitets-no-op som aldri lagrar klient-ID-en");
+    assert(/insert_analytics_event_service/i.test(serviceDef) && /SECURITY\s+DEFINER/i.test(serviceDef) &&
+      /\bVOLATILE\b/i.test(serviceDef) && /SET\s+search_path\s*=\s*public/i.test(serviceDef),
+      "skrivande hjelpefunksjon er VOLATILE, låst og berre meint for Edge sin service-role");
+    assert(/auth\.role\(\)\s+IS\s+DISTINCT\s+FROM\s+'service_role'/i.test(serviceDef),
+      "SECURITY DEFINER-helperen validerer sjølv service_role og stoler ikkje berre på ACL");
+    assert(/p_session_id\s*!~\s*'\^\[0-9a-f\]\{64\}\$'/i.test(serviceDef) &&
+      /INSERT\s+INTO\s+analytics_events\s*\(\s*session_id[\s\S]*?VALUES\s*\(\s*p_session_id/i.test(serviceDef),
+      "service-helperen godtek og lagrar berre ein validert 64-teikns Edge-utleidd dagshash");
+    assert(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+analytics_event_daily_quota[\s\S]*?day\s+date\s+PRIMARY\s+KEY[\s\S]*?event_count\s+integer/i.test(migrationCode) &&
+      /event_count\s*<\s*10000/i.test(serviceDef) && /v_group_count\s*>=\s*200/i.test(serviceDef),
+      "ressursvernet har berre global dato/tal-kvote og eit tak mot eksisterande dags-hash");
+    assert(!/\b(?:ip|user_agent|origin|salt|token|hll|secret)_?(?:address|value|hash|key)?\s+(?:text|inet|jsonb|bytea)/i.test(migrationCode) &&
+      !/\bpg_cron\b|vault\./i.test(migrationCode),
+      "migrasjonen innfører ingen rå requestmetadata-, salt-, token-, HLL-, Vault- eller rotasjonspersistens");
+    assert(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+insert_analytics_event_service[\s\S]*?FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role/i.test(migrationCode) &&
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+insert_analytics_event_service[\s\S]*?TO\s+service_role/i.test(migrationCode) &&
+      !/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+insert_analytics_event_service[\s\S]*?TO\s+(?:anon|authenticated)/i.test(migrationCode),
+      "den skrivande hjelpefunksjonen er eksplisitt utilgjengeleg for browserrollene");
+    assert(/REVOKE\s+ALL\s+ON\s+analytics_event_daily_quota\s+FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role/i.test(migrationCode),
+      "den private kvotetabellen revokerer eksplisitt alle aktuelle standardroller");
+    assert(/headers\.get\("x-forwarded-for"\)/.test(edgeCode) && /headers\.get\("user-agent"\)/.test(edgeCode) &&
+      /headers\.get\("origin"\)/.test(edgeCode) && /normalizeIp/.test(edgeCode),
+      "Edge-funksjonen les og validerer IP/UA/site frå server-mottekne headerar");
+    assert(/crypto\.subtle\.digest\("SHA-256"/.test(edgeCode) && /vibeverk-sidetelling-v1/.test(edgeCode) &&
+      /toISOString\(\)\.slice\(0,\s*10\)/.test(edgeCode),
+      "Edge-funksjonen reknar deterministisk, versjonert SHA-256 per UTC-dag");
+    assert(!/localStorage|sessionStorage|document\.cookie/.test(edgeCode) &&
+      /rest\/v1\/rpc\/insert_analytics_event_service/.test(edgeCode),
+      "Edge-runtimekoden brukar ingen browserlagring og sender berre til service-helperen");
+    assert(/window\.fetch\s*\(/.test(sidetellingClientCode) && !/\.functions\.invoke\s*\(/.test(sidetellingClientCode) &&
+      /credentials\s*:\s*"omit"/.test(sidetellingClientCode) && /cache\s*:\s*"no-store"/.test(sidetellingClientCode),
+      "klienten brukar direkte, storage-fri Edge-fetch med cookies og cache eksplisitt slått av");
+    assert(/sidetelling-event\/handler\.js/.test(apiTestCode) && !/sidetelling-event\/index\.ts/.test(apiTestCode),
+      "Node 20-CI importerer den reine JavaScript-handleren, ikkje TypeScript/Deno-entrypointet");
+    assert(/\[functions\.sidetelling-event\][\s\S]*?verify_jwt\s*=\s*true/.test(supabaseConfig) &&
+      /NOTIFY\s+pgrst\s*,\s*'reload schema'/i.test(migrationCode),
+      "Edge-endepunktet krev JWT og PostgREST-skjemaet vert lasta på nytt");
   })();
 
   // --- module-sidetelling.js: Trender vises IKKE når inneværende halvdel

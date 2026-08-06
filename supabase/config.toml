@@ -143,6 +143,9 @@ max_catalogs = 2
 # Analytics Buckets is available to Supabase Pro plan.
 # [storage.analytics.buckets.my-warehouse]
 
+[functions.sidetelling-event]
+verify_jwt = true
+
 # Store vector embeddings in S3 for large and durable datasets
 [storage.vector]
 enabled = true
