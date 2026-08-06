@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.101.0";
+  var VIBEVERK_VERSION = "0.102.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3242,6 +3242,63 @@ window.VwConsole = (function () {
     ["rettslig_plikt", "Rettslig plikt"]
   ];
 
+  // Fase 3 (leverandørregister, 2026-08-06): Vibeverk-heile leverandørfakta
+  // -- IKKJE per-kunde-data, IKKJE Console-redigerbart nokon stad. Dette er
+  // Vibeverk sitt EIGE forhold til kvar leverandør (data-map-vibeverk.md sin
+  // rolleavklaring: kundane har ALDRI eit eige, direkte avtaleforhold til
+  // desse). console-core.js er éin delt fil for alle tenantar (kun config.js/
+  // superconfig skil dei) -- ein hardkoda konstant her er difor rett stad for
+  // ein fakta som er identisk for alle kundar, ikkje ein databasetabell.
+  // Endring av dpaStatus/transferMechanism skal vere eit medvite, sjeldan steg
+  // -- verifiser mot leverandøren sin eigen DPA-side, noter i CHANGELOG.md,
+  // same disiplin som CDN-versjonspinning i CLAUDE.md. Domeneshop er MEDVITE
+  // utelaten (beslutningsmøte 2026-08-06 sak 7 -- berre Vibeverk sin eigen
+  // leverandør for vibeverk.no, aldri kundevendt). Anthropic (Oversikt/Smart
+  // årshjul) er MEDVITE utelaten (sak 4 -- framleis trial-fase, ikkje tilbydd
+  // nokon reell kunde enno) -- ikkje legg til ein rad for han før den
+  // avgjerda faktisk er teken.
+  // isActive(an) -- EINASTE staden som avgjer om ein leverandør faktisk er i
+  // bruk for ein gjeven kunde (Security Auditor-funn, Fase 3, LOW: tidlegare
+  // hardkoda `v.id === "plausible"` i to ulike funksjonar, ei lett-å-gløyme
+  // kopling om ein ny valfri leverandør nokon gong vert lagt til -- no finst
+  // det berre EI sanning, her, per leverandør).
+  var VIBEVERK_VENDORS = [
+    { id: "supabase", name: "Supabase",
+      whatItDoes: "Database, autentisering og fillagring — all persondata plattformen lagrer",
+      isActive: function () { return true; }, country: "eu", transferMechanism: "none",
+      dpaStatus: "unconfirmed",
+      dpaNote: "Krev aktiv bestilling/signering via Supabase Dashboard — ikkje stadfesta gjort (data-map 2026-07-16)." },
+    { id: "vercel", name: "Vercel",
+      whatItDoes: "Hosting og tenant-ruting",
+      isActive: function () { return true; }, country: "us", transferMechanism: "scc",
+      dpaStatus: "unconfirmed",
+      dpaNote: "DPA er automatisk kun på Pro/Enterprise-plan; Vibeverk sin konto er på Hobby-planen (data-map 2026-07-16)." },
+    { id: "resend", name: "Resend",
+      whatItDoes: "Utsending og mottak av e-post",
+      isActive: function () { return true; }, country: "us", transferMechanism: "scc_or_dpf",
+      // "likely_confirmed", IKKJE "confirmed" -- Security Auditor-funn (Fase
+      // 3, LOW): data-map-vibeverk.md seier sjølv berre "Truleg alt i kraft"
+      // (avleia av at Resend ikkje let deg opprette konto utan å akseptere
+      // deira standardvilkår, IKKJE ei eigen, verifisert signering) -- eit
+      // flatt "confirmed" her ville påstått meir stadfesta enn kjelda faktisk
+      // seier, i ei fil som er offentleg lesbar for alle med tilgang til /console/.
+      dpaStatus: "likely_confirmed",
+      dpaNote: "Automatisk innlemma ved kontoopprettinga (godtatt ved å akseptere Resend sine standardvilkår) -- ikkje ei eiga, verifisert signering. Kva overføringsmekanisme (SCC/DPF) som gjeld er ikkje stadfesta (data-map 2026-07-19)." },
+    { id: "plausible", name: "Plausible Analytics",
+      whatItDoes: "Cookiefri trafikkstatistikk",
+      isActive: function (an) { return !!(an && (an.plausible || an.plausibleEmbed)); },
+      country: "eu", transferMechanism: "none",
+      dpaStatus: "unconfirmed",
+      dpaNote: "Ingen stadfesta avtale, men leverandøren tilbyr standardvilkår." }
+  ];
+  var VENDOR_COUNTRY_LABEL = { eu: "EU/EØS", us: "USA" };
+  var VENDOR_TRANSFER_LABEL = {
+    none: "Ikkje relevant (ingen overføring ut av EU/EØS)",
+    scc: "EUs standardavtaler (SCC)",
+    scc_or_dpf: "SCC og/eller EU–US Data Privacy Framework (ikkje stadfesta kva)"
+  };
+  var VENDOR_DPA_LABEL = { confirmed: "Stadfesta", likely_confirmed: "Truleg alt i kraft", unconfirmed: "Ikkje stadfesta" };
+
   function privacyNewId(prefix) {
     return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
   }
@@ -3281,7 +3338,11 @@ window.VwConsole = (function () {
       forms: forms,
       consentPurposes: priv.consentPurposes || [],
       publishedVersionId: priv.publishedVersionId || null,
-      publishedAt: priv.publishedAt || null
+      publishedAt: priv.publishedAt || null,
+      // Fase 3 (leverandørregister): einaste genuint per-kunde-feltet --
+      // resten (kva leverandørar som faktisk er aktive) er avleia av
+      // eksisterande config, ikkje lagra separat, sjå computeSupplierBlock().
+      suppliers: { supabaseRegion: (priv.suppliers && priv.suppliers.supabaseRegion) || "" }
     };
   }
 
@@ -3335,7 +3396,8 @@ window.VwConsole = (function () {
       heading: sc.privacy.heading, text: sc.privacy.text,
       forms: sc.privacy.forms, consentPurposes: sc.privacy.consentPurposes,
       publishedVersionId: sc.privacy.publishedVersionId || null,
-      publishedAt: sc.privacy.publishedAt || null
+      publishedAt: sc.privacy.publishedAt || null,
+      suppliers: sc.privacy.suppliers || { supabaseRegion: "" }
     };
   }
 
@@ -3386,6 +3448,11 @@ window.VwConsole = (function () {
     if (moduleId === "quote")       return !!ft.quote;
     if (moduleId === "booking")     return !!ft.booking;
     if (moduleId === "analytics")   return !!(an && (an.plausible || an.plausibleEmbed)) || ft.sidetelling === true;
+    // Fase 3: Supabase/Vercel/Resend er strukturelt alltid aktive for kvar
+    // einaste kunde (jf. VIBEVERK_VENDORS sin alwaysActive) -- denne blokka
+    // skal difor ALDRI kunne hybrid-vakt-blokkerast bort, ulikt dei
+    // funksjonsflagg-styrte modulane over.
+    if (moduleId === "suppliers")   return true;
     return false; // ukjend/fjerna modul-id -- tving ikkje inkludering
   }
 
@@ -3439,7 +3506,35 @@ window.VwConsole = (function () {
       ? "Denne siden bruker ingen cookies. Vi bruker en enkel, intern sidetelling for trafikkstatistikk (sidevisninger, henvisninger og hvilke sider besøkende kommer fra/går til) — en midlertidig kode lagres i nettleseren din (ikke en informasjonskapsel/cookie) for å gruppere sidevisninger til samme besøk, og slettes automatisk når du lukker fanen. Vi lagrer ikke IP-adresse, navn eller annen personidentifiserbar informasjon om deg, og deler ingenting med tredjeparter."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
     blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: App.ui.textToRichHtml("Bruker vi cookies?\n" + cookieText) });
+    blocks.push({ id: "mod-suppliers", source: "module", moduleId: "suppliers", included: true, edited: false, body: computeSupplierBlock(sc, an) });
     return blocks;
+  }
+
+  // Fase 3 (leverandørregister): genererer "Tredjeparter"-blokka frå
+  // VIBEVERK_VENDORS (faste fakta) + sc.privacy.suppliers.supabaseRegion
+  // (einaste per-kunde-feltet) + den same hasAnalytics-avleiinga som
+  // computeTenantPrivacyBlocks() alt reknar ut. IKKJE ei sjølvstendig
+  // rendering-sti -- vert kalla FRÅ computeTenantPrivacyBlocks() og går
+  // gjennom same mergePrivacyBlocks()/privacyGuardBlockedBlocks()-maskineri
+  // som alle andre blokker, slik at ein operatør sin eigen redigering aldri
+  // vert stille overskriven.
+  //
+  // Tom supabaseRegion (sak flagga av Arkitekten 2026-08-06, ikkje avklart
+  // av beslutningsmøtet): skriv ALDRI ein spesifikk region vi ikkje har
+  // stadfesta -- fell tilbake til ei generisk "i EU"-formulering til feltet
+  // faktisk er fylt inn i Leverandørar-fana, same sikre standard som resten
+  // av forslagsteksten alt brukar (aldri påstå meir enn vi veit).
+  function computeSupplierBlock(sc, an) {
+    var region = (sc.privacy.suppliers && sc.privacy.suppliers.supabaseRegion) || "";
+    var lines = ["Hvilke leverandører behandler opplysningene dine?"];
+    VIBEVERK_VENDORS.forEach(function (v) {
+      if (!v.isActive(an)) return;
+      var whereText = v.id === "supabase"
+        ? (region ? "Data er plassert i " + region + "." : "Data er plassert i EU.")
+        : (VENDOR_COUNTRY_LABEL[v.country] === "USA" ? "Leverandøren er etablert i USA." : "Leverandøren er etablert i EU/EØS.");
+      lines.push(v.name + " — " + v.whatItDoes + ". " + whereText);
+    });
+    return App.ui.textToRichHtml(lines.join("\n\n"));
   }
 
   // Slår saman eit friskt sett med modul-forslag med det som alt står i
@@ -3781,6 +3876,96 @@ window.VwConsole = (function () {
     });
   }
 
+  /* --- Leverandørar-fana (Fase 3, 2026-08-06) -------------------------------
+     Syner Vibeverk sine EIGNE, faste leverandørfakta (VIBEVERK_VENDORS,
+     read-only -- operatøren kan ikkje redigere desse, dei gjeld Vibeverk som
+     selskap, ikkje denne einskilde kunden), pluss det EINASTE genuint
+     redigerbare per-kunde-feltet (Supabase-regionen). Domeneshop er MEDVITE
+     ikkje med her -- sjå VIBEVERK_VENDORS sin eigen kommentar. ------------ */
+  function renderPersonvernLeverandorer(sc, pane, wrap) {
+    var suppliers = sc.privacy.suppliers || { supabaseRegion: "" };
+    // "analytics" er si EIGA store-nøkkel (ikkje eit felt på sc/superconfig),
+    // same henting som Dokument-fana sin "Bygg basert på gjeldande modular"/
+    // publiser-handterar brukar -- syner "Laster …" til svaret kjem attende.
+    pane.innerHTML = '<p style="color:var(--color-muted)">Laster leverandørinformasjon…</p>';
+    // Security Auditor-funn (Fase 3, 2026-08-06, MEDIUM): denne fana er den
+    // EINASTE av Personvern sine underfaner som hentar noko asynkront FØR ho
+    // registrerer wrap._privacyFlush. Utan vakta under kunne operatøren rekke
+    // å byte til ei ANNA fane, skrive noko der, og så -- når dette kallet
+    // endeleg svarer -- få _privacyFlush overskrive med denne fana sin eigen
+    // handterar, som ville fanga OPP DEN ANDRE FANA sine ulagra endringar
+    // (dei hamnar aldri i sc.privacy, forsvinn stille). Same feilklasse som
+    // 2026-08-06-kommentarane elles i denne fila ved "fangar felta PÅ NYTT
+    // etter det asynkrone spranget" -- her er fiksen å ALDRI gjere noko med
+    // svaret om brukaren alt har navigert vekk frå denne fana i mellomtida.
+    // UX-review-funn (Fase 3, MEDIUM): brukar getStoreKeyOrError(), IKKJE
+    // getStoreKey() -- ein forbigåande nettverksfeil skal ALDRI stille synast
+    // som "Plausible er ikkje aktiv" utan at operatøren får vite at sjekken
+    // faktisk ikkje fekk stadfesta noko (same feilklasse getStoreKeyOrError()
+    // vart bygd for å hindre ved publiseringssjekken, sjå notatet der).
+    var myView = _privacyView;
+    getStoreKeyOrError("analytics", function (an, err) {
+      if (_privacyView !== myView) return;
+      if (err) {
+        pane.innerHTML = '<p style="color:#c0392b">Kunne ikkje stadfeste om Plausible er aktiv for denne kunden.</p>' +
+          C.button({ label: "Prøv igjen", variant: "ghost", attrs: 'type="button" id="sup-retry-load"' });
+        pane.querySelector("#sup-retry-load").addEventListener("click", function () { renderPersonvernLeverandorer(sc, pane, wrap); });
+        return;
+      }
+      renderPersonvernLeverandorerLoaded(sc, pane, wrap, suppliers, an || {});
+    });
+  }
+  function renderPersonvernLeverandorerLoaded(sc, pane, wrap, suppliers, an) {
+    var hasAnalytics = !!(an.plausible || an.plausibleEmbed);
+    var vendorRowsHtml = VIBEVERK_VENDORS.map(function (v) {
+      if (!v.isActive(an)) return "";
+      var dpaPillClass = v.dpaStatus === "confirmed" ? "kd-pill--active" : v.dpaStatus === "likely_confirmed" ? "kd-pill--provisioning" : "kd-pill--archived";
+      return '<div class="admin-group" style="margin-bottom:.6rem">' +
+        '<div style="font-weight:600">' + C.esc(v.name) + ' <span class="kd-pill ' + dpaPillClass + '">DPA: ' + C.esc(VENDOR_DPA_LABEL[v.dpaStatus]) + '</span></div>' +
+        '<div style="font-size:.84rem;color:var(--color-muted);margin-top:.2rem">' + C.esc(v.whatItDoes) + ' — ' + C.esc(VENDOR_COUNTRY_LABEL[v.country]) + ' — ' + C.esc(VENDOR_TRANSFER_LABEL[v.transferMechanism]) + '</div>' +
+        '<div style="font-size:.78rem;color:var(--color-muted);margin-top:.2rem">' + C.esc(v.dpaNote) + '</div>' +
+      '</div>';
+    }).join("");
+
+    pane.innerHTML =
+      '<fieldset class="admin-group"><legend>Leverandørar</legend>' +
+        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Desse fakta gjeld Vibeverk som selskap, ikkje denne einskilde kunden — sjå <code>docs/compliance/data-map-vibeverk.md</code>. Kan ikkje redigerast her.</p>' +
+        vendorRowsHtml +
+        '<p style="font-size:.78rem;color:var(--color-muted);margin-top:.4rem">Plausible ' + (hasAnalytics ? "er" : "er IKKJE") + ' aktiv for denne kunden akkurat no (styrt av Analyse-fana), og ' + (hasAnalytics ? "vert difor" : "vert difor ikkje") + ' teken med i forslaget under.</p>' +
+      '</fieldset>' +
+      '<fieldset class="admin-group"><legend>Denne kunden</legend>' +
+        C.field({ id: "sup-supabase-region", label: "Supabase-region for denne kunden", value: suppliers.supabaseRegion,
+          placeholder: "f.eks. Irland",
+          // UX-review-funn (Fase 3, HIGH): verdien limest inn RÅTT i offentleg,
+          // kundevendt personvernerklæringstekst ("Data er plassert i X.") --
+          // utan denne presiseringa ville ulike operatørar skrive inn ulike,
+          // stundom tekniske Supabase-regionkodar (t.d. "eu-west-1") rett inn
+          // i vanleg-språk juridisk tekst. Kort hint (alltid synleg, sjølve
+          // regelen); Dashboard-navigasjonsdetaljen høyrer heller heime i
+          // help() (copy-style-guide.md sitt hint-vs-help-skilje).
+          hint: "Skriv eit vanleg stadnamn som gir meining i ei setning til kunden, f.eks. «Irland» — ikkje den tekniske regionkoden. Stå tom viser ei generell «i EU»-formulering i staden.",
+          help: "Finn regionen i Supabase Dashboard → Project Settings → Infrastructure. Fylles inn éin gong ved onboarding." }) +
+      '</fieldset>' +
+      '<div style="margin-top:1rem">' + C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" id="sup-save"' }) + '</div>' +
+      '<p class="form__status" id="sup-status" style="margin-top:.6rem"></p>';
+
+    function captureSupplierEdits() {
+      suppliers.supabaseRegion = pane.querySelector("#sup-supabase-region").value.trim();
+      sc.privacy.suppliers = suppliers;
+    }
+    if (wrap) wrap._privacyFlush = captureSupplierEdits;
+
+    pane.querySelector("#sup-save").addEventListener("click", function () {
+      captureSupplierEdits();
+      var savingTenantId = _activeTenant && _activeTenant.id;
+      getSC(function (sc2) {
+        sc2.privacy = privacyPublicProjection(sc); // same skriveregel som Skjematekster/Samtykker -- ALDRI sc.privacy direkte
+        saveSC(sc2, savingTenantId);
+        statusMsg(pane.querySelector("#sup-status"), "✓ Lagra!", true);
+      });
+    });
+  }
+
   /* --- Historikk-fana ------------------------------------------------------- */
   function renderPersonvernHistorikk(sc, pane, wrap) {
     var priv = sc.privacy;
@@ -3908,7 +4093,7 @@ window.VwConsole = (function () {
     // eigen, utan å lagre til Supabase) -- kalla HER, FØR wrap.innerHTML vert
     // bytt ut, uansett kva veg brukaren navigerer vidare.
     if (wrap._privacyFlush) { wrap._privacyFlush(); wrap._privacyFlush = null; }
-    var views = [["dokument", "Dokument"], ["skjema", "Skjematekster"], ["samtykke", "Samtykker"], ["historikk", "Historikk"]];
+    var views = [["dokument", "Dokument"], ["skjema", "Skjematekster"], ["samtykke", "Samtykker"], ["leverandorer", "Leverandører"], ["historikk", "Historikk"]];
     wrap.innerHTML =
       '<div class="seg" id="privacy-view-toggle" style="margin-bottom:1.4rem">' +
         views.map(function (v) {
@@ -3927,6 +4112,7 @@ window.VwConsole = (function () {
     var pane = wrap.querySelector("#privacy-pane");
     if (_privacyView === "skjema") renderPersonvernSkjema(sc, pane, wrap);
     else if (_privacyView === "samtykke") renderPersonvernSamtykke(sc, pane, wrap);
+    else if (_privacyView === "leverandorer") renderPersonvernLeverandorer(sc, pane, wrap);
     else if (_privacyView === "historikk") renderPersonvernHistorikk(sc, pane, wrap);
     else renderPersonvernDokument(sc, pane, wrap); // "dokument" og enhver ukjend/framtidig verdi -- eksplisitt fallback
   }

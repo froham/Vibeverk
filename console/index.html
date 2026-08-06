@@ -445,10 +445,22 @@
        for pakkeredigering, modulprisliste, à la carte-tilbudsbygger og
        forhåndsvisning. Bruker dei same --color-*/--radius-variablane som
        resten av Console, ikkje eigne fargar. */
-    .seg { display:flex; border:1px solid var(--color-border); border-radius:999px; overflow:hidden; flex-wrap:wrap; }
+    /* border-radius er 22px (halve min-height), ikkje 999px -- UX-funn
+       (Fase 3, leverandørregister, 2026-08-06): begge .seg-brukarane
+       (Priser/Personvern) har no 5 faner, som WRAPPAR til 2 rader på
+       nettbrettbreidde (768px) og smalare. Med 999px skar det avrunda
+       hjørnet eit stort, synleg "hakk" av bakgrunn inn i den kortare andre
+       rada -- 22px ser framleis heilt ut som ein pille på éi rad (radius =
+       halve knappehøgda), men gjev eit mykje mindre synleg hakk om det
+       likevel wrappar. Media-queryen under minskar i tillegg sjansen for at
+       det wrappar i det heile på nettbrettbreidde. */
+    .seg { display:flex; border:1px solid var(--color-border); border-radius:22px; overflow:hidden; flex-wrap:wrap; }
     .seg button { background:var(--color-surface); border:0; padding:.5rem 1rem; min-height:44px; font: inherit; font-size:.85rem; font-weight:600; color:var(--color-muted); cursor:pointer; }
     .seg button + button { border-left:1px solid var(--color-border); }
     .seg button.is-active { background: var(--color-primary); color:#fff; }
+    @media (max-width: 900px) {
+      .seg button { padding:.5rem .7rem; font-size:.8rem; }
+    }
 
     /* Rediger pakker -- master/detail (brukarønske 2026-08-04: å ha alle
        pakkane opne side om side heile tida vart "rotete og uoversiktleg" --
@@ -734,6 +746,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=226"></script>
+  <script src="console-core.js?v=227"></script>
 </body>
 </html>
