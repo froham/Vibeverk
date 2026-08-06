@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.106.0 — 2026-08-06
+
+**Sanntids besøkstal i Innsikt-panelet.** Etter ei diskusjon om moglegheitsrommet for sidetellinga (kan han i teorien matche mykje av det Plausible tilbyr?) vart tre konkrete tillegg vurderte av Arkitekten: UTM-sporing, land/geolokasjon og sanntids besøkstal. Sanntid vart plukka ut som det einaste å byggje no — null ny personvern-eksponering, null endring i `handler.js`/RPC-signaturar, heilt uavhengig av den enno ikkje merga/deploya server-side hash-ombygginga (branch `sidetelling-server-side-hash`, PR #209).
+
+- Nytt KPI-kort "Besøkende akkurat nå" fyrst i Oversikt-fana sin kortrekke — tel distinkte `session_id` med aktivitet siste 5 minutt. Ingen ny tabell, ingen ny RPC — rein klientside-telling av rader som alt finst i `analytics_events`, same "fetch rått, aggreger i JS"-stil som resten av fila.
+- Eiga, uavhengig oppdateringssyklus (`startLiveVisitorPoll()`, kvart 20. sekund) — heilt fråkopla frå periodeval/fanebyte/"Oppdater". Sjølv-reinsande om containeren forsvinn frå DOM-en (same "sjekk DOM-tilstand i kvart tick"-idiom som `renderAdminPanel()` alt brukar) — ingen ny livssyklus-hake i `core.js` trengst. `container._anLiveInterval` ryddar opp att FØRRE intervallet ved kvar ny mounting, slik at gjentekne "Oppdater"-klikk ikkje hopar opp fleire samtidige intervall (same feilklasse som den alt kjende, retta søyle-tooltip-lekkasjen frå Innsikt-runden 2026-08-03).
+- Fungerer identisk uavhengig av kva skrivemekanisme (den gamle `sessionStorage`-baserte, eller den nye server-side dagshashen frå PR #209) som faktisk er aktiv, sidan begge fyller `session_id`-kolonna — ingen kopling til, eller avhengigheit av, PR #209.
+- Ny testdekning: synkron fyrste-henting (ingen venting på timer-tick i testar), og eit dedikert intervall-spionert regresjonstest som stadfestar at "Oppdater" ikkje doblar opp intervall.
+- **Cookiefritt uendra** — inga ny nettlesarlagring, ingen ny personvern-eksponering. Dette var eksplisitt stadfesta av brukaren som eit ufråvikeleg krav før arbeidet starta.
+- `node test.js`: 693/0 (4 nye). `node test-workspace.js`: 210/0. `node test-api.js`: 91/0. Cache-bust: `module-sidetelling.js?v=10` (offentleg side + Web-admin).
+
+---
+
 ## 0.105.0 — 2026-08-06
 
 **"Standardforslag" — komplett, samanhengande personvernerklæring i eitt klikk.** Etter å ha gått gjennom alle fem fasane av personvern-videreutviklinga gav brukaren tilbakemelding om at det auto-genererte forslaget var "litt svakt" — ei rekke lause modul-avsnitt, ingen standard juridiske avsnitt (behandlingsansvarleg, klagerett, avvikshandtering, lagringstid). Arkitekt- og Privacy/Compliance Advisor-planlagt (begge las faktisk kode/dokumentasjon denne økta) før bygging.
