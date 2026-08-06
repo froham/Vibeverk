@@ -70,6 +70,15 @@
       /* Vilkår-avhuking */
       ".qt-terms-row{display:flex;align-items:center;gap:.55rem;font-size:.9rem;margin-top:.5rem;flex-wrap:wrap}",
       ".qt-terms-link{background:none;border:0;padding:0;color:var(--color-primary);cursor:pointer;font:inherit;font-size:.9rem;text-decoration:underline}",
+      /* Samtykke-revisjonsspor, Fase 2 (2026-08-06): steg 2 er eit bart <form>
+         utan grid-gap, ulikt .contact__form/.admin-form -- utan eigne reglar
+         her ligg avkryssingsboksane rett attmed .qt-terms-row med 0px avstand
+         (UX-funn). Same reglar som index.html/admin/index.html sine. */
+      ".consent-purposes{display:flex;flex-direction:column;gap:.6rem;margin-top:.8rem}",
+      ".consent-purpose-row{display:flex;align-items:flex-start;gap:.55rem;font-size:.9rem}",
+      ".consent-purpose-row input[type=checkbox]{width:1.15rem;height:1.15rem;flex-shrink:0;margin-top:.15rem}",
+      ".consent-purpose-row label{flex:1}",
+      ".consent-purpose-tag{color:var(--color-muted);font-size:.82rem;font-weight:400}",
       /* Vilkår-popup */
       ".qt-modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:1rem}",
       ".qt-modal{background:var(--color-surface);border-radius:var(--radius);max-width:540px;width:100%;padding:1.6rem;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18)}",
@@ -196,6 +205,7 @@
           '<label for="qt-terms">Jeg aksepterer</label>' +
           '<button type="button" class="qt-terms-link" data-qt-terms-open>' + esc(TERMS_HEADING) + '</button>' +
         '</div>' +
+        C.consentPurposesField({ idPrefix: "qt", formType: "tilbud" }) +
         '<p class="form__status is-error" data-qt-err2 style="display:none"></p>' +
         '<div class="qt-nav">' +
           C.button({ label:"Tilbake", variant:"ghost", attrs:"data-qt-back2" }) +
@@ -298,6 +308,11 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(st.email)) { err.textContent = "Sjekk e-postadressen."; err.style.display = ""; return; }
       if (!terms.checked) { err.textContent = "Du må akseptere vilkårene for å sende inn."; err.style.display = ""; return; }
 
+      // Fanga her, ikkje inne i .then()-kjeda under -- filopplastinga er
+      // asynkron, og skjemaet (inkl. avkryssingsboksane) kan i prinsippet
+      // endre seg medan ho held på.
+      var consentSnapshot = App.ui.buildConsentSnapshot(inner, "qt", "tilbud");
+
       err.style.display = "none";
       if (submitBtn) { submitBtn.disabled = true; }
       if (st.files.length) err.textContent = ""; // ryddar evt. gamal feilmelding før ny opplasting
@@ -328,7 +343,7 @@
         // App.addLead() sin anonyme gren returnerer no ein Promise (Codex-
         // funn 2026-07-18, HIGH) -- venta/sjekka her, i staden for å syne
         // steg 3 (suksess) uansett om sjølve innsendinga faktisk lukkast.
-        return App.addLead({ name: name, email: st.email, message: lines.join("\n"), kind: "tilbud", attachments: attachments }).then(function () {
+        return App.addLead({ name: name, email: st.email, message: lines.join("\n"), kind: "tilbud", attachments: attachments, consent: consentSnapshot }).then(function () {
           renderStep3(inner);
         }).catch(function (leadErr) {
           if (submitBtn) { submitBtn.disabled = false; }

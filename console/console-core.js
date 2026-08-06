@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.100.1";
+  var VIBEVERK_VERSION = "0.101.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3279,7 +3279,9 @@ window.VwConsole = (function () {
       heading: priv.heading || "",
       text: priv.text || "",
       forms: forms,
-      consentPurposes: priv.consentPurposes || []
+      consentPurposes: priv.consentPurposes || [],
+      publishedVersionId: priv.publishedVersionId || null,
+      publishedAt: priv.publishedAt || null
     };
   }
 
@@ -3320,8 +3322,21 @@ window.VwConsole = (function () {
   // 'superconfig'-nøkkelen i -- ALDRI send sc.privacy (som i minnet også
   // inneheld versions/activeVersionId) direkte til saveSC(), det ville
   // undergrave heile herdinga over.
+  // publishedVersionId/publishedAt (Fase 2, 2026-08-06): reine, ufarlege
+  // peikarar (ein kort id-streng + eit tidsstempel, ALDRI sjølve
+  // versjonsinnhaldet) -- naudsynt sidan sjølve versions[]/activeVersionId
+  // no medvite ALDRI er anon-lesbare (sjå migratePrivacyVersions() sitt
+  // herdingsnotat). Nettsida treng likevel EIN peikar å stemple ei reell
+  // samtykke-innsending med, for å kunne seie "dette vart avgjeve då DENNE
+  // versjonen var publisert" utan å eksponere noko meir. Trygt å gjere
+  // offentleg, same idé som eit synleg "versjon"-tal i eit vanleg produkt.
   function privacyPublicProjection(sc) {
-    return { heading: sc.privacy.heading, text: sc.privacy.text, forms: sc.privacy.forms, consentPurposes: sc.privacy.consentPurposes };
+    return {
+      heading: sc.privacy.heading, text: sc.privacy.text,
+      forms: sc.privacy.forms, consentPurposes: sc.privacy.consentPurposes,
+      publishedVersionId: sc.privacy.publishedVersionId || null,
+      publishedAt: sc.privacy.publishedAt || null
+    };
   }
 
   // Les-endre-skriv mot 'superconfig-private', same disiplin som getSC()/
@@ -3619,6 +3634,10 @@ window.VwConsole = (function () {
         priv.activeVersionId = version.id;
         priv.heading = version.heading || "";
         priv.text = privacyBlocksToFlatHtml(version.bodyBlocks);
+        // Trygge, ufarlege peikarar til den offentlege nøkkelen (Fase 2) --
+        // sjå privacyPublicProjection() sitt notat for kvifor.
+        priv.publishedVersionId = version.id;
+        priv.publishedAt = version.publishedAt;
         var savingTenantId = _activeTenant && _activeTenant.id;
         // To skrivingar: FYRST versions/activeVersionId til superconfig-
         // private (aldri anon-lesbar), DEREFTER den offentlege flate

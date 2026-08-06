@@ -181,6 +181,35 @@ window.Components = (function () {
       </div>`;
   }
 
+  // Fase 2 (2026-08-06, sjå docs/compliance/): valfrie, SPESIFIKKE samtykke-
+  // avkryssingsboksar for EKTE valfrie formål (t.d. nyhetsbrev/marknadsføring)
+  // -- definert av operatøren i Console sin Samtykker-fane. Aldri for den
+  // grunnleggjande informasjonsplikta (det dekker termsField() over åleine).
+  // Kvart formål er si EIGA boks, ALDRI forhandsavhuka, ALDRI obligatorisk
+  // for å sende inn skjemaet (sjå App.ui.buildConsentSnapshot() i core.js,
+  // som berre LES svara -- håndhevar ingenting). Returnerer tom streng
+  // (ingen boks, ingen visuell støy) dersom ingen aktive formål er
+  // konfigurert for denne konkrete skjematypen.
+  function consentPurposesField(opts) {
+    const o = opts || {};
+    const idPrefix = esc(o.idPrefix || "cp");
+    const formType = o.formType || "";
+    const priv = (window.SITE_CONFIG && window.SITE_CONFIG.privacy) || {};
+    const purposes = (priv.consentPurposes || []).filter(function (p) {
+      return p && p.active !== false && Array.isArray(p.forms) && p.forms.indexOf(formType) !== -1 && String(p.label || "").trim();
+    });
+    if (!purposes.length) return "";
+    return `<div class="consent-purposes" data-consent-purposes="${idPrefix}">` +
+      purposes.map(function (p) {
+        const cbId = idPrefix + "-cp-" + esc(p.id);
+        return `<div class="consent-purpose-row">
+          <input type="checkbox" id="${cbId}" data-consent-purpose-id="${esc(p.id)}" data-consent-purpose-label="${esc(p.label)}">
+          <label for="${cbId}">${esc(p.label)} <span class="consent-purpose-tag">(valgfritt)</span></label>
+        </div>`;
+      }).join("") +
+    `</div>`;
+  }
+
   // =========================================================================
   // RIK TEKST — delt mellom Aktuelt, FAQ, Referanser og Mediebank.
   // Lagres som sanert HTML (ikke ren tekst). Verktøylinjen bruker
@@ -572,6 +601,7 @@ window.Components = (function () {
             ${field({ id: "lead-email",   label: "E-post",  required: true,  type: "email", placeholder: "deg@eksempel.no" })}
             ${field({ id: "lead-message", label: "Melding", required: true,  multiline: true, placeholder: "Hva kan vi hjelpe med?" })}
             ${termsField({ idPrefix: "lead" })}
+            ${consentPurposesField({ idPrefix: "lead", formType: "kontakt" })}
             <div class="contact__actions">
               ${button({ label: "Send melding", type: "submit", variant: "primary" })}
               ${(window.SITE_CONFIG && window.SITE_CONFIG.features && window.SITE_CONFIG.features.quote !== false)
@@ -730,7 +760,7 @@ window.Components = (function () {
 
   /* --- Eksport -------------------------------------------------------------- */
   return {
-    esc, icon, button, eyebrow, field, passwordToggle, termsField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
+    esc, icon, button, eyebrow, field, passwordToggle, termsField, consentPurposesField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
     contact, footer, modal, tabbar
