@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.99.0";
+  var VIBEVERK_VERSION = "0.100.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -233,6 +233,26 @@ window.VwConsole = (function () {
   }
 
   function getSC(cb) { getStoreKey(SUPER_KEY, cb); }
+
+  // Same spørring som getStoreKey(), MEN eksponerer ein feil til kallaren i
+  // staden for å svelgje han og returnere eit stille {} -- brukt berre av
+  // personvern sin hybrid-vakt ved publisering (privacyGuardBlockedBlocks),
+  // sidan eit tomt {} ved ein forbigåande nettverksfeil elles kunne la
+  // operatøren publisere med eit ekskludert analyse-avsnitt UTAN at han fekk
+  // vite at sjekken faktisk ikkje fekk verifisert ekte data (UX-review-funn
+  // 2026-08-06).
+  function getStoreKeyOrError(key, cb) {
+    var sb = tenantPublicClient();
+    if (!sb) { cb(null, new Error("Ingen tilkopling")); return; }
+    sb.from("store").select("value")
+      .eq("tenant_id", _activeTenant.data_plane_storage_key)
+      .eq("key", key)
+      .maybeSingle()
+      .then(function (r) {
+        if (r.error) { cb(null, r.error); return; }
+        cb((r.data && r.data.value) || {}, null);
+      });
+  }
 
   // Skriving går via broker Edge Function-en i vibeverk-control (Fase 8),
   // ikkje lenger direkte mot kundens eige prosjekt — sjå brokerCall() over.
@@ -1606,6 +1626,7 @@ window.VwConsole = (function () {
   var _priserData = null;              // { prices, packages } -- null til fyrste lasting er ferdig
   var _priserLoading = false;
   var _priserView = "edit";            // "edit" | "prices" | "quote" | "preview" | "budget"
+  var _privacyView = "dokument";       // "dokument" | "skjema" | "samtykke" | "historikk" -- personvern-fana, Fase 1 (2026-08-06)
   var _priserQuote = { f: [], i: [] }; // "Bygg tilbud" -- reint økt-lokalt, aldri lagra
   var _priserPkgIdSeq = 1;
   var _priserEditSelected = null;      // vald pakke-id i "Rediger pakker" -- master/detail (brukarønske 2026-08-04: alle pakkane opne samtidig var "rotete og uoversiktleg")
@@ -3194,100 +3215,560 @@ window.VwConsole = (function () {
     return App.ui.textToRichHtml(t);
   }
 
-  // Same tekstformular som computeDefaultPrivacyText() i core.js (Vibeverk sin
-  // standard personvernstekst, modul-medviten) -- MEN tek sc/an som argument
-  // i staden for å lese CFG/modules/Store, sidan CFG i Konsollen alltid er
-  // konsollen sin eigen, verkelege primærtenant (aldri tenant-skopert, sjå
-  // notatet ved renderProdukt). Å kalle App.computeDefaultPrivacyText() her
-  // ville lekt konsollen sin EIGEN tenant sine modulval inn i ein annan kunde
-  // sitt forslag. Hald denne i sync med core.js-versjonen viss teksten
-  // endrar seg der.
-  function computeTenantPrivacyDefault(sc, an) {
-    var ft = sc.features || {};
-    var hasContactForm = ft.contactForm !== false;
-    var hasTilbud   = !!ft.quote;
-    var hasBooking  = !!ft.booking;
-    var hasAnalytics = !!(an && (an.plausible || an.plausibleEmbed));
+  /* =========================================================================
+     PERSONVERN — Fase 1 (videreutvikling 2026-08-06, sjå docs/compliance/ for
+     grunngjeving og beslutningsmøte-referat).
 
-    var collectBits = [];
-    if (hasContactForm) collectBits.push("en henvendelse");
-    if (hasTilbud)  collectBits.push("ber om tilbud");
-    if (hasBooking) collectBits.push("reserverer en booking");
-    if (!collectBits.length) collectBits.push("tar kontakt med oss");
-    var collectPhrase = collectBits.length > 1
-      ? collectBits.slice(0, -1).join(", ") + " eller " + collectBits[collectBits.length - 1]
-      : collectBits[0];
+     sc.privacy veks frå det opphavlege { heading, text } til ein strukturert,
+     versjonert form. heading/text står FRAMLEIS på toppnivå, urørt -- dei er
+     ein FLAT projeksjon av innhaldet i den til ei kvar tid PUBLISERTE
+     versjonen. Nettsida (core.js sin applySuperConfig()) og termsField() les
+     framleis berre desse to felta, uendra -- null risiko for det publiserte
+     innhaldet, ingen kodeendring der. Dei nye felta (versions/forms/
+     consentPurposes) er reine Console-interne strukturar for redigering/
+     historikk/skjematekster.
+     ====================================================================== */
+  var PRIVACY_FORM_TYPES = [
+    { id: "kontakt",    label: "Kontaktskjema" },
+    { id: "tilbud",     label: "Tilbudsskjema" },
+    { id: "booking",    label: "Booking" },
+    { id: "nyhetsbrev", label: "Nyhetsbrev" }
+  ];
+  var PRIVACY_LEGAL_BASIS_OPTIONS = [
+    ["", "Ikke fastsatt"],
+    ["avtale", "Avtale / oppfyllelse før avtale"],
+    ["samtykke", "Samtykke"],
+    ["berettiget_interesse", "Berettiget interesse"],
+    ["rettslig_plikt", "Rettslig plikt"]
+  ];
 
-    var storedBits = [];
-    if (hasContactForm) storedBits.push("henvendelser");
-    if (hasTilbud)  storedBits.push("tilbud");
-    if (hasBooking) storedBits.push("bookinger");
-    if (!storedBits.length) storedBits.push("kontaktopplysninger");
-    var storedPhrase = storedBits.length > 1
-      ? storedBits.slice(0, -1).join(", ") + " og " + storedBits[storedBits.length - 1]
-      : storedBits[0];
-
-    var cookieText = hasAnalytics
-      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
-      : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
-
-    return "Når du sender oss " + collectPhrase + ", lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +
-      "Hvor lagres opplysningene?\n" +
-      "Nettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
-      "Bruker vi cookies?\n" + cookieText + "\n\n" +
-      "Hvor lenge lagres opplysningene?\n" +
-      "Vi oppbevarer " + storedPhrase + " så lenge det er nødvendig for å følge opp saken din. Du kan når som helst be om at opplysningene dine slettes.\n\n" +
-      "Dine rettigheter\n" +
-      "Du har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold.\n\n" +
-      "Samtykke\n" +
-      "Ved å sende inn dette skjemaet samtykker du til at vi behandler opplysningene dine slik beskrevet over.";
+  function privacyNewId(prefix) {
+    return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
   }
 
-  function renderPersonvern(sc, wrap) {
-    var priv = Object.assign({}, sc.privacy || {});
-    var textHtml = migrateLegacyPrivacyText(priv.text || "");
+  // Køyrer éin gong per kunde -- pakkar det gamle { heading, text } inn som
+  // versjon 1 (alt PUBLISERT, sidan det alt var det synlege innhaldet på
+  // nettsida). Idempotent: gjer ingenting om sc.privacy alt er migrert.
+  function migratePrivacyData(priv) {
+    priv = priv || {};
+    if (priv.versions && priv.versions.length) return priv;
+    var now = Date.now();
+    var legacyHtml = migrateLegacyPrivacyText(priv.text || "");
+    var v1 = {
+      id: "v1", status: "published", basedOnVersionId: null,
+      createdAt: now, publishedAt: now,
+      heading: priv.heading || "",
+      bodyBlocks: legacyHtml
+        ? [{ id: "b-legacy", source: "manual", moduleId: null, included: true, edited: true, body: legacyHtml }]
+        : [],
+      approval: null
+    };
+    var forms = {};
+    PRIVACY_FORM_TYPES.forEach(function (f) {
+      forms[f.id] = (priv.forms && priv.forms[f.id]) || { purpose: "", legalBasis: "", retention: "", recipients: "", blurbHtml: "" };
+    });
+    return {
+      heading: priv.heading || "",
+      text: priv.text || "",
+      activeVersionId: "v1",
+      versions: [v1],
+      forms: forms,
+      consentPurposes: priv.consentPurposes || []
+    };
+  }
 
-    wrap.innerHTML =
-      '<form id="cs-form">' +
-        '<fieldset class="admin-group"><legend>Personvernerklæring</legend>' +
-          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, og via «Personvern»-lenka i footer.</p>' +
-          C.field({ id:"cs-priv-heading", label:"Overskrift", value: priv.heading || "" }) +
-          '<div style="margin:-.3rem 0 .6rem">' +
-            '<button type="button" class="btn btn--ghost btn--sm" id="cs-priv-fetch">↺ Bygg basert på gjeldande modular</button>' +
-            '<p style="font-size:.78rem;color:var(--color-muted);margin:.3rem 0 0">Set inn eit forslag til personvernerklæring, tilpassa til kva som faktisk er aktivert for denne kunden (kontaktskjema/tilbod/booking/Plausible-tilkopling). <strong>Dette er berre eit utgangspunkt frå oss</strong> — dersom kunden nyttar andre tredjepartsløysingar (t.d. anna analyseverktøy, betalingsløysing, ekstern CRM), må dei sjølve leggje til tekst om det. Kunden er juridisk ansvarleg for at teksten faktisk stemmer. Kan redigerast fritt etterpå.</p>' +
-          '</div>' +
-          C.richTextField({ id:"cs-priv-text", label:"Tekst", value: textHtml }) +
+  function privacyActiveVersion(sc) {
+    var priv = sc.privacy;
+    var found = (priv.versions || []).filter(function (v) { return v.id === priv.activeVersionId; })[0];
+    return found || priv.versions[priv.versions.length - 1];
+  }
+
+  // Publisert versjon skal vere eit uforanderleg augeblikksbilete -- redigering
+  // opprettar alltid ein NY versjon i staden for å mutere ein publisert ein.
+  function privacyCloneVersionAsDraft(version) {
+    return {
+      id: privacyNewId("v"), status: "draft", basedOnVersionId: version.id,
+      createdAt: Date.now(), publishedAt: null,
+      heading: version.heading,
+      bodyBlocks: (version.bodyBlocks || []).map(function (b) { return Object.assign({}, b); }),
+      approval: null
+    };
+  }
+
+  // Kva "modul" (i personvern-forstand) er faktisk aktiv for denne kunden no
+  // -- brukt av hybrid-vakta til å nekte publisering dersom eit avsnitt
+  // knytt til ein reelt aktiv modul er ekskludert utan vidare. Aldri la ein
+  // manuell fjern-/avhuk-handling stille skjule at ein aktiv modul faktisk
+  // behandlar personopplysningar (brukarønske, sjå ChatGPT-utforma oppdrag
+  // 2026-08-06 punkt 4).
+  function privacyModuleActive(sc, an, moduleId) {
+    var ft = sc.features || {};
+    if (moduleId === "baseline")    return true;
+    if (moduleId === "contactForm") return ft.contactForm !== false;
+    if (moduleId === "quote")       return !!ft.quote;
+    if (moduleId === "booking")     return !!ft.booking;
+    if (moduleId === "analytics")   return !!(an && (an.plausible || an.plausibleEmbed)) || ft.sidetelling === true;
+    return false; // ukjend/fjerna modul-id -- tving ikkje inkludering
+  }
+
+  // Same sakstoff som core.js sin computeDefaultPrivacyText() (Vibeverk sin
+  // standard-forslagstekst, modul-medviten), MEN no delt opp i sjølvstendige
+  // BLOKKER (éin per modul) i staden for éin samanhengande streng -- kvar
+  // blokk kan inkluderast/ekskluderast/redigerast for seg (hybridmodellen).
+  // Tek sc/an som argument, ikkje CFG, av same grunn som den gamle
+  // computeTenantPrivacyDefault() hadde (konsollen sin eigen tenant må ikkje
+  // lekke inn i eit ANNA sitt forslag).
+  //
+  // MERK: "Samtykke"-utsegna frå den gamle éin-strengs-versjonen ("Ved å
+  // sende inn dette skjemaet samtykker du...") er MEDVITE FJERNA frå
+  // forslaget her -- beslutningsmøtet 2026-08-06 fann (grunngjeve i
+  // Datatilsynet sin eigen rettleiing, sjå docs/compliance/) at samtykke
+  // sannsynlegvis IKKJE er rett behandlingsgrunnlag for eit vanleg skjema
+  // (avtale/før-avtale er meir nærliggjande) -- forslaget skal difor ikkje
+  // lenger PÅSTÅ eit grunnlag vi ikkje har stadfesta. Sjå forms.*.legalBasis
+  // (framleis tomt, fylt inn av operatør/jurist i Skjematekster-fana) i
+  // staden.
+  //
+  // Rettar òg ein reell drift frå core.js sin tilsvarande, IKKJE strukturerte
+  // versjon: den hadde eit sidetelling-medvite cookieText-steg (3-vegs:
+  // Plausible/sidetelling/ingen) som denne fila sin gamle
+  // computeTenantPrivacyDefault() mangla (berre 2-vegs Plausible/ingen).
+  function computeTenantPrivacyBlocks(sc, an) {
+    var ft = sc.features || {};
+    var hasContactForm = ft.contactForm !== false;
+    var hasTilbud       = !!ft.quote;
+    var hasBooking       = !!ft.booking;
+    var hasAnalytics     = !!(an && (an.plausible || an.plausibleEmbed));
+    var hasSidetelling   = !hasAnalytics && ft.sidetelling === true;
+
+    var blocks = [];
+    blocks.push({ id: "baseline", source: "module", moduleId: "baseline", included: true, edited: false, body: App.ui.textToRichHtml(
+      "Hvor lagres opplysningene?\nNettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
+      "Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold."
+    ) });
+    if (hasContactForm) blocks.push({ id: "mod-kontakt", source: "module", moduleId: "contactForm", included: true, edited: false, body: App.ui.textToRichHtml(
+      "Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, og deles ikke med tredjeparter for markedsføringsformål."
+    ) });
+    if (hasTilbud) blocks.push({ id: "mod-tilbud", source: "module", moduleId: "quote", included: true, edited: false, body: App.ui.textToRichHtml(
+      "Tilbudsforespørsel\nNår du ber om tilbud, lagrer vi navn, e-postadresse, telefonnummer, innholdet i forespørselen og eventuelle vedlegg du laster opp. Opplysningene brukes til å utarbeide og sende deg et tilbud."
+    ) });
+    if (hasBooking) blocks.push({ id: "mod-booking", source: "module", moduleId: "booking", included: true, edited: false, body: App.ui.textToRichHtml(
+      "Booking\nNår du reserverer en time/booking, lagrer vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding. Opplysningene brukes til å gjennomføre avtalen."
+    ) });
+    var cookieText = hasAnalytics
+      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
+      : hasSidetelling
+      ? "Denne siden bruker ingen cookies. Vi bruker en enkel, intern sidetelling for trafikkstatistikk (sidevisninger, henvisninger og hvilke sider besøkende kommer fra/går til) — en midlertidig kode lagres i nettleseren din (ikke en informasjonskapsel/cookie) for å gruppere sidevisninger til samme besøk, og slettes automatisk når du lukker fanen. Vi lagrer ikke IP-adresse, navn eller annen personidentifiserbar informasjon om deg, og deler ingenting med tredjeparter."
+      : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
+    blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: App.ui.textToRichHtml("Bruker vi cookies?\n" + cookieText) });
+    return blocks;
+  }
+
+  // Slår saman eit friskt sett med modul-forslag med det som alt står i
+  // dokumentet: ei blokk operatøren HAR REDIGERT (edited:true) vert aldri
+  // stille overskriven; manuelle blokker vert alltid tekne vare på; ei
+  // modul-blokk for ein modul som ikkje lenger er aktiv vert òg teken vare
+  // på (operatøren må fjerne ho sjølv via hybrid-vakta sitt varsel) -- aldri
+  // stille sletta berre fordi ho ikkje dukka opp i det friske forslaget.
+  function mergePrivacyBlocks(existingBlocks, freshBlocks) {
+    var existingById = {};
+    (existingBlocks || []).forEach(function (b) { existingById[b.id] = b; });
+    var merged = freshBlocks.map(function (fresh) {
+      var existing = existingById[fresh.id];
+      if (existing && existing.edited) return existing;
+      return Object.assign({}, fresh, { included: existing ? existing.included : true });
+    });
+    var freshIds = {};
+    freshBlocks.forEach(function (f) { freshIds[f.id] = true; });
+    (existingBlocks || []).forEach(function (b) {
+      if (b.source === "manual" || !freshIds[b.id]) merged.push(b);
+    });
+    return merged;
+  }
+
+  function privacyGuardBlockedBlocks(sc, an, blocks) {
+    return (blocks || []).filter(function (b) {
+      return b.source === "module" && !b.included && privacyModuleActive(sc, an, b.moduleId);
+    });
+  }
+
+  function privacyBlocksToFlatHtml(blocks) {
+    return (blocks || []).filter(function (b) { return b.included; }).map(function (b) { return b.body; }).join("");
+  }
+
+  /* --- Dokument-fana ------------------------------------------------------ */
+  function renderPersonvernDokument(sc, pane, wrap) {
+    var priv = sc.privacy;
+    var version = privacyActiveVersion(sc);
+
+    if (version.status === "published") {
+      if (wrap) wrap._privacyFlush = null; // ingenting redigerbart i denne greina
+      pane.innerHTML =
+        '<fieldset class="admin-group"><legend>Personvernerklæring — <span class="kd-pill kd-pill--active">Publisert</span></legend>' +
+          '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Publisert ' + C.esc(new Date(version.publishedAt).toLocaleString("nb-NO")) + '. Ei publisert versjon kan ikkje redigerast direkte — trykk "Rediger" for å opprette eit nytt utkast basert på henne. Historikken held fram uendra.</p>' +
+          '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(version.bodyBlocks) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
         '</fieldset>' +
+        '<div style="margin-top:1rem">' + C.button({ label: "Rediger (opprett nytt utkast)", variant: "primary", attrs: 'type="button" id="cs-priv-new-draft"' }) + '</div>';
+      pane.querySelector("#cs-priv-new-draft").addEventListener("click", function () {
+        var draft = privacyCloneVersionAsDraft(version);
+        priv.versions.push(draft);
+        priv.activeVersionId = draft.id;
+        renderPersonvernDokument(sc, pane, wrap);
+      });
+      return;
+    }
+
+    var blocks = version.bodyBlocks || [];
+    var blocksHtml = blocks.length ? blocks.map(function (b) {
+      var isModule = b.source === "module";
+      var moduleActive = isModule && privacyModuleActive(sc, sc._privacyAn || {}, b.moduleId);
+      var sourceLabel = isModule ? ("Modul: " + (b.moduleId || "")) : "Manuelt lagt til";
+      return '<div class="admin-group" data-privacy-block="' + C.esc(b.id) + '" style="margin-bottom:1rem">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.5rem">' +
+          '<span style="font-size:.76rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.03em">' + C.esc(sourceLabel) + '</span>' +
+          '<label style="font-size:.85rem;display:flex;align-items:center;gap:.4rem"><input type="checkbox" data-privacy-block-included="' + C.esc(b.id) + '"' + (b.included ? " checked" : "") + '> Inkluder i publisert tekst</label>' +
+        '</div>' +
+        (moduleActive && !b.included ? '<p style="font-size:.78rem;color:#c0392b;margin:0 0 .5rem">⚠ Denne modulen er aktiv for kunden, men avsnittet er ekskludert — kan ikkje publiserast slik.</p>' : '') +
+        C.richTextField({ id: "privacy-block-" + b.id, label: "Innhold", value: b.body }) +
+        (isModule ? "" : '<button type="button" class="btn btn--ghost btn--sm" data-privacy-block-remove="' + C.esc(b.id) + '" style="margin-top:.5rem">Fjern avsnitt</button>') +
+      '</div>';
+    }).join("") : '<p style="color:var(--color-muted)">Ingen avsnitt ennå — bruk "Bygg basert på gjeldande modular" eller legg til eit eige.</p>';
+
+    pane.innerHTML =
+      '<fieldset class="admin-group"><legend>Personvernerklæring — <span class="kd-pill kd-pill--provisioning">Utkast</span></legend>' +
+        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Vises i popup på kontaktskjema, booking og tilbud, og via «Personvern»-lenka i footer, ETTER publisering.</p>' +
+        C.field({ id: "cs-priv-heading", label: "Overskrift", value: version.heading || "" }) +
+        '<div style="margin:.6rem 0 1rem;display:flex;gap:.6rem;flex-wrap:wrap">' +
+          C.button({ label: "↺ Bygg basert på gjeldande modular", variant: "ghost", attrs: 'type="button" id="cs-priv-fetch"' }) +
+          C.button({ label: "+ Legg til eige avsnitt", variant: "ghost", attrs: 'type="button" id="cs-priv-add"' }) +
+        '</div>' +
+        '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 1rem">Kvart avsnitt er anten henta frå ein aktiv modul (kan varslast mot, sjå under, men ikkje tvingast bort) eller lagt til manuelt. <strong>Dette er berre eit utgangspunkt frå oss</strong> — kunden er juridisk ansvarleg for at teksten faktisk stemmer.</p>' +
+        '<div id="privacy-blocks">' + blocksHtml + '</div>' +
+      '</fieldset>' +
+      '<div style="display:flex;gap:.6rem;align-items:center;margin-top:1rem;flex-wrap:wrap">' +
+        C.button({ label: "Lagre som utkast", variant: "ghost", attrs: 'type="button" id="cs-priv-save-draft"' }) +
+        C.button({ label: "Publiser", variant: "primary", attrs: 'type="button" id="cs-priv-publish"' }) +
+      '</div>' +
+      '<p class="form__status" id="cs-status" style="margin-top:.6rem"></p>';
+
+    App.ui.bindRichTextFields(pane);
+
+    function captureFieldEdits() {
+      var headingEl = pane.querySelector("#cs-priv-heading");
+      if (!headingEl) return; // paneet er alt bytt vekk -- ingenting å fange
+      version.heading = headingEl.value.trim();
+      blocks.forEach(function (b) {
+        var html = App.ui.readRichTextField(pane, "privacy-block-" + b.id);
+        if (html !== b.body) { b.body = html; if (b.source === "module") b.edited = true; }
+      });
+    }
+    // UX-review-funn 2026-08-06 (STENGJANDE): registrer denne som fana sin
+    // eigen "flush"-funksjon -- kalla av renderPersonvern() FØR sjølve
+    // fanebytet knuser dette paneet sin DOM, slik at skrivne-men-ikkje-lagra
+    // rik-tekst-endringar ikkje forsvinn stille.
+    if (wrap) wrap._privacyFlush = captureFieldEdits;
+
+    pane.querySelectorAll("[data-privacy-block-included]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        captureFieldEdits();
+        var id = cb.getAttribute("data-privacy-block-included");
+        var block = blocks.filter(function (b) { return b.id === id; })[0];
+        if (block) block.included = cb.checked;
+        renderPersonvernDokument(sc, pane, wrap); // trygt å fullt re-rendre -- ingen tastetrykk pågår, berre ei avkryssingsboks som endra seg
+      });
+    });
+
+    pane.querySelectorAll("[data-privacy-block-remove]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        captureFieldEdits();
+        var id = btn.getAttribute("data-privacy-block-remove");
+        version.bodyBlocks = blocks.filter(function (b) { return b.id !== id; });
+        renderPersonvernDokument(sc, pane, wrap);
+      });
+    });
+
+    pane.querySelector("#cs-priv-fetch").addEventListener("click", function () {
+      captureFieldEdits();
+      getStoreKey("analytics", function (an) {
+        // UX-review-funn 2026-08-06 (HIGH): fangar felta PÅ NYTT etter det
+        // asynkrone spranget -- ein operatør kan ha rokke å skrive meir i eit
+        // ANNA avsnitt medan nettverkskallet var undervegs, og den fyrste
+        // captureFieldEdits()-en over fangar ikkje det.
+        captureFieldEdits();
+        sc._privacyAn = an;
+        var fresh = computeTenantPrivacyBlocks(sc, an);
+        version.bodyBlocks = mergePrivacyBlocks(version.bodyBlocks, fresh);
+        renderPersonvernDokument(sc, pane, wrap);
+      });
+    });
+
+    pane.querySelector("#cs-priv-add").addEventListener("click", function () {
+      captureFieldEdits();
+      version.bodyBlocks = blocks.concat([{ id: privacyNewId("b"), source: "manual", moduleId: null, included: true, edited: true, body: "" }]);
+      renderPersonvernDokument(sc, pane, wrap);
+    });
+
+    pane.querySelector("#cs-priv-save-draft").addEventListener("click", function () {
+      captureFieldEdits();
+      var savingTenantId = _activeTenant && _activeTenant.id;
+      getSC(function (sc2) {
+        sc2.privacy = sc.privacy;
+        saveSC(sc2, savingTenantId);
+        statusMsg(pane.querySelector("#cs-status"), "✓ Lagra som utkast", true);
+      });
+    });
+
+    pane.querySelector("#cs-priv-publish").addEventListener("click", function () {
+      captureFieldEdits();
+      // UX-review-funn 2026-08-06 (HIGH): brukar getStoreKeyOrError(), ikkje
+      // getStoreKey(), for nettopp DENNE sjekken -- ein forbigåande
+      // nettverksfeil skal ALDRI stille tolkast som "ingen analyseverktøy
+      // aktivt" og la publiseringa gå gjennom uverifisert. Hybrid-vakta sitt
+      // heile føremål er å hindre nettopp dette.
+      getStoreKeyOrError("analytics", function (an, err) {
+        if (err) {
+          statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje verifisere kundens moduloppsett -- prøv igjen før du publiserer.", false);
+          return;
+        }
+        // UX-review-funn 2026-08-06 (HIGH): fangar felta PÅ NYTT etter det
+        // asynkrone spranget, av same grunn som i fetch-handteraren over.
+        captureFieldEdits();
+        var blocked = privacyGuardBlockedBlocks(sc, an, version.bodyBlocks);
+        if (blocked.length) {
+          alert('Kan ikkje publisere: ' + blocked.length + ' avsnitt knytt til ein aktiv modul er ekskludert (' + blocked.map(function (b) { return b.moduleId; }).join(", ") + '). Inkluder dei att, eller fjern/deaktiver modulen for kunden fyrst i Modular-fana.');
+          return;
+        }
+        if (!confirm("Publisere denne versjonen? Han vert synleg for besøkjande på nettsida med ein gong. Den nåverande publiserte teksten (om nokon) forsvinn ikkje -- ho held fram i Historikk, og du kan alltid rette opp ein feil ved å publisere ein ny versjon seinare.")) return;
+        version.status = "published";
+        version.publishedAt = Date.now();
+        priv.activeVersionId = version.id;
+        priv.heading = version.heading || "";
+        priv.text = privacyBlocksToFlatHtml(version.bodyBlocks);
+        var savingTenantId = _activeTenant && _activeTenant.id;
+        getSC(function (sc2) {
+          sc2.privacy = sc.privacy;
+          saveSC(sc2, savingTenantId);
+          statusMsg(pane.querySelector("#cs-status"), "✓ Publisert!", true);
+          renderPersonvernDokument(sc, pane, wrap);
+        });
+      });
+    });
+  }
+
+  /* --- Skjematekster-fana -------------------------------------------------- */
+  function renderPersonvernSkjema(sc, pane, wrap) {
+    var forms = sc.privacy.forms || {};
+    pane.innerHTML =
+      '<form id="cs-form">' +
+        PRIVACY_FORM_TYPES.map(function (f) {
+          var form = forms[f.id] || {};
+          return '<fieldset class="admin-group" style="margin-bottom:1rem"><legend>' + C.esc(f.label) + '</legend>' +
+            C.field({ id: "priv-form-" + f.id + "-purpose", label: "Formål", value: form.purpose || "" }) +
+            '<div class="field"><label>Behandlingsgrunnlag' + C.helpIcon("Hvilket av de seks GDPR-grunnlagene som gjelder. Ikke fylt inn automatisk -- avgjøres av deg eller en jurist. For et vanlig kontaktskjema er «Avtale / oppfyllelse før avtale» ofte mer riktig enn samtykke.") + '</label>' +
+              '<select id="priv-form-' + f.id + '-legalbasis">' +
+                PRIVACY_LEGAL_BASIS_OPTIONS.map(function (o) { return '<option value="' + o[0] + '"' + (form.legalBasis === o[0] ? " selected" : "") + '>' + o[1] + '</option>'; }).join("") +
+              '</select></div>' +
+            C.field({ id: "priv-form-" + f.id + "-retention", label: "Lagringstid", value: form.retention || "", placeholder: "Ikke fastsatt", hint: "Hvor lenge opplysningene beholdes, f.eks. «12 måneder etter avsluttet dialog»." }) +
+            C.field({ id: "priv-form-" + f.id + "-recipients", label: "Mottakere", value: form.recipients || "", hint: "Andre som mottar disse opplysningene, f.eks. et bookingsystem eller regnskapsfører. La stå tomt om ingen." }) +
+            C.richTextField({ id: "priv-form-" + f.id + "-blurb", label: "Korttekst ved skjemaet", value: form.blurbHtml || "" }) +
+          '</fieldset>';
+        }).join("") +
         saveBtn() +
       '</form>';
 
-    App.ui.bindRichTextFields(wrap);
+    App.ui.bindRichTextFields(pane);
 
-    wrap.querySelector("#cs-priv-fetch").addEventListener("click", function () {
-      var hidden = wrap.querySelector("#cs-priv-text");
-      var hasExisting = hidden && App.ui.readRichTextField(wrap, "cs-priv-text").trim();
-      if (hasExisting && !confirm("Dette erstattar teksten som står i feltet no. Fortsette?")) return;
-      getStoreKey("analytics", function (an) {
-        var html = App.ui.textToRichHtml(computeTenantPrivacyDefault(sc, an));
-        var editor = hidden.closest("[data-rtfield]").querySelector("[data-rt-editor]");
-        editor.innerHTML = html;
-        editor.dispatchEvent(new Event("input"));
+    // UX-review-funn 2026-08-06: same "flush ved fanebyte"-mønster som
+    // Dokument-fana (sjå renderPersonvern()) -- skrivne-men-ikkje-lagra felt
+    // her skal heller ikkje forsvinne stille om operatøren byter fane utan
+    // å trykke "Lagre" fyrst.
+    function captureFormsEdits() {
+      var firstEl = pane.querySelector("#priv-form-" + PRIVACY_FORM_TYPES[0].id + "-purpose");
+      if (!firstEl) return; // paneet er alt bytt vekk -- ingenting å fange
+      PRIVACY_FORM_TYPES.forEach(function (f) {
+        forms[f.id] = {
+          purpose: pane.querySelector("#priv-form-" + f.id + "-purpose").value.trim(),
+          legalBasis: pane.querySelector("#priv-form-" + f.id + "-legalbasis").value,
+          retention: pane.querySelector("#priv-form-" + f.id + "-retention").value.trim(),
+          recipients: pane.querySelector("#priv-form-" + f.id + "-recipients").value.trim(),
+          blurbHtml: App.ui.readRichTextField(pane, "priv-form-" + f.id + "-blurb")
+        };
       });
-    });
+      sc.privacy.forms = forms;
+    }
+    if (wrap) wrap._privacyFlush = captureFormsEdits;
 
-    wrap.querySelector("#cs-form").addEventListener("submit", function (e) {
+    pane.querySelector("#cs-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var textVal = App.ui.readRichTextField(wrap, "cs-priv-text");
+      captureFormsEdits();
       var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
-        sc2.privacy = {
-          heading: wrap.querySelector("#cs-priv-heading").value.trim(),
-          text:    textVal
-        };
+        sc2.privacy = sc.privacy;
         saveSC(sc2, savingTenantId);
-        statusMsg(wrap.querySelector("#cs-status"), "✓ Lagra!", true);
+        statusMsg(pane.querySelector("#cs-status"), "✓ Lagra!", true);
       });
     });
+  }
+
+  /* --- Samtykker-fana ------------------------------------------------------- */
+  function renderPersonvernSamtykke(sc, pane, wrap) {
+    var purposes = sc.privacy.consentPurposes || [];
+    var rowsHtml = purposes.length ? purposes.map(function (p) {
+      return '<div class="admin-group" style="margin-bottom:.8rem" data-consent-purpose="' + C.esc(p.id) + '">' +
+        C.field({ id: "cp-" + p.id + "-label", label: "Formål (vist ved avkryssingsboksen)", value: p.label || "" }) +
+        '<div class="field"><label>Gjeld skjema</label><div style="display:flex;gap:.9rem;flex-wrap:wrap;margin-top:.3rem">' +
+          PRIVACY_FORM_TYPES.map(function (f) {
+            var checked = (p.forms || []).indexOf(f.id) !== -1;
+            return '<label style="font-size:.85rem;display:flex;align-items:center;gap:.35rem"><input type="checkbox" data-cp-form="' + C.esc(f.id) + '"' + (checked ? " checked" : "") + '> ' + C.esc(f.label) + '</label>';
+          }).join("") +
+        '</div></div>' +
+        '<label style="font-size:.85rem;display:flex;align-items:center;gap:.4rem;margin:.7rem 0 .3rem"><input type="checkbox" data-cp-active' + (p.active !== false ? " checked" : "") + '> Aktiv' + C.helpIcon("Formål som ikke er aktive vises ikke på nettsiden. Merk: i denne første versjonen har ikke «Aktiv» noen effekt ennå uansett -- selve avkryssingsboksen på det virkelige skjemaet kommer i et senere steg.") + '</label>' +
+        '<p style="font-size:.76rem;color:var(--color-muted);margin:0 0 .6rem">Vert alltid vist IKKJE-forhandsavhuka på nettsida — dette er ikkje redigerbart, per krava til gyldig samtykke (Datatilsynet).</p>' +
+        C.button({ label: "Fjern formål", variant: "ghost", attrs: 'type="button" data-cp-remove="' + C.esc(p.id) + '"' }) +
+      '</div>';
+    }).join("") : '<p style="color:var(--color-muted)">Ingen valfrie samtykkeformål definert ennå.</p>';
+
+    pane.innerHTML =
+      '<fieldset class="admin-group"><legend>Samtykker</legend>' +
+        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Kun for EKTE, valfrie formål (t.d. nyhetsbrev, markedsføring) — ikkje for vanlege kontakt-/tilbods-/bookingskjema, der samtykke normalt IKKJE er rett behandlingsgrunnlag (sjå Behandlingsgrunnlag i Skjematekster-fana). Registrering av faktiske svar per innsending kjem i eit seinare steg — dette er berre SJØLVE FORMÅLA/definisjonane.</p>' +
+        '<div id="cp-list">' + rowsHtml + '</div>' +
+        C.button({ label: "+ Legg til formål", variant: "ghost", attrs: 'type="button" id="cp-add"' }) +
+      '</fieldset>' +
+      '<div style="margin-top:1rem">' + C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" id="cp-save"' }) + '</div>' +
+      '<p class="form__status" id="cs-status" style="margin-top:.6rem"></p>';
+
+    // UX-review-funn 2026-08-06: same "flush ved fanebyte"-mønster som
+    // Dokument-/Skjematekster-fana (sjå renderPersonvern()).
+    function captureConsentEdits() {
+      purposes.forEach(function (p) {
+        var row = pane.querySelector('[data-consent-purpose="' + p.id + '"]');
+        if (!row) return;
+        p.label = row.querySelector("#cp-" + p.id + "-label").value.trim();
+        p.forms = [].slice.call(row.querySelectorAll("[data-cp-form]:checked")).map(function (cb) { return cb.getAttribute("data-cp-form"); });
+        p.active = row.querySelector("[data-cp-active]").checked;
+      });
+      sc.privacy.consentPurposes = purposes;
+    }
+    if (wrap) wrap._privacyFlush = captureConsentEdits;
+
+    pane.querySelectorAll("[data-cp-remove]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        sc.privacy.consentPurposes = purposes.filter(function (p) { return p.id !== btn.getAttribute("data-cp-remove"); });
+        renderPersonvernSamtykke(sc, pane, wrap);
+      });
+    });
+    pane.querySelector("#cp-add").addEventListener("click", function () {
+      purposes.push({ id: privacyNewId("cp"), label: "", forms: [], active: true });
+      sc.privacy.consentPurposes = purposes;
+      renderPersonvernSamtykke(sc, pane, wrap);
+    });
+    pane.querySelector("#cp-save").addEventListener("click", function () {
+      captureConsentEdits();
+      var savingTenantId = _activeTenant && _activeTenant.id;
+      getSC(function (sc2) {
+        sc2.privacy = sc.privacy;
+        saveSC(sc2, savingTenantId);
+        statusMsg(pane.querySelector("#cs-status"), "✓ Lagra!", true);
+      });
+    });
+  }
+
+  /* --- Historikk-fana ------------------------------------------------------- */
+  function renderPersonvernHistorikk(sc, pane, wrap) {
+    var priv = sc.privacy;
+    var versions = (priv.versions || []).slice().sort(function (a, b) { return b.createdAt - a.createdAt; });
+    var rowsHtml = versions.map(function (v) {
+      var statusPillClass = v.status === "published" ? "kd-pill--active" : v.status === "draft" ? "kd-pill--provisioning" : "kd-pill--archived";
+      var statusLabel = v.status === "published" ? "Publisert" : v.status === "draft" ? "Utkast" : "Arkivert";
+      var dateStr = new Date((v.status === "published" && v.publishedAt) || v.createdAt).toLocaleString("nb-NO");
+      var isActive = v.id === priv.activeVersionId;
+      return '<div class="admin-group" style="margin-bottom:.7rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem">' +
+        '<div>' +
+          '<div style="font-weight:600">' + C.esc(v.heading || "(uten overskrift)") + (isActive ? ' <span class="kd-pill kd-pill--active">Gjeldande</span>' : '') + '</div>' +
+          '<div style="font-size:.78rem;color:var(--color-muted)"><span class="kd-pill ' + statusPillClass + '">' + statusLabel + '</span> — ' + C.esc(dateStr) + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:.5rem">' +
+          C.button({ label: "Vis", variant: "ghost", attrs: 'type="button" data-hist-view="' + C.esc(v.id) + '"' }) +
+          (isActive ? "" : C.button({ label: "Bruk som utgangspunkt for nytt utkast", variant: "ghost", attrs: 'type="button" data-hist-restore="' + C.esc(v.id) + '"' })) +
+        '</div>' +
+      '</div>';
+    }).join("");
+
+    pane.innerHTML =
+      '<fieldset class="admin-group"><legend>Historikk</legend>' + (rowsHtml || '<p style="color:var(--color-muted)">Ingen versjonar ennå.</p>') + '</fieldset>' +
+      '<div id="hist-preview"></div>';
+
+    pane.querySelectorAll("[data-hist-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var v = versions.filter(function (x) { return x.id === btn.getAttribute("data-hist-view"); })[0];
+        pane.querySelector("#hist-preview").innerHTML =
+          '<fieldset class="admin-group"><legend>' + C.esc(v.heading || "(uten overskrift)") + '</legend>' +
+            '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(v.bodyBlocks) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
+          '</fieldset>';
+      });
+    });
+    pane.querySelectorAll("[data-hist-restore]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        // UX-review-funn 2026-08-06 (MEDIUM): ingen confirm() her -- dette er
+        // ei Tier A-handling (fullt reversibel, rører ikkje gjeldande
+        // publiserte versjon, ingen synleg endring for besøkjande før nokon
+        // seinare eksplisitt publiserer). Sjølve utkastet som dukkar opp på
+        // Dokument-fana ER tilbakemeldinga, per copy-style-guide.md.
+        var v = versions.filter(function (x) { return x.id === btn.getAttribute("data-hist-restore"); })[0];
+        var draft = privacyCloneVersionAsDraft(v);
+        priv.versions.push(draft);
+        priv.activeVersionId = draft.id;
+        var savingTenantId = _activeTenant && _activeTenant.id;
+        getSC(function (sc2) {
+          sc2.privacy = sc.privacy;
+          saveSC(sc2, savingTenantId);
+          _privacyView = "dokument";
+          renderPersonvern(sc, wrap);
+        });
+      });
+    });
+  }
+
+  /* --- Fane-dispatch --------------------------------------------------------
+     Same mønster som renderPriser() sin _priserView-dispatch: intern
+     fanebrytar, alle underfanene deler den SAME sc-referansen (motteken frå
+     renderSection() sitt getSC()-kall), så ingen internt fanebyte misser
+     ulagra endringar. sc.privacy vert muter direkte i minnet -- faktisk
+     skriving til Supabase skjer berre ved eksplisitte "Lagre"/"Publiser"-klikk
+     (kvar av dei gjer sin EIGEN, ferske getSC()-kall ved lagringstidspunktet,
+     same race-vern som resten av Console, sjå notatet ved saveSC()). ====== */
+  function renderPersonvern(sc, wrap) {
+    // UX-review-funn 2026-08-06 (STENGJANDE): kvar underfane sine skrivne-men-
+    // ikkje-lagra endringar (rik-tekst/vanlege felt) syncar berre til DOM-en
+    // sitt skjulte input, IKKJE inn i sc.privacy -- den faktiske overgangen til
+    // ei anna fane (eller attende til same, sjå under) knuser DOM-en før noko
+    // fangar opp verdiane. Kvar underrenderar registrerer difor sin eigen
+    // wrap._privacyFlush-funksjon (kallar captureFieldEdits()-ekvivalenten sin
+    // eigen, utan å lagre til Supabase) -- kalla HER, FØR wrap.innerHTML vert
+    // bytt ut, uansett kva veg brukaren navigerer vidare.
+    if (wrap._privacyFlush) { wrap._privacyFlush(); wrap._privacyFlush = null; }
+    sc.privacy = migratePrivacyData(sc.privacy);
+    var views = [["dokument", "Dokument"], ["skjema", "Skjematekster"], ["samtykke", "Samtykker"], ["historikk", "Historikk"]];
+    wrap.innerHTML =
+      '<div class="seg" id="privacy-view-toggle" style="margin-bottom:1.4rem">' +
+        views.map(function (v) {
+          return '<button type="button" class="' + (v[0] === _privacyView ? "is-active" : "") + '" data-privacy-view="' + v[0] + '">' + C.esc(v[1]) + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div id="privacy-pane"></div>';
+
+    wrap.querySelectorAll("[data-privacy-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        _privacyView = btn.getAttribute("data-privacy-view");
+        renderPersonvern(sc, wrap);
+      });
+    });
+
+    var pane = wrap.querySelector("#privacy-pane");
+    if (_privacyView === "skjema") renderPersonvernSkjema(sc, pane, wrap);
+    else if (_privacyView === "samtykke") renderPersonvernSamtykke(sc, pane, wrap);
+    else if (_privacyView === "historikk") renderPersonvernHistorikk(sc, pane, wrap);
+    else renderPersonvernDokument(sc, pane, wrap); // "dokument" og enhver ukjend/framtidig verdi -- eksplisitt fallback
   }
 
   /* =========================================================================
