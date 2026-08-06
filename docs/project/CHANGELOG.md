@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.100.1 — 2026-08-06
+
+**Herding (funne under planlegging av Fase 2, retta før Fase 2 vart bygd):** Personvern sin versjonshistorikk/utkast (`versions[]`/`activeVersionId`) budde i Fase 1 (0.100.0) heilt i den anon-lesbare `superconfig`-nøkkelen — same nøkkel nettsida MÅ kunne lese for at fyrste sideoppslag skal fungere for ein ikkje-innlogga besøkjande. Sidan heile superconfig-rada vert henta av kven som helst med anon-nøkkelen, var IKKJE-PUBLISERTE utkast i praksis hentbare utanfrå, sjølv om ingen UI synte dei. Same feilklasse som vart funne og retta 2026-07-07 (adminPassord i klartekst i `superconfig`, sjå `baseline_schema.sql`).
+
+- `versions[]`/`activeVersionId` flytta til `superconfig-private` (RLS krev `is_platform_operator()`, ALDRI anon-lesbar). Berre `heading`/`text` (den publiserte flate projeksjonen) + `forms`/`consentPurposes` (meint for offentleg bruk uansett) står att i `superconfig`.
+- Gjeninnfører Console sin klientside-bruk av broker sine `get_private_config`/`set_config`-handlingar mot `superconfig-private` — fjerna 2026-07-17 (då ubrukt), server-sida urørt og alt klar (koden hadde sin eigen kommentar om at dei kunne "gjenreisast" om eit nytt privat felt trong redigering).
+- `migratePrivacyData()` delt i `migratePrivacyPublicPart()` + `migratePrivacyVersions()`. Ny `renderPersonvernShell()` skil det synkrone fanebytet frå `renderPersonvern()` sitt (no asynkrone) inngangspunkt, som må hente den private delen FØR noko vert rendra — internt fanebyte kallar `renderPersonvernShell()` direkte, aldri på nytt henting. Ny `privacyPublicProjection()`/`savePrivacyVersions()` sikrar kvar lagring skriv til rett nøkkel — ALDRI `sc.privacy` direkte til `saveSC()`, sidan det no ville blanda dei to att.
+- **Security Auditor-pass same dag** (uavhengig, sjå CLAUDE.md sin standardregel for RLS-nære endringar) fann eitt reelt MEDIUM-funn: 0.100.0 var alt merga til `main` før denne herdinga vart bygd, så sårbarheita kan i prinsippet ha vore live ei stund -- om ein operatør faktisk lagra Personvern-endringar i det vindauget, kunne `versions`/`activeVersionId` liggje att feilaktig i den offentlege nøkkelen til NOKON tilfeldigvis trykte Lagre i ei anna fane (ikkje eit proaktivt steg). Retta: `renderPersonvern()` fangar no stale `versions`/`activeVersionId` i den offentlege nøkkelen kvar gong NOKON opnar Personvern-fana i det heile (ikkje berre ved eksplisitt Lagre), bergar eventuell REELL draft-data inn i `superconfig-private` fyrst (`migratePrivacyVersions()` sin nye `stalePublicVersions`-parameter -- forkastar ALDRI ekte operatørarbeid), og reinsar deretter den offentlege nøkkelen. Sjølvlækande automatisk for alle kundar neste gong nokon opnar fana, ingen manuell datarydding nødvendig. Direkte stadfesta av Security Auditor (live anon PostgREST-spørring) at Vibeverk sin eigen produksjonstenant IKKJE har noko lekkasje akkurat no.
+
+Stadfesta med eit oppdatert frittståande Node-skript (offentleg/privat-splitting, migrering med/utan eksisterande privat historikk, OG at reell stale offentleg draft-data vert berga, ikkje forkasta, ved oppreinsking). Alle tre testsuitane framleis 0 FEIL. Ingen ny Edge Function-kode eller migrasjon — reint klientside Console-fiks. Cache-bust: `console-core.js?v=225`.
+
+---
+
 ## 0.100.0 — 2026-08-06
 
 **Ny funksjonalitet:** Console sin Personvern-fane er bygd om frå eitt fritekstfelt til eit strukturert, versjonert system — Fase 1 av eit fleire-fase-prosjekt (sjå `docs/compliance/legal-complexity-vs-value-2026-08-06.md` for full grunngjeving og beslutningsmøte-referat, og Arkitekt-vurderinga same dag for det fulle datamodell-designet).

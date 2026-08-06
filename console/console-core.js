@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.100.0";
+  var VIBEVERK_VERSION = "0.100.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3246,23 +3246,31 @@ window.VwConsole = (function () {
     return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
   }
 
-  // Køyrer éin gong per kunde -- pakkar det gamle { heading, text } inn som
-  // versjon 1 (alt PUBLISERT, sidan det alt var det synlege innhaldet på
-  // nettsida). Idempotent: gjer ingenting om sc.privacy alt er migrert.
-  function migratePrivacyData(priv) {
+  // HERDING 2026-08-06 (funne under planlegging av Fase 2, retta før Fase 2
+  // vart bygd, sjå docs/compliance/): sc.privacy budde opphavleg HEILT i den
+  // anon-lesbare 'superconfig'-nøkkelen -- inkludert versions[] (heile
+  // versjonshistorikken, MED IKKJE-PUBLISERTE UTKAST). Sidan heile
+  // superconfig-rada vert henta av kven som helst med anon-nøkkelen (naudsynt
+  // for at fyrste sideoppslag skal fungere for ein ikkje-innlogga besøkjande),
+  // var upublisert utkast-tekst i praksis hentbar utanfrå, sjølv om ingen UI
+  // synte han. Same feilklasse som vart funne og retta 2026-07-07
+  // (adminPassword-verdien låg tidlegare i klartekst i superconfig, sjå
+  // baseline_schema.sql sin eigen kommentar ved store_anon_read-policyen).
+  //
+  // Løysing: `versions[]`/`activeVersionId` bur no i 'superconfig-private'
+  // (RLS krev is_platform_operator(), ALDRI anon-lesbar), lest/skrive via
+  // broker sine get_private_config/set_config-handlingar (gjeninnført her,
+  // sjå notatet dei vart fjerna med 2026-07-17 -- "om eit nytt privat felt
+  // treng redigering frå Console seinare, kan kalla gjenreisast då"). Berre
+  // `heading`/`text` (den PUBLISERTE flate projeksjonen) + `forms`/
+  // `consentPurposes` (strukturert innhald meint for offentleg bruk uansett,
+  // sjå Fase 2) står att i den offentlege 'superconfig'-nøkkelen.
+  //
+  // sc.privacy vert sett saman av BÅDE delane i minnet for Console sin eigen
+  // redigering (sjå renderPersonvern()), men kvar lagring skil dei att --
+  // sjå privacyPublicProjection()/savePrivacyVersions().
+  function migratePrivacyPublicPart(priv) {
     priv = priv || {};
-    if (priv.versions && priv.versions.length) return priv;
-    var now = Date.now();
-    var legacyHtml = migrateLegacyPrivacyText(priv.text || "");
-    var v1 = {
-      id: "v1", status: "published", basedOnVersionId: null,
-      createdAt: now, publishedAt: now,
-      heading: priv.heading || "",
-      bodyBlocks: legacyHtml
-        ? [{ id: "b-legacy", source: "manual", moduleId: null, included: true, edited: true, body: legacyHtml }]
-        : [],
-      approval: null
-    };
     var forms = {};
     PRIVACY_FORM_TYPES.forEach(function (f) {
       forms[f.id] = (priv.forms && priv.forms[f.id]) || { purpose: "", legalBasis: "", retention: "", recipients: "", blurbHtml: "" };
@@ -3270,11 +3278,66 @@ window.VwConsole = (function () {
     return {
       heading: priv.heading || "",
       text: priv.text || "",
-      activeVersionId: "v1",
-      versions: [v1],
       forms: forms,
       consentPurposes: priv.consentPurposes || []
     };
+  }
+
+  // Køyrer éin gong per kunde -- pakkar det gamle { heading, text } inn som
+  // versjon 1 (alt PUBLISERT, sidan det alt var det synlege innhaldet på
+  // nettsida) OM superconfig-private ikkje alt har ein versjonshistorikk frå
+  // før (heilt ny kunde, eller legacy-data frå FØR 2026-08-06-herdinga over).
+  // Idempotent.
+  //
+  // stalePublicVersions (Security Auditor-funn 2026-08-06): om ein kunde
+  // FAKTISK fekk versions/activeVersionId lagra i den offentlege nøkkelen
+  // medan sårbarheita var open (før denne herdinga), er det REELL data --
+  // draft-arbeid ein operatør faktisk gjorde -- ikkje noko å forkaste. Bruk
+  // ho som andreprioritet (etter ekte privat historikk, før ein heilt fersk
+  // v1) slik at ho vert berga inn i superconfig-private i staden for tapt.
+  function migratePrivacyVersions(privatePrivacy, publicPriv, stalePublicVersions) {
+    if (privatePrivacy && privatePrivacy.versions && privatePrivacy.versions.length) {
+      return { activeVersionId: privatePrivacy.activeVersionId, versions: privatePrivacy.versions };
+    }
+    if (stalePublicVersions && stalePublicVersions.versions && stalePublicVersions.versions.length) {
+      return { activeVersionId: stalePublicVersions.activeVersionId, versions: stalePublicVersions.versions };
+    }
+    var now = Date.now();
+    var legacyHtml = migrateLegacyPrivacyText(publicPriv.text || "");
+    var v1 = {
+      id: "v1", status: "published", basedOnVersionId: null,
+      createdAt: now, publishedAt: now,
+      heading: publicPriv.heading || "",
+      bodyBlocks: legacyHtml
+        ? [{ id: "b-legacy", source: "manual", moduleId: null, included: true, edited: true, body: legacyHtml }]
+        : [],
+      approval: null
+    };
+    return { activeVersionId: "v1", versions: [v1] };
+  }
+
+  // Den EINASTE forma sc.privacy skal skrivast attende til den OFFENTLEGE
+  // 'superconfig'-nøkkelen i -- ALDRI send sc.privacy (som i minnet også
+  // inneheld versions/activeVersionId) direkte til saveSC(), det ville
+  // undergrave heile herdinga over.
+  function privacyPublicProjection(sc) {
+    return { heading: sc.privacy.heading, text: sc.privacy.text, forms: sc.privacy.forms, consentPurposes: sc.privacy.consentPurposes };
+  }
+
+  // Les-endre-skriv mot 'superconfig-private', same disiplin som getSC()/
+  // saveSC() brukar for den offentlege nøkkelen -- unngår å overskrive andre
+  // private felt som måtte liggje der (t.d. ein tidlegare adminPassword-
+  // verdi, sjølv om UI-et for han er fjerna, sjå notatet ved renderSystem()).
+  function savePrivacyVersions(sc, tenantId, cb) {
+    var getPayload = tenantId ? { tenant_id: tenantId } : {};
+    brokerCall("get_private_config", getPayload, function (r) {
+      if (r.error) { cb(r); return; }
+      var privBlob = r.value || {};
+      privBlob.privacy = { activeVersionId: sc.privacy.activeVersionId, versions: sc.privacy.versions };
+      var setPayload = { key: "superconfig-private", value: privBlob };
+      if (tenantId) setPayload.tenant_id = tenantId;
+      brokerCall("set_config", setPayload, cb);
+    });
   }
 
   function privacyActiveVersion(sc) {
@@ -3413,6 +3476,12 @@ window.VwConsole = (function () {
         var draft = privacyCloneVersionAsDraft(version);
         priv.versions.push(draft);
         priv.activeVersionId = draft.id;
+        // Same fire-and-forget-konvensjon som saveSC() sjølv (loggar berre
+        // feil, ventar ikkje på stadfesta skriving før UI-et går vidare) --
+        // konsistent med resten av denne fana.
+        savePrivacyVersions(sc, _activeTenant && _activeTenant.id, function (r) {
+          if (r && r.error) console.error("[console] personvern-versjonering feila:", r.error);
+        });
         renderPersonvernDokument(sc, pane, wrap);
       });
       return;
@@ -3510,10 +3579,16 @@ window.VwConsole = (function () {
 
     pane.querySelector("#cs-priv-save-draft").addEventListener("click", function () {
       captureFieldEdits();
+      // "Lagre som utkast" rører BERRE versions/activeVersionId -- skal
+      // ALDRI kalle saveSC()/den offentlege nøkkelen (sjå notatet ved
+      // migratePrivacyVersions()). Ventar her på stadfesta skriving (i
+      // motsetnad til fire-and-forget elles i fana) sidan denne skrive-
+      // operasjonen er fleire steg (les-endre-skriv mot ein annan nøkkel) og
+      // kan reelt feile på ein måte operatøren bør få vite om før dei går
+      // vidare og trur utkastet er trygt lagra.
       var savingTenantId = _activeTenant && _activeTenant.id;
-      getSC(function (sc2) {
-        sc2.privacy = sc.privacy;
-        saveSC(sc2, savingTenantId);
+      savePrivacyVersions(sc, savingTenantId, function (r) {
+        if (r && r.error) { statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje lagre: " + r.error, false); return; }
         statusMsg(pane.querySelector("#cs-status"), "✓ Lagra som utkast", true);
       });
     });
@@ -3545,11 +3620,20 @@ window.VwConsole = (function () {
         priv.heading = version.heading || "";
         priv.text = privacyBlocksToFlatHtml(version.bodyBlocks);
         var savingTenantId = _activeTenant && _activeTenant.id;
-        getSC(function (sc2) {
-          sc2.privacy = sc.privacy;
-          saveSC(sc2, savingTenantId);
-          statusMsg(pane.querySelector("#cs-status"), "✓ Publisert!", true);
-          renderPersonvernDokument(sc, pane, wrap);
+        // To skrivingar: FYRST versions/activeVersionId til superconfig-
+        // private (aldri anon-lesbar), DEREFTER den offentlege flate
+        // projeksjonen (heading/text/forms/consentPurposes) til superconfig
+        // -- i DEN rekkjefølgja, slik at eit feila privat-skriv aldri let ein
+        // NY, uverifisert versjon bli synt offentleg utan at han faktisk vart
+        // trygt lagra fyrst.
+        savePrivacyVersions(sc, savingTenantId, function (r1) {
+          if (r1 && r1.error) { statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje lagre versjonshistorikk: " + r1.error, false); return; }
+          getSC(function (sc2) {
+            sc2.privacy = privacyPublicProjection(sc);
+            saveSC(sc2, savingTenantId);
+            statusMsg(pane.querySelector("#cs-status"), "✓ Publisert!", true);
+            renderPersonvernDokument(sc, pane, wrap);
+          });
         });
       });
     });
@@ -3603,7 +3687,12 @@ window.VwConsole = (function () {
       captureFormsEdits();
       var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
-        sc2.privacy = sc.privacy;
+        // privacyPublicProjection(), ALDRI sc.privacy direkte -- sc.privacy
+        // inneheld i minnet òg versions/activeVersionId (henta frå den
+        // PRIVATE nøkkelen for Console sin eigen redigering), som ALDRI skal
+        // hamne attende i den offentlege 'superconfig'-nøkkelen (sjå
+        // migratePrivacyVersions()).
+        sc2.privacy = privacyPublicProjection(sc);
         saveSC(sc2, savingTenantId);
         statusMsg(pane.querySelector("#cs-status"), "✓ Lagra!", true);
       });
@@ -3666,7 +3755,7 @@ window.VwConsole = (function () {
       captureConsentEdits();
       var savingTenantId = _activeTenant && _activeTenant.id;
       getSC(function (sc2) {
-        sc2.privacy = sc.privacy;
+        sc2.privacy = privacyPublicProjection(sc); // sjå notatet i renderPersonvernSkjema() sin tilsvarande skriving
         saveSC(sc2, savingTenantId);
         statusMsg(pane.querySelector("#cs-status"), "✓ Lagra!", true);
       });
@@ -3718,26 +3807,79 @@ window.VwConsole = (function () {
         var draft = privacyCloneVersionAsDraft(v);
         priv.versions.push(draft);
         priv.activeVersionId = draft.id;
-        var savingTenantId = _activeTenant && _activeTenant.id;
-        getSC(function (sc2) {
-          sc2.privacy = sc.privacy;
-          saveSC(sc2, savingTenantId);
-          _privacyView = "dokument";
-          renderPersonvern(sc, wrap);
+        // Rører BERRE versions/activeVersionId -- savePrivacyVersions(), ikkje
+        // saveSC()/den offentlege nøkkelen. sc.privacy er alt fullstendig i
+        // minnet, ingen grunn til å hente på nytt -- renderPersonvernShell(),
+        // ikkje renderPersonvern() (som ville trigga eit unødvendig nytt
+        // get_private_config-kall).
+        savePrivacyVersions(sc, _activeTenant && _activeTenant.id, function (r) {
+          if (r && r.error) console.error("[console] personvern-versjonering feila:", r.error);
         });
+        _privacyView = "dokument";
+        renderPersonvernShell(sc, wrap);
       });
     });
   }
 
   /* --- Fane-dispatch --------------------------------------------------------
-     Same mønster som renderPriser() sin _priserView-dispatch: intern
-     fanebrytar, alle underfanene deler den SAME sc-referansen (motteken frå
-     renderSection() sitt getSC()-kall), så ingen internt fanebyte misser
-     ulagra endringar. sc.privacy vert muter direkte i minnet -- faktisk
-     skriving til Supabase skjer berre ved eksplisitte "Lagre"/"Publiser"-klikk
-     (kvar av dei gjer sin EIGEN, ferske getSC()-kall ved lagringstidspunktet,
-     same race-vern som resten av Console, sjå notatet ved saveSC()). ====== */
+     Splitta i to funksjonar 2026-08-06 (herding, sjå notatet ved
+     migratePrivacyVersions()): renderPersonvern() er det YTRE inngangspunktet
+     RENDERERS/renderSection() kallar ved kvar navigering TIL Personvern-fana
+     -- alltid med eit HEILT FERSKT sc-objekt (ny getSC()-lesing), som IKKJE
+     har versions/activeVersionId enno (dei bur no i superconfig-private,
+     henta her via eit eige get_private_config-kall). renderPersonvernShell()
+     er den INDRE synkrone fanedispatchen (same mønster som renderPriser() sin
+     _priserView-dispatch) -- kalla éin gong av renderPersonvern() sjølv etter
+     lastinga, OG direkte av kvart internt fanebyte-klikk UTAN å hente den
+     private delen på nytt (sc er alt fullstendig på det tidspunktet). Alle
+     underfanene deler den SAME sc-referansen, så ingen internt fanebyte
+     misser ulagra endringar (sjå wrap._privacyFlush-mekanismen under). ====== */
   function renderPersonvern(sc, wrap) {
+    // Security Auditor-funn 2026-08-06: 0.100.0 (før denne herdinga) kunne
+    // faktisk ha lagra versions/activeVersionId i den offentlege nøkkelen om
+    // ein operatør rakk å bruke Personvern-fana då. Sjølve migratePrivacyPublicPart()
+    // fjernar dei frå MINNET, men om vi ikkje gjer noko meir, ligg dei att i
+    // Supabase til NOKON tilfeldigvis trykker Lagre i Skjematekster/Samtykker/
+    // Publiser (som skriv via privacyPublicProjection()) -- ikkje eit reelt
+    // sjølv-lækande steg for ein kunde ingen rører ved på ei stund. Fangar
+    // difor stale felt HER, proaktivt, kvar gong nokon i det heile opnar
+    // Personvern-fana, og flyttar/reinsar med ein gong.
+    var rawPublicPriv = sc.privacy || {};
+    var stalePublicVersions = (rawPublicPriv.versions || rawPublicPriv.activeVersionId)
+      ? { activeVersionId: rawPublicPriv.activeVersionId, versions: rawPublicPriv.versions }
+      : null;
+    sc.privacy = migratePrivacyPublicPart(rawPublicPriv);
+    wrap.innerHTML = '<p style="color:var(--color-muted)">Laster personvern…</p>';
+    brokerCall("get_private_config", {}, function (r) {
+      if (r.error) {
+        wrap.innerHTML = '<p style="color:#c0392b">Kunne ikkje laste versjonshistorikk (' + C.esc(r.error) + ').</p>' +
+          C.button({ label: "Prøv igjen", variant: "ghost", attrs: 'type="button" id="cs-priv-retry-load"' });
+        var retryBtn = wrap.querySelector("#cs-priv-retry-load");
+        if (retryBtn) retryBtn.addEventListener("click", function () { renderPersonvern(sc, wrap); });
+        return;
+      }
+      var versionsPart = migratePrivacyVersions((r.value || {}).privacy, sc.privacy, stalePublicVersions);
+      sc.privacy.activeVersionId = versionsPart.activeVersionId;
+      sc.privacy.versions = versionsPart.versions;
+      if (stalePublicVersions) {
+        // Berga (om reell) inn i superconfig-private FYRST, deretter reinsa
+        // den offentlege nøkkelen for dei feilaktig eksponerte felta -- i DEN
+        // rekkjefølgja, same forsiktige mønster som Publiser-handteraren.
+        var cleanupTenantId = _activeTenant && _activeTenant.id;
+        savePrivacyVersions(sc, cleanupTenantId, function (r1) {
+          if (r1 && r1.error) { console.error("[console] kunne ikkje flytte historikk til privat nøkkel under oppreinsking:", r1.error); return; }
+          getSC(function (sc2) {
+            sc2.privacy = privacyPublicProjection(sc);
+            saveSC(sc2, cleanupTenantId);
+            console.warn("[console] fjerna versjonshistorikk som feilaktig låg i den offentlege superconfig-nøkkelen for denne kunden (herding 2026-08-06, sjå CHANGELOG 0.100.1) -- trygt flytta til superconfig-private fyrst.");
+          });
+        });
+      }
+      renderPersonvernShell(sc, wrap);
+    });
+  }
+
+  function renderPersonvernShell(sc, wrap) {
     // UX-review-funn 2026-08-06 (STENGJANDE): kvar underfane sine skrivne-men-
     // ikkje-lagra endringar (rik-tekst/vanlege felt) syncar berre til DOM-en
     // sitt skjulte input, IKKJE inn i sc.privacy -- den faktiske overgangen til
@@ -3747,7 +3889,6 @@ window.VwConsole = (function () {
     // eigen, utan å lagre til Supabase) -- kalla HER, FØR wrap.innerHTML vert
     // bytt ut, uansett kva veg brukaren navigerer vidare.
     if (wrap._privacyFlush) { wrap._privacyFlush(); wrap._privacyFlush = null; }
-    sc.privacy = migratePrivacyData(sc.privacy);
     var views = [["dokument", "Dokument"], ["skjema", "Skjematekster"], ["samtykke", "Samtykker"], ["historikk", "Historikk"]];
     wrap.innerHTML =
       '<div class="seg" id="privacy-view-toggle" style="margin-bottom:1.4rem">' +
@@ -3760,7 +3901,7 @@ window.VwConsole = (function () {
     wrap.querySelectorAll("[data-privacy-view]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         _privacyView = btn.getAttribute("data-privacy-view");
-        renderPersonvern(sc, wrap);
+        renderPersonvernShell(sc, wrap); // IKKJE renderPersonvern() att -- ikkje hent den private delen på nytt, sc er alt fullstendig
       });
     });
 
