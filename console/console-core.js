@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.102.0";
+  var VIBEVERK_VERSION = "0.103.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3242,6 +3242,23 @@ window.VwConsole = (function () {
     ["rettslig_plikt", "Rettslig plikt"]
   ];
 
+  // Fase 4 (godkjenning/eksport, 2026-08-06): REIN INTERN journalføring --
+  // brukaren avklarte eksplisitt (AskUserQuestion) at det IKKJE skal byggjast
+  // nokon ny kundevendt flate (ingen lenke/e-post kunden sjølv opnar), og at
+  // "godkjent" er REINT INFORMATIVT -- sperrar ALDRI "Publiser" (jf.
+  // renderPersonvernDokument sin publiser-handterar, urørt av denne fasen).
+  // Operatøren fyller inn desse tre felta sjølv, etter ein ekte samtale
+  // (telefon/e-post/møte) med kunden -- Console har ingen måte å verifisere
+  // at samtalen faktisk fann stad, difor aldri ei sperre, berre eit notat.
+  var APPROVAL_CHANNELS = [
+    ["", "Ikkje valt"],
+    ["epost", "E-post"],
+    ["telefon", "Telefon"],
+    ["mote", "Møte"],
+    ["anna", "Anna"]
+  ];
+  var APPROVAL_CHANNEL_LABEL = { epost: "e-post", telefon: "telefon", mote: "møte", anna: "anna kanal" };
+
   // Fase 3 (leverandørregister, 2026-08-06): Vibeverk-heile leverandørfakta
   // -- IKKJE per-kunde-data, IKKJE Console-redigerbart nokon stad. Dette er
   // Vibeverk sitt EIGE forhold til kvar leverandør (data-map-vibeverk.md sin
@@ -3374,6 +3391,12 @@ window.VwConsole = (function () {
       bodyBlocks: legacyHtml
         ? [{ id: "b-legacy", source: "manual", moduleId: null, included: true, edited: true, body: legacyHtml }]
         : [],
+      // Fase 4 (godkjenning, 2026-08-06): null til operatøren registrerer noko
+      // via "Registrer godkjenning" (renderPersonvernDokument). Skapet, når
+      // sett: { approvedBy: text, channel: ""|"epost"|"telefon"|"mote"|"anna",
+      // note: text, approvedAt: ms-epoch }. REIN INTERN journalføring (brukar
+      // avklarte eksplisitt, AskUserQuestion 2026-08-06 -- ingen kundevendt
+      // flate) og REINT INFORMATIVT -- sperrar ALDRI publisering.
       approval: null
     };
     return { activeVersionId: "v1", versions: [v1] };
@@ -3431,6 +3454,12 @@ window.VwConsole = (function () {
       createdAt: Date.now(), publishedAt: null,
       heading: version.heading,
       bodyBlocks: (version.bodyBlocks || []).map(function (b) { return Object.assign({}, b); }),
+      // Fase 4 (godkjenning, 2026-08-06): null til operatøren registrerer noko
+      // via "Registrer godkjenning" (renderPersonvernDokument). Skapet, når
+      // sett: { approvedBy: text, channel: ""|"epost"|"telefon"|"mote"|"anna",
+      // note: text, approvedAt: ms-epoch }. REIN INTERN journalføring (brukar
+      // avklarte eksplisitt, AskUserQuestion 2026-08-06 -- ingen kundevendt
+      // flate) og REINT INFORMATIVT -- sperrar ALDRI publisering.
       approval: null
     };
   }
@@ -3569,6 +3598,55 @@ window.VwConsole = (function () {
     return (blocks || []).filter(function (b) { return b.included; }).map(function (b) { return b.body; }).join("");
   }
 
+  // Fase 4 (godkjenning, UX-funn HIGH): billeg "har noko endra sidan
+  // godkjenninga"-fingeravtrykk -- ingen hashing, berre den flate teksten
+  // sjølv (heading + innhald), same idiom som resten av fila brukar (t.d.
+  // privacyBlocksToFlatHtml() sjølv). Lagra på version.approval.contentSnapshot
+  // ved registreringstidspunktet, samanlikna mot noverande innhald ved kvar
+  // rendering -- IKKJE for å fjerne journalposten (datoen/kven/kanalen er
+  // framleis sann historie), berre for å varsle at TEKSTEN har drive vekk frå
+  // det som faktisk vart godkjent.
+  function privacyApprovalContentSnapshot(version) {
+    return (version.heading || "") + "|" + privacyBlocksToFlatHtml(version.bodyBlocks);
+  }
+
+  // Fase 4 (godkjenning/eksport): "Last ned som HTML" for DEN PUBLISERTE
+  // versjonen -- til kunden sitt eige compliance-arkiv. Reint statisk,
+  // sjølvstendig HTML-dokument (ingen ekstern CDN-referanse, ingen
+  // avhengigheit til Vibeverk sin eigen infrastruktur for å opnast seinare).
+  // Same nedlastingsmønster som priserExportImage() (Blob + ObjectURL +
+  // trigga <a download>), berre tekst i staden for eit <canvas>-bilete.
+  function privacyExportPublishedHtml(version, tenantName) {
+    // Security Auditor-funn (Fase 4, MEDIUM): termsField() (components.js)
+    // sanerer ALLTID denne same typen innhald på nytt ved kvar rendering til
+    // ein ekte besøkjande, sidan gamal migrert priv.text (frå FØR
+    // versjonssystemet, sjå migrateLegacyPrivacyText()) kan innehalde
+    // usanert HTML som aldri vart rørt igjen om ein operatør aldri opna og
+    // lagra akkurat den blokka i editoren. Denne eksportfunksjonen las
+    // tidlegare bodyBlocks RÅTT, utan denne same "saner ved bruk"-disiplinen
+    // -- farleg spesifikt her sidan fila er MEINT å opnast i ein nettlesar
+    // seinare (kunden sitt eige arkiv). sanitizeRichHtml() er idempotent, så
+    // dette er gratis for det vanlege, alt trygge tilfellet.
+    var bodyHtml = C.sanitizeRichHtml(privacyBlocksToFlatHtml(version.bodyBlocks)) || "<p>(Tomt innhald)</p>";
+    var publishedStr = version.publishedAt ? new Date(version.publishedAt).toLocaleString("nb-NO") : "";
+    var doc = "<!doctype html><html lang=\"no\"><head><meta charset=\"utf-8\">" +
+      "<title>" + C.esc(version.heading || "Personvernerklæring") + "</title>" +
+      "<style>body{font:16px/1.6 system-ui,sans-serif;max-width:720px;margin:2.5rem auto;padding:0 1.5rem;color:#1a1a1a}h1{font-size:1.5rem}p.meta{color:#666;font-size:.85rem}</style>" +
+      "</head><body>" +
+      "<h1>" + C.esc(version.heading || "Personvernerklæring") + "</h1>" +
+      (publishedStr ? "<p class=\"meta\">" + (tenantName ? C.esc(tenantName) + " — " : "") + "Publisert " + C.esc(publishedStr) + "</p>" : "") +
+      bodyHtml +
+      "</body></html>";
+    var blob = new Blob([doc], { type: "text/html" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = "personvernerklaering-" + (tenantName ? tenantName + "-" : "") + stamp + ".html";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   /* --- Dokument-fana ------------------------------------------------------ */
   function renderPersonvernDokument(sc, pane, wrap) {
     var priv = sc.privacy;
@@ -3581,7 +3659,10 @@ window.VwConsole = (function () {
           '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Publisert ' + C.esc(new Date(version.publishedAt).toLocaleString("nb-NO")) + '. Ei publisert versjon kan ikkje redigerast direkte — trykk "Rediger" for å opprette eit nytt utkast basert på henne. Historikken held fram uendra.</p>' +
           '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(version.bodyBlocks) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
         '</fieldset>' +
-        '<div style="margin-top:1rem">' + C.button({ label: "Rediger (opprett nytt utkast)", variant: "primary", attrs: 'type="button" id="cs-priv-new-draft"' }) + '</div>';
+        '<div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">' +
+          C.button({ label: "Rediger (opprett nytt utkast)", variant: "primary", attrs: 'type="button" id="cs-priv-new-draft"' }) +
+          C.button({ label: "Last ned som HTML", variant: "ghost", attrs: 'type="button" id="cs-priv-export"' }) +
+        '</div>';
       pane.querySelector("#cs-priv-new-draft").addEventListener("click", function () {
         var draft = privacyCloneVersionAsDraft(version);
         priv.versions.push(draft);
@@ -3593,6 +3674,12 @@ window.VwConsole = (function () {
           if (r && r.error) console.error("[console] personvern-versjonering feila:", r.error);
         });
         renderPersonvernDokument(sc, pane, wrap);
+      });
+      // Fase 4 (eksport, 2026-08-06): brukaren avklarte eksplisitt -- kun ein
+      // nedlastbar fil av DEN PUBLISERTE versjonen, til kunden sitt eige
+      // compliance-arkiv. Ingen revisjonseksport/JSON i denne fasen.
+      pane.querySelector("#cs-priv-export").addEventListener("click", function () {
+        privacyExportPublishedHtml(version, _activeTenant && _activeTenant.slug);
       });
       return;
     }
@@ -3624,6 +3711,32 @@ window.VwConsole = (function () {
         '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 1rem">Kvart avsnitt er anten henta frå ein aktiv modul (kan varslast mot, sjå under, men ikkje tvingast bort) eller lagt til manuelt. <strong>Dette er berre eit utgangspunkt frå oss</strong> — kunden er juridisk ansvarleg for at teksten faktisk stemmer.</p>' +
         '<div id="privacy-blocks">' + blocksHtml + '</div>' +
       '</fieldset>' +
+      '<fieldset class="admin-group"><legend>Godkjenning frå kunden</legend>' +
+        '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Reint internt notat — registrer at kunden faktisk har sett og godtatt innhaldet, t.d. etter ein telefonsamtale eller e-postutveksling. <strong>Blokkerer ikkje publisering</strong> — til eiga dokumentasjon.</p>' +
+        (version.approval && version.approval.approvedAt
+          ? '<p style="font-size:.85rem;margin:0 0 .8rem">' +
+            (version.approval.contentSnapshot === privacyApprovalContentSnapshot(version)
+              ? '<span class="kd-pill kd-pill--active">Godkjent</span>'
+              // UX-funn (Fase 4, HIGH): utan dette ville ei godkjenning stå att
+              // som eit grønt, tilsynelatande gyldig stempel sjølv etter at
+              // avsnitta faktisk er endra sidan -- kunden godkjende IKKJE den
+              // noverande teksten. Fjernar aldri sjølve journalposten (dato/
+              // kven/kanal er framleis sann historie), varslar berre at
+              // INNHALDET har drive vekk frå det som vart godkjent.
+              : '<span class="kd-pill kd-pill--provisioning">Godkjent (innhald endra sidan)</span>') +
+            ' av ' + C.esc(version.approval.approvedBy || "(ikkje oppgitt)") +
+            ' via ' + C.esc(APPROVAL_CHANNEL_LABEL[version.approval.channel] || "ikkje oppgitt") + ', ' + C.esc(new Date(version.approval.approvedAt).toLocaleString("nb-NO")) +
+            (version.approval.note ? '<br><span style="color:var(--color-muted)">' + C.esc(version.approval.note) + '</span>' : '') +
+            ' ' + C.button({ label: "Fjern godkjenning", variant: "ghost", attrs: 'type="button" id="cs-approval-clear" style="margin-left:.4rem;padding:.15rem .6rem;font-size:.76rem"' }) +
+            '</p>'
+          : '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .8rem">Ikkje registrert enno.</p>') +
+        C.field({ id: "cs-approval-by", label: "Godkjent av (namn/rolle hos kunden)", value: (version.approval && version.approval.approvedBy) || "" }) +
+        '<div class="field"><label for="cs-approval-channel">Kanal</label><select id="cs-approval-channel">' +
+          APPROVAL_CHANNELS.map(function (o) { return '<option value="' + o[0] + '"' + ((version.approval && version.approval.channel) === o[0] ? " selected" : "") + '>' + o[1] + '</option>'; }).join("") +
+        '</select></div>' +
+        C.field({ id: "cs-approval-note", label: "Notat (valfritt)", value: (version.approval && version.approval.note) || "", multiline: true, rows: 2 }) +
+        C.button({ label: "Registrer godkjenning", variant: "ghost", attrs: 'type="button" id="cs-approval-save"' }) +
+      '</fieldset>' +
       '<div style="display:flex;gap:.6rem;align-items:center;margin-top:1rem;flex-wrap:wrap">' +
         C.button({ label: "Lagre som utkast", variant: "ghost", attrs: 'type="button" id="cs-priv-save-draft"' }) +
         C.button({ label: "Publiser", variant: "primary", attrs: 'type="button" id="cs-priv-publish"' }) +
@@ -3640,6 +3753,17 @@ window.VwConsole = (function () {
         var html = App.ui.readRichTextField(pane, "privacy-block-" + b.id);
         if (html !== b.body) { b.body = html; if (b.source === "module") b.edited = true; }
       });
+      // Fase 4: held godkjennings-FELTA i synk med det operatøren skriv (så
+      // eit fanebyte ikkje mistar det), MEN rører ALDRI approvedAt her --
+      // det tidsstempelet vert berre sett av den eksplisitte "Registrer
+      // godkjenning"-knappen under, aldri berre av å skrive i eit felt.
+      var byEl = pane.querySelector("#cs-approval-by");
+      if (byEl) {
+        version.approval = version.approval || {};
+        version.approval.approvedBy = byEl.value.trim();
+        version.approval.channel = pane.querySelector("#cs-approval-channel").value;
+        version.approval.note = pane.querySelector("#cs-approval-note").value.trim();
+      }
     }
     // UX-review-funn 2026-08-06 (STENGJANDE): registrer denne som fana sin
     // eigen "flush"-funksjon -- kalla av renderPersonvern() FØR sjølve
@@ -3665,6 +3789,46 @@ window.VwConsole = (function () {
         renderPersonvernDokument(sc, pane, wrap);
       });
     });
+
+    // Fase 4 (godkjenning, 2026-08-06): eksplisitt "Registrer"-knapp, IKKJE
+    // berre å skrive i felta -- approvedAt skal berre stemplast ved eit
+    // MEDVITE klikk, aldri implisitt av captureFieldEdits() sin flush-bruk
+    // (sjå notatet der). Same fire-and-forget-lagringskonvensjon som "Rediger
+    // (opprett nytt utkast)" over.
+    pane.querySelector("#cs-approval-save").addEventListener("click", function () {
+      captureFieldEdits();
+      // UX-funn (Fase 4, MEDIUM): utan denne sjekken kunne eit tomt klikk
+      // registrere ei "godkjenning" utan noka faktisk namn -- syner då som
+      // "Godkjent av (ikkje oppgitt)", som ser ut som korrupt data, ikkje
+      // som "ikkje registrert".
+      if (!version.approval || !version.approval.approvedBy) {
+        statusMsg(pane.querySelector("#cs-status"), "Fyll inn kven som godkjente før du registrerer.", false);
+        return;
+      }
+      version.approval.approvedAt = Date.now();
+      version.approval.contentSnapshot = privacyApprovalContentSnapshot(version);
+      savePrivacyVersions(sc, _activeTenant && _activeTenant.id, function (r) {
+        if (r && r.error) { statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje lagre: " + r.error, false); return; }
+        renderPersonvernDokument(sc, pane, wrap);
+      });
+    });
+
+    // UX-funn (Fase 4, MEDIUM): ingen veg tilbake til "Ikkje registrert enno"
+    // utan denne -- ei feilregistrering (t.d. finn C over, eller berre eit
+    // feilklikk) kunne elles berre OVERSKRIVAST, aldri fjernast heilt. Tier A
+    // (fullt reversibel, rører ikkje sjølve avsnitta/publiseringsstatus) --
+    // ingen confirm() trengst, per copy-style-guide.
+    var clearBtn = pane.querySelector("#cs-approval-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        captureFieldEdits();
+        version.approval = null;
+        savePrivacyVersions(sc, _activeTenant && _activeTenant.id, function (r) {
+          if (r && r.error) { statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje lagre: " + r.error, false); return; }
+          renderPersonvernDokument(sc, pane, wrap);
+        });
+      });
+    }
 
     pane.querySelector("#cs-priv-fetch").addEventListener("click", function () {
       captureFieldEdits();
@@ -3975,10 +4139,14 @@ window.VwConsole = (function () {
       var statusLabel = v.status === "published" ? "Publisert" : v.status === "draft" ? "Utkast" : "Arkivert";
       var dateStr = new Date((v.status === "published" && v.publishedAt) || v.createdAt).toLocaleString("nb-NO");
       var isActive = v.id === priv.activeVersionId;
+      var approvalStr = (v.approval && v.approval.approvedAt)
+        ? "Godkjent av " + (v.approval.approvedBy || "(ikkje oppgitt)") + " (" + (APPROVAL_CHANNEL_LABEL[v.approval.channel] || "ikkje oppgitt") + "), " + new Date(v.approval.approvedAt).toLocaleDateString("nb-NO")
+        : "";
       return '<div class="admin-group" style="margin-bottom:.7rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem">' +
         '<div>' +
           '<div style="font-weight:600">' + C.esc(v.heading || "(uten overskrift)") + (isActive ? ' <span class="kd-pill kd-pill--active">Gjeldande</span>' : '') + '</div>' +
           '<div style="font-size:.78rem;color:var(--color-muted)"><span class="kd-pill ' + statusPillClass + '">' + statusLabel + '</span> — ' + C.esc(dateStr) + '</div>' +
+          (approvalStr ? '<div style="font-size:.76rem;color:var(--color-muted);margin-top:.2rem">✓ ' + C.esc(approvalStr) + '</div>' : '') +
         '</div>' +
         '<div style="display:flex;gap:.5rem">' +
           C.button({ label: "Vis", variant: "ghost", attrs: 'type="button" data-hist-view="' + C.esc(v.id) + '"' }) +
