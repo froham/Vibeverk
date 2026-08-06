@@ -279,16 +279,6 @@
     .an-cta-chips { display: flex; flex-wrap: wrap; gap: .6rem; }
     .an-cta-chip { border: 1px solid var(--color-border); border-radius: 999px; padding: .4rem .8rem; font-size: .82rem; background: var(--color-surface); display: inline-flex; gap: .4rem; align-items: baseline; }
     .an-cta-chip strong { color: var(--color-primary); }
-    /* Henvendelser-trakt -- bevisst tona ned (stipla kant, dempa farge), sjå
-       ADR-0013-området/roadmap for kvifor konverteringskobling ikkje skal
-       vege tyngre visuelt enn resten av panelet. */
-    .an-funnel { border: 1px dashed var(--color-border); border-radius: var(--radius); padding: 1rem 1.1rem; }
-    .an-funnel h5 { color: var(--color-muted); font-size: .82rem; }
-    .an-funnel__row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
-    .an-funnel__step { text-align: center; }
-    .an-funnel__n { font-size: 1.3rem; font-weight: 700; color: var(--color-text); }
-    .an-funnel__l { font-size: .74rem; color: var(--color-muted); }
-    .an-funnel__arrow { color: var(--color-muted); font-size: .95rem; }
     .an-device-bar { display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin: .3rem 0 .8rem; }
     .an-device-bar span { display: flex; align-items: center; justify-content: center; color: #fff; font-size: .72rem; font-weight: 700; min-width: 3px; }
     .an-device-legend { display: flex; flex-wrap: wrap; gap: .9rem; font-size: .8rem; }
@@ -476,13 +466,13 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8/dist/umd/supabase.js"></script>
   <script src="../config.js?v=14"></script>
   <script src="../components.js?v=20"></script>
-  <script src="../core.js?v=87"></script>
+  <script src="../core.js?v=88"></script>
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
 
   <!-- Same modular som index.html — slik at alle admin-faner er tilgjengelege -->
-  <script src="../module-booking.js?v=18"></script>
+  <script src="../module-booking.js?v=19"></script>
   <script src="../module-quote.js?v=14"></script>
   <script src="../module-references.js?v=9"></script>
   <script src="../module-faq.js?v=8"></script>
@@ -492,7 +482,7 @@
   <script src="../module-mediabank.js?v=6"></script>
   <script src="../module-chat.js?v=22"></script>
   <script src="../module-users.js?v=15"></script>
-  <script src="../module-sidetelling.js?v=8"></script>
+  <script src="../module-sidetelling.js?v=9"></script>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {

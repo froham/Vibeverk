@@ -886,10 +886,14 @@ window.App = (function () {
         // Eigarskaps-token for chat-opphavne leads (sjå
         // supabase/migrations/20260717140000_dedup_anon_lead_chat_id.sql) --
         // null for vanlege Kontakt/Tilbud-leads utan chatId, uendra åtferd.
-        p_visitor_id: lead.visitorId || null,
-        // Konverteringskobling (Fase 2 steg 3b) -- null når features.sidetelling
-        // er av, sjå getAnalyticsSessionId() sin eigen kommentar.
-        p_analytics_session_id: getAnalyticsSessionId()
+        p_visitor_id: lead.visitorId || null
+        // Konverteringskoblinga (Fase 2 steg 3b, p_analytics_session_id) er
+        // FJERNA (beslutningsmøte 2026-08-06, sjå docs/compliance/legal-
+        // complexity-vs-value-2026-08-06.md del 5): kobla elles anonyme
+        // pageview-rader til ein namngjeven henvendelse, eit eige GDPR-
+        // spørsmål for lita verdi. p_analytics_session_id har DEFAULT NULL
+        // i RPC-en, så det held å slutte å sende parameteren -- ingen
+        // migrasjon nødvendig.
       }).then(function (r) {
         if (r.error) { logWriteError("opprette anonym henvendelse", r.error); return Promise.reject(r.error); }
         return newLead;
@@ -5376,16 +5380,15 @@ window.App = (function () {
 
   const SUPER_KEY  = "superconfig";
 
-  // Fase 2 (steg 3a) -- delt session-ID for å kople sidetellinga (Analyse)
-  // saman med ekte lead-/booking-innsendingar (konverteringskobling, steg
-  // 3b). Må vere HER, ikkje i module-sidetelling.js sjølv, sidan Kontakt-/
-  // Tilbod-/Booking-skjemaa fungerer HEILT uavhengig av om
-  // features.sidetelling er på/av eller om modulen i det heile er lasta --
-  // ei eksponering inni sidetellings-modulen ville vore utilgjengeleg
-  // akkurat når desse skjemaa treng ho (Arkitekt-notat 2026-08-03, sjå
-  // docs/project/CHANGELOG.md). Éin einaste kjelde til sanning for
-  // sessionStorage-nøkkelen "vw-sidetelling-session" -- module-sidetelling.js
-  // sin eigen, lokale sessionId()-funksjon vart fjerna, kallar denne no.
+  // Fase 2 (steg 3a) -- session-ID for sidetellinga (Analyse) sin eigen
+  // pageview-/CTA-sporing. Brukt til konverteringskobling (steg 3b, kopla
+  // saman med lead-/booking-innsendingar) fram til den vart FJERNA
+  // (beslutningsmøte 2026-08-06, sjå docs/compliance/legal-complexity-vs-
+  // value-2026-08-06.md del 5) -- kobla elles anonyme pageview-rader til ein
+  // namngjeven henvendelse, eit eige GDPR-spørsmål for lita verdi. Denne
+  // funksjonen står likevel att HER (ikkje i module-sidetelling.js sjølv)
+  // sidan sidetellinga sin eigen sporing framleis treng éin delt kjelde til
+  // sanning for sessionStorage-nøkkelen "vw-sidetelling-session".
   const ANALYTICS_SESSION_KEY = "vw-sidetelling-session";
   function getAnalyticsSessionId() {
     if (!(CFG.features && CFG.features.sidetelling === true)) return null;
@@ -5572,7 +5575,7 @@ window.App = (function () {
     buildTemplateOptions: buildTemplateOptions,   // kombinerer kontekstmalar + CRM-malar for openReplyModal sin malvelgar
     buildSignatureOptions: buildSignatureOptions, // delte signaturar (Kunder → CRM-innstillingar) for openReplyModal sine «Sett inn»-knappar
     computeDefaultPrivacyText: computeDefaultPrivacyText,
-    getAnalyticsSessionId: getAnalyticsSessionId, // sjå notatet ved definisjonen -- delt session-ID for konverteringskobling
+    getAnalyticsSessionId: getAnalyticsSessionId, // sjå notatet ved definisjonen -- session-ID for sidetellinga sin eigen sporing
     // Nettsidehelse (2026-07-27) -- reine, opts-parameteriserte funksjonar
     // slik at Console kan køyre same helsesjekk for KVA SOM HELST tenant
     // operatøren har valt, ikkje berre denne sida sin eigen CFG/content.

@@ -2855,12 +2855,14 @@ const __asyncTests = (async () => {
     assert(window4.App.getAnalyticsSessionId() === rpcCalls[0].params.p_session_id,
       "App.getAnalyticsSessionId() gir samme session-ID som sidetellingen selv sendte -- éin einaste kjelde til sanning");
 
-    // Fase 2 steg 3b -- konverteringskobling: ei anonym Kontakt-innsending
-    // skal sende med samme session-ID sidetellingen alt bruker.
+    // Fase 2 steg 3b (konverteringskobling) er FJERNA (beslutningsmøte
+    // 2026-08-06, sjå docs/compliance/legal-complexity-vs-value-2026-08-06.md
+    // del 5) -- ei anonym Kontakt-innsending skal IKKJE lenger sende
+    // p_analytics_session_id, sjølv når sidetellinga sjølv er aktiv.
     window4.App.addLead({ kind: "kontakt", name: "Test Testesen", email: "test@example.test", message: "Hei" });
     var leadRpc = rpcCalls[rpcCalls.length - 1];
-    assert(leadRpc.name === "insert_anon_lead" && leadRpc.params.p_analytics_session_id === rpcCalls[0].params.p_session_id,
-      "addLead() sender p_analytics_session_id = samme session-ID som sidetellingen: " + JSON.stringify(leadRpc.params));
+    assert(leadRpc.name === "insert_anon_lead" && leadRpc.params.p_analytics_session_id === undefined,
+      "addLead() sender IKKJE lenger p_analytics_session_id (konverteringskobling fjerna): " + JSON.stringify(leadRpc.params));
 
     var panel = doc4.createElement("div");
     doc4.body.appendChild(panel); // renderAdminPanel sjekker container.ownerDocument.contains(...) før rendering
@@ -2994,83 +2996,12 @@ const __asyncTests = (async () => {
       "størst endring i henvisningskilde (google.com, ny denne perioden) vises i selve Trender-seksjonen");
   })();
 
-  // --- module-sidetelling.js: konverteringskobling (Fase 2 steg 3b) ---
-  console.log("\n— Sidetelling: konverteringskobling (leads/bookings -> inngangsside) —");
-  (function () {
-    // Relative datoar (sjå daysAgoIso-notatet i FAKE_ROWS-blokka over) --
-    // faste "2026-08-01"-datoar ville drive utanfor standardperioden (30
-    // dagar) etter kvart som testen faktisk køyrer seinare og seinare.
-    var daysAgoIso7 = function (n) { return new Date(Date.now() - n * 86400000).toISOString(); };
-    var ANALYTICS_ROWS = [
-      { type: "pageview", path: "#tjenester", referrer: null, cta_id: null, session_id: "conv-1", device_type: "pc", created_at: daysAgoIso7(1) },
-      { type: "pageview", path: "#",          referrer: null, cta_id: null, session_id: "conv-2", device_type: "pc", created_at: daysAgoIso7(1) },
-      { type: "pageview", path: "#om-oss",    referrer: null, cta_id: null, session_id: "ukoblet", device_type: "pc", created_at: daysAgoIso7(1) }
-    ];
-    var LEADS_ROWS = [
-      { analytics_session_id: "conv-1", created_at: daysAgoIso7(1) },
-      // Peikar på ein session_id sidetellinga ALDRI har sett -- skal stille
-      // utelatast frå koblinga, ikkje krasje eller telje feil.
-      { analytics_session_id: "ukjent-session", created_at: daysAgoIso7(1) }
-    ];
-    var BOOKINGS_ROWS = [
-      { analytics_session_id: "conv-2", created_at: daysAgoIso7(1) }
-    ];
-
-    function makeMultiTableFakeSb() {
-      function chainFor(rows) {
-        var q = {
-          select: function () { return q; }, eq: function () { return q; }, gte: function () { return q; },
-          order: function () { return q; }, limit: function () { return q; },
-          then: function (cb) { cb({ error: null, data: rows }); }
-        };
-        return q;
-      }
-      return {
-        rpc: function () { return { then: function (cb) { cb({ error: null }); } }; },
-        from: function (table) {
-          if (table === "leads") return chainFor(LEADS_ROWS);
-          if (table === "bookings") return chainFor(BOOKINGS_ROWS);
-          return chainFor(ANALYTICS_ROWS);
-        }
-      };
-    }
-
-    var html7 = fs.readFileSync("index.html", "utf8");
-    var dom7 = new JSDOM(html7, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
-    var window7 = dom7.window;
-    window7.IntersectionObserver = class { constructor(cb){this.cb=cb;} observe(el){this.cb([{isIntersecting:true,target:el}]);} unobserve(){} disconnect(){} };
-    window7.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
-    window7.scrollTo = () => {};
-    window7.HTMLElement.prototype.scrollIntoView = () => {};
-    window7.URL.createObjectURL = window7.URL.createObjectURL || (() => "blob:mock-url");
-    window7.URL.revokeObjectURL = window7.URL.revokeObjectURL || (() => {});
-
-    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
-      var src = fs.readFileSync(f, "utf8");
-      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
-      window7.eval(src);
-    });
-    window7.App.supabase = makeMultiTableFakeSb();
-    window7.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
-    window7.document.dispatchEvent(new window7.Event("DOMContentLoaded", { bubbles: true }));
-
-    var panel7 = window7.document.createElement("div");
-    window7.document.body.appendChild(panel7);
-    window7.VwSidetelling.renderAdminPanel(panel7);
-
-    // Innsikt-runden (2026-08-03): "Henvendelser fra disse sidene"
-    // (topplista etter inngangsside) er erstatta med ein samla, bevisst
-    // tona-ned trakt (sidevisning -> CTA-klikk -> henvendelse, sjå
-    // renderSiderPane()) -- kobling mellom besøksdata og ein namngjeven
-    // henvendelse er framleis eit ope juridisk spørsmål (ADR-0013-området),
-    // så per-side-nedbrytinga vart bevisst ikkje teken med vidare.
-    assert(!!panel7.querySelector(".an-funnel"), "konverteringsseksjonen (trakt) vises når leads/bookings har matchande analytics_session_id");
-    assert(/Fra besøk til henvendelse/.test(panel7.innerHTML), "trakten har rett overskrift");
-    assert(/2 henvendelser[^<]*kan spores/.test(panel7.innerHTML),
-      "totalt 2 koblede henvendelser vises (den urelaterte \"ukjent-session\"-raden er stille utelatt): " + (panel7.innerHTML.match(/\d+ henvendelser?[^<]*kan spores[^<]*/) || ["(ikke funnet)"])[0]);
-    var funnelNs = [].slice.call(panel7.querySelectorAll(".an-funnel__n")).map(function (el) { return el.textContent; });
-    assert(funnelNs.join(",") === "3,0,2", "trakten viser riktige tall: 3 sidevisninger, 0 CTA-klikk, 2 henvendelser (conv-1+conv-2, \"ukoblet\"/\"ukjent-session\" telles ikke): " + funnelNs.join(","));
-  })();
+  // Konverteringskoblinga (Fase 2 steg 3b) sin eigen testblokk her er FJERNA
+  // saman med sjølve funksjonen (beslutningsmøte 2026-08-06, sjå
+  // docs/compliance/legal-complexity-vs-value-2026-08-06.md del 5) -- kobla
+  // elles anonyme pageview-rader til ein namngjeven henvendelse, eit eige
+  // GDPR-spørsmål for lita verdi. Testa tidlegare `.an-funnel`-trakten i
+  // renderSiderPane(), som ikkje lenger finst.
 
   // --- module-sidetelling.js: sub-faner, periodevalg, søyle-tooltip (tap +
   // tastatur) -- dei tre nye interaktive kontrollane frå Innsikt-runden
