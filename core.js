@@ -886,7 +886,7 @@ window.App = (function () {
         // Eigarskaps-token for chat-opphavne leads (sjå
         // supabase/migrations/20260717140000_dedup_anon_lead_chat_id.sql) --
         // null for vanlege Kontakt/Tilbud-leads utan chatId, uendra åtferd.
-        p_visitor_id: lead.visitorId || null
+        p_visitor_id: lead.visitorId || null,
         // Konverteringskoblinga (Fase 2 steg 3b, p_analytics_session_id) er
         // FJERNA (beslutningsmøte 2026-08-06, sjå docs/compliance/legal-
         // complexity-vs-value-2026-08-06.md del 5): kobla elles anonyme
@@ -894,6 +894,12 @@ window.App = (function () {
         // spørsmål for lita verdi. p_analytics_session_id har DEFAULT NULL
         // i RPC-en, så det held å slutte å sende parameteren -- ingen
         // migrasjon nødvendig.
+        //
+        // p_consent (Fase 2 personvern-videreutvikling, 2026-08-06):
+        // augeblikksbilete av eventuelle valfrie samtykke-avkryssingar
+        // (App.ui.buildConsentSnapshot()) -- null om ingen finst for denne
+        // skjematypen, RPC-en sitt DEFAULT NULL dekker det trygt.
+        p_consent: lead.consent || null
       }).then(function (r) {
         if (r.error) { logWriteError("opprette anonym henvendelse", r.error); return Promise.reject(r.error); }
         return newLead;
@@ -1376,6 +1382,36 @@ window.App = (function () {
     return !!(cb && cb.checked);
   }
 
+  // Fase 2 (2026-08-06): les av dei faktiske svara frå C.consentPurposesField()
+  // sitt merkeoppsett i `container`, og byggjer eit sjølvstendig augeblikksbilete
+  // som vert sendt saman med sjølve skjemaet (p_consent). Les BERRE -- håndhevar
+  // ingenting (ingen boks her er nokon gong obligatorisk for innsending, sjå
+  // components.js sin eigen kommentar ved consentPurposesField()). Returnerer
+  // null om ingen samtykkeformål-boksar finst for denne skjematypen i det
+  // heile -- addLead()/booking-flytane sender då ikkje noko p_consent-felt,
+  // RPC-en sitt DEFAULT NULL dekker det trygt.
+  function buildConsentSnapshot(container, idPrefix, formType) {
+    const wrap = container.querySelector(`[data-consent-purposes="${idPrefix}"]`);
+    if (!wrap) return null;
+    const now = new Date().toISOString();
+    const priv = CFG.privacy || {};
+    const purposes = [].slice.call(wrap.querySelectorAll("[data-consent-purpose-id]")).map(function (cb) {
+      return {
+        id: cb.getAttribute("data-consent-purpose-id"),
+        label: cb.getAttribute("data-consent-purpose-label"),
+        answer: !!cb.checked,
+        at: now
+      };
+    });
+    if (!purposes.length) return null;
+    return {
+      formKey: formType,
+      privacyVersionId: priv.publishedVersionId || null,
+      privacyPublishedAt: priv.publishedAt || null,
+      purposes: purposes
+    };
+  }
+
   /* --- Kontaktskjema → lagre lead ------------------------------------------ */
   function bindContactForm() {
     const form = document.querySelector("[data-contact-form]");
@@ -1408,7 +1444,7 @@ window.App = (function () {
       }
 
       setStatus(status, "Sender …", "ok");
-      addLead({ name: name, email: email, message: message }).then(function () {
+      addLead({ name: name, email: email, message: message, consent: buildConsentSnapshot(form, "lead", "kontakt") }).then(function () {
         form.reset();
         setStatus(status, content.contactSection.successMessage || CFG.contactSection.successMessage, "ok");
       }).catch(function () {
@@ -5623,6 +5659,7 @@ window.App = (function () {
       readAttachments:  readAttachments,            // (scope, id) → []
       bindTerms:        bindTerms,                  // (container, idPrefix) — kobler opp vilkår-popup
       termsAccepted:    termsAccepted,               // (container, idPrefix) → bool
+      buildConsentSnapshot: buildConsentSnapshot,     // (container, idPrefix, formType) → { formKey, privacyVersionId, privacyPublishedAt, purposes[] } | null
       bindRichTextFields: bindRichTextFields,        // kobler opp verktøylinje for alle rik-tekst-felt i et område
       readRichTextField: readRichTextField,           // (scope, id) → sanert HTML-streng
       textToRichHtml: textToRichHtml,                 // ren tekst (\n\n avsnitt) → trygg HTML, for migrering av gammel plain-text inn i rik-tekst-felt

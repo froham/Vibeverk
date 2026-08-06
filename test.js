@@ -95,6 +95,10 @@ var initialPrivacyText = window.SITE_CONFIG.privacy.text;
 assert(!!initialPrivacyText, "personvern-standardtekst genereres automatisk ved oppstart (ikke tom)");
 assert(/tilbud/.test(initialPrivacyText) && /booking/i.test(initialPrivacyText), "nevner tilbud og booking (begge moduler aktive i testen)");
 assert(/Nei\. Denne siden bruker ingen cookies/.test(initialPrivacyText), "nevner ikke Plausible før analyse er konfigurert");
+// Fase 2 (samtykke-revisjonsspor, 2026-08-06): standardkonfig har ingen
+// consentPurposes definert -- consentPurposesField() skal da rendre tomt
+// (ingen visuell støy for kundar som aldri konfigurerer samtykkeformål).
+assert(!doc.querySelector("[data-consent-purposes]"), "ingen samtykke-avkryssingsbokser vises når privacy.consentPurposes er udefinert/tom");
 
 // 5) Lead lagres via kontaktskjema
 doc.querySelector("#lead-name").value = "Kari Test";
@@ -3184,6 +3188,122 @@ const __asyncTests = (async () => {
     retryBtn.dispatchEvent(new window6.MouseEvent("click", { bubbles: true }));
     assert(!panel6.querySelector("[data-sidetelling-retry]") && panel6.querySelectorAll(".an-card__val").length > 0,
       "klikk på «Prøv igjen» gjør et nytt forsøk og rendrer panelet normalt når det lykkes");
+  })();
+
+  // --- Fase 2 (samtykke-revisjonsspor, 2026-08-06): avkryssingsbokser for
+  // valfrie samtykkeformål på Kontakt/Tilbud/Booking + p_consent-augeblikks-
+  // biletet som faktisk vert sendt ved innsending. Sjå
+  // console/console-core.js sin Personvern -> Samtykker-fane for korleis
+  // formåla vert definerte, og core.js sin buildConsentSnapshot()/
+  // components.js sin consentPurposesField() for sjølve mekanismen. ---
+  console.log("\n— Samtykke-revisjonsspor: avkryssingsbokser + p_consent —");
+  (function () {
+    var html9 = fs.readFileSync("index.html", "utf8");
+    var dom9 = new JSDOM(html9, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window9 = dom9.window;
+    window9.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window9.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window9.scrollTo = () => {};
+    window9.HTMLElement.prototype.scrollIntoView = () => {};
+    window9.URL.createObjectURL = window9.URL.createObjectURL || (() => "blob:mock-url");
+    window9.URL.revokeObjectURL = window9.URL.revokeObjectURL || (() => {});
+
+    var rpcCalls9 = [];
+    var fakeSb9 = makeFakeSb(rpcCalls9, [], {});
+    // makeFakeSb() sin rpc()-mock kallar cb(...) synkront og returnerer
+    // ingenting sjølv -- det held for window4 sin bruk over (som aldri
+    // kjedar .then() på addLead() sitt returverdi direkte), men her går
+    // innsendinga via det ekte skjema-innsendingshandtaket i core.js sin
+    // bindContactForm(), som gjer addLead(...).then(...).catch(...) --
+    // krev difor eit ekte, kjedbart Promise-svar frå rpc().
+    fakeSb9.rpc = function (name, params) {
+      rpcCalls9.push({ name: name, params: params });
+      return Promise.resolve({ error: null });
+    };
+    // Same grunn som window4 over: core.js sin _sb vert fanga VED EVAL, må
+    // difor stubbast før core.js vert evaluert, ikkje etterpå.
+    window9.supabase = { createClient: function () { return fakeSb9; } };
+
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-booking.js", "module-quote.js"].forEach(function (f) {
+      window9.eval(fs.readFileSync(f, "utf8"));
+    });
+
+    // Tre formål: eitt aktivt for kontakt+booking, eitt aktivt kun for
+    // tilbud (testar formType-filtrering), og eitt EKSPLISITT inaktivt
+    // (active:false) som aldri skal rendrast sjølv om forms[] matchar --
+    // sett FØR fyrste rendering (DOMContentLoaded) sidan consentPurposesField()
+    // les window.SITE_CONFIG.privacy friskt ved kvart render-kall.
+    window9.SITE_CONFIG.privacy.consentPurposes = [
+      { id: "nyhetsbrev", label: "Send meg nyhetsbrev", active: true, forms: ["kontakt", "booking"] },
+      { id: "partner",    label: "Del med samarbeidspartner", active: true, forms: ["tilbud"] },
+      { id: "slettet",    label: "Skal aldri vises", active: false, forms: ["kontakt", "tilbud", "booking"] }
+    ];
+    window9.SITE_CONFIG.privacy.publishedVersionId = "v-test-9";
+    window9.SITE_CONFIG.privacy.publishedAt = "2026-08-06T12:00:00.000Z";
+
+    window9.document.dispatchEvent(new window9.Event("DOMContentLoaded", { bubbles: true }));
+    var doc9 = window9.document;
+
+    // -- Kontakt: rett formål vises, feil/inaktivt formål vises ikkje --
+    var kontaktCp = doc9.querySelector('[data-consent-purposes="lead"]');
+    assert(!!kontaktCp, "Kontakt: samtykke-seksjon rendres når eit aktivt formål matchar formType «kontakt»");
+    assert(!!kontaktCp.querySelector('[data-consent-purpose-id="nyhetsbrev"]'), "Kontakt: viser «nyhetsbrev»-formålet (forms inkluderer kontakt)");
+    assert(!kontaktCp.querySelector('[data-consent-purpose-id="partner"]'), "Kontakt: viser IKKJE «partner»-formålet (kun tilbud i forms[])");
+    assert(!kontaktCp.querySelector('[data-consent-purpose-id="slettet"]'), "Kontakt: viser IKKJE eit inaktivt formål (active:false), sjølv om forms[] matchar");
+    var cb9 = doc9.getElementById("lead-cp-nyhetsbrev");
+    assert(!!cb9 && cb9.type === "checkbox" && cb9.checked === false, "Kontakt: samtykke-avkryssingsboksen er IKKJE forhandshuka («like easy to withdraw as to give»)");
+
+    // -- Innsending UTAN å huke av det valfrie samtykket: skal likevel gå gjennom, p_consent skal spegle answer:false --
+    doc9.querySelector("#lead-name").value = "Ole Test";
+    doc9.querySelector("#lead-email").value = "ole@test.no";
+    doc9.querySelector("#lead-message").value = "Test av samtykke";
+    doc9.querySelector("#lead-terms").checked = true;
+    doc9.querySelector("[data-contact-form]").dispatchEvent(new window9.Event("submit", { cancelable: true, bubbles: true }));
+
+    var leadRpc = rpcCalls9[rpcCalls9.length - 1];
+    assert(!!leadRpc && leadRpc.name === "insert_anon_lead", "innsending sender insert_anon_lead-RPC: " + (leadRpc && leadRpc.name));
+    assert(!!leadRpc.params.p_consent && leadRpc.params.p_consent.formKey === "kontakt", "p_consent.formKey er «kontakt»: " + JSON.stringify(leadRpc.params.p_consent));
+    assert(leadRpc.params.p_consent.privacyVersionId === "v-test-9" && leadRpc.params.p_consent.privacyPublishedAt === "2026-08-06T12:00:00.000Z",
+      "p_consent viser til nøyaktig kva personvernversjon som vart vist ved innsendingstidspunktet: " + JSON.stringify(leadRpc.params.p_consent));
+    assert(leadRpc.params.p_consent.purposes.length === 1 && leadRpc.params.p_consent.purposes[0].id === "nyhetsbrev" && leadRpc.params.p_consent.purposes[0].answer === false,
+      "p_consent.purposes speglar den ikkje-avkryssa boksen som answer:false -- valfritt samtykke blokkerer ALDRI innsending: " + JSON.stringify(leadRpc.params.p_consent));
+    assert(typeof leadRpc.params.p_consent.purposes[0].at === "string" && !isNaN(Date.parse(leadRpc.params.p_consent.purposes[0].at)),
+      "kvart formål har eit gyldig ISO-tidsstempel for når svaret vart avgjeve");
+
+    // -- Ny innsending MED avkryssing: answer skal bli true --
+    doc9.querySelector("#lead-name").value = "Kari Test2";
+    doc9.querySelector("#lead-email").value = "kari2@test.no";
+    doc9.querySelector("#lead-message").value = "Test 2";
+    doc9.querySelector("#lead-terms").checked = true;
+    doc9.getElementById("lead-cp-nyhetsbrev").checked = true;
+    doc9.querySelector("[data-contact-form]").dispatchEvent(new window9.Event("submit", { cancelable: true, bubbles: true }));
+    var leadRpc2 = rpcCalls9[rpcCalls9.length - 1];
+    assert(leadRpc2.params.p_consent.purposes[0].answer === true, "avkryssa samtykke sendes som answer:true ved innsending");
+
+    // -- Tilbud/Booking: consentPurposesField() sin formType-filtrering, testa
+    // direkte (steg-2-skjemaet i module-quote.js er flertrinns og krev
+    // simulert filopplasting for å nå -- unødvendig her, sjølve
+    // filtreringslogikken er delt og allereie stadfesta over for kontakt) --
+    var tilbudHtml = window9.Components.consentPurposesField({ idPrefix: "qt", formType: "tilbud" });
+    assert(/data-consent-purpose-id="partner"/.test(tilbudHtml) && !/data-consent-purpose-id="nyhetsbrev"/.test(tilbudHtml) && !/data-consent-purpose-id="slettet"/.test(tilbudHtml),
+      "Tilbud: consentPurposesField({formType:'tilbud'}) viser kun «partner»-formålet, filtrert korrekt på forms[] og active");
+
+    var bookingHtml = window9.Components.consentPurposesField({ idPrefix: "bk-c", formType: "booking" });
+    assert(/data-consent-purpose-id="nyhetsbrev"/.test(bookingHtml) && !/data-consent-purpose-id="partner"/.test(bookingHtml),
+      "Booking: consentPurposesField({formType:'booking'}) viser kun formål som faktisk har «booking» i forms[]");
+
+    var noneHtml = window9.Components.consentPurposesField({ idPrefix: "x", formType: "nyhetsbrev" });
+    assert(noneHtml === "", "consentPurposesField() rendrer tom streng (ikkje ein tom wrapper-div) når ingen formål matchar formType");
+
+    // -- buildConsentSnapshot(): null når containeren ikkje har nokon samtykke-seksjon i det heile --
+    var bareDiv9 = doc9.createElement("div");
+    doc9.body.appendChild(bareDiv9);
+    assert(window9.App.ui.buildConsentSnapshot(bareDiv9, "ingen-slik", "kontakt") === null,
+      "buildConsentSnapshot() returnerer null når data-consent-purposes-wrapperen ikkje finst i containeren");
   })();
 
   console.log("\nResultat: OK " + (globalThis.__ok||0) + " / FEIL " + (globalThis.__err||0));

@@ -138,12 +138,16 @@
     return _sb.rpc("insert_anon_booking", {
       p_id: b.id, p_asset_id: b.assetId, p_date: b.date, p_time: b.time,
       p_name: b.name, p_email: b.email, p_phone: b.phone, p_message: b.message,
-      p_reference_number: b.referenceNumber
+      p_reference_number: b.referenceNumber,
       // Konverteringskoblinga (Fase 2 steg 3b, p_analytics_session_id) er
       // FJERNA (beslutningsmøte 2026-08-06, sjå docs/compliance/legal-
       // complexity-vs-value-2026-08-06.md del 5) -- same grunngjeving som
       // core.js sin addLead()-kommentar. RPC-en sitt DEFAULT NULL gjer at
       // det held å slutte å sende parameteren.
+      //
+      // p_consent (Fase 2 personvern-videreutvikling, 2026-08-06): sjå
+      // core.js sin addLead()-kommentar -- same augeblikksbilete-mønster.
+      p_consent: b.consent || null
     }).then(function (r) {
       if (r.error) return Promise.reject(r.error);
       return b;
@@ -262,6 +266,7 @@
           C.field({ id:"bk-c-email", label:"E-post", required:true, type:"email", placeholder:"deg@eksempel.no" }) +
           C.field({ id:"bk-c-msg", label:"Melding", required:true, multiline:true, rows:4, placeholder:"Hva ønsker du å booke?" }) +
           C.termsField({ idPrefix: "bk-c" }) +
+          C.consentPurposesField({ idPrefix: "bk-c", formType: "booking" }) +
           C.button({ label:"Send forespørsel", type:"submit", variant:"primary" }) +
           '<p class="form__status" data-bk-c-status role="status" aria-live="polite"></p>' +
         '</form>' +
@@ -501,7 +506,7 @@
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Sjekk e-postadressen."; st.className = "form__status is-error"; return; }
         if (!App.ui.termsAccepted(cform, "bk-c")) { st.textContent = "Du må godta personvernerklæringen for å sende inn."; st.className = "form__status is-error"; return; }
         st.textContent = "Sender …"; st.className = "form__status";
-        App.addLead({ name: name, email: email, message: message }).then(function () {
+        App.addLead({ name: name, email: email, message: message, consent: App.ui.buildConsentSnapshot(cform, "bk-c", "booking") }).then(function () {
           cform.reset();
           st.textContent = (CFG.contactSection && CFG.contactSection.successMessage) || "Takk! Vi tar kontakt så snart vi kan.";
           st.className = "form__status is-ok";
@@ -534,6 +539,7 @@
           C.field({ id: msgId,   label: "Melding",       placeholder: "Evt. kommentar til bookingen" }) +
         '</div>' +
         C.termsField({ idPrefix: "bkc-" + a.id }) +
+        C.consentPurposesField({ idPrefix: "bkc-" + a.id, formType: "booking" }) +
         '<div class="admin-row__actions">' +
           C.button({ label: "Bekreft reservasjon", type: "submit", variant: "primary" }) +
           C.button({ label: "Avbryt", variant: "ghost", attrs: "data-cancel" }) +
@@ -559,7 +565,8 @@
       st.textContent = "Reserverer…"; st.className = "form__status";
       if (submitBtn) submitBtn.disabled = true;
       submitAnonBooking({ assetId: a.id, date: date, time: time,
-                  name: name, email: email, phone: phone, message: msg, instant: true, status: "ny", referenceNumber: nextBookingRef() })
+                  name: name, email: email, phone: phone, message: msg, instant: true, status: "ny", referenceNumber: nextBookingRef(),
+                  consent: App.ui.buildConsentSnapshot(form, termsId, "booking") })
         .then(function (newBk) {
           var picker = assetEl.querySelector(".bk-picker");
           var active = picker && picker.querySelector(".bk-datepill.is-active");
