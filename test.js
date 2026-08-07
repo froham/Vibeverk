@@ -2872,7 +2872,14 @@ const __asyncTests = (async () => {
     doc4.body.appendChild(panel); // renderAdminPanel sjekker container.ownerDocument.contains(...) før rendering
     window4.VwSidetelling.renderAdminPanel(panel);
     var cardVals = [].slice.call(panel.querySelectorAll(".an-card__val")).map(function (el) { return el.textContent; });
-    assert(cardVals[0] === "3", "adminpanel: totalt antall sidevisninger telles korrekt (3 pageview-rader av 4 totalt): " + cardVals.join(","));
+    // Sanntids besøkstal (2026-08-06) er no fyrste kortet -- fetchLiveVisitorCount()
+    // sin fake-Sb-spørring får (som resten av panelet) same FAKE_ROWS attende
+    // (den fake klienten filtrerer ikkje faktisk på gte/eq), så talet vert
+    // distinkte session_id blant ALLE fire radene: "s1"/"s2" -> 2. Oppdaterast
+    // synkront sidan startLiveVisitorPoll() kallar updateLiveVisitorCount()
+    // med ein gong (ventar ikkje på setInterval), og den fake .then() svarer synkront.
+    assert(cardVals[0] === "2", "adminpanel: sanntids besøkstal-kortet oppdaterast synkront ved fyrste rendering: " + cardVals.join(","));
+    assert(cardVals[1] === "3", "adminpanel: totalt antall sidevisninger telles korrekt (3 pageview-rader av 4 totalt): " + cardVals.join(","));
     assert(/Mest besøkte sider[\s\S]*Tjenester/.test(panel.innerHTML), "adminpanel: mest besøkte side (#tjenester -> «Tjenester», 2 visninger) vises i topplisten");
     assert(/Inngangssider[\s\S]*Hjem/.test(panel.innerHTML) && /Inngangssider[\s\S]*Tjenester/.test(panel.innerHTML),
       "adminpanel: inngangssider viser første side i hver av de to øktene (#hjem -> «Hjem» for s1, #tjenester -> «Tjenester» for s2)");
@@ -3047,7 +3054,10 @@ const __asyncTests = (async () => {
     function fire8(el, type) { el.dispatchEvent(new window8.Event(type, { bubbles: true, cancelable: true })); }
 
     // -- Periodevalg: standard er 30 dager, begge rader tel med --
-    assert(panel8.querySelector(".an-card__val").textContent === "2", "periodevalg: standardperioden (30 dager) viser begge sidevisningane");
+    // querySelectorAll(...)[1], IKKJE querySelector() (fyrste treff) -- kort
+    // [0] er no det uavhengige sanntids-besøkstalskortet (2026-08-06),
+    // upåverka av periodeval sidan det aldri periode-slicer.
+    assert(panel8.querySelectorAll(".an-card__val")[1].textContent === "2", "periodevalg: standardperioden (30 dager) viser begge sidevisningane");
 
     // -- Sub-faner: bytte til "Sider" viser den fana, skjuler "Oversikt" --
     var siderTab = panel8.querySelector('[data-an-tab="sider"]');
@@ -3065,8 +3075,15 @@ const __asyncTests = (async () => {
     var days7Btn = panel8.querySelector('[data-an-days="7"]');
     fire8(days7Btn, "click");
     assert(days7Btn.classList.contains("is-active"), "periodevalg: «7 dager»-knappen markeres aktiv");
-    assert(panel8.querySelector(".an-card__val").textContent === "1",
-      "periodevalg: bytte til 7 dager filtrerer bort den 20 dager gamle sidevisningen, uten ny spørring (samme rader, kun ny slicing): " + panel8.querySelector(".an-card__val").textContent);
+    assert(panel8.querySelectorAll(".an-card__val")[1].textContent === "1",
+      "periodevalg: bytte til 7 dager filtrerer bort den 20 dager gamle sidevisningen, uten ny spørring (samme rader, kun ny slicing): " + panel8.querySelectorAll(".an-card__val")[1].textContent);
+    // UX-review-funn (2026-08-06, HIGH), retta: periodeval byggjer heile
+    // Oversikt-fana sitt DOM på nytt (fersk data-an-live-count-node), som
+    // utan fiksen ville blitt ståande på "–"-plasshaldaren heilt til neste
+    // 20-sekunders-tick -- talet er periode-UAVHENGIG og skal difor IKKJE
+    // blenke tomt berre fordi periodevalet endra seg.
+    assert(panel8.querySelector("[data-an-live-count]").textContent === "2",
+      "sanntids besøkstal: hentast på nytt synkront ved periodeval, blenkar ikkje tomt: " + panel8.querySelector("[data-an-live-count]").textContent);
     fire8(panel8.querySelector('[data-an-days="30"]'), "click"); // tilbake til 30 dager
 
     // -- Søyle-tooltip: klikk (tap) --
@@ -3188,6 +3205,66 @@ const __asyncTests = (async () => {
     retryBtn.dispatchEvent(new window6.MouseEvent("click", { bubbles: true }));
     assert(!panel6.querySelector("[data-sidetelling-retry]") && panel6.querySelectorAll(".an-card__val").length > 0,
       "klikk på «Prøv igjen» gjør et nytt forsøk og rendrer panelet normalt når det lykkes");
+  })();
+
+  // --- Sanntids besøkstal (2026-08-06): eiga oppdateringssyklus, uavhengig
+  // av periode/fanebyte. Fokuserer på det som ikkje kan sjåast berre ved å
+  // lese koden -- at "Oppdater" (ein ny renderAdminPanel()-mounting av SAME
+  // container) faktisk ryddar opp att FØRRE intervallet før ho startar eit
+  // nytt, i staden for å hope dei opp (same feilklasse som den alt kjende,
+  // retta søyle-tooltip-lekkasjen frå Innsikt-runden 2026-08-03). Spionerer
+  // på window sin eigen setInterval/clearInterval i staden for å vente på
+  // ekte forløpen tid -- direkte testbart utan timer-manipulering, sidan
+  // startLiveVisitorPoll() alt hentar fyrste tal synkront (sjå notatet der). ---
+  console.log("\n— Sidetelling: sanntids besøkstal, ingen dobbel-intervall ved «Oppdater» —");
+  (function () {
+    var html9s = fs.readFileSync("index.html", "utf8");
+    var dom9s = new JSDOM(html9s, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://example.test/" });
+    var window9s = dom9s.window;
+    window9s.IntersectionObserver = class { constructor(cb) { this.cb = cb; } observe(el) { this.cb([{ isIntersecting: true, target: el }]); } unobserve() {} disconnect() {} };
+    window9s.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window9s.scrollTo = () => {};
+    window9s.HTMLElement.prototype.scrollIntoView = () => {};
+    window9s.URL.createObjectURL = window9s.URL.createObjectURL || (() => "blob:mock-url");
+    window9s.URL.revokeObjectURL = window9s.URL.revokeObjectURL || (() => {});
+
+    var fakeSb9s = makeFakeSb([], FAKE_ROWS, {});
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window9s.eval(src);
+    });
+    window9s.App.supabase = fakeSb9s;
+    window9s.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window9s.document.dispatchEvent(new window9s.Event("DOMContentLoaded", { bubbles: true }));
+
+    var setIntervalCalls = 0, clearIntervalCalls = 0;
+    var realSetInterval = window9s.setInterval, realClearInterval = window9s.clearInterval;
+    window9s.setInterval = function () { setIntervalCalls++; return realSetInterval.apply(window9s, arguments); };
+    window9s.clearInterval = function () { clearIntervalCalls++; return realClearInterval.apply(window9s, arguments); };
+
+    var panel9s = window9s.document.createElement("div");
+    window9s.document.body.appendChild(panel9s);
+    window9s.VwSidetelling.renderAdminPanel(panel9s);
+    assert(panel9s.querySelector("[data-an-live-count]").textContent === "2",
+      "sanntids besøkstal: oppdaterast synkront ved fyrste mounting (2 distinkte session_id blant FAKE_ROWS): " + panel9s.querySelector("[data-an-live-count]").textContent);
+    assert(setIntervalCalls === 1 && clearIntervalCalls === 0, "sanntids besøkstal: éin intervall starta ved fyrste mounting, ingen å rydde opp enno");
+
+    // "Oppdater" -- same container, heilt ny mounting (container.innerHTML
+    // vert bytt ut, men container-noden sjølv består, sjå notatet ved
+    // container._anLiveInterval i module-sidetelling.js).
+    window9s.VwSidetelling.renderAdminPanel(panel9s);
+    assert(clearIntervalCalls === 1 && setIntervalCalls === 2,
+      "sanntids besøkstal: «Oppdater» ryddar opp att FØRRE intervallet FØR eit nytt vert starta, ingen dobling: clearInterval=" + clearIntervalCalls + " setInterval=" + setIntervalCalls);
+    assert(panel9s.querySelector("[data-an-live-count]").textContent === "2",
+      "sanntids besøkstal: talet oppdaterast på nytt etter «Oppdater»");
+    // Sjølv-reinsinga ved DOM-fjerning (container.ownerDocument.contains()-
+    // sjekken i intervall-tick-en) krev at det ekte 20-sekunders-intervallet
+    // faktisk fyrer -- uråd å teste deterministisk utan anten falske timarar
+    // eller å faktisk vente 20+ ekte sekund i heile testsuiten. Sjølve
+    // sjekken attbruker det same, alt indirekte-testa "sjekk DOM-tilstand i
+    // kvart tick"-idiomet renderAdminPanel() sin ownerDocument.contains()-
+    // vakt alt dekker -- ikkje ei eiga, isolert testa åtferd her.
   })();
 
   // --- Fase 2 (samtykke-revisjonsspor, 2026-08-06): avkryssingsbokser for

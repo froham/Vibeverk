@@ -217,6 +217,62 @@
       .then(function (r) { cb(r.error ? null : (r.data || [])); });
   }
 
+  // Sanntids besøkstal (2026-08-06): eiga, uavhengig kjelde frå fetchStats()
+  // sin faste 90-dagars/5000-rads-henting -- dette er eit smalt, ferskt
+  // spørsmål ("kor mange unike besøksgrupper hadde AKTIVITET siste 5 min"),
+  // aldri ei utviding av den historiske spørringa. Ingen ny tabell, ingen ny
+  // RPC -- rein klientside-telling av distinkte session_id blant nyleg
+  // henta rader, same "fetch rått, aggreger i JS"-stil som resten av fila.
+  var LIVE_WINDOW_MS = 5 * 60000;
+  var LIVE_POLL_MS = 20000;
+
+  function fetchLiveVisitorCount(cb) {
+    var since = new Date(Date.now() - LIVE_WINDOW_MS).toISOString();
+    var q = _sb.from("analytics_events").select("session_id");
+    if (!isStagingProject()) q = q.eq("is_test", false);
+    q = q.eq("is_bot", false);
+    q.gte("created_at", since).then(function (r) {
+      // UX-review-funn (MEDIUM): loggar feilen, i staden for å svelgje ho
+      // heilt stille -- utan dette var "lastar enno" og "har feila for godt"
+      // visuelt umogleg å skilje frå kvarandre (begge synte berre "–").
+      if (r.error) { console.error("[sidetelling] henting av sanntids besøkstal feila:", r.error); cb(null); return; }
+      var seen = {};
+      (r.data || []).forEach(function (row) { seen[row.session_id] = true; });
+      cb(Object.keys(seen).length);
+    });
+  }
+
+  // Éin fetch + éin DOM-oppdatering, ingen timer -- skild ut for seg sjølv
+  // slik at ho kan kallast/testast direkte utan å vente på ekte forløpen tid
+  // (startLiveVisitorPoll() under kallar ho med ein gong OG frå intervallet).
+  function updateLiveVisitorCount(container) {
+    fetchLiveVisitorCount(function (n) {
+      var el = container.querySelector("[data-an-live-count]");
+      if (el) el.textContent = n === null ? "–" : String(n);
+    });
+  }
+
+  // Pollar kvart 20. sekund, oppdaterer BERRE tal-elementet, aldri heile
+  // panelet -- heilt uavhengig av periodeval/fanebyte/"Oppdater". Sjølv-
+  // reinsande om containeren forsvinn frå DOM-en (t.d. admin navigerer heilt
+  // vekk frå Innsikt) -- same "sjekk DOM-tilstand i kvart tick"-idiom som
+  // renderAdminPanel() sin ownerDocument.contains()-sjekk alt brukar, ingen
+  // eigen livssyklus-hake i core.js trengst. container._anLiveInterval
+  // ryddar opp att FØRRE intervallet ved kvar ny mounting (t.d. "Oppdater"),
+  // sidan container-noden sjølv (ulikt innhaldet) lever vidare mellom dei.
+  function startLiveVisitorPoll(container) {
+    if (container._anLiveInterval) clearInterval(container._anLiveInterval);
+    container._anLiveInterval = setInterval(function () {
+      if (!container.ownerDocument || !container.ownerDocument.contains(container)) {
+        clearInterval(container._anLiveInterval);
+        container._anLiveInterval = null;
+        return;
+      }
+      updateLiveVisitorCount(container);
+    }, LIVE_POLL_MS);
+    updateLiveVisitorCount(container); // hent med ein gong, ikkje vent 20 sekund på fyrste tal
+  }
+
   // Fase 2 steg 3b (konverteringskobling, fetchConversions()) er FJERNA
   // (beslutningsmøte 2026-08-06, sjå docs/compliance/legal-complexity-vs-
   // value-2026-08-06.md del 5) -- kobla elles anonyme pageview-rader til ein
@@ -413,6 +469,7 @@
     var ctaBars = barsHtml(byBucketCta, ctaBuckets, mode);
 
     return '<div class="an-cards">' +
+        '<div class="an-card an-card--live"><div class="an-card__val" data-an-live-count role="status" aria-live="polite">–</div><div class="an-card__label">Besøkende akkurat nå ' + C.helpIcon("Antall unike besøksgrupper med aktivitet de siste 5 minuttene. Oppdateres automatisk hvert 20. sekund.") + '</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + pageviews.length + '</div><div class="an-card__label">Sidevisninger</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + conversionRate + '%</div><div class="an-card__label">Konverteringsrate</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + bounceRate + '%</div><div class="an-card__label">Avvisningsrate ' + C.helpIcon("Andel besøk der den besøkende bare så én side før de forlot nettsiden.") + '</div></div>' +
@@ -542,6 +599,7 @@
     renderPanes(container, rows, state.days);
     bindPanel(container, rows, state);
     bindBarTooltips(container);
+    startLiveVisitorPoll(container);
     var seedBtn = container.querySelector("[data-sidetelling-seed]");
     if (seedBtn) seedBtn.addEventListener("click", function () { runSeedTestData(container, seedBtn); });
   }
@@ -604,6 +662,14 @@
         container.querySelectorAll("[data-an-days]").forEach(function (b) { b.classList.remove("is-active"); });
         btn.classList.add("is-active");
         renderPanes(container, rows, state.days);
+        // UX-review-funn (2026-08-06, HIGH): renderPanes() byggjer Oversikt-
+        // fana sitt DOM heilt på nytt (fersk data-an-live-count-node, tilbake
+        // til "–"-plasshaldaren), men sanntids-intervallet (starta éin gong i
+        // mountPanel()) oppdaterer han ikkje att før neste 20-sekunders-tick
+        // -- talet blenka difor tomt ved kvart periodeval, sjølv om det
+        // korrekte, alt kjende talet er periode-uavhengig. Hent på nytt med
+        // ein gong i staden for å vente.
+        updateLiveVisitorCount(container);
       });
     });
 
@@ -655,6 +721,6 @@
     });
   }
 
-  window.VwSidetelling = { renderAdminPanel: renderAdminPanel };
+  window.VwSidetelling = { renderAdminPanel: renderAdminPanel, updateLiveVisitorCount: updateLiveVisitorCount };
   });
 })();
