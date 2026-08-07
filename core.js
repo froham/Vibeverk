@@ -1781,8 +1781,8 @@ window.App = (function () {
       body: "Med Design-modulen har du full kontroll over hvordan nettsiden ser ut, uten å måtte kontakte oss for hver eneste endring. Du kan velge mellom flere ferdige designmaler for hele nettsiden, style fargene og skrifttypene slik at de matcher logoen og profilen din, laste opp egen logo, og justere SEO-innstillingene (det som avgjør hvordan siden vises i Google-søk). Her finner du også Banner- og Karusell-seksjoner, om du vil vise frem flere bilder eller budskap på forsiden.",
       teaser: "Med Design-modulen kan du selv style hele nettsiden -- bytte farger, fonter og designmal, uten å kontakte oss for hver endring. Spør oss om oppgradering hvis dette høres nyttig ut." },
     { id: "sidetelling", title: "Analyse", icon: "chart-bar", active: function () { return !!(CFG.features && CFG.features.sidetelling === true); },
-      body: "Analyse-fanen viser deg trafikken på nettsiden din -- helt uten cookies eller sporing av enkeltpersoner. Du ser hvor mange som besøker siden per dag, hvilke sider som er mest populære, om folk kommer via Google, Facebook eller direkte, og om besøkene faktisk fører til henvendelser. Du får også automatiske trender som forteller om trafikken går opp eller ned sammenlignet med forrige periode -- nyttig for å se effekten av for eksempel en ny Aktuelt-sak eller en kampanje.",
-      teaser: "Lurer du på hvor mange som faktisk besøker nettsiden din, og hva de gjør der? Den innebygde analysen viser dette helt uten cookies og uten ekstra kostnad." },
+      body: "Analyse-fanen viser trafikken på nettsiden uten cookies eller en analyse-ID i nettleseren. Du ser sidevisninger, daglige besøksanslag, populære sider, om trafikken kommer via Google, Facebook eller direkte, og hvilke kontaktknapper som blir brukt. Grupperingen er avgrenset til én dag og er ikke laget for å identifisere eller følge besøkende på tvers av dager. Du får også automatiske trender som forteller om trafikken går opp eller ned sammenlignet med forrige periode -- nyttig for å se effekten av for eksempel en ny Aktuelt-sak eller en kampanje.",
+      teaser: "Lurer du på hvor mye trafikk nettsiden får, og hvilke sider og kontaktknapper som blir brukt? Den innebygde analysen viser sidevisninger og daglige besøksanslag helt uten cookies og uten ekstra kostnad." },
     { id: "booking", title: "Booking", icon: "calendar-event", active: function () { return feat("booking"); },
       body: "Booking-modulen lar besøkende reservere tid eller ressurser -- for eksempel en time, et bord eller en bil -- direkte på nettsiden, uten å måtte ringe eller sende e-post. Du bestemmer selv hvilke tider som er ledige, og ser en oversikt over alle kommende reservasjoner her. Dette sparer deg for mye frem-og-tilbake, samtidig som kundene dine får bekvemmeligheten av å kunne booke når det passer dem -- også utenfor åpningstid.",
       teaser: "La kundene dine reservere tid selv, direkte på nettsiden -- døgnet rundt, uten telefon frem og tilbake." },
@@ -3696,7 +3696,7 @@ window.App = (function () {
     const trafficHtml = bits.length ? bits.join("") : `
       <div class="an-upsell">
         <p>Ingen trafikkmåling er satt opp ennå.</p>
-        <p>Med Innsikt kan du se sidevisninger, kilder, enheter og mer om besøket på nettsiden din — helt uten cookies. Spør oss om oppgradering hvis dette høres nyttig ut.</p>
+        <p>Med Innsikt kan du se sidevisninger, kilder, enheter og daglige besøksanslag — helt uten cookies. Spør oss om oppgradering hvis dette høres nyttig ut.</p>
         <p class="an-hint" style="margin:0">Vibeverk anbefaler ellers Plausible.io som et enkelt, cookiefritt alternativ.</p>
       </div>`;
 
@@ -5416,30 +5416,6 @@ window.App = (function () {
 
   const SUPER_KEY  = "superconfig";
 
-  // Fase 2 (steg 3a) -- session-ID for sidetellinga (Analyse) sin eigen
-  // pageview-/CTA-sporing. Brukt til konverteringskobling (steg 3b, kopla
-  // saman med lead-/booking-innsendingar) fram til den vart FJERNA
-  // (beslutningsmøte 2026-08-06, sjå docs/compliance/legal-complexity-vs-
-  // value-2026-08-06.md del 5) -- kobla elles anonyme pageview-rader til ein
-  // namngjeven henvendelse, eit eige GDPR-spørsmål for lita verdi. Denne
-  // funksjonen står likevel att HER (ikkje i module-sidetelling.js sjølv)
-  // sidan sidetellinga sin eigen sporing framleis treng éin delt kjelde til
-  // sanning for sessionStorage-nøkkelen "vw-sidetelling-session".
-  const ANALYTICS_SESSION_KEY = "vw-sidetelling-session";
-  function getAnalyticsSessionId() {
-    if (!(CFG.features && CFG.features.sidetelling === true)) return null;
-    try {
-      var id = sessionStorage.getItem(ANALYTICS_SESSION_KEY);
-      if (!id) {
-        id = (window.crypto && window.crypto.randomUUID)
-          ? window.crypto.randomUUID()
-          : (String(Date.now()) + "-" + Math.random().toString(36).slice(2));
-        sessionStorage.setItem(ANALYTICS_SESSION_KEY, id);
-      }
-      return id;
-    } catch (e) { return "no-session-storage"; } // uendra fallback frå den opprinnelege sessionId() i module-sidetelling.js
-  }
-
   // Sett saman eit forslag til personvernerklæring basert på kva modular/
   // funksjonar som faktisk er aktive. Brukes som startpunkt ved første oppstart
   // (før noe er lagra). Kan kallast frå Konsollen for å generere eit nytt forslag.
@@ -5472,7 +5448,7 @@ window.App = (function () {
     const cookieText = hasAnalytics
       ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
       : hasSidetelling
-      ? "Denne siden bruker ingen cookies. Vi bruker en enkel, intern sidetelling for trafikkstatistikk (sidevisninger, henvisninger og hvilke sider besøkende kommer fra/går til) — en midlertidig kode lagres i nettleseren din (ikke en informasjonskapsel/cookie) for å gruppere sidevisninger til samme besøk, og slettes automatisk når du lukker fanen. Vi lagrer ikke IP-adresse, navn eller annen personidentifiserbar informasjon om deg, og deler ingenting med tredjeparter."
+      ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk og hvilke sider besøkende kommer fra/går til). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
 
     return "Når du sender oss " + collectPhrase + ", lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +
@@ -5611,7 +5587,6 @@ window.App = (function () {
     buildTemplateOptions: buildTemplateOptions,   // kombinerer kontekstmalar + CRM-malar for openReplyModal sin malvelgar
     buildSignatureOptions: buildSignatureOptions, // delte signaturar (Kunder → CRM-innstillingar) for openReplyModal sine «Sett inn»-knappar
     computeDefaultPrivacyText: computeDefaultPrivacyText,
-    getAnalyticsSessionId: getAnalyticsSessionId, // sjå notatet ved definisjonen -- session-ID for sidetellinga sin eigen sporing
     // Nettsidehelse (2026-07-27) -- reine, opts-parameteriserte funksjonar
     // slik at Console kan køyre same helsesjekk for KVA SOM HELST tenant
     // operatøren har valt, ikkje berre denne sida sin eigen CFG/content.

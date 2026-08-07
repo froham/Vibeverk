@@ -25,8 +25,7 @@ Internal superadmin surface for Vibeverk operators. Used to manage customer conf
 | Hosting | Vercel (push to `main` → auto-deploy), with `middleware.js` (Vercel Routing Middleware) resolving each request's hostname to a tenant via the `vibeverk-control` control plane and generating `/config.js` per-request. GitHub Pages retained only as a rollback path (repo `CNAME` file untouched) — see ADR-0007's Phase 6 and 2026-07-16 addenda. |
 | Backend | Supabase (PostgreSQL + PostgREST + Auth + Realtime) |
 | Fonts | Google Fonts (loaded dynamically from config.js) |
-| Analytics | Plausible (optional, feature flag) |
-| Live chat SaaS | Tidio (optional, feature flag) |
+| Analytics | Plausible or internal `module-sidetelling.js` (optional, mutually exclusive feature/config choices) |
 
 ## Deployment
 
@@ -34,7 +33,7 @@ Internal superadmin surface for Vibeverk operators. Used to manage customer conf
 
 **Supabase CLI / Edge Functions:** Supabase CLI is installed locally as a development dependency and invoked with `npx supabase`. The working copy can be linked to the customer project and deploy version-controlled Edge Functions from `supabase/functions/`, but every remote deploy still requires explicit user approval.
 
-**SQL / schema:** `supabase/migrations/` is the real, CLI-deployable source of schema truth, since 2026-07-07 (baseline `20260707000001_baseline_schema.sql`; 19 migration files as of 2026-07-19). New changes go in a new timestamped file there (`npx supabase migration new <name>`), deployed via `npx supabase db push --linked` (or `--db-url` for a non-linked project such as `vibeverk-staging` or `supabase-control/`). `supabase/migration.sql` and the standalone `supabase/hotfix_*.sql` files are a **superseded, frozen snapshot** as of that same baseline — historical only, not updated further and not the deploy path. After any `CREATE OR REPLACE FUNCTION`, run `NOTIFY pgrst, 'reload schema';`.
+**SQL / schema:** `supabase/migrations/` is the real, CLI-deployable source of schema truth, since 2026-07-07 (baseline `20260707000001_baseline_schema.sql`; 28 migration files as of 2026-08-06). New changes go in a new timestamped file there (`npx supabase migration new <name>`), deployed via `npx supabase db push --linked` (or `--db-url` for a non-linked project such as `vibeverk-staging` or `supabase-control/`). `supabase/migration.sql` and the standalone `supabase/hotfix_*.sql` files are a **superseded, frozen snapshot** as of that same baseline — historical only, not updated further and not the deploy path. After any `CREATE OR REPLACE FUNCTION`, run `NOTIFY pgrst, 'reload schema';`.
 
 **No automated deployment:** No `git push`, Supabase SQL, or production action may happen without explicit user approval.
 
@@ -50,7 +49,7 @@ Two Supabase Storage buckets: the public **`media`** bucket (images, general pub
 
 ## Edge Functions beyond `manage-user`
 
-The data-plane project (`supabase/functions/`) also has `send-reply` (outbound transactional email via Resend), `inbound-email` (inbound email → Kontakt lead / CRM timeline entry, DKIM/SPF-verified), and `anon-media-upload-token` (anonymous upload quota token). The control-plane project (`supabase-control/supabase/functions/`) has its own separate set: `tenant-admin` (onboarding/provisioning), `broker` (Console's day-to-day config read/write), and `broker-ping` (mechanism-proof only).
+The data-plane project (`supabase/functions/`) also has `send-reply` (outbound transactional email via Resend), `inbound-email` (inbound email → Kontakt lead / CRM timeline entry, DKIM/SPF-verified), `anon-media-upload-token` (anonymous upload quota token), and the deploy-pending `sidetelling-event` (server-side daily analytics grouping). The control-plane project (`supabase-control/supabase/functions/`) has its own separate set: `tenant-admin` (onboarding/provisioning), `broker` (Console's day-to-day config read/write), and `broker-ping` (mechanism-proof only).
 
 ## Four key files
 
@@ -73,7 +72,7 @@ productMode is read exclusively from the `superconfig` key in the Supabase `stor
 
 ## CI
 
-GitHub Actions runs `node test.js` (jsdom harness for public site) and `node test-workspace.js` (jsdom harness for Workspace, renamed 2026-07-07 from `test-intranet.js`) on every push to any branch. Both suites are fully green (0 FEIL) as of 2026-07-19 — the two long-standing known-failing tests (a stale exact-match assertion that never accounted for an unread-count badge, and a test of a route renamed away in the Fase 10 `customModules` work) were both fixed the same day. See `CLAUDE.md`'s Testing section for detail.
+GitHub Actions runs `node test.js` (jsdom harness for public site), `node test-workspace.js` (jsdom harness for Workspace, renamed 2026-07-07 from `test-intranet.js`), and `node test-api.js` (plain-Node harness for API functions and middleware) on every push to any branch. All three suites were fully green in the local 2026-08-06 verification: **712 OK / 0 FEIL**, **210 OK / 0 FEIL**, and **104 OK / 0 FEIL**, respectively. See `CLAUDE.md`'s Testing section for detail.
 
 ## Known limitations
 

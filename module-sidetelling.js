@@ -17,10 +17,14 @@
        tid-på-døgnet-varmekart (vurdert i mockup-runden 2026-08-03, utsatt --
        se docs/architecture/sidetelling.md). Egne, senere vurderte faser.
 
-   Cookiefritt: sesjons-ID genereres og lagres i sessionStorage, IKKE en
-   cookie -- forsvinner ved fane-lukking, sendes aldri automatisk til
-   server. Personvernstekst-gren for dette ligger i core.js sin
-   computeDefaultPrivacyText().
+   Ingen nettleserlagring for sesjonsgruppering: modulen leser eller skriver
+   ALDRI cookie, localStorage eller sessionStorage. Klienten sender ingen
+   sesjons-ID. Edge Function-en `sidetelling-event` lager i stedet en
+   server-side SHA-256-hash av UTC-dag + nettstedsdomene + request-IP +
+   User-Agent ved HVER pageview/CTA-hendelse. Av requestkonteksten lagres bare
+   hashverdien, sammen med selve hendelsesfeltene; dagsverdien beregnes
+   deterministisk og lagres ikke i egen salttabell. Se migrasjonen, Edge-koden
+   og arkitekturdokumentet.
 
    Innsikt-runden (2026-08-03): admin-panelet flyttet til egen "Innsikt"-
    kategori i adminpanelet (var underfane under Innstillinger), fikk et
@@ -40,11 +44,10 @@
   if (an.plausible) return; // kunden har valgt Plausible -- kjør ikke begge samtidig
 
   var _sb = App.supabase;
-  if (!_sb) return; // krever Supabase -- ingen lokal fallback for anon-skriving
-
-  // Session-ID-generering flytta til App.getAnalyticsSessionId() i core.js
-  // (Fase 2, steg 3a) -- delt med Kontakt-/Tilbod-/Booking-skjemaa for
-  // konverteringskobling. Sjå notatet ved definisjonen i core.js.
+  var sbCfg = CFG.supabase || {};
+  var edgeUrl = String(sbCfg.url || "").replace(/\/+$/, "") + "/functions/v1/sidetelling-event";
+  var anonKey = sbCfg.anonKey || "";
+  if (!_sb || !sbCfg.url || !anonKey) return;
 
   function strippedReferrer() {
     var r = document.referrer;
@@ -99,17 +102,34 @@
   }
 
   function send(type, path, ctaId) {
-    _sb.rpc("insert_analytics_event", {
-      p_session_id: App.getAnalyticsSessionId(),
-      p_type: type,
-      p_path: path,
-      p_referrer: type === "pageview" ? strippedReferrer() : null,
-      p_cta_id: ctaId || null,
-      p_device_type: detectDeviceType(),
-      p_is_bot: detectIsBot()
+    if (typeof window.fetch !== "function") return;
+    // Bruk medvite IKKJE Supabase-klienten sin functions.invoke() her. Han
+    // hentar auth-sesjonen før kvart kall og kan dermed lese/oppdatere
+    // localStorage. Direkte fetch med den offentlege anon-nøkkelen held
+    // analysegrupperinga heilt fri for cookie/localStorage/sessionStorage;
+    // credentials:"omit" og cache:"no-store" gjer òg transportgrensa tydeleg.
+    window.fetch(edgeUrl, {
+      method: "POST",
+      credentials: "omit",
+      cache: "no-store",
+      headers: {
+        "apikey": anonKey,
+        "authorization": "Bearer " + anonKey,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        type: type,
+        path: path,
+        referrer: type === "pageview" ? strippedReferrer() : null,
+        cta_id: ctaId || null,
+        device_type: detectDeviceType(),
+        is_bot: detectIsBot()
+      })
     }).then(function (r) {
       // Stille -- sidetelling skal aldri forstyrre besøkende med feilmeldinger.
-      if (r && r.error && window.console) console.warn("Sidetelling: kunne ikke lagre hendelse", r.error);
+      if (r && !r.ok && window.console) console.warn("Sidetelling: kunne ikke lagre hendelse");
+    }).catch(function () {
+      if (window.console) console.warn("Sidetelling: kunne ikke lagre hendelse");
     });
   }
 
@@ -192,10 +212,9 @@
     return raw.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
-  // Hard tak på antall rader hentet til nettleseren -- uten dette kan et
-  // uratebegrenset antall anon-innsendinger (insert_analytics_event har
-  // ingen rate-limiting) i praksis gjøre adminpanelet ubrukelig (nettleseren
-  // må hente og iterere hele resultatsettet ved hver åpning av Innsikt-fanen).
+  // Hard tak på antall rader hentet til nettleseren -- servervegen har no
+  // eigne dags-/gruppekvotar, men klienten skal framleis aldri måtte hente og
+  // iterere eit uavgrensa historisk resultatsett ved opning av Innsikt-fanen.
   // Fast uansett periodevalg -- se docs/architecture/sidetelling.md: ved
   // Vibeverk sine kunders faktiske trafikkvolum (noen hundre besøk/måned) er
   // 5000 rader trygt over selv 90 dagers volum, og en hardere grense er
@@ -472,8 +491,8 @@
         '<div class="an-card an-card--live"><div class="an-card__val" data-an-live-count role="status" aria-live="polite">–</div><div class="an-card__label">Besøkende akkurat nå ' + C.helpIcon("Antall unike besøksgrupper med aktivitet de siste 5 minuttene. Oppdateres automatisk hvert 20. sekund.") + '</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + pageviews.length + '</div><div class="an-card__label">Sidevisninger</div></div>' +
         '<div class="an-card"><div class="an-card__val">' + conversionRate + '%</div><div class="an-card__label">Konverteringsrate</div></div>' +
-        '<div class="an-card"><div class="an-card__val">' + bounceRate + '%</div><div class="an-card__label">Avvisningsrate ' + C.helpIcon("Andel besøk der den besøkende bare så én side før de forlot nettsiden.") + '</div></div>' +
-        '<div class="an-card"><div class="an-card__val">' + avgPagesPerSession + '</div><div class="an-card__label">Sider per besøk ' + C.helpIcon("Gjennomsnittlig antall sider en besøkende ser før økten avsluttes.") + '</div></div>' +
+        '<div class="an-card"><div class="an-card__val">' + bounceRate + '%</div><div class="an-card__label">Anslått avvisningsrate ' + C.helpIcon("Anslag basert på sidevisninger som ser ut til å komme fra samme besøkende samme dag. Delte nettverk og flere besøk samme dag kan påvirke tallet.") + '</div></div>' +
+        '<div class="an-card"><div class="an-card__val">' + avgPagesPerSession + '</div><div class="an-card__label">Anslåtte sider per besøk ' + C.helpIcon("Anslag basert på sider som ser ut til å bli sett av samme besøkende samme dag. Flere separate besøk samme dag kan bli gruppert sammen.") + '</div></div>' +
       '</div>' +
       buildTrendsHtml(rows, days) +
       '<h4 class="an-heading">Trafikk ' + (mode === "week" ? "per uke" : "per dag") + '</h4>' +
@@ -520,8 +539,8 @@
     return '<h4 class="an-heading">Sidebruk</h4>' +
       '<div class="an-list-grid">' +
         toplistHtml("Mest besøkte sider", topPaths, function (i) { return displayPath(i.key); }) +
-        toplistHtml("Inngangssider", topEntry, function (i) { return displayPath(i.key); }, "Siden en besøkende kom inn på nettsiden") +
-        toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siden en besøkende forlot nettsiden fra") +
+        toplistHtml("Inngangssider", topEntry, function (i) { return displayPath(i.key); }, "Første registrerte side i hver daglige besøksgruppe") +
+        toplistHtml("Utgangssider", topExit, function (i) { return displayPath(i.key); }, "Siste registrerte side i hver daglige besøksgruppe") +
       '</div>' +
       '<h4 class="an-heading">CTA-klikk etter type</h4>' +
       ctaChipsHtml;
@@ -582,7 +601,7 @@
       '<div class="an-pane is-active" role="tabpanel" id="an-pane-oversikt" data-an-pane="oversikt"></div>' +
       '<div class="an-pane" role="tabpanel" id="an-pane-sider" data-an-pane="sider"></div>' +
       '<div class="an-pane" role="tabpanel" id="an-pane-kilder" data-an-pane="kilder"></div>' +
-      '<p style="font-size:.78rem;color:var(--color-muted);margin-top:.8rem">Analyse fra Vibeverk — cookiefritt, ingen tredjepart involvert.</p>' +
+      '<p style="font-size:.78rem;color:var(--color-muted);margin-top:.8rem">Analyse fra Vibeverk — ingen cookies eller nettleserlagring for besøksgruppering, og ingen separat analyseleverandør. Hendelser lagres i nettsidens Supabase-database. Besøksbaserte tall er daglige anslag.</p>' +
     '</div>';
   }
 

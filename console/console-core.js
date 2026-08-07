@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.106.0";
+  var VIBEVERK_VERSION = "0.107.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3600,7 +3600,7 @@ window.VwConsole = (function () {
     var cookieText = hasAnalytics
       ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
       : hasSidetelling
-      ? "Denne siden bruker ingen cookies. Vi bruker en enkel, intern sidetelling for trafikkstatistikk (sidevisninger, henvisninger og hvilke sider besøkende kommer fra/går til) — en midlertidig kode lagres i nettleseren din (ikke en informasjonskapsel/cookie) for å gruppere sidevisninger til samme besøk, og slettes automatisk når du lukker fanen. Vi lagrer ikke IP-adresse, navn eller annen personidentifiserbar informasjon om deg, og deler ingenting med tredjeparter."
+      ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk og hvilke sider besøkende kommer fra/går til). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
     blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: App.ui.textToRichHtml("Bruker vi cookies?\n" + cookieText) });
     blocks.push({ id: "mod-suppliers", source: "module", moduleId: "suppliers", included: true, edited: false, body: computeSupplierBlock(sc, an) });

@@ -1,4 +1,4 @@
-/* test-api.js — Node harness for Vercel Functions (api/*.js) and middleware.js.
+/* test-api.js — Node harness for Vercel Functions, Edge Functions og middleware.
    Kjør: node test-api.js
 
    Desse filene er reine Request/Response-funksjonar (Vercel Edge Runtime) --
@@ -195,6 +195,9 @@ async function main() {
   const annualWheelHandler = annualWheelModule.fetch;
   const { default: oversiktModule } = await import("./api/ai/oversikt.js");
   const oversiktHandler = oversiktModule.fetch;
+  // Importer den reine JS-handleren, ikkje Deno-entrypointet. CI køyrer Node
+  // 20, som ikkje kan importere TypeScript direkte utan ein eigen loader.
+  const { handleSidetellingEvent } = await import("./supabase/functions/sidetelling-event/handler.js");
 
   /* =========================================================================
      A) api/_lib/resolve-tenant.js
@@ -508,6 +511,105 @@ async function main() {
     if (r.status === 429) ovRateLimited++;
   }
   assert(ovRateLimited > 0, "f16: gjentekne raske kall frå same tenant+brukar vert til slutt rate-limita (429) -- same best-effort per-instans-vern som annual-wheel.js");
+
+  /* =========================================================================
+     G) supabase/functions/sidetelling-event -- offentleg Edge-inntak som
+     reknar dagskoden frå server-mottekne headerar og kallar service-helperen.
+     ====================================================================== */
+  function sidetellingRequest(method, headers, bodyValue) {
+    const init = { method, headers: Object.assign({ "content-type": "application/json" }, headers || {}) };
+    if (method !== "GET" && method !== "HEAD" && bodyValue !== undefined) init.body = JSON.stringify(bodyValue);
+    return new Request("https://tenant.supabase.co/functions/v1/sidetelling-event", init);
+  }
+  function sidetellingOptions(fetchImpl, now) {
+    return {
+      SUPABASE_URL: "https://tenant.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "service-secret-test-key",
+      fetch: fetchImpl,
+      now: now || new Date("2026-08-06T12:00:00.000Z"),
+    };
+  }
+
+  r = await handleSidetellingEvent(sidetellingRequest("GET", {}, undefined), sidetellingOptions(async () => { throw new Error("skal ikkje kallast"); }));
+  assert(r.status === 405, "g1: sidetelling Edge støttar berre POST/OPTIONS");
+
+  let edgeFetchCalls = [];
+  const okEdgeFetch = async (url, init) => {
+    edgeFetchCalls.push({ url: String(url), init });
+    return new Response("true", { status: 200, headers: { "content-type": "application/json" } });
+  };
+  r = await handleSidetellingEvent(sidetellingRequest("POST", {
+    "x-forwarded-for": "ikkje-ein-ip",
+    "user-agent": "Test Browser/1.0",
+    origin: "null",
+  }, { type: "pageview", path: "#hjem" }), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 400 && edgeFetchCalls.length === 0,
+    "g2: manglande gyldig IP/site vert avvist før databasekall -- inga felles «ukjend»-gruppe");
+
+  const eventBody = { type: "pageview", path: "#hjem", referrer: "search.example", cta_id: null, device_type: "pc", is_bot: false };
+  const eventHeaders = {
+    "x-forwarded-for": "203.0.113.42, 10.0.0.1",
+    "user-agent": "Test Browser/1.0",
+    origin: "https://kunde.example",
+  };
+  edgeFetchCalls = [];
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, eventBody), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 202 && r.headers.get("cache-control") === "no-store" && edgeFetchCalls.length === 1,
+    "g3: gyldig pageview vert akseptert utan respons-cache og gjev nøyaktig eitt service-helper-kall");
+  const edgeCall = edgeFetchCalls[0];
+  const edgeRpcBody = JSON.parse(edgeCall.init.body);
+  const expectedHash = require("node:crypto").createHash("sha256").update(JSON.stringify([
+    "vibeverk-sidetelling-v1", "2026-08-06", "kunde.example", "203.0.113.42", "Test Browser/1.0"
+  ])).digest("hex");
+  assert(edgeCall.url === "https://tenant.supabase.co/rest/v1/rpc/insert_analytics_event_service" &&
+    edgeCall.init.headers.apikey === "service-secret-test-key" && edgeCall.init.headers.authorization === "Bearer service-secret-test-key",
+    "g4: Edge kallar berre den service-only RPC-en med servermiljøet sin service key");
+  assert(edgeRpcBody.p_session_id === expectedHash && /^[0-9a-f]{64}$/.test(edgeRpcBody.p_session_id),
+    "g5: dagskoden er korrekt SHA-256 av versjon + UTC-dag + site + normalisert IP + UA");
+  assert(edgeRpcBody.p_type === "pageview" && edgeRpcBody.p_path === "#hjem" && edgeRpcBody.p_device_type === "pc" &&
+    !JSON.stringify(edgeRpcBody).includes("203.0.113.42") && !JSON.stringify(edgeRpcBody).includes("Test Browser/1.0") &&
+    !JSON.stringify(edgeRpcBody).includes("kunde.example"),
+    "g6: service-kallet inneheld hending + hash, men aldri rå IP, UA eller Origin/site");
+
+  const firstDayHash = edgeRpcBody.p_session_id;
+  edgeFetchCalls = [];
+  await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, eventBody), sidetellingOptions(okEdgeFetch, new Date("2026-08-07T00:00:01.000Z")));
+  const nextDayHash = JSON.parse(edgeFetchCalls[0].init.body).p_session_id;
+  assert(firstDayHash !== nextDayHash,
+    "g7: same site/IP/UA får automatisk ny hash etter UTC-dagsskifte utan lagra salt");
+
+  edgeFetchCalls = [];
+  r = await handleSidetellingEvent(sidetellingRequest("POST", {
+    "x-forwarded-for": "ugyldig",
+    "cf-connecting-ip": "2001:db8::1",
+    "user-agent": "Test Browser/1.0",
+    referer: "https://kunde.example/sti?x=1",
+  }, eventBody), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 202 && edgeFetchCalls.length === 1,
+    "g8: ugyldig XFF vert ikkje hasha; gyldig IPv6-fallback + Referer-host fungerer");
+
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, { type: "pageview", path: "" }), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 400, "g9: ugyldig hendingspayload vert avvist før service-helperen");
+
+  r = await handleSidetellingEvent(new Request("https://tenant.supabase.co/functions/v1/sidetelling-event", {
+    method: "POST", headers: Object.assign({ "content-type": "application/json" }, eventHeaders), body: "null"
+  }), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 400, "g9b: gyldig JSON som ikkje er eit objekt vert avvist utan runtime-krasj");
+
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, Object.assign({}, eventBody, { is_bot: "false" })), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 400, "g9c: is_bot må vere ekte boolean, ikkje ein klientstyrt tekstverdi");
+
+  const quotaFetch = async () => new Response("false", { status: 200, headers: { "content-type": "application/json" } });
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, eventBody), sidetellingOptions(quotaFetch));
+  body = await r.json();
+  assert(r.status === 202 && body.ok === true && !Object.prototype.hasOwnProperty.call(body, "quota"),
+    "g10: nådd privat kvote vert handtert stille som akseptert analyseavvik, aldri lekkja til browseren");
+
+  const failedEdgeFetch = async () => new Response("rå databasefeil med hemmeleg detalj", { status: 500 });
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, eventBody), sidetellingOptions(failedEdgeFetch));
+  body = await r.json();
+  assert(r.status === 500 && body.error === "Kunne ikke lagre hendelsen" && JSON.stringify(body).indexOf("hemmeleg detalj") === -1,
+    "g11: service-feil vert generiske og lekkjer ikkje database-/headerdetaljar");
 
   console.log("\nResultat: OK " + __ok + " / FEIL " + __err);
 }
