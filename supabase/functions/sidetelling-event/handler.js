@@ -59,9 +59,18 @@ function normalizeIp(value) {
 }
 
 function requestIp(headers) {
-  // Supabase sitt eksisterande anon-media-upload-token brukar fyrste XFF-hop.
-  // Berre gyldige IP-adresser vert godtekne; staging må empirisk stadfeste at
-  // edge-laget overskriv/byggjer desse headerane som venta.
+  // Empirisk stadfesta mot vibeverk-staging (2026-08-07, sjå CHANGELOG):
+  // Cloudflare-edgen framfor Supabase skriv HEILT OM x-forwarded-for til den
+  // ekte proxy-kjeda (eit forfalska klient-verdi vert kasta, aldri bevart
+  // som fyrste ledd) og NEKTAR (403, Cloudflare-feilkode 1000) heile
+  // requesten dersom klienten prøver å setje cf-connecting-ip sjølv. x-real-ip
+  // vert strippa heilt uansett. Ingen av dei tre er difor reelt klient-
+  // forfalskbare i denne infrastrukturen -- stadfesta med eit throwaway
+  // diagnostikk-endepunkt som ekkoa rå headerar attende, sletta att straks
+  // verifiseringa var gjort. Minutt-kvota (sjå migrasjonen) står likevel ved
+  // lag som forsvar i djupna mot ei ANNA trusselklasse (ekte, distribuerte
+  // IP-ar i eit reelt volum-åtak), ikkje fordi spoofing via desse headerane
+  // faktisk er mogleg.
   var candidates = [
     firstHeaderPart(headers.get("x-forwarded-for")),
     headers.get("cf-connecting-ip") || "",
