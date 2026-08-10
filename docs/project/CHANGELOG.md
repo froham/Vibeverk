@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.117.0 — 2026-08-10
+
+**Eiendeler: fiks reell produksjonsfeil — manglande GRANT til `authenticated`.** Oppdaga av brukaren ved fyrste faktiske bruk i produksjon: "permission denied for table asset_categories".
+
+- Rotårsak: dei tre tidlegare Eiendeler-migrasjonane (Fase 1/2/4) oppretta RLS-policyar for `authenticated` på alle fire tabellane, men gav aldri noko eksplisitt `GRANT` til den rolla -- berre `REVOKE ALL ... FROM anon`. Postgres sjekkar table-level GRANT FØR RLS vert evaluert i det heile -- ein perfekt RLS-policy hjelper ingenting utan denne. Stadfesta direkte via `information_schema.role_table_grants`: `authenticated` hadde berre `REFERENCES`/`TRIGGER`/`TRUNCATE` (Supabase sin eigen, ikkje-fullstendige platform-standard for nyoppretta tabellar) -- same feilklasse CLAUDE.md alt dokumenterer for `service_role` på `store`-tabellen (ADR-0009), no stadfesta å gjelde `authenticated` på nye tabellar òg.
+- Ny migrasjon `20260810130757_eiendeler_grant_authenticated.sql`: eksplisitt `GRANT SELECT, INSERT, UPDATE, DELETE` til `authenticated` på alle fire tabellane (`assets`, `asset_categories`, `asset_ownership_history`, `asset_valuation_history`). Køyrd mot produksjon (`clzczbyklgdtdhgjphup`) og verifisert direkte (alle fire tabellane har no full CRUD-grant for `authenticated`).
+- **Prosess-lærdom**: Security Auditor-passa (Fase 1 og den samla Fase 2-5-runda) fann verken dette eller nokon tilsvarande "sjekk faktiske grants, ikkje berre policyteksten"-funn -- ein reell, konkret verifikasjonsglippe (same klasse feil som CLAUDE.md sin eigen "aldri stol på eit klart exit-kode"-regel åtvarar mot, berre på GRANT-nivå i staden for migrasjon-exit-status). Verdt å ta med som eit eksplisitt sjekkpunkt i framtidige Security Auditor-instruksar for nye tabellar.
+- Ikkje ein del av denne endringa: tilsvarande fiks mot Sunnvask-demo eller andre tenantar sine eigne data-plane-prosjekt -- kvar tenant har sitt eige Supabase-prosjekt (ADR-0008), og denne migrasjonen (som dei tre føregåande) er berre køyrd mot produksjon (`clzczbyklgdtdhgjphup`) via `--linked`. Andre tenantar som har fått `intranettFeatures.eiendeler` slått på via kontrollplanet treng migrasjonane køyrde mot SITT EIGE prosjekt separat.
+
+---
+
 ## 0.116.0 — 2026-08-10
 
 **Eiendeler: utrulla til produksjon, flagg slått på.** Brukarvedtak: hoppa over `vibeverk-staging`-testinga planen elles føreset, for å teste direkte i den faktiske Workspace-økta.
