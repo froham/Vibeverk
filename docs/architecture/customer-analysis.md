@@ -2,7 +2,7 @@
 
 Kundeanalyse er et internt arbeidsverktøy i Vibeverk Console for avgrenset analyse av offentlig tilgjengelige nettsteder til mulige kunder. Det ligger ikke i kundens Workspace, gjør ingen automatisk utsending og produserer bare internt materiale som må gjennom menneskelig kontroll.
 
-Status per 2026-08-10: kode og migrasjon er implementert lokalt i v0.128.0, gjennomgått av en uavhengig Security Auditor/Privacy Advisor/UX Reviewer-runde, men migrasjonen er ikke kjørt og funksjonen er ikke deployet. Denne teksten beskriver kodekontrakten; live status må bekreftes separat etter en godkjent stagingutrulling.
+Status per 2026-08-10 (v0.129.0): kode er implementert og gjennomgått av en uavhengig Security Auditor/Privacy Advisor/UX Reviewer-runde. Migrasjonen er kjørt mot `vibeverk-control` og direkte verifisert (tabeller, RLS, policyer, grants, funksjon). Funksjonen er likevel **ikke funksjonell i produksjon ennå**: `VIBEVERK_CONTROL_SERVICE_ROLE_KEY` er ikke satt i Vercel-miljøet. Denne teksten beskriver kodekontrakten; en reell stagingtest mot et faktisk nettsted gjenstår.
 
 ## Dataflyt og tilgang
 
