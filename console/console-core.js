@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.126.0";
+  var VIBEVERK_VERSION = "0.128.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -509,6 +509,7 @@ window.VwConsole = (function () {
     { id: "workspace",  icon: "briefcase",   label: "Workspace" },
     { id: "modular",    icon: "puzzle",      label: "Modular" },
     { id: "priser",     icon: "tag",         label: "Priser" },
+    { id: "kundeanalyse", icon: "zoom-check", label: "Kundeanalyse" },
     { id: "analyse",    icon: "chart-bar",   label: "Analyse" },
     { id: "personvern", icon: "shield-lock", label: "Personvern" },
     { id: "laring",     icon: "book",        label: "Læring" },
@@ -5076,6 +5077,400 @@ window.VwConsole = (function () {
     if (_aiLabBusy) setAiLabBusy(true, "Et AI-kall pågår …");
   }
 
+  /* =========================================================================
+     KUNDEANALYSE — internt control-plane-verktøy
+     -------------------------------------------------------------------------
+     Dette er global Vibeverk-data, ikkje data for den valde kunden i
+     sidepanelet. All lesing og skriving går gjennom det autentiserte
+     /api/customer-analysis-endepunktet; nettlesaren hentar aldri målsida.
+     ====================================================================== */
+  var _kaMode = "list";
+  var _kaDetailId = null;
+  var _kaDetailData = null;
+  var _kaTab = "summary";
+  var _kaEditingFindingId = null;
+  var _kaWrap = null;
+  var _kaBusy = false;
+
+  var KA_STATUS = {
+    draft:"Kladd", pending:"Venter", analyzing:"Analyserer", review_ready:"Klar til gjennomgang",
+    reviewed:"Gjennomgått", failed:"Mislykket", archived:"Arkivert"
+  };
+  var KA_CATEGORY = {
+    technical:"Tekniske funn", seo:"SEO og synlighet", accessibility:"Universell utforming",
+    privacy:"Personvern og tillit", content:"Innhold og brukerreise", strength:"Sterke sider"
+  };
+  var KA_PRIORITY = { low:"Lav", medium:"Middels", high:"Høy" };
+  var KA_REVIEW = { unreviewed:"Ikke vurdert", approved:"Godkjent", edited:"Redigert", removed:"Fjernet" };
+  var KA_TYPE = { automatic:"Automatisk kontroll", ai:"AI-vurdering", manual:"Manuelt funn" };
+
+  function kaDate(value) {
+    if (!value) return "—";
+    try { return new Date(value).toLocaleString("nb-NO", { dateStyle:"medium", timeStyle:"short" }); }
+    catch (e) { return "—"; }
+  }
+
+  function kaRequestKey() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (char) {
+      var n = Math.random() * 16 | 0;
+      return (char === "x" ? n : (n & 3 | 8)).toString(16);
+    });
+  }
+
+  function kaApi(query, options) {
+    var opts = options || {};
+    var headers = Object.assign({ Accept:"application/json" }, opts.headers || {});
+    if (_session && _session.access_token) headers.Authorization = "Bearer " + _session.access_token;
+    if (opts.body && typeof opts.body !== "string") {
+      headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(opts.body);
+    }
+    opts.headers = headers;
+    opts.cache = "no-store";
+    return fetch("/api/customer-analysis" + (query || ""), opts).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (body) {
+        if (!response.ok) {
+          var err = new Error(body.error || "Kundeanalyse svarte med en feil.");
+          err.status = response.status;
+          err.code = body.code;
+          throw err;
+        }
+        return body;
+      });
+    });
+  }
+
+  function kaLoading(text) {
+    if (!_kaWrap) return;
+    _kaWrap.innerHTML = '<div class="ka-loading" role="status"><span class="ti ti-loader-2"></span><span class="ka-loading__text">' + C.esc(text || "Laster …") + '</span></div>';
+  }
+
+  function kaShowError(message, retry) {
+    if (!_kaWrap) return;
+    _kaWrap.innerHTML = '<div class="ka-notice ka-error" role="alert">' + C.esc(message) + '</div>' +
+      (retry ? '<button type="button" class="btn btn--ghost" id="ka-retry">Prøv igjen</button>' : '');
+    if (retry) _kaWrap.querySelector("#ka-retry").addEventListener("click", retry);
+  }
+
+  function renderKundeanalyse(sc, wrap) {
+    _kaWrap = wrap;
+    if (_kaMode === "create") { kaRenderCreate(); return; }
+    if (_kaMode === "detail" && _kaDetailId) { kaLoadDetail(_kaDetailId); return; }
+    if (_kaMode === "catalog") { kaLoadCatalog(); return; }
+    kaLoadList();
+  }
+
+  function kaLoadList(search, status) {
+    _kaMode = "list";
+    kaLoading("Henter analyser …");
+    var query = "?view=list" + (search ? "&search=" + encodeURIComponent(search) : "") + (status ? "&status=" + encodeURIComponent(status) : "");
+    kaApi(query).then(function (data) {
+      if (_kaMode !== "list" || !_kaWrap) return;
+      kaRenderList(data.analyses || [], search || "", status || "");
+    }).catch(function (err) { kaShowError(err.message, function () { kaLoadList(search, status); }); });
+  }
+
+  function kaRenderList(items, search, status) {
+    var rows = items.map(function (item) {
+      return '<tr><td><strong>' + C.esc(item.company_name) + '</strong><br><span style="color:var(--color-muted)">' + C.esc(item.target_host) + '</span></td>' +
+        '<td>' + C.esc(item.industry || "—") + '</td>' +
+        '<td><span class="ka-status ka-status--' + C.esc(item.status) + '">' + C.esc(KA_STATUS[item.status] || item.status) + '</span></td>' +
+        '<td>' + (item.overall_score === null ? "—" : C.esc(item.overall_score) + "/100") + '</td>' +
+        '<td>' + C.esc(item.approved_findings || 0) + '</td><td>' + C.esc(kaDate(item.last_run_at || item.updated_at)) + '</td>' +
+        '<td><div class="ka-actions"><button type="button" class="btn btn--ghost btn--sm" data-ka-open="' + C.esc(item.id) + '">Åpne</button>' +
+        (item.status !== "analyzing" && item.status !== "archived" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-run="' + C.esc(item.id) + '">Kjør' + (item.last_run_at ? " på nytt" : "") + '</button>' : '') +
+        (item.status !== "analyzing" && item.status !== "archived" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-archive="' + C.esc(item.id) + '">Arkiver</button>' : '') +
+        (item.status !== "analyzing" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-delete="' + C.esc(item.id) + '">Slett permanent</button>' : '') + '</div></td></tr>';
+    }).join("");
+    _kaWrap.innerHTML =
+      '<div class="ka-notice"><strong>Internt verktøy.</strong> Kundeanalyse undersøker bare offentlig tilgjengelige sider og lager utkast til menneskelig gjennomgang. Ingenting sendes til virksomheten automatisk.</div>' +
+      '<div class="ka-toolbar"><div class="ka-toolbar__filters"><input id="ka-search" type="search" placeholder="Søk etter virksomhet eller domene" value="' + C.esc(search) + '">' +
+        '<select id="ka-status"><option value="">Alle statuser</option>' + Object.keys(KA_STATUS).map(function (key) { return '<option value="' + key + '"' + (status === key ? " selected" : "") + '>' + C.esc(KA_STATUS[key]) + '</option>'; }).join("") + '</select>' +
+        '<button type="button" class="btn btn--ghost" id="ka-filter">Søk</button></div><div class="ka-actions">' +
+        '<button type="button" class="btn btn--ghost" id="ka-catalog">Tjenestekatalog</button><button type="button" class="btn btn--primary" id="ka-new">Ny analyse</button></div></div>' +
+      (items.length ? '<div class="ka-table-wrap"><table class="ka-table"><thead><tr><th>Virksomhet</th><th>Bransje</th><th>Status</th><th>Vurdering</th><th>Godkjent</th><th>Sist kjørt</th><th>Handlinger</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="ka-empty"><strong>Ingen analyser funnet.</strong><p>Opprett en analyse for å undersøke et offentlig nettsted.</p></div>');
+    _kaWrap.querySelector("#ka-new").addEventListener("click", function () { _kaMode = "create"; kaRenderCreate(); });
+    _kaWrap.querySelector("#ka-catalog").addEventListener("click", function () { _kaMode = "catalog"; kaLoadCatalog(); });
+    _kaWrap.querySelector("#ka-filter").addEventListener("click", function () { kaLoadList(_kaWrap.querySelector("#ka-search").value.trim(), _kaWrap.querySelector("#ka-status").value); });
+    _kaWrap.querySelector("#ka-search").addEventListener("keydown", function (event) { if (event.key === "Enter") _kaWrap.querySelector("#ka-filter").click(); });
+    _kaWrap.querySelectorAll("[data-ka-open]").forEach(function (button) { button.addEventListener("click", function () { kaOpenDetail(button.getAttribute("data-ka-open")); }); });
+    _kaWrap.querySelectorAll("[data-ka-run]").forEach(function (button) { button.addEventListener("click", function () { kaRun(button.getAttribute("data-ka-run")); }); });
+    _kaWrap.querySelectorAll("[data-ka-archive]").forEach(function (button) { button.addEventListener("click", function () { kaArchive(button.getAttribute("data-ka-archive"), function () { kaLoadList(search, status); }); }); });
+    _kaWrap.querySelectorAll("[data-ka-delete]").forEach(function (button) { button.addEventListener("click", function () { kaDeletePermanently(button.getAttribute("data-ka-delete"), function () { kaLoadList(search, status); }); }); });
+  }
+
+  function kaRenderCreate() {
+    _kaMode = "create";
+    _kaWrap.innerHTML =
+      '<button type="button" class="btn btn--ghost" id="ka-back">← Til analyseoversikten</button>' +
+      '<div class="ka-notice" style="margin-top:1rem"><strong>Dette gjør analysen:</strong> Leser startsiden og inntil fem trygge, offentlige undersider, respekterer robots.txt og lager dokumenterbare tekniske funn. Dersom Anthropic er konfigurert, sendes bare korte, rensede tekstutdrag til modellen.<br><strong>Dette gjør den ikke:</strong> Logger inn, sender skjemaer, omgår blokkeringer, gjør sikkerhetsskanning eller trekker juridiske konklusjoner.</div>' +
+      '<form class="ka-form" id="ka-create-form"><h2>Opprett analyse</h2>' +
+        C.field({ id:"ka-company", label:"Virksomhetsnavn", required:true, placeholder:"Eksempel AS" }) +
+        C.field({ id:"ka-url", label:"Nettadresse", type:"url", required:true, placeholder:"https://eksempel.no" }) +
+        C.field({ id:"ka-industry", label:"Bransje (valgfritt)", placeholder:"For eksempel bygg og anlegg" }) +
+        C.field({ id:"ka-notes", label:"Interne notater (valgfritt)", multiline:true, rows:4, hint:"Ikke legg inn unødvendige personopplysninger." }) +
+        '<div class="field"><label for="ka-max-pages">Maksimalt antall sider</label><select id="ka-max-pages"><option value="3">3 sider</option><option value="5" selected>5 sider</option><option value="1">Bare startsiden</option></select><p class="field__hint">Forsiktig standard: startsiden og inntil fire relevante undersider.</p></div>' +
+        '<p id="ka-create-status" class="form__status" role="status"></p><div class="ka-actions"><button type="submit" class="btn btn--primary" id="ka-create-submit">Opprett analyse</button><button type="button" class="btn btn--ghost" id="ka-create-cancel">Avbryt</button></div>' +
+      '</form>';
+    function back() { _kaMode = "list"; kaLoadList(); }
+    _kaWrap.querySelector("#ka-back").addEventListener("click", back);
+    _kaWrap.querySelector("#ka-create-cancel").addEventListener("click", back);
+    var submitted = false;
+    _kaWrap.querySelector("#ka-create-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (submitted) return;
+      submitted = true;
+      var button = _kaWrap.querySelector("#ka-create-submit");
+      var statusEl = _kaWrap.querySelector("#ka-create-status");
+      button.disabled = true;
+      statusEl.textContent = "Oppretter analysen …";
+      kaApi("", { method:"POST", body:{
+        action:"create", requestKey:kaRequestKey(), companyName:_kaWrap.querySelector("#ka-company").value,
+        websiteUrl:_kaWrap.querySelector("#ka-url").value, industry:_kaWrap.querySelector("#ka-industry").value,
+        internalNotes:_kaWrap.querySelector("#ka-notes").value, maxPages:Number(_kaWrap.querySelector("#ka-max-pages").value)
+      }}).then(function (data) { kaOpenDetail(data.analysis.id); }).catch(function (err) {
+        submitted = false; button.disabled = false; statusEl.textContent = err.message; statusEl.className = "form__status is-error";
+      });
+    });
+  }
+
+  function kaOpenDetail(id) {
+    _kaMode = "detail"; _kaDetailId = id; _kaTab = "summary"; _kaEditingFindingId = null; kaLoadDetail(id);
+  }
+
+  function kaLoadDetail(id) {
+    _kaMode = "detail"; _kaDetailId = id; kaLoading("Henter analysen …");
+    kaApi("?view=detail&id=" + encodeURIComponent(id)).then(function (data) {
+      if (_kaMode !== "detail" || _kaDetailId !== id) return;
+      _kaDetailData = data; kaRenderDetail();
+    }).catch(function (err) { kaShowError(err.message, function () { kaLoadDetail(id); }); });
+  }
+
+  function kaTabButton(id, label, count) {
+    return '<button type="button" class="ka-tab' + (_kaTab === id ? " is-active" : "") + '" data-ka-tab="' + id + '">' + C.esc(label) + (count === undefined ? "" : " (" + C.esc(count) + ")") + '</button>';
+  }
+
+  function kaRenderDetail() {
+    var data = _kaDetailData;
+    if (!data) return;
+    var analysis = data.analysis;
+    var counts = {};
+    data.findings.forEach(function (item) { counts[item.category] = (counts[item.category] || 0) + 1; });
+    var approved = data.findings.filter(function (item) { return item.review_status === "approved"; }).length;
+    _kaWrap.innerHTML =
+      '<div class="ka-toolbar"><button type="button" class="btn btn--ghost" id="ka-detail-back">← Til analyseoversikten</button><div class="ka-actions">' +
+        (analysis.status !== "analyzing" && analysis.status !== "archived" ? '<button type="button" class="btn btn--primary" id="ka-detail-run">' + (analysis.last_run_at ? "Kjør på nytt" : "Start analyse") + '</button>' : '') +
+        (analysis.status !== "analyzing" && analysis.status !== "archived" ? '<button type="button" class="btn btn--ghost" id="ka-detail-archive">Arkiver</button>' : '') +
+        (analysis.status !== "analyzing" ? '<button type="button" class="btn btn--ghost" id="ka-detail-delete">Slett permanent</button>' : '') + '</div></div>' +
+      '<section class="ka-hero"><div><div class="ka-card__meta"><span class="ka-status ka-status--' + C.esc(analysis.status) + '">' + C.esc(KA_STATUS[analysis.status] || analysis.status) + '</span><span class="ka-badge">' + approved + ' godkjent</span></div>' +
+        '<h2>' + C.esc(analysis.company_name) + '</h2><p>' + C.esc(analysis.website_url) + '</p><p>' + C.esc(analysis.industry || "Bransje ikke oppgitt") + ' · Sist kjørt ' + C.esc(kaDate(analysis.last_run_at)) + '</p></div>' +
+        '<div class="ka-score" title="Automatisk, veiledende vurdering">' + (analysis.overall_score === null ? "—" : C.esc(analysis.overall_score)) + '</div></section>' +
+      (analysis.status === "analyzing" ? '<div class="ka-notice"><span class="ti ti-loader-2"></span> Analysen kjører. Hold denne fanen åpen til resultatet er lagret.</div>' : '') +
+      '<nav class="ka-tabs" aria-label="Analyseområder">' + kaTabButton("summary", "Oppsummering") + kaTabButton("technical", "Teknisk", counts.technical || 0) + kaTabButton("seo", "SEO", counts.seo || 0) + kaTabButton("accessibility", "Universell utforming", counts.accessibility || 0) + kaTabButton("privacy", "Personvern og tillit", counts.privacy || 0) + kaTabButton("content", "Innhold og brukerreise", counts.content || 0) + kaTabButton("opportunities", "Muligheter for Vibeverk") + kaTabButton("meeting", "Møtegrunnlag") + '</nav>' +
+      '<div id="ka-tab-panel"></div>';
+    _kaWrap.querySelector("#ka-detail-back").addEventListener("click", function () { _kaMode = "list"; kaLoadList(); });
+    var run = _kaWrap.querySelector("#ka-detail-run"); if (run) run.addEventListener("click", function () {
+      // UX-review-funn (BLOCKER, 2026-08-10): ei ny køyring hentar godkjente/
+      // redigerte funn frå FØRRE køyring usynlege (dei er framleis i databasen,
+      // men detail() viser berre funn knytt til siste run_id) -- utan denne
+      // åtvaringa forsvinn timevis med gjennomgangsarbeid utan varsel.
+      if (analysis.last_run_at && !confirm("Kjøre analysen på nytt? Godkjente og redigerte funn fra forrige gjennomgang blir ikke vist før de vurderes på nytt i den nye kjøringen.")) return;
+      kaRun(analysis.id);
+    });
+    var archive = _kaWrap.querySelector("#ka-detail-archive"); if (archive) archive.addEventListener("click", function () { kaArchive(analysis.id, function () { kaLoadDetail(analysis.id); }); });
+    var del = _kaWrap.querySelector("#ka-detail-delete"); if (del) del.addEventListener("click", function () { kaDeletePermanently(analysis.id, function () { _kaMode = "list"; kaLoadList(); }); });
+    _kaWrap.querySelectorAll("[data-ka-tab]").forEach(function (button) { button.addEventListener("click", function () { _kaTab = button.getAttribute("data-ka-tab"); _kaEditingFindingId = null; kaRenderDetail(); }); });
+    kaRenderTab();
+  }
+
+  function kaRenderTab() {
+    var panel = _kaWrap.querySelector("#ka-tab-panel");
+    var data = _kaDetailData;
+    if (_kaTab === "summary") { kaRenderSummary(panel, data); return; }
+    if (_kaTab === "meeting") { kaRenderMeeting(panel, data); return; }
+    if (_kaTab === "opportunities") { kaRenderFindings(panel, data.findings.filter(function (item) { return item.review_status !== "removed"; }), true); return; }
+    kaRenderFindings(panel, data.findings.filter(function (item) { return item.category === _kaTab; }), false);
+  }
+
+  function kaRenderSummary(panel, data) {
+    var run = data.latestRun;
+    var pageHtml = data.pages.map(function (page) {
+      return '<div class="ka-page"><div><strong>' + C.esc(page.title || page.requested_url) + '</strong><br><span>' + C.esc(page.final_url || page.requested_url) + '</span>' + (page.error_message ? '<br><span style="color:#991b1b">' + C.esc(page.error_message) + '</span>' : '') + '</div><span class="ka-badge ka-badge--' + (page.fetch_status === "fetched" ? "approved" : "high") + '">' + C.esc(page.fetch_status === "fetched" ? "Lest" : page.fetch_status === "skipped" ? "Utelatt" : "Feilet") + '</span></div>';
+    }).join("");
+    panel.innerHTML =
+      '<div class="ka-notice"><strong>Veiledende resultat:</strong> ' + C.esc(data.analysis.overall_summary || "Analysen er ikke kjørt ennå.") + '</div>' +
+      (run && run.ai_status === "not_configured" ? '<div class="ka-notice">AI-vurderingen var utilgjengelig fordi Anthropic ikke er konfigurert. De tekniske kontrollene er likevel gjennomført.</div>' : '') +
+      (run && run.ai_status === "failed" ? '<div class="ka-notice ka-error">AI-vurderingen feilet. De tekniske kontrollene og resultatene er fortsatt lagret.</div>' : '') +
+      '<div class="ka-grid"><section class="ka-card"><h3>Kjøring</h3><p><strong>Status:</strong> ' + C.esc(run ? run.status : "Ikke startet") + '</p><p><strong>AI:</strong> ' + C.esc(run ? run.ai_status : "—") + '</p><p><strong>Startet:</strong> ' + C.esc(kaDate(run && run.started_at)) + '</p><p><strong>Fullført:</strong> ' + C.esc(kaDate(run && run.finished_at)) + '</p></section>' +
+      '<section class="ka-card"><h3>Avgrensning</h3><p>Maks ' + C.esc(data.analysis.max_pages) + ' sider. Automatiske kontroller er ikke en full WCAG-, SEO-, personvern- eller ytelsesvurdering.</p><p>Konklusjoner som krever juridisk eller faglig vurdering må undersøkes manuelt.</p></section></div>' +
+      '<h2 style="margin:1.3rem 0 .7rem">Undersøkte sider</h2>' + (pageHtml ? '<div class="ka-page-list">' + pageHtml + '</div>' : '<div class="ka-empty">Ingen sider er undersøkt ennå.</div>');
+  }
+
+  function kaServicesForFinding(findingId) {
+    var serviceIds = _kaDetailData.findingServices.filter(function (link) { return link.finding_id === findingId; }).map(function (link) { return link.service_id; });
+    return _kaDetailData.catalog.filter(function (service) { return serviceIds.indexOf(service.id) !== -1; });
+  }
+
+  function kaFindingCard(item, opportunities) {
+    var editing = _kaEditingFindingId === item.id;
+    var services = kaServicesForFinding(item.id);
+    if (editing) {
+      var selected = {};
+      services.forEach(function (service) { selected[service.id] = true; });
+      return '<article class="ka-card"><form class="ka-edit" data-ka-edit-form="' + C.esc(item.id) + '"><label>Tittel<input name="title" maxlength="240" value="' + C.esc(item.title) + '"></label>' +
+        '<label>Observasjon<textarea name="observation" rows="4" maxlength="2000">' + C.esc(item.observation) + '</textarea></label><label>Berørt element (valgfritt)<input name="affectedElement" maxlength="500" value="' + C.esc(item.affected_element) + '"></label><label>Betydning<textarea name="significance" rows="3" maxlength="1600">' + C.esc(item.significance) + '</textarea></label>' +
+        '<label>Forslag til tiltak<textarea name="recommendation" rows="3" maxlength="1600">' + C.esc(item.recommendation) + '</textarea></label>' +
+        '<label>Prioritet<select name="priority">' + Object.keys(KA_PRIORITY).map(function (key) { return '<option value="' + key + '"' + (item.priority === key ? " selected" : "") + '>' + KA_PRIORITY[key] + '</option>'; }).join("") + '</select></label>' +
+        '<label>Vibeverk-tjenester<select name="services" multiple size="5">' + _kaDetailData.catalog.filter(function (service) { return service.active; }).map(function (service) { return '<option value="' + C.esc(service.id) + '"' + (selected[service.id] ? " selected" : "") + '>' + C.esc(service.title + (service.delivery_status === "adaptation" ? " (mulig tilpasning)" : "")) + '</option>'; }).join("") + '</select></label>' +
+        '<label>Interne notater<textarea name="internalNotes" rows="3" maxlength="3000">' + C.esc(item.internal_notes) + '</textarea></label><p class="form__status" role="status"></p><div class="ka-actions"><button type="submit" class="btn btn--primary">Lagre som redigert</button><button type="button" class="btn btn--ghost" data-ka-edit-cancel>Avbryt</button></div></form></article>';
+    }
+    return '<article class="ka-card' + (item.review_status === "removed" ? " is-removed" : "") + '"><div class="ka-card__meta"><span class="ka-badge ka-badge--' + C.esc(item.finding_type) + '">' + C.esc(KA_TYPE[item.finding_type] || item.finding_type) + '</span>' +
+      '<span class="ka-badge ka-badge--' + C.esc(item.priority) + '">' + C.esc(KA_PRIORITY[item.priority] || item.priority) + '</span>' + (item.finding_type === "ai" ? '<span class="ka-badge">AI-sikkerhet: ' + C.esc(KA_PRIORITY[item.confidence] || item.confidence) + '</span>' : '') + '<span class="ka-badge ka-badge--' + C.esc(item.review_status) + '">' + C.esc(KA_REVIEW[item.review_status] || item.review_status) + '</span></div>' +
+      '<h3>' + C.esc(item.title) + '</h3><p>' + C.esc(item.observation) + '</p>' + (item.significance ? '<p><strong>Betydning:</strong> ' + C.esc(item.significance) + '</p>' : '') + (item.recommendation ? '<p><strong>Forslag:</strong> ' + C.esc(item.recommendation) + '</p>' : '') +
+      (item.source_url && /^https?:\/\//i.test(item.source_url) ? '<a class="ka-card__source" href="' + C.esc(item.source_url) + '" target="_blank" rel="noopener noreferrer">Kilde: ' + C.esc(item.source_url) + '</a>' : '') +
+      (services.length ? '<p><strong>Mulige leveranser:</strong> ' + services.map(function (service) { return C.esc(service.title + (service.delivery_status === "adaptation" ? " (mulig tilpasning)" : "")); }).join(", ") + '</p>' : '') +
+      (item.internal_notes ? '<p><strong>Internt:</strong> ' + C.esc(item.internal_notes) + '</p>' : '') +
+      '<div class="ka-card__buttons">' + (item.review_status !== "approved" ? '<button type="button" class="btn btn--primary btn--sm" data-ka-approve="' + C.esc(item.id) + '">Godkjenn</button>' : '') + '<button type="button" class="btn btn--ghost btn--sm" data-ka-edit="' + C.esc(item.id) + '">Rediger</button>' + (item.review_status !== "removed" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-remove="' + C.esc(item.id) + '">Fjern</button>' : '') + '</div></article>';
+  }
+
+  function kaRenderFindings(panel, items, opportunities) {
+    panel.innerHTML = (opportunities ? '<div class="ka-notice">Tiltak er forslag knyttet til dokumenterte funn. Tjenester merket «mulig tilpasning» er ikke ferdige produktmoduler.</div>' : '<div class="ka-notice">AI-funn er utkast. Godkjenn, rediger eller fjern hvert funn før det kan brukes i møtegrunnlaget.</div>') +
+      '<div class="ka-toolbar"><h2 style="margin:0">' + C.esc(opportunities ? "Muligheter for Vibeverk" : KA_CATEGORY[_kaTab]) + '</h2><button type="button" class="btn btn--ghost" id="ka-add-manual">Legg til manuelt funn</button></div>' +
+      (items.length ? '<div class="ka-grid">' + items.map(function (item) { return kaFindingCard(item, opportunities); }).join("") + '</div>' : '<div class="ka-empty">Ingen funn i denne kategorien.</div>') + '<div id="ka-manual-slot"></div>';
+    panel.querySelector("#ka-add-manual").addEventListener("click", function () { kaRenderManualForm(panel.querySelector("#ka-manual-slot")); });
+    panel.querySelectorAll("[data-ka-approve]").forEach(function (button) { button.addEventListener("click", function () { kaSetReviewStatus(button.getAttribute("data-ka-approve"), "approved", button); }); });
+    panel.querySelectorAll("[data-ka-remove]").forEach(function (button) { button.addEventListener("click", function () { kaSetReviewStatus(button.getAttribute("data-ka-remove"), "removed", button); }); });
+    panel.querySelectorAll("[data-ka-edit]").forEach(function (button) { button.addEventListener("click", function () { _kaEditingFindingId = button.getAttribute("data-ka-edit"); kaRenderDetail(); }); });
+    panel.querySelectorAll("[data-ka-edit-cancel]").forEach(function (button) { button.addEventListener("click", function () { _kaEditingFindingId = null; kaRenderDetail(); }); });
+    panel.querySelectorAll("[data-ka-edit-form]").forEach(function (form) {
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var serviceIds = Array.from(form.elements.services.selectedOptions).map(function (option) { return option.value; });
+        kaUpdateFinding({ id:form.getAttribute("data-ka-edit-form"), reviewStatus:"edited", title:form.elements.title.value, observation:form.elements.observation.value, affectedElement:form.elements.affectedElement.value, significance:form.elements.significance.value, recommendation:form.elements.recommendation.value, priority:form.elements.priority.value, internalNotes:form.elements.internalNotes.value, serviceIds:serviceIds }, form.querySelector('[type="submit"]'));
+      });
+    });
+  }
+
+  function kaUpdateFinding(payload, button) {
+    if (_kaBusy) return;
+    _kaBusy = true; if (button) button.disabled = true;
+    kaApi("", { method:"POST", body:Object.assign({ action:"update_finding" }, payload) }).then(function () {
+      _kaBusy = false; _kaEditingFindingId = null; kaLoadDetail(_kaDetailId);
+    }).catch(function (err) { _kaBusy = false; if (button) button.disabled = false; alert(err.message); });
+  }
+
+  // UX-review-funn (HIGH, 2026-08-10): Godkjenn/Fjern er den klart hyppigaste
+  // handlinga (opptil fleire dusin per analyse) og endrar berre review_status
+  // -- eit fullt nettverksoppslag + spinner-blink + hel omteikning av
+  // verktøylinje/hero/faner for kvart einaste klikk var unødvendig treigt.
+  // Server-svaret for update_finding gir ikkje raden attende, men klienten
+  // sender alt nøyaktig den nye reviewStatus-verdien -- trygt å oppdatere
+  // _kaDetailData lokalt og teikne om utan nytt nettverksoppslag. Redigering
+  // (kaUpdateFinding over) endrar fleire felt + tenestekoplingar samstundes,
+  // så den nyttar framleis fullt reload for å halde seg garantert korrekt.
+  function kaSetReviewStatus(id, status, button) {
+    if (_kaBusy) return;
+    _kaBusy = true; if (button) button.disabled = true;
+    kaApi("", { method:"POST", body:{ action:"update_finding", id:id, reviewStatus:status } }).then(function () {
+      _kaBusy = false;
+      var item = _kaDetailData && _kaDetailData.findings.find(function (f) { return f.id === id; });
+      if (item) item.review_status = status;
+      kaRenderDetail();
+    }).catch(function (err) { _kaBusy = false; if (button) button.disabled = false; alert(err.message); });
+  }
+
+  function kaRenderManualForm(slot) {
+    slot.innerHTML = '<form class="ka-form" id="ka-manual-form" style="margin-top:1rem"><h2>Nytt manuelt funn</h2><div class="ka-form__row"><div class="field"><label>Kategori<select name="category">' + Object.keys(KA_CATEGORY).map(function (key) { return '<option value="' + key + '">' + C.esc(KA_CATEGORY[key]) + '</option>'; }).join("") + '</select></label></div><div class="field"><label>Prioritet<select name="priority"><option value="medium">Middels</option><option value="high">Høy</option><option value="low">Lav</option></select></label></div></div>' +
+      C.field({ id:"ka-manual-title", label:"Tittel", required:true }) + C.field({ id:"ka-manual-observation", label:"Konkret observasjon", multiline:true, rows:4, required:true }) + C.field({ id:"ka-manual-source", label:"Kilde-URL (valgfritt)", type:"url" }) + C.field({ id:"ka-manual-element", label:"Berørt element (valgfritt)" }) + C.field({ id:"ka-manual-significance", label:"Betydning", multiline:true, rows:3 }) + C.field({ id:"ka-manual-recommendation", label:"Forslag til tiltak", multiline:true, rows:3 }) +
+      '<p class="form__status" role="status"></p><div class="ka-actions"><button type="submit" class="btn btn--primary">Lagre funn</button><button type="button" class="btn btn--ghost" id="ka-manual-cancel">Avbryt</button></div></form>';
+    slot.querySelector("#ka-manual-cancel").addEventListener("click", function () { slot.innerHTML = ""; });
+    slot.querySelector("#ka-manual-form").addEventListener("submit", function (event) {
+      event.preventDefault(); var form = event.currentTarget; var button = form.querySelector('[type="submit"]'); button.disabled = true;
+      kaApi("", { method:"POST", body:{ action:"add_finding", analysisId:_kaDetailId, category:form.elements.category.value, priority:form.elements.priority.value, title:form.querySelector("#ka-manual-title").value, observation:form.querySelector("#ka-manual-observation").value, sourceUrl:form.querySelector("#ka-manual-source").value, affectedElement:form.querySelector("#ka-manual-element").value, significance:form.querySelector("#ka-manual-significance").value, recommendation:form.querySelector("#ka-manual-recommendation").value, serviceIds:[] } }).then(function () { kaLoadDetail(_kaDetailId); }).catch(function (err) { button.disabled = false; var status = form.querySelector(".form__status"); status.textContent = err.message; status.className = "form__status is-error"; });
+    });
+  }
+
+  function kaRenderMeeting(panel, data) {
+    var latest = data.briefs[0];
+    var content = latest && latest.content;
+    panel.innerHTML = '<div class="ka-notice">Møtegrunnlaget bruker bare funn som er uttrykkelig godkjent. Redigerte funn må godkjennes etter redigering. Det sendes ikke automatisk til kunden.</div><button type="button" class="btn btn--primary" id="ka-generate-brief">Lag nytt møtegrunnlag</button><p id="ka-brief-status" class="form__status" role="status"></p>' +
+      (content ? '<article class="ka-card ka-brief" style="margin-top:1rem"><h2>' + C.esc(content.title) + '</h2>' + (content.aiStatus === "not_configured" ? '<p class="ka-notice">Møtegrunnlaget er satt sammen uten AI fordi Anthropic ikke er konfigurert.</p>' : content.aiStatus === "failed" ? '<p class="ka-notice ka-error">AI-formuleringen feilet. Et regelbasert møtegrunnlag fra de godkjente funnene ble lagret i stedet.</p>' : '') + '<p>' + C.esc(content.companyDescription) + '</p><h3>Sterke sider</h3>' + kaStringList(content.strengths) + '<h3>Viktigste forbedringsmuligheter</h3>' + kaObjectList(content.opportunities) + '<h3>Spørsmål til møtet</h3>' + kaStringList(content.questions) + '<h3>Mulige Vibeverk-leveranser</h3>' + kaDeliveryList(content.possibleDeliveries) + '<h3>Anbefalt neste steg</h3><p>' + C.esc(content.recommendedNextStep) + '</p><h3>Interne notater</h3><p>' + C.esc(content.internalNotes || "Ingen interne notater.") + '</p><p class="field__hint">' + C.esc(content.disclaimer) + '</p></article>' : '<div class="ka-empty" style="margin-top:1rem">Det finnes ikke noe møtegrunnlag ennå.</div>');
+    panel.querySelector("#ka-generate-brief").addEventListener("click", function (event) {
+      var button = event.currentTarget; var status = panel.querySelector("#ka-brief-status"); button.disabled = true; status.textContent = "Lager møtegrunnlag …";
+      kaApi("", { method:"POST", body:{ action:"generate_brief", id:_kaDetailId } }).then(function () { kaLoadDetail(_kaDetailId); }).catch(function (err) { button.disabled = false; status.textContent = err.message; status.className = "form__status is-error"; });
+    });
+  }
+
+  function kaStringList(items) { return items && items.length ? '<ul>' + items.map(function (item) { return '<li>' + C.esc(item) + '</li>'; }).join("") + '</ul>' : '<p>Ingen godkjente punkter.</p>'; }
+  function kaObjectList(items) { return items && items.length ? '<ul>' + items.map(function (item) { return '<li><strong>' + C.esc(item.title) + ':</strong> ' + C.esc(item.observation) + '</li>'; }).join("") + '</ul>' : '<p>Ingen godkjente punkter.</p>'; }
+  function kaDeliveryList(items) { return items && items.length ? '<ul>' + items.map(function (item) { return '<li>' + C.esc(item.title) + (item.deliveryStatus === "adaptation" ? " (mulig tilpasning)" : "") + '</li>'; }).join("") + '</ul>' : '<p>Ingen tjenester er koblet til godkjente funn.</p>'; }
+
+  var KA_RUN_STEPS = ["Klargjør sikker innhenting …", "Henter og leser sider …", "Kontrollerer robots.txt og sitemap …", "Kjører AI-vurdering (hvis konfigurert) …", "Lagrer resultatet …"];
+
+  function kaRun(id) {
+    if (_kaBusy) return;
+    _kaBusy = true; _kaMode = "detail"; _kaDetailId = id;
+    var stepIndex = 0;
+    kaLoading(KA_RUN_STEPS[0] + " Dette kan ta et par minutter.");
+    // UX-review-funn (HIGH, 2026-08-10): ei enkelt, klientside tidsstyrt
+    // steg-tekst -- ikkje ekte serverframdrift (det finst ingen streaming-/
+    // pollingmekanisme), men gjer at det lange, stille venteintervallet ikkje
+    // ser heilt frose ut.
+    var stepTimer = setInterval(function () {
+      stepIndex = Math.min(stepIndex + 1, KA_RUN_STEPS.length - 1);
+      if (_kaMode === "detail" && _kaDetailId === id && _kaBusy) {
+        var statusEl = _kaWrap.querySelector(".ka-loading__text");
+        if (statusEl) statusEl.textContent = KA_RUN_STEPS[stepIndex] + " Dette kan ta et par minutter.";
+      }
+    }, 12000);
+    kaApi("", { method:"POST", body:{ action:"run", id:id } }).then(function (data) {
+      clearInterval(stepTimer);
+      _kaBusy = false;
+      // UX-review-funn (BLOCKER, 2026-08-10): utan denne sjekken kan ei
+      // køyring som vart starta for analyse A, og som fyrst svarer etter
+      // operatøren alt har navigert vidare til analyse B, stille erstatte
+      // skjermen operatøren no faktisk ser på med A sitt resultat.
+      if (_kaDetailId !== id) return;
+      _kaDetailData = data; _kaTab = "summary"; kaRenderDetail();
+    }).catch(function (err) {
+      clearInterval(stepTimer);
+      _kaBusy = false;
+      if (_kaDetailId !== id) return;
+      kaShowError(err.message, function () { kaLoadDetail(id); });
+    });
+  }
+
+  function kaArchive(id, done) {
+    if (!confirm("Arkivere denne analysen? Den blir skjult fra den vanlige arbeidslisten. Historikken slettes ikke, men det finnes ingen måte å gjenåpne analysen fra Console i dag.")) return;
+    kaApi("", { method:"POST", body:{ action:"archive", id:id } }).then(done).catch(function (err) { alert(err.message); });
+  }
+
+  // Brukarønske (2026-08-10): ein reell sletteveg, ikkje berre arkivering,
+  // før ekte (ikkje-mocka) bruk mot eit reelt nettstad -- nivå B-stadfesting
+  // per copy-style-guide.md: eksakt omfang, kva som IKKJE påverkast, og at
+  // det ikkje kan angrast.
+  function kaDeletePermanently(id, done) {
+    if (!confirm("Slette denne analysen permanent? Dette fjerner virksomhetsnavn, nettadresse, alle undersøkte sider, funn og møtegrunnlag knyttet til denne analysen for godt. Den anonyme hendelsesloggen (uten virksomhetsnavn eller URL) beholdes for sporbarhet. Dette kan IKKE angres.")) return;
+    kaApi("", { method:"POST", body:{ action:"delete", id:id } }).then(done).catch(function (err) { alert(err.message); });
+  }
+
+  function kaLoadCatalog() {
+    _kaMode = "catalog"; kaLoading("Henter tjenestekatalogen …");
+    kaApi("?view=catalog").then(function (data) { if (_kaMode === "catalog") kaRenderCatalog(data.catalog || []); }).catch(function (err) { kaShowError(err.message, kaLoadCatalog); });
+  }
+
+  function kaRenderCatalog(catalog) {
+    _kaWrap.innerHTML = '<div class="ka-toolbar"><button type="button" class="btn btn--ghost" id="ka-catalog-back">← Til analyseoversikten</button></div><div class="ka-notice">Denne katalogen er kilden for tiltak Kundeanalyse kan foreslå. «Mulig tilpasning» skal ikke presenteres som en ferdig modul.</div><div class="ka-service-list">' + catalog.map(function (service) {
+      return '<form class="ka-service ka-edit" data-ka-service="' + C.esc(service.id) + '"><label>Navn<input name="title" maxlength="200" value="' + C.esc(service.title) + '"></label><label>Beskrivelse<textarea name="description" rows="2" maxlength="1200">' + C.esc(service.description) + '</textarea></label><div class="ka-form__row"><label>Leveransestatus<select name="deliveryStatus"><option value="available"' + (service.delivery_status === "available" ? " selected" : "") + '>Tilgjengelig i dag</option><option value="adaptation"' + (service.delivery_status === "adaptation" ? " selected" : "") + '>Mulig tilpasning</option></select></label><label style="display:flex;align-items:center;gap:.5rem"><input type="checkbox" name="active"' + (service.active ? " checked" : "") + '> Aktiv i forslag</label></div><div class="ka-actions"><button type="submit" class="btn btn--ghost">Lagre</button><span class="form__status" role="status"></span></div></form>';
+    }).join("") + '</div>';
+    _kaWrap.querySelector("#ka-catalog-back").addEventListener("click", function () { _kaMode = "list"; kaLoadList(); });
+    _kaWrap.querySelectorAll("[data-ka-service]").forEach(function (form) { form.addEventListener("submit", function (event) {
+      event.preventDefault(); var button = form.querySelector('[type="submit"]'); var status = form.querySelector(".form__status"); button.disabled = true;
+      kaApi("", { method:"POST", body:{ action:"save_service", service:{ id:form.getAttribute("data-ka-service"), title:form.elements.title.value, description:form.elements.description.value, deliveryStatus:form.elements.deliveryStatus.value, active:form.elements.active.checked } } }).then(function () { button.disabled = false; status.textContent = "Lagret."; status.className = "form__status is-ok"; }).catch(function (err) { button.disabled = false; status.textContent = err.message; status.className = "form__status is-error"; });
+    }); });
+  }
+
   function renderSystem(sc, wrap) {
     var supaUrl     = (_activeTenant && _activeTenant.data_plane_url) || "—";
     var supaKey     = (_activeTenant && _activeTenant.data_plane_anon_key) || "";
@@ -5558,7 +5953,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   var TITLES = {
     kundar:"Kundar", produkt:"Produkt", web:"Web", workspace:"Workspace",
-    modular:"Modular", priser:"Priser", analyse:"Analyse", personvern:"Personvern", laring:"Læring", "ai-lab":"AI Lab", system:"System"
+    modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", analyse:"Analyse", personvern:"Personvern", laring:"Læring", "ai-lab":"AI Lab", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
@@ -5567,6 +5962,7 @@ window.VwConsole = (function () {
     workspace:  renderWorkspace,
     modular:    renderModular,
     priser:     renderPriser,
+    kundeanalyse: renderKundeanalyse,
     analyse:    renderAnalyse,
     personvern: renderPersonvern,
     laring:     renderLaring,
@@ -5585,7 +5981,7 @@ window.VwConsole = (function () {
     // Priser og den eksplisitte side-ved-side-visninga i AI Lab treng breiare
     // enn lesebreidde -- sjå CSS-kommentaren ved
     // .cs-content--wide (console/index.html) for grunngjeving.
-    content.classList.toggle("cs-content--wide", id === "priser" || id === "ai-lab");
+    content.classList.toggle("cs-content--wide", id === "priser" || id === "ai-lab" || id === "kundeanalyse");
     var myGen = ++_renderGen;
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +
@@ -5595,7 +5991,7 @@ window.VwConsole = (function () {
     var wrap = document.getElementById("cs-section-wrap"); // fanga no, før det asynkrone hoppet
     // AI Lab er eit reint lokalt utviklingsverktøy utan tenant-data, database
     // eller App.store. Det skal difor ikkje hentast eller koplast til SC-data.
-    if (id === "ai-lab") {
+    if (id === "ai-lab" || id === "kundeanalyse") {
       fn({}, wrap);
       return;
     }

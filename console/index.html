@@ -499,9 +499,12 @@
         position: fixed; top: 0; left: 0; bottom: 0;
         z-index: 50; transform: translateX(-100%);
         transition: transform .22s ease;
-        box-shadow: 4px 0 24px rgba(0,0,0,.35);
+        box-shadow: none;
       }
-      .cs-sidebar.is-open { transform: translateX(0); }
+      /* Skuggen skal berre finnast medan panelet er ope. På eit lukka,
+         -100%-transformert panel stakk den gamle 24px-skuggen fram frå
+         venstrekanten og la eit mørkt slør over mobilinnhaldet. */
+      .cs-sidebar.is-open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.35); }
       .cs-sidebar-overlay.is-open { display: block; }
       .cs-content { padding: 1.2rem 1rem 3rem; }
       /* Ein "minimert"-preferanse sett på skrivebord (localStorage
@@ -795,6 +798,66 @@
     .compare-card__group-title { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color: var(--color-muted); margin:.7rem 0 .2rem; text-align:left; }
     .compare-card__group-title:first-of-type { margin-top:0; }
     @media(max-width:560px) { .compare-grid { grid-template-columns: 1fr; } }
+
+    /* Kundeanalyse -- intern arbeidsflate, isolert fra kundevisningene. */
+    .ka-toolbar { display:flex; flex-wrap:wrap; gap:.7rem; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+    .ka-toolbar__filters { display:flex; flex:1 1 420px; gap:.6rem; }
+    .ka-toolbar input, .ka-toolbar select { font:inherit; min-height:44px; padding:.6rem .75rem; border:1.5px solid var(--color-border); border-radius:9px; background:var(--color-surface); color:var(--color-text); }
+    .ka-toolbar input { flex:1; min-width:160px; }
+    .ka-table-wrap { overflow-x:auto; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); }
+    .ka-table { width:100%; border-collapse:collapse; font-size:.86rem; }
+    .ka-table th, .ka-table td { padding:.72rem .85rem; text-align:left; border-bottom:1px solid var(--color-border); vertical-align:middle; }
+    .ka-table th { color:var(--color-muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; background:var(--color-alt); }
+    .ka-table tr:last-child td { border-bottom:0; }
+    .ka-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
+    .ka-status, .ka-badge { display:inline-flex; align-items:center; padding:.2rem .55rem; border-radius:999px; font-size:.7rem; font-weight:700; background:var(--color-tint); color:var(--color-primary); }
+    .ka-status--failed, .ka-badge--high { background:#fee2e2; color:#991b1b; }
+    .ka-status--reviewed, .ka-badge--approved, .ka-badge--edited { background:#dcfce7; color:#166534; }
+    .ka-status--analyzing { background:#fef3c7; color:#92400e; }
+    .ka-badge--removed { background:#e2e8f0; color:#475569; }
+    .ka-badge--ai { background:#ede9fe; color:#5b21b6; }
+    .ka-badge--manual { background:#dbeafe; color:#1e40af; }
+    /* UX-review-funn (BLOCKER, 2026-08-10): utan desse fall automatisk/ikkje-
+       vurdert -- den viktigaste tilstanden å skilje ut, sidan ho betyr
+       "framleis ukontrollert AI-utdata" -- attende til same nøytrale
+       standardfarge som alt anna, umogleg å skilje frå kvarandre. */
+    .ka-badge--automatic { background:#e2e8f0; color:#334155; }
+    .ka-badge--unreviewed { background:#fef3c7; color:#92400e; }
+    .ka-badge--medium { background:#fef3c7; color:#92400e; }
+    .ka-badge--low { background:#e2e8f0; color:#475569; }
+    .ka-hero { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:1rem; align-items:start; padding:1.2rem; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); margin-bottom:1rem; }
+    .ka-hero h2 { margin:0 0 .3rem; }
+    .ka-hero p { margin:.2rem 0; color:var(--color-muted); }
+    .ka-score { width:84px; height:84px; border-radius:50%; display:grid; place-items:center; background:var(--color-tint); color:var(--color-primary); font-size:1.55rem; font-weight:800; }
+    .ka-tabs { display:flex; gap:.35rem; overflow-x:auto; padding-bottom:.35rem; margin-bottom:1rem; }
+    .ka-tab { border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-muted); border-radius:999px; padding:.55rem .8rem; min-height:42px; font:inherit; font-size:.78rem; font-weight:650; white-space:nowrap; cursor:pointer; }
+    .ka-tab.is-active { background:var(--color-primary); border-color:var(--color-primary); color:#fff; }
+    .ka-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:.8rem; }
+    .ka-card { border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); padding:1rem; }
+    .ka-card.is-removed { opacity:.62; }
+    .ka-card__meta { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.65rem; }
+    .ka-card h3 { font-size:1rem; margin:0 0 .45rem; }
+    .ka-card p { font-size:.84rem; line-height:1.5; margin:.35rem 0; }
+    .ka-card__source { display:block; font-size:.75rem; color:var(--color-primary); overflow-wrap:anywhere; margin:.55rem 0; }
+    .ka-card__buttons { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.8rem; padding-top:.7rem; border-top:1px solid var(--color-border); }
+    .ka-form { max-width:760px; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); padding:1.2rem; }
+    .ka-form__row { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
+    .ka-notice { border-left:4px solid var(--color-primary); background:var(--color-tint); border-radius:8px; padding:.8rem 1rem; font-size:.84rem; margin-bottom:1rem; }
+    .ka-error { border-left-color:#c0392b; background:#fee2e2; color:#7f1d1d; }
+    .ka-empty { text-align:center; padding:2.5rem 1rem; border:1.5px dashed var(--color-border); border-radius:var(--radius); color:var(--color-muted); }
+    .ka-loading { display:flex; align-items:center; gap:.6rem; padding:1.5rem; color:var(--color-muted); }
+    .ka-loading .ti { animation:ka-spin 1s linear infinite; }
+    @keyframes ka-spin { to { transform:rotate(360deg); } }
+    .ka-page-list { display:grid; gap:.5rem; }
+    .ka-page { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.7rem; padding:.7rem .8rem; border:1px solid var(--color-border); border-radius:9px; background:var(--color-surface); font-size:.8rem; }
+    .ka-page strong, .ka-page span { overflow-wrap:anywhere; }
+    .ka-edit { display:grid; gap:.65rem; }
+    .ka-edit label { font-size:.75rem; font-weight:650; color:var(--color-muted); }
+    .ka-edit input, .ka-edit textarea, .ka-edit select { width:100%; font:inherit; padding:.6rem .7rem; border:1px solid var(--color-border); border-radius:8px; background:var(--color-bg); color:var(--color-text); }
+    .ka-service-list { display:grid; gap:.7rem; }
+    .ka-service { border:1px solid var(--color-border); border-radius:10px; background:var(--color-surface); padding:.9rem; }
+    .ka-brief ul { margin:.4rem 0 1rem 1.2rem; }
+    @media(max-width:700px) { .ka-form__row { grid-template-columns:1fr; } .ka-hero { grid-template-columns:1fr; } .ka-score { width:68px; height:68px; } .ka-toolbar__filters { flex-direction:column; } }
   </style>
 </head>
 <body>
@@ -824,6 +887,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=236"></script>
+  <script src="console-core.js?v=237"></script>
 </body>
 </html>
