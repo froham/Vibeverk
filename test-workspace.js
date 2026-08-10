@@ -329,9 +329,42 @@ assert(eiAfterEdit[0].ownership === "leased" && Number(eiAfterEdit[0].rent_per_m
   "n14: eierskap og felt oppdateres korrekt ved redigering: " + JSON.stringify(eiAfterEdit[0]));
 assert(eiAfterEdit[0].purchase_price === null, "n15: eid-spesifikke felt nulles ut når eierskap endres bort fra Eid");
 
+/* --- N2b) EIENDELER: EIERSKAPSHISTORIKK (Fase 2, 2026-08-10) --------------
+   Redigeringa over (n13-n15) endra allerede eierskap Eid -> Leid, med
+   window.confirm mocka til alltid true (linje ~47) -- ei historikkrad skal
+   difor alt vere skrevet. */
+var eiHistAfterChange = App.store.get("wsp-eiendeler-history", []);
+assert(eiHistAfterChange.length === 1 &&
+  eiHistAfterChange[0].from_ownership === "owned" && eiHistAfterChange[0].to_ownership === "leased",
+  "n15b: eierskapsbytte (Eid -> Leid) skriver en historikkrad: " + JSON.stringify(eiHistAfterChange));
+
+doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(/Eierskapshistorikk/.test(doc.querySelector("[data-od-modal]").textContent) &&
+  /Eid\s*→\s*Leid/.test(doc.querySelector("[data-od-modal]").textContent.replace(/\s+/g, " ")),
+  "n15c: detaljvisningen viser eierskapshistorikken (Eid → Leid)");
+doc.querySelector("[data-od-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+// Bytt tilbake til Eid uten å bekrefte (confirm = false) -- lagringen skal
+// avbrytes i sin helhet (ikke bare historikkskrivingen), eierskapet forblir Leid.
+nav("#/notes"); nav("#/orgdrift/eiendeler");
+var savedConfirm = window.confirm;
+window.confirm = () => false;
+doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+doc.querySelector("[data-ei-modal-edit]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiEditModal2 = doc.querySelector("[data-od-modal]");
+eiEditModal2.querySelector('[data-ei-ownership="owned"]').dispatchEvent(new window.Event("click", { bubbles: true }));
+eiEditModal2.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+window.confirm = savedConfirm;
+assert(!!doc.querySelector("[data-od-modal]"), "n15d: avvist eierskapsbytte-bekreftelse lar dialogen forbli åpen");
+assert(App.store.get("wsp-eiendeler-assets", [])[0].ownership === "leased",
+  "n15e: avvist bekreftelse endrer ikke eierskapet (forblir Leid, ingen ny historikkrad)");
+assert(App.store.get("wsp-eiendeler-history", []).length === 1, "n15f: avvist bekreftelse skriver ingen ekstra historikkrad");
+doc.querySelector("[data-ei-cancel]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
 doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
 doc.querySelector("[data-ei-modal-del]").dispatchEvent(new window.Event("click", { bubbles: true }));
 assert(App.store.get("wsp-eiendeler-assets", []).length === 0, "n16: eiendelen er slettet");
+assert(App.store.get("wsp-eiendeler-history", []).length === 0, "n16b: tilhørende eierskapshistorikk slettes med eiendelen (App.store-fallback speiler ON DELETE CASCADE)");
 
 window.sessionStorage.setItem(_NS + ":admin", "editor");
 nav("#/notes"); nav("#/orgdrift/eiendeler"); nav("#/notes"); nav("#/orgdrift/eiendeler");

@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.111.0 — 2026-08-10
+
+**Eiendeler (Fase 2 av 5: eierskapshistorikk).** Overgang mellom Eid/Leid/Lånt i redigeringsskjemaet er no ei stadfesta, historikkført hending -- ikkje berre ei stille felt-endring.
+
+- Ny tabell `asset_ownership_history` (migrasjon `20260810100128_eiendeler_ownership_history.sql`): éin rad per stadfesta overgang (`from_ownership`, `to_ownership`, `changed_on`, `snapshot jsonb`, `changed_by`). Same admin-only to-policy-RLS-mønster som `assets`/`asset_categories` frå Fase 1 (`is_admin_or_owner()`), `ON DELETE CASCADE` frå `assets`.
+- Endrar brukaren eierskapet ved lagring av ein eksisterande eiendel, krevst ei Tier B-stadfesting (`confirm()`) før lagring i det heile -- avviser brukaren, vert HEILE lagringa avbroten (ikkje berre historikkskrivinga), eiendelen forblir urørt.
+- `snapshot` tek vare på dei ownership-spesifikke felta (kjøpspris/verdi for eigde, avtaledetaljar for leigde/lånte) FRÅ FØR overgangen, sidan sjølve lagringa nullar dei ut med det same. Fanga eksplisitt før lagring køyrer -- ein reell feile-fyrst-feil undervegs: `updateAsset()` sin `App.store`-fallback muterer same objektreferanse in-place, så eit forsøk på å lese "frå"-verdien av `asset.ownership` ETTER lagring viste alt den NYE verdien (fanga av eiga testregresjon, n15b, før commit).
+- Detaljvisinga syner full eierskapshistorikk (dato + frå → til) under dei vanlege feltdetaljane.
+- `App.store`-fallback (ingen Supabase-tilkopling) speglar `ON DELETE CASCADE` for hand ved sletting av ein eiendel -- den ekte tabellen treng det ikkje, men fallback-laget har ingen database til å gjere det for seg.
+- `node test-workspace.js`: 235/0 (10 nye assertions: historikkskriving ved bekrefta overgang, historikkvising i detaljvisinga, avvist-bekreftelse-avbryt-heile-lagringa, kaskade-sletting i fallback-laget). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-orgdrift.js?v=6`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som 0.110.0/0.109.0-oppføringane sine eigne fotnotar).
+- **Ikkje deployert.** Migrasjonen er ikkje køyrd mot staging eller produksjon. Neste steg (Fase 3): bilete via `Media.put()`.
+
+---
+
 ## 0.110.0 — 2026-08-10
 
 **Eiendeler — ny fane i Workspace sin "Organisasjon & drift" (Fase 1 av 5: kjerne-CRUD).** Ekstern overleveringspakke (fungerande React/Next.js-prototype + eit uttrykkeleg "ikkje ein blind fasit"-forslag til Postgres-skjema) tilpassa til faktisk Vibeverk-arkitektur -- ingen kode porta direkte (Vibeverk har ingen bundler/framework), skjemaet endra vesentleg. Arkitekt-konsultert plan før koding.

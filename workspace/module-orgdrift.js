@@ -282,7 +282,12 @@
       // i index.html) -- UX-review-funn (POLISH): nye interaktive element
       // hadde berre nettlesaren sin standardkant, ikkje appen sin eigen stil.
       ".od-card:focus-visible,.ei-list__row:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}",
-      "@media(max-width:650px){.ei-list__head{display:none}.ei-list__row{grid-template-columns:1fr;gap:.25rem}.ei-list__mlabel{display:inline}}"
+      "@media(max-width:650px){.ei-list__head{display:none}.ei-list__row{grid-template-columns:1fr;gap:.25rem}.ei-list__mlabel{display:inline}}",
+      /* --- Eiendeler, Fase 2: eierskapshistorikk ----------------------------- */
+      ".ei-history{margin-top:.8rem;padding-top:.6rem;border-top:1px solid var(--color-border)}",
+      ".ei-history h4{margin:0 0 .3rem;font-size:.85rem;color:var(--color-muted)}",
+      ".ei-history ul{margin:0;padding-left:1.1rem;font-size:.9rem}",
+      ".ei-history li+li{margin-top:.15rem}"
     ].join("");
     document.head.appendChild(s);
   }
@@ -1277,6 +1282,7 @@
      ====================================================================== */
   var EI_STORE_KEY            = "wsp-eiendeler-assets";
   var EI_CATEGORIES_STORE_KEY = "wsp-eiendeler-categories";
+  var EI_HISTORY_STORE_KEY    = "wsp-eiendeler-history";
 
   var EI_OWNERSHIP_LABELS = { owned: "Eid", leased: "Leid", borrowed: "Lånt" };
   var EI_STATUS_LABELS    = { in_use: "I bruk", in_storage: "På lager", in_service: "Til service" };
@@ -1284,6 +1290,11 @@
 
   var _eiAssets     = null;  // null = ikkje henta enno (skil frå ei ekte tom liste)
   var _eiCategories = [];
+  // Historikk vert henta saman med assets/categories (same runde, Fase 2) --
+  // difor ikkje sitt eige null-sentinel: han er alltid klar samstundes med
+  // _eiAssets, sidan detaljvisinga (den einaste som treng han) berre er
+  // nåbar etter at _eiAssets alt har gått frå null til ei liste.
+  var _eiHistory    = [];
   var _eiLoadError  = null;
   var _eiLoading    = false;
 
@@ -1301,18 +1312,23 @@
     if (!_sb) {
       _eiCategories = App.store.get(EI_CATEGORIES_STORE_KEY, []) || [];
       _eiAssets     = App.store.get(EI_STORE_KEY, []) || [];
+      _eiHistory    = App.store.get(EI_HISTORY_STORE_KEY, []) || [];
       cb(null);
       return;
     }
-    // Sekvensielt, ikkje parallelt -- to små spørringar, enklare å resonnere
+    // Sekvensielt, ikkje parallelt -- tre små spørringar, enklare å resonnere
     // om enn ein pending-teljar for eit marginalt tidsgevinst.
     _sb.from("asset_categories").select("*").order("name").then(function (catRes) {
       if (catRes.error) { cb(catRes.error); return; }
       _sb.from("assets").select("*").order("created_at", { ascending: false }).then(function (assetRes) {
         if (assetRes.error) { cb(assetRes.error); return; }
-        _eiCategories = catRes.data || [];
-        _eiAssets     = assetRes.data || [];
-        cb(null);
+        _sb.from("asset_ownership_history").select("*").order("changed_on", { ascending: false }).then(function (histRes) {
+          if (histRes.error) { cb(histRes.error); return; }
+          _eiCategories = catRes.data || [];
+          _eiAssets     = assetRes.data || [];
+          _eiHistory    = histRes.data || [];
+          cb(null);
+        });
       });
     });
   }
@@ -1342,6 +1358,24 @@
   function eiendelerCategoryName(categoryId) {
     var cat = _eiCategories.filter(function (c) { return c.id === categoryId; })[0];
     return cat ? cat.name : "Uten kategori";
+  }
+
+  function eiendelerHistoryFor(assetId) {
+    return (_eiHistory || [])
+      .filter(function (h) { return h.asset_id === assetId; })
+      .sort(function (a, b) { return (b.changed_on || "").localeCompare(a.changed_on || ""); });
+  }
+
+  function eiendelerHistoryHtml(assetId) {
+    var hist = eiendelerHistoryFor(assetId);
+    if (!hist.length) return "";
+    return '<div class="ei-history"><h4>Eierskapshistorikk</h4><ul>' +
+      hist.map(function (h) {
+        return '<li>' + esc(eiendelerDateNo(h.changed_on)) + ': ' +
+          esc(EI_OWNERSHIP_LABELS[h.from_ownership] || h.from_ownership) + ' → ' +
+          esc(EI_OWNERSHIP_LABELS[h.to_ownership] || h.to_ownership) + '</li>';
+      }).join("") +
+    '</ul></div>';
   }
 
   function eiendelerFilter(list, q) {
@@ -1560,9 +1594,55 @@
     if (idx < 0) { cb(null); return; }
     var removed = _eiAssets[idx];
     _eiAssets.splice(idx, 1);
-    if (!_sb) { App.store.set(EI_STORE_KEY, _eiAssets); cb(null); return; }
+    if (!_sb) {
+      // Utan Supabase finst det ingen ON DELETE CASCADE -- fjern historikken
+      // for hand, elles vert han verande att som foreldrelause rader i
+      // App.store (den ekte asset_ownership_history-tabellen kaskaderer
+      // dette sjølv, sjå migrasjonen).
+      _eiHistory = (_eiHistory || []).filter(function (h) { return h.asset_id !== id; });
+      App.store.set(EI_HISTORY_STORE_KEY, _eiHistory);
+      App.store.set(EI_STORE_KEY, _eiAssets);
+      cb(null);
+      return;
+    }
     _sb.from("assets").delete().eq("id", id).then(function (r) {
       if (r.error) { _eiAssets.splice(idx, 0, removed); cb(r.error); return; }
+      cb(null);
+    });
+  }
+
+  // Fase 2 (2026-08-10): skriv éin historikkrad for ei stadfesta eierskaps-
+  // overgang (Eid/Leid/Lånt -> ein annan verdi). "Snapshot" tek vare på dei
+  // ownership-spesifikke felta FØR overgangen (kjøpspris/verdi for eigde,
+  // avtaledetaljar for leigde/lånte) sidan saveEiendelerFromForm nullar dei
+  // ut ved sjølve eierskapsbyttet -- utan dette ville historikken vist kva
+  // som endra seg, men ikkje kva verdien FAKTISK var før.
+  //
+  // fromOwnership/snapshot MÅ hentast ut FØR saveEiendelerFromForm() køyrer,
+  // ikkje lesast av `asset` her -- i App.store-fallback-varianten muterer
+  // updateAsset() same objektreferanse i _eiAssets in-place (Object.assign),
+  // så `asset.ownership` ville alt vore den NYE verdien innan denne
+  // funksjonen vart kalla (fanga live 2026-08-10, sjå test n15b).
+  function recordOwnershipChange(assetId, fromOwnership, newOwnership, snapshot, cb) {
+    var row = {
+      asset_id:       assetId,
+      from_ownership: fromOwnership,
+      to_ownership:   newOwnership,
+      changed_on:     new Date().toISOString().slice(0, 10),
+      snapshot:       snapshot
+    };
+    if (!_sb) {
+      row.id = uid("eih");
+      row.created_at = new Date().toISOString();
+      _eiHistory.push(row);
+      App.store.set(EI_HISTORY_STORE_KEY, _eiHistory);
+      cb(null);
+      return;
+    }
+    var ctx = Intranet.getContext();
+    _sb.from("asset_ownership_history").insert(Object.assign({}, row, { changed_by: ctx && ctx.userId })).select().single().then(function (r) {
+      if (r.error) { cb(r.error); return; }
+      _eiHistory.push(r.data);
       cb(null);
     });
   }
@@ -1637,15 +1717,49 @@
       var formEl = scope.querySelector("[data-ei-form]");
       if (!formEl.checkValidity()) { formEl.reportValidity(); return; }
       var fd = new FormData(formEl);
+      var statusEl = scope.querySelector("[data-ei-status]");
+      var newOwnership = String(fd.get("ownership") || "owned");
+      var ownershipChanged = !!(asset && asset.ownership !== newOwnership);
+      // Fase 2: eierskapsbytte er ei reell driftsendring (påverkar oversikt
+      // og verdi) -- Tier B-stadfesting FØR lagring, ikkje ein stille lagra
+      // detalj blant alle dei andre felta.
+      if (ownershipChanged && !confirm('Endre eierskap for «' + asset.name + '» fra ' +
+          (EI_OWNERSHIP_LABELS[asset.ownership] || asset.ownership) + ' til ' +
+          (EI_OWNERSHIP_LABELS[newOwnership] || newOwnership) +
+          '? Dette påvirker oversikt og verdi, og blir lagt til i historikken.')) return;
+
+      // Fanga FØR lagring -- sjå kommentaren ved recordOwnershipChange() for
+      // kvifor: updateAsset() sin App.store-fallback muterer `asset` in-place.
+      var priorOwnership = ownershipChanged ? asset.ownership : null;
+      var priorSnapshot = ownershipChanged
+        ? (asset.ownership === "owned"
+            ? { purchase_price: asset.purchase_price, estimated_value: asset.estimated_value, acquisition_date: asset.acquisition_date }
+            : { supplier: asset.supplier, agreement_number: asset.agreement_number, rent_per_month: asset.rent_per_month, agreement_start: asset.agreement_start, agreement_end: asset.agreement_end })
+        : null;
+
       saveEiendelerFromForm(fd, asset, function (err) {
         if (err) {
-          var statusEl = scope.querySelector("[data-ei-status]");
           if (statusEl) { statusEl.textContent = "Kunne ikke lagre: " + (err.message || "ukjent feil") + ". Prøv igjen."; statusEl.className = "form__status is-err"; }
           return;
         }
-        closeModal();
-        draw(root, "eiendeler", "");
-        if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: asset ? "Oppdatert eiendel" : "Ny eiendel registrert" });
+        if (!ownershipChanged) {
+          closeModal();
+          draw(root, "eiendeler", "");
+          if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: asset ? "Oppdatert eiendel" : "Ny eiendel registrert" });
+          return;
+        }
+        recordOwnershipChange(asset.id, priorOwnership, newOwnership, priorSnapshot, function (histErr) {
+          if (histErr) {
+            // Sjølve eiendelen er alt lagra -- berre historikkrada feila.
+            // Held modalen open og seier ifrå, i staden for å late som ingenting
+            // skjedde (men utan å late brukaren tru heile lagringa feila).
+            if (statusEl) { statusEl.textContent = "Eiendelen ble lagret, men historikken kunne ikke oppdateres: " + (histErr.message || "ukjent feil") + "."; statusEl.className = "form__status is-err"; }
+            return;
+          }
+          closeModal();
+          draw(root, "eiendeler", "");
+          if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Oppdatert eiendel (eierskap endret)" });
+        });
       });
     });
   }
@@ -1674,6 +1788,7 @@
             (a.purchase_option ? '<div><strong>Kjøpsopsjon:</strong> ' + esc(a.purchase_option) + '</div>' : "")) +
         '<div><strong>Notat:</strong> ' + richValue(a.note) + '</div>' +
       '</div>' +
+      eiendelerHistoryHtml(a.id) +
       '<div class="od-actions">' +
         (isAdmin ? '<button class="btn btn--primary btn--sm" data-ei-modal-edit="' + esc(a.id) + '" type="button">Rediger</button>' : "") +
         (isAdmin ? '<button class="btn btn--danger btn--sm" data-ei-modal-del="' + esc(a.id) + '" type="button">Slett</button>' : "") +
