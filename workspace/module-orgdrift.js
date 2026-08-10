@@ -245,17 +245,11 @@
       ".od-attachment-item{border:1px solid var(--color-border);border-radius:.75rem;padding:.45rem .6rem;background:var(--color-surface);font-size:.84rem}",
       ".od-attachment-item span{color:var(--color-muted);font-size:.78rem;margin-left:.35rem}",
       ".od-row{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}",
-      ".od-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:1rem}",
-      ".od-modal{width:min(760px,100%);max-height:88vh;overflow:auto;background:var(--color-surface);border-radius:calc(var(--radius) + 4px);border:1px solid var(--color-border);box-shadow:0 30px 90px rgba(15,23,42,.25)}",
-      ".od-modal-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;padding:1rem 1rem .7rem;border-bottom:1px solid var(--color-border)}",
-      ".od-modal-head h3{margin:0}",
-      ".od-modal-body{padding:1rem}",
-      ".od-close{border:0;background:transparent;font-size:1.4rem;cursor:pointer;color:var(--color-muted)}",
-      // UX-review-funn (MEDIUM, 2026-08-10): utan sticky forsvinn ×-knappen
-      // ut av synsfeltet på dei lengre Eiendeler-skjemaa (14 felt for leigd/
-      // lånt) ved liggjande mobilvising -- gjeld alle seks faner sine skjema,
-      // ikkje berre Eiendeler, difor retta her på den delte regelen.
-      ".od-modal-head{position:sticky;top:0;background:var(--color-surface);z-index:1}",
+      // .od-modal*/.od-close er fjerna 2026-08-10 -- openModal()/closeModal()
+      // i denne fila delegerer no til det delte Intranet.openModal() (sjå
+      // workspace-core.js), som har sin eigen .i-modal*-styling (inkl. den
+      // sticky modal-head-fiksen frå Fase 1-UX-runda, no baka inn sentralt
+      // i staden for repetert her).
       // UX-review-funn (HIGH, 2026-08-10): .od-tools sin flex-gap forsvinn
       // heilt når layouten fell attende til display:block her -- usynleg så
       // lenge "Ny" var den einaste knappen i rada, men Fase 4/5 sine to nye
@@ -935,33 +929,30 @@
     return esc(str).replace(/\n/g, "<br>");
   }
 
+  // Migrert 2026-08-10 til det delte Intranet.openModal()/closeModal()
+  // (workspace/workspace-core.js) -- fyrste av fem fasar, sjå
+  // docs/project/CHANGELOG.md. Signaturen her er MEDVITE uendra
+  // (title, bodyHtml, onMount(modal)) slik at ingen av dei ~15 kallstadene
+  // i resten av denne fila treng endrast, berre desse to funksjonane sine
+  // eigne kroppar. size:"lg" + fullscreenToggle:true sidan denne modulen sine
+  // skjema/detaljvisingar (særleg Eiendeler sine) er nøyaktig den typen
+  // store dialogar fullskjerm-funksjonen er meint for. rootAttr held
+  // data-od-modal-attributtet i live, slik at eksisterande test-workspace.js-
+  // selektorar overlever uendra -- den delte funksjonen finn uansett alltid
+  // sin eigen modal via [data-i-modal-root] internt, uavhengig av dette.
   function openModal(title, bodyHtml, onMount) {
-    closeModal();
-
-    var wrap = document.createElement("div");
-    wrap.className = "od-modal-backdrop";
-    wrap.setAttribute("data-od-modal", "1");
-    wrap.innerHTML =
-      '<div class="od-modal" role="dialog" aria-modal="true">' +
-        '<div class="od-modal-head">' +
-          '<div><h3>' + esc(title) + '</h3></div>' +
-          '<button class="od-close" data-od-x aria-label="Lukk">×</button>' +
-        '</div>' +
-        '<div class="od-modal-body">' + bodyHtml + '</div>' +
-      '</div>';
-
-    document.body.appendChild(wrap);
-    wrap.querySelector("[data-od-x]").addEventListener("click", closeModal);
-    wrap.addEventListener("click", function (e) {
-      if (e.target === wrap) closeModal();
+    Intranet.openModal({
+      title: title,
+      bodyHtml: bodyHtml,
+      size: "lg",
+      fullscreenToggle: true,
+      rootAttr: { "data-od-modal": "1" },
+      onMount: function (modalEl) { if (onMount) onMount(modalEl); }
     });
-
-    if (onMount) onMount(wrap);
   }
 
   function closeModal() {
-    var old = document.querySelector("[data-od-modal]");
-    if (old) old.remove();
+    Intranet.closeModal();
   }
 
   function openEditor(root, type, itemId) {

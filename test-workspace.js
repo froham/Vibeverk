@@ -1654,7 +1654,10 @@ const __phase5Tests = (async () => {
     "n51: import med over 200 rader avvises med en forklarende melding, ingenting importeres");
   assert(App.store.get("wsp-eiendeler-assets", []).length === countBeforeTooMany,
     "n52: ingen rader importeres når raden-grensen overskrides");
-  doc.querySelector("[data-od-x]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  // data-od-x -> data-i-modal-close: module-orgdrift.js migrert til det delte
+  // Intranet.openModal() (Fase 2, 2026-08-10) -- lukkeknappen sitt attributt
+  // kjem no frå den delte modalen, ikkje frå denne fila sin eigen markup.
+  doc.querySelector("[data-i-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
 
   // --- OCR: gjennomlest tekst legges KUN til notatfeltet etter godkjenning ---
   window.Tesseract = { recognize: function () { return Promise.resolve({ data: { text: "  Serienummer 12345  " } }); } };
