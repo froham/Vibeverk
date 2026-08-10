@@ -123,6 +123,18 @@ Same struktur som malen (uendra frå malen sin generelle skildring) — verifise
 | API-nøkkel | Delt `ANTHROPIC_API_KEY` på Vercel-nivå (ADR-0007), ikkje per-kunde. |
 | Rettsleg grunnlag | **[ÅPENT — krev juridisk vurdering]** — Anthropic må vurderast som eigen underdatabehandlar (DPA, underdatabehandlarliste, overføringsgrunnlag USA→EØS ikkje henta i dette passet), og brukarane må informerast om at fritekst dei skriv kan sendast til ein US-basert AI-leverandør. |
 
+### Kundeanalyse i Console — kodeklar 2026-08-10, ikkje deployert
+
+| Felt | Detalj |
+|---|---|
+| Formål | Internt rådgivende salgsverktøy som analyserer et avgrenset utvalg offentlig tilgjengelige sider hos mulige kunder. Ingen automatisk kundekontakt eller publisering. |
+| Data samlet inn | Virksomhetsnavn, offentlig nettadresse, valgfri bransje, interne operatørnotater, tekniske måleresultater, korte tekstutdrag (maks 1800 tegn per side), funn, manuell reviewstatus og møtegrunnlag. Offentlige sider kan inneholde navn/e-post eller andre personopplysninger selv om crawleren ikke aktivt leter etter dem. Operatørnotater kan også inneholde persondata dersom brukeren skriver dette. |
+| Hvor lagret | Planlagt i `vibeverk-control`-tabeller med prefiks `customer_analysis_`, ikke i kundens data-plane. Hele HTML-sider lagres ikke. Migrasjonen er foreløpig ikke kjørt. |
+| Hvem kan lese/skrive | Bare aktive Console-operatører. RLS gir autentiserte aktive operatører lesing; alle mutasjoner går via autentisert Vercel API og server-side service role. |
+| Tredjepart | Ved konfigurert `ANTHROPIC_API_KEY` sendes inntil fem korte, rensede tekstutdrag, automatiske funn og tjenestekatalog til Anthropic. Uten AI-konfigurasjon fungerer tekniske kontroller fortsatt. Eksterne nettsteder mottar Vibeverks identifiserbare crawler-User-Agent og vanlig nettverksmetadata som server-IP. |
+| Retensjon/sletting | **[ÅPENT — lanseringsport]** — ingen automatisk retensjon eller sletteflyt er implementert i MVP-en. Arkivering er ikke sletting. Retensjonsperiode, slettingsrutine og håndtering av innsyn/sletting må avklares før lansering. |
+| Behandlingsgrunnlag og informasjon | **[ÅPENT — krever Privacy and Compliance Advisor og eventuelt kvalifisert juridisk vurdering før lansering]**. Offentlig tilgjengelig informasjon er ikke automatisk utenfor GDPR. Formål, dataminimering, berettiget interesse/interesseavveining, Anthropic-overføring og intern tilgang må vurderes. |
+
 ### Tidio
 
 **Finst ikkje i kodebasen.** Grundig søk (`grep -i tidio` over heile repoet utanom `node_modules`) fann **ingen treff** i faktisk kode (`.js`, `.ts`, `.html`) — berre i malen sjølv (`data-map-template.md`, `customer-go-live-checklist.md`) og i denne rådgjevaragenten sin eigen instruksjonsfil. **Dette er ein reell avdekt feil i malverket**, ikkje eit ope spørsmål: Tidio er IKKJE ei reell, verdifri integrasjon som "kan vere PÅ eller AV" — det finst rett og slett ingen kode som lastar Tidio noko stad i repoet i dag. Sjå punkt 4/5 under handling.

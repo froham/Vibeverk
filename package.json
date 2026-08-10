@@ -1,10 +1,12 @@
 {
   "scripts": {
     "ai-lab": "node scripts/ai-lab-server.js",
-    "test:ai-lab": "node test-ai-lab.js && node test-ai-lab-console.js"
+    "test:ai-lab": "node test-ai-lab.js && node test-ai-lab-console.js",
+    "test:customer-analysis": "node --test test-customer-analysis.js test-customer-analysis-console.js"
   },
   "dependencies": {
-    "@vercel/functions": "^3.7.5"
+    "@vercel/functions": "^3.7.5",
+    "parse5": "^8.0.1"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",
