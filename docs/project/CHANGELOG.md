@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.130.0 — 2026-08-10
+
+**Kundeanalyse: fikset reelt produksjonskrasj (brukerfunn, første ekte test).** Kundeanalyse-fanen viste "[object Object]" og et 500-svar i konsollen så snart siden lastet -- den kraftigste testen (en ekte forespørsel gjennom det ekte Vercel-bygget) var noe verken lokale tester eller de tre uavhengige gjennomgangene kunne fange, siden alle kjørte mot ESM-kildekoden direkte via `node --test`, ikke gjennom Vercels egen ESM→CommonJS-kompilering.
+
+- **Rotårsak, funnet via `vercel logs` mot den faktiske produksjonsfeilen** (ikke gjettet fra kildekode): `Error [ERR_REQUIRE_ESM]: require() of ES Module .../parse5/dist/index.js ... not supported.` Vercel kompilerer `api/*.js` fra ESM til CommonJS (ingen `"type":"module"` i package.json, samme mønster som alle andre endepunkt), men `parse5@8` er ren ESM uten CommonJS-bygg -- den kompilerte `require("parse5")` krasjet hele funksjonen ved kaldstart, før noen egen feilhåndtering i det hele tatt fikk kjøre. Vercels egen plattformfeilrespons har et annet JSON-skap enn API-ets eget (`error` er der et objekt, ikke en streng), som forklarer "[object Object]": `new Error(body.error)` på et objekt gir nettopp den strengen.
+- **Fiks**: `parse5` nedgradert fra `^8.0.1` til `^7.3.0` -- siste 7.x-versjon har fortsatt et ekte, dobbelt CJS/ESM-eksportkart (`{"import":"./dist/index.js","require":"./dist/cjs/index.js"}`), verifisert direkte (`require("parse5")` fungerer, `parse`-funksjonen er tilgjengelig). Eneste bruken i koden er den enkle `parse(html)`-formen, stabil på tvers av parse5-hovedversjoner -- ingen kodeendring nødvendig utover versjonsnummeret. Alle HTML-parsingtester (som faktisk øver på parse5) uendret: samme resultat.
+- **Forsvar i dybden**: `kaApi()` sin feilparsing i Console stolte blindt på at `body.error` var en streng. Herdet til å avvise alt som ikke faktisk er `typeof "string"`, med en lesbar norsk fallback-tekst -- slik at en fremtidig uventet feilform aldri igjen viser "[object Object]" til en operatør, uavhengig av rotårsak.
+- **Verifiseringsmetode endret for denne fiksen**: i stedet for å gå rett til `main` igjen, pushes denne til en egen branch/PR og sjekkes mot Vercels egen Preview-bygg (ekte `vercel logs`, ekte kompilering) FØR merge -- nettopp fordi den forrige runden viste at lokale tester og kodegjennomgang ikke er nok til å fange denne klassen feil.
+- `test.js` 733/733, `test-workspace.js` 296/296, `test-api.js` 109/109, `test-customer-analysis.js` 18/18, `test-customer-analysis-console.js` 4/4 -- alle uendret.
+- Cache-bust: `console-core.js?v=238`.
+
+---
+
 ## 0.129.0 — 2026-08-10
 
 **Kundeanalyse-migrasjonen kjørt mot `vibeverk-control` (etter eksplisitt brukergodkjenning). Ingen kodeendring.** `npx supabase db push --db-url ... --yes` fra `supabase-control/`.
