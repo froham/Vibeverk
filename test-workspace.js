@@ -133,6 +133,114 @@ assert(!navIds.includes("spaceship"),    "b7: spaceship-modulen skjult utan cust
 assert(!navIds.includes("smart-aarshjul"),"b8: smart-aarshjul skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
 assert(!navIds.includes("oversikt"),      "b9: oversikt skjult utan customModules-oppføring (config.js sin ekte standard er customModules:{})");
 
+/* --- B2) DELT MODAL (Intranet.openModal/closeModal, 2026-08-10) -----------
+   Erstattar den tidlegare, ubrukte openDrawer()/closeDrawer() -- ni
+   Workspace-modular migrerer til denne éin/nokre få om gongen, sjå
+   docs/project/CHANGELOG.md. Testar sjølve den delte funksjonen her,
+   uavhengig av kva modul som til ei kvar tid har migrert. */
+(function () {
+  assert(typeof Intranet.openModal === "function" && typeof Intranet.closeModal === "function",
+    "b2a: Intranet.openModal/closeModal finst");
+
+  App.store.set("wsp-modal-fullscreen-lg", false);
+
+  // md (standard) -- ingen fullskjerm-knapp, sjølv om ein sender fullscreenToggle:true
+  // (kun size:"lg" tilbyr han, jf. openModal() sin eigen kommentar).
+  Intranet.openModal({ title: "Md-test", bodyHtml: "<p>Innhald</p>", fullscreenToggle: true });
+  var bdMd = doc.querySelector("[data-i-modal-root]");
+  assert(!!bdMd && bdMd.classList.contains("i-modal-backdrop--md"), "b2b: standard storleik er md");
+  assert(!bdMd.querySelector("[data-i-modal-fullscreen]"), "b2c: md tilbyr ikke fullskjerm-knapp, sjølv om fullscreenToggle:true er sendt");
+  Intranet.closeModal();
+  assert(!doc.querySelector("[data-i-modal-root]"), "b2d: closeModal() fjerner modalen");
+
+  // lg + fullscreenToggle -- knappen finst, klikk set is-fullscreen og persisterer valet
+  Intranet.openModal({ title: "Lg-test", bodyHtml: '<input id="b2-first"><button id="b2-last">Lagre</button>', size: "lg", fullscreenToggle: true });
+  var bdLg = doc.querySelector("[data-i-modal-root]");
+  assert(bdLg.classList.contains("i-modal-backdrop--lg") && !bdLg.classList.contains("is-fullscreen"), "b2e: lg opnar IKKE i fullskjerm som standard");
+  var fsBtn = bdLg.querySelector("[data-i-modal-fullscreen]");
+  assert(!!fsBtn, "b2f: lg tilbyr fullskjerm-knapp når fullscreenToggle:true");
+  fsBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(bdLg.classList.contains("is-fullscreen") && doc.querySelector(".i-modal").classList.contains("is-fullscreen"),
+    "b2g: klikk på fullskjerm-knappen legger til is-fullscreen på både backdrop og modal");
+  assert(App.store.get("wsp-modal-fullscreen-lg", false) === true, "b2h: fullskjerm-valget persisteres i App.store");
+  Intranet.closeModal();
+
+  // Persistens: neste lg-modal opnar alt i fullskjerm sidan valget over sto lagret
+  Intranet.openModal({ title: "Lg-test-2", bodyHtml: "<p>x</p>", size: "lg", fullscreenToggle: true });
+  assert(doc.querySelector("[data-i-modal-root]").classList.contains("is-fullscreen"),
+    "b2i: en ny lg-modal husker forrige fullskjerm-valg (persistert per størrelsesklasse)");
+  Intranet.closeModal();
+  App.store.set("wsp-modal-fullscreen-lg", false); // rydd opp for resten av testfila
+
+  // Escape lukker
+  Intranet.openModal({ title: "Esc-test", bodyHtml: "<p>x</p>" });
+  assert(!!doc.querySelector("[data-i-modal-root]"), "b2j-forutsetning: modal er åpen før Escape");
+  // window.Event() sin init-dict setter kun bubbles/cancelable/composed --
+  // "key" må settes eksplisitt for at ein generisk Event skal oppføre seg
+  // som ein KeyboardEvent i denne synteste testkonteksten.
+  var escEvent = new window.Event("keydown", { bubbles: true });
+  Object.defineProperty(escEvent, "key", { value: "Escape" });
+  doc.dispatchEvent(escEvent);
+  assert(!doc.querySelector("[data-i-modal-root]"), "b2j: Escape lukker modalen");
+
+  // Klikk på selve backdroppen (utenfor modal-innholdet) lukker
+  Intranet.openModal({ title: "Backdrop-test", bodyHtml: "<p>x</p>" });
+  var bdClick = doc.querySelector("[data-i-modal-root]");
+  bdClick.dispatchEvent(new window.Event("mousedown", { bubbles: true }));
+  assert(!doc.querySelector("[data-i-modal-root]"), "b2k: klikk på selve backdroppen lukker modalen");
+
+  // onClose kalles ETTER lukking (lar en rute-koblet modul navigere uten at
+  // den delte funksjonen selv trenger å kjenne til routing).
+  var onCloseCalled = false;
+  Intranet.openModal({ title: "OnClose-test", bodyHtml: "<p>x</p>", onClose: function () { onCloseCalled = true; } });
+  Intranet.closeModal();
+  assert(onCloseCalled === true, "b2l: onClose-callback kjøres etter lukking");
+
+  // onMount får både modalEl og bodyEl
+  var mountedModalEl = null, mountedBodyEl = null;
+  Intranet.openModal({ title: "OnMount-test", bodyHtml: "<p>innhold</p>", onMount: function (modalEl, bodyEl) { mountedModalEl = modalEl; mountedBodyEl = bodyEl; } });
+  assert(!!mountedModalEl && mountedModalEl.classList.contains("i-modal"), "b2m: onMount får selve .i-modal-elementet");
+  assert(!!mountedBodyEl && mountedBodyEl.classList.contains("i-modal__body"), "b2n: onMount får .i-modal__body-elementet");
+  Intranet.closeModal();
+
+  // rootId/rootAttr -- kompatibilitet for migrerende modulers eksisterende
+  // test-selektorer (f.eks. #task-modal-bd, data-od-modal). Selve
+  // openModal()/closeModal() finner uansett alltid modalen via
+  // [data-i-modal-root], uavhengig av disse.
+  Intranet.openModal({ title: "Rootid-test", bodyHtml: "<p>x</p>", rootId: "b2-compat-bd", rootAttr: { "data-od-modal": "1" } });
+  assert(!!doc.getElementById("b2-compat-bd"), "b2o: rootId settes på backdrop-elementet");
+  assert(!!doc.querySelector('[data-od-modal="1"]'), "b2p: rootAttr settes på backdrop-elementet");
+  Intranet.closeModal();
+
+  // Ikke-stablende: å åpne en ny modal mens en annen er åpen lukker den forrige.
+  Intranet.openModal({ title: "Første", bodyHtml: "<p>1</p>" });
+  var firstTitle = doc.querySelector(".i-modal__title").textContent;
+  Intranet.openModal({ title: "Andre", bodyHtml: "<p>2</p>" });
+  assert(doc.querySelectorAll("[data-i-modal-root]").length === 1 && doc.querySelector(".i-modal__title").textContent === "Andre",
+    "b2q: åpning av en ny modal erstatter (ikke stabler oppå) en allerede åpen modal: " + firstTitle);
+  Intranet.closeModal();
+
+  // Tab/Shift-Tab fokus-felle mellom modalens første og siste fokuserbare
+  // element. Modalens EIGEN lukk-knapp (data-i-modal-close) er alltid det
+  // aller første fokuserbare elementet (kjem før bodyHtml i DOM-rekkefølge),
+  // ikkje det første feltet i bodyHtml -- fella må gjelde HEILE modalen.
+  Intranet.openModal({ title: "Fokus-test", bodyHtml: '<input id="b2-a"><input id="b2-b">' });
+  var focusModalBd = doc.querySelector("[data-i-modal-root]");
+  var firstFocusable = focusModalBd.querySelector("[data-i-modal-close]");
+  var lastEl = doc.getElementById("b2-b");
+  lastEl.focus();
+  var tabEvent = new window.Event("keydown", { bubbles: true, cancelable: true });
+  Object.defineProperty(tabEvent, "key", { value: "Tab" });
+  doc.dispatchEvent(tabEvent);
+  assert(doc.activeElement === firstFocusable, "b2r: Tab fra siste fokuserbare element hopper til det første (lukk-knappen) -- fokus-felle");
+  var shiftTabEvent = new window.Event("keydown", { bubbles: true, cancelable: true });
+  Object.defineProperty(shiftTabEvent, "key", { value: "Tab" });
+  Object.defineProperty(shiftTabEvent, "shiftKey", { value: true });
+  doc.dispatchEvent(shiftTabEvent);
+  assert(doc.activeElement === lastEl, "b2s: Shift+Tab fra første fokuserbare element hopper til det siste");
+  Intranet.closeModal();
+})();
+
 /* --- C) INGEN OFFENTLEG INNHALD ------------------------------------------ */
 assert(!doc.querySelector(".site-header"), "c1: ingen site-header");
 assert(!doc.querySelector(".site-footer"), "c2: ingen site-footer");

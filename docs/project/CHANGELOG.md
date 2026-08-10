@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.119.0 — 2026-08-10
+
+**Delt Workspace-modal, Fase 1 av 5: sjølve systemet, ingen modul migrert enno.** Brukarvedtak: fullskjerm-knappen Web-admin alt har skal bli ein ekte, varig standardfunksjon i Workspace også -- ikkje ei mellombels lapping. Arkitekt-konsultert plan før koding (kartla alle ni eksisterande, uavhengige modal-implementasjonar på tvers av `module-orgdrift/tasks/notes/announcements/contact/quote/booking/oversikt/smart-aarshjul`).
+
+- Ny `Intranet.openModal(opts)`/`closeModal()` i `workspace-core.js`, i staden for den tidlegare `openDrawer()`/`closeDrawer()` (aldri kalla av nokon modul -- eit halvbygd forsøk, ikkje eit fundament å byggje vidare på).
+- Storleiksklassar (`sm`/`md`/`lg`/`drawer`), ikkje éin global fullskjerm-brytar som Web-admin sin: berre `size:"lg"` tilbyr fullskjerm (ei stadfestingsboks med 4 felt har ingenting å vinne på 100vw). `drawer` (arva frå `module-oversikt.js` sitt høgreside-ark-mønster) får ikkje brytaren -- semantisk forvirrande på noko som alt er i full høgd.
+- Persistens per storleiksklasse (`App.store`-nøkkel `wsp-modal-fullscreen-lg`), same mønster som Web-admin sin `Store.get("admin-panel-fullscreen", ...)`.
+- Baka inn sentralt, ikkje opt-in per kallar: `Intranet.wrapDimmedOverlay()` (fiksar ein reell, ustadfesta status-bar-dimme-feil i tre av dei ni eksisterande modulane), Escape-tast, Tab/Shift-Tab-fokus-felle + fokus-retur (henta frå `module-oversikt.js` sin eigen versjon, den beste av dei ni), bakgrunnsklikk-for-å-lukke.
+- `opts.rootId`/`opts.rootAttr` for bakoverkompatibilitet: ein migrerande modul kan be den delte funksjonen leggje sitt gamle id/attributt (`data-od-modal`, `#task-modal-bd` osb.) på backdrop-elementet, slik at eksisterande `test-workspace.js`-selektorar kan overleve migreringa utan endring.
+- CSS: nytt `.i-modal*`-block i `workspace/index.html`, eigne Workspace-fargevariablar (ikkje ein kopi av admin sine `.modal__panel--admin`-klassar). `z-index:2000` matchar det `module-oversikt.js`/`module-smart-aarshjul.js` sine eigne modal-backdrops alt brukte.
+- **Ingen modul migrert i denne fasen** -- systemet er bygd og testa isolert, ingen synleg endring i produksjon enno. Neste steg (Fase 2): `module-orgdrift.js`.
+- `node test-workspace.js`: 296/0 (20 nye assertions for sjølve det delte systemet: storleiksklassar, fullskjerm berre for lg, persistens, Escape, bakgrunnsklikk, onClose/onMount, rootId/rootAttr, ikkje-stabling, fokus-felle). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `workspace-core.js?v=26`.
+
+---
+
 ## 0.118.0 — 2026-08-10
 
 **Eiendeler: standard PÅ for alle nye tenants; katalogisert oppfølging for eksisterande tenants utover produksjon.** Brukarvedtak: Eiendeler skal fungere for ALLE eksisterande og framtidige tenants -- eit medvite unntak frå resten av `intranettFeatures` sin "aktiverast per kunde"-modell.
