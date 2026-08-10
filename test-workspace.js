@@ -381,6 +381,106 @@ nav("#/notes"); nav("#/orgdrift/eiendeler"); nav("#/notes"); nav("#/orgdrift/eie
 assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
   "n18: config.js sin ekte, upatcha standard for intranettFeatures.eiendeler er false (av) — testmiljøet over overstyrer dette eksplisitt til true for resten av denne fila sine testar");
 
+/* --- N2c) EIENDELER: BILDER (Fase 3, 2026-08-10) --------------------------
+   App.media.put() sin eigen nedskalerings-/opplastingspipeline (FileReader +
+   Image + canvas) er alt dekt av test.js (public site, seksjon 5) -- jsdom i
+   DENNE fila manglar canvas-støtte heilt (ingen "canvas"-npm-pakke installert,
+   stadfesta av "Not implemented: HTMLCanvasElement's getContext()"-åtvaringa
+   andre testar i denne fila alt viser). I staden for å duplisere test.js sin
+   canvas-/Image-stubbing, stubbar denne seksjonen App.media.put() sjølv --
+   testar VÅR eiga skjema-/kort-/detalj-koplingslogikk (det Fase 3 faktisk la
+   til), ikkje core.js sin allereie testa opplastingspipeline. Stubben er eit
+   "thenable" som køyrer synkront -- denne fila har ingen async/await-
+   presedens frå før, og App.store-fallback-grenen (App.supabase er falsy her)
+   er sjølv heilt synkron, så heile kjeda kan testast utan å endre fila sin
+   etablerte synkrone stil. */
+(function () {
+  var realPut = App.media.put;
+  function fakePutOk(url) {
+    return { then: function (onOk) { onOk(url); return { catch: function () {} }; } };
+  }
+  function fakePutErr(err) {
+    return { then: function () { return { catch: function (onErr) { onErr(err); } }; } };
+  }
+  function fakeFile(name) {
+    return new window.File([new Uint8Array([1, 2, 3])], name || "foto.jpg", { type: "image/jpeg" });
+  }
+
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m1 = doc.querySelector("[data-od-modal]");
+  assert(!m1.querySelector("[data-ei-image-clear]"), "n19: «Fjern bilde»-knappen vises ikke når skjemaet er tomt");
+  assert(!!m1.querySelector(".ei-visual--placeholder"), "n20: tom biletminiatyr vises som plassholder i skjemaet");
+
+  App.media.put = function () { return fakePutOk("https://cdn.example.test/eiendel-1.jpg"); };
+  Object.defineProperty(m1.querySelector("[data-ei-image-input]"), "files", { value: [fakeFile()], configurable: true });
+  m1.querySelector("[data-ei-image-input]").dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert(m1.querySelector("[data-ei-image-hidden]").value === "https://cdn.example.test/eiendel-1.jpg",
+    "n21: valgt fil lastes opp (stubbet) og fyller det skjulte image-feltet");
+  assert(!!m1.querySelector("[data-ei-image-preview] img"), "n22: forhåndsvisningen viser bildet umiddelbart, uten å lagre skjemaet først");
+  assert(!!m1.querySelector("[data-ei-image-clear]"), "n23: «Fjern bilde»-knappen dukker opp så snart et bilde er valgt");
+
+  m1.querySelector("[data-ei-image-clear]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(m1.querySelector("[data-ei-image-hidden]").value === "", "n24: «Fjern bilde» tømmer det skjulte feltet");
+  assert(!m1.querySelector("[data-ei-image-clear]"), "n25: «Fjern bilde»-knappen forsvinner igjen etter at bildet er fjernet");
+
+  Object.defineProperty(m1.querySelector("[data-ei-image-input]"), "files", { value: [fakeFile()], configurable: true });
+  m1.querySelector("[data-ei-image-input]").dispatchEvent(new window.Event("change", { bubbles: true }));
+  m1.querySelector('[name="name"]').value = "Prosjektor";
+  m1.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var eiAfterImgSave = App.store.get("wsp-eiendeler-assets", []);
+  assert(eiAfterImgSave.length === 1 && eiAfterImgSave[0].image_url === "https://cdn.example.test/eiendel-1.jpg",
+    "n26: bildet lagres sammen med resten av eiendelen: " + JSON.stringify(eiAfterImgSave[0]));
+  assert(!!doc.querySelector("[data-ei-open] img"), "n27: kortvisningen viser det lagrede bildet, ikke plassholderen");
+
+  // Ny eiendel UTEN bilde -- kortet skal vise «Last opp bilde» (quick-upload),
+  // sidan brukaren er admin (samme knapp finst også i detaljvisinga «når
+  // bildet mangler», delt via eiendelerVisual()'s opts.quickUpload).
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m2 = doc.querySelector("[data-od-modal]");
+  m2.querySelector('[name="name"]').value = "Whiteboard";
+  m2.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var quickBtn = doc.querySelector("[data-ei-quick-upload]");
+  assert(!!quickBtn, "n28: kort uten bilde viser «Last opp bilde»-knappen direkte (quick-upload, uten å åpne redigeringsskjemaet)");
+
+  App.media.put = function () { return fakePutOk("https://cdn.example.test/eiendel-2.jpg"); };
+  quickBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var pendingInput = Array.prototype.slice.call(doc.body.querySelectorAll('input[type="file"]')).pop();
+  assert(!!pendingInput, "n29: quick-upload-knappen oppretter et midlertidig filvalg-input");
+  Object.defineProperty(pendingInput, "files", { value: [fakeFile()], configurable: true });
+  pendingInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  var eiAfterQuick = App.store.get("wsp-eiendeler-assets", []).filter(function (a) { return a.name === "Whiteboard"; })[0];
+  assert(eiAfterQuick.image_url === "https://cdn.example.test/eiendel-2.jpg",
+    "n30: quick-upload lagrer bildet direkte, uten å åpne redigeringsskjemaet: " + JSON.stringify(eiAfterQuick));
+  assert(!doc.body.contains(pendingInput), "n31: det midlertidige filvalg-inputet fjernes selv etter bruk");
+
+  // Feilhåndtering: quick-upload-feil skal vises inline (data-ei-quick-status),
+  // ikke som en blokkerende alert() -- samme is-err-mønster som resten av
+  // Eiendeler-fana (UX-review-funn, Fase 1). Ny eiendel uten bilde, sidan dei
+  // to over no begge har fått eit (ingen quick-upload-knapp elles å klikke).
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m3 = doc.querySelector("[data-od-modal]");
+  m3.querySelector('[name="name"]').value = "Skriver";
+  m3.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  App.media.put = function () { return fakePutErr(new Error("nettverksfeil")); };
+  var quickBtn2 = doc.querySelector("[data-ei-quick-upload]");
+  assert(!!quickBtn2, "n32-forutsetning: «Skriver» mangler bilde og har en quick-upload-knapp å teste feilhåndtering på");
+  quickBtn2.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var pendingInput2 = Array.prototype.slice.call(doc.body.querySelectorAll('input[type="file"]')).pop();
+  Object.defineProperty(pendingInput2, "files", { value: [fakeFile()], configurable: true });
+  pendingInput2.dispatchEvent(new window.Event("change", { bubbles: true }));
+  var quickStatus = doc.querySelector("[data-ei-quick-status]");
+  assert(!!quickStatus && /nettverksfeil/.test(quickStatus.textContent) && quickStatus.className.indexOf("is-err") >= 0,
+    "n32: mislykket quick-upload vises inline i stedet for en blokkerende alert()");
+
+  App.media.put = realPut;
+  App.store.set("wsp-eiendeler-assets", []);
+  App.store.set("wsp-eiendeler-categories", []);
+  App.store.set("wsp-eiendeler-history", []);
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+})();
+
 /* --- O) WORKSPACESHIP ----------------------------------------------------- */
 assert(!doc.querySelector('[data-inav="workspaceship"]'), "o1: workspaceship skjult");
 App.store.set("wsp-workspaceship",{best:42});

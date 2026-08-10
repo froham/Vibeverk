@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.112.0 — 2026-08-10
+
+**Eiendeler (Fase 3 av 5: bilder).** Kobler den delte `App.media` (core.js sin `Media`, eksponert som `App.media`) inn i Eiendeler -- ingen ny bildepipeline, ingen ny bucket, direkte gjenbruk.
+
+- Opplasting fire steder, som spesifisert: i redigeringsskjemaet (opprett/rediger), «hurtig-opplasting» direkte fra kortvisningen når bildet mangler, og samme hurtig-opplasting i detaljvisningen. Alle tre går via `App.media.put(file)` og skriver til den eksisterende, delte `media`-bucketen.
+- `App.media.resolve()` brukes konsekvent ved visning (kort, liste-forhåndsvisning i skjema, detaljvisning) sidan verdien enten er en ekte Supabase-URL eller en lokal `"media:"`-referanse (når `App.supabase` er ukonfigurert) -- uten dette ville `"media:"`-referanser vist et knekt bilde.
+- `App.media.free()` kalles ved fjerning/erstatning av et bilde i skjemaet og ved sletting av hele eiendelen, for å unngå foreldreløse filer i den delte bucketen -- samme disiplin core.js selv håndhever andre steder.
+- Opplastingsfeil (skjema og hurtig-opplasting) vises inline (`.form__status`/`data-ei-quick-status`), aldri som en blokkerende `alert()` -- fortsetter samme UX-retting fra Fase 1.
+- `node test-workspace.js`: 250/0 (14 nye assertions: skjema-opplasting/fjerning/lagring, kortvisningens hurtig-opplasting, feilhåndtering ved mislykket hurtig-opplasting). Testene stubber `App.media.put()` fremfor å duplisere `test.js` sin egen canvas-/Image-mocking for `Media.put()` sin nedskaleringspipeline (allerede dekket der) -- denne fasen tester kun Eiendeler sin egen skjema-/kort-/detalj-koblingslogikk. `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendret.
+- Cache-bust: `module-orgdrift.js?v=7`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som dei føregåande Eiendeler-oppføringane sine eigne fotnotar).
+- **Ikke deployert.** Neste steg (Fase 4): verdiberegning.
+
+---
+
 ## 0.111.0 — 2026-08-10
 
 **Eiendeler (Fase 2 av 5: eierskapshistorikk).** Overgang mellom Eid/Leid/Lånt i redigeringsskjemaet er no ei stadfesta, historikkført hending -- ikkje berre ei stille felt-endring.

@@ -254,7 +254,7 @@
       ".od-modal-head{position:sticky;top:0;background:var(--color-surface);z-index:1}",
       "@media(max-width:650px){.od-head{display:block}.od-tools{display:block}.od-search{width:100%;box-sizing:border-box;margin-bottom:.6rem}.od-row{grid-template-columns:1fr}.od-view-toggle{margin-bottom:.6rem}}",
       /* --- Eiendeler (2026-08-10) ------------------------------------------- */
-      ".ei-visual{width:100%;aspect-ratio:16/9;border-radius:.7rem;background:var(--color-alt,rgba(148,163,184,.12));display:flex;align-items:center;justify-content:center;margin-bottom:.6rem;overflow:hidden}",
+      ".ei-visual{position:relative;width:100%;aspect-ratio:16/9;border-radius:.7rem;background:var(--color-alt,rgba(148,163,184,.12));display:flex;align-items:center;justify-content:center;margin-bottom:.6rem;overflow:hidden}",
       ".ei-visual img{width:100%;height:100%;object-fit:cover}",
       ".ei-visual--placeholder{color:var(--color-muted);font-size:1.6rem}",
       ".ei-ownership{display:inline-block;border-radius:999px;padding:.1rem .5rem;font-size:.72rem;font-weight:650;vertical-align:middle}",
@@ -287,7 +287,16 @@
       ".ei-history{margin-top:.8rem;padding-top:.6rem;border-top:1px solid var(--color-border)}",
       ".ei-history h4{margin:0 0 .3rem;font-size:.85rem;color:var(--color-muted)}",
       ".ei-history ul{margin:0;padding-left:1.1rem;font-size:.9rem}",
-      ".ei-history li+li{margin-top:.15rem}"
+      ".ei-history li+li{margin-top:.15rem}",
+      /* --- Eiendeler, Fase 3: bilder ------------------------------------------ */
+      // Miniatyren i skjemaet skal ikkje ta heile bredda som kort-/detalj-
+      // visinga sin 16:9-versjon -- avgrensa til ei fast, mindre høgd.
+      ".ei-image-field{display:grid;gap:.5rem}",
+      ".ei-image-field .ei-visual{max-width:220px;aspect-ratio:4/3;margin-bottom:0}",
+      ".ei-image-field__actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}",
+      // .ei-visual sjølv fekk position:relative lagt til øvst i denne lista
+      // (Fase 3) -- treng ein eigen posisjoneringskontekst for denne knappen.
+      ".ei-visual__upload{position:absolute;bottom:.5rem;left:50%;transform:translateX(-50%)}"
     ].join("");
     document.head.appendChild(s);
   }
@@ -1405,9 +1414,19 @@
       (missing ? '<p class="od-help">' + missing + ' eide eiendeler mangler verdivurdering.</p>' : '');
   }
 
-  function eiendelerVisual(a) {
-    if (a.image_url) return '<div class="ei-visual"><img src="' + esc(a.image_url) + '" alt="' + esc(a.name) + '"></div>';
-    return '<div class="ei-visual ei-visual--placeholder"><span class="ti ti-package"></span></div>';
+  // opts.quickUpload: syn ein "Last opp bilde"-knapp direkte i kort-/
+  // detaljvisinga når biletet manglar (Fase 3) -- utan å måtte opne heile
+  // redigeringsskjemaet. App.media.resolve() sidan verdien anten er ein ekte
+  // Supabase-URL ELLER ein "media:"-lokal-referanse (App.supabase falsy,
+  // t.d. i testmiljøet) -- same tolking som resten av kodebasen sine
+  // biletfelt alt bruker (sjå core.js sin eigen Media.resolve()).
+  function eiendelerVisual(a, opts) {
+    opts = opts || {};
+    if (a.image_url) return '<div class="ei-visual"><img src="' + esc(App.media.resolve(a.image_url)) + '" alt="' + esc(a.name) + '"></div>';
+    var uploadBtn = (opts.quickUpload && isAdminRole())
+      ? '<button type="button" class="btn btn--ghost btn--sm ei-visual__upload" data-ei-quick-upload="' + esc(a.id) + '">Last opp bilde</button>'
+      : '';
+    return '<div class="ei-visual ei-visual--placeholder"><span class="ti ti-package"></span>' + uploadBtn + '</div>';
   }
 
   function eiendelerValueLine(a) {
@@ -1419,7 +1438,7 @@
 
   function eiendelerCard(a) {
     return '<div class="od-card" data-ei-open="' + esc(a.id) + '" tabindex="0" role="button">' +
-      eiendelerVisual(a) +
+      eiendelerVisual(a, { quickUpload: true }) +
       '<h3>' + esc(a.name) + ' <span class="ei-ownership ei-ownership--' + esc(a.ownership) + '">' + esc(EI_OWNERSHIP_LABELS[a.ownership] || a.ownership) + '</span></h3>' +
       '<p>' + esc(a.model || "") + '</p>' +
       '<p class="od-muted">⌖ ' + esc(a.location || "Ingen plassering") + '</p>' +
@@ -1465,7 +1484,11 @@
           ? '<div class="od-empty"><b>Ingen eiendeler registrert ennå</b><p>Legg til den første eiendelen med «Ny».</p></div>'
           : '<div class="od-empty"><b>Ingen treff</b><p>Prøv et annet søk, eller nullstill det.</p></div>')
       : (view === "list" ? eiendelerListView(filtered) : eiendelerCardView(filtered));
-    return eiendelerSummary(_eiAssets) + body;
+    // Fase 3: mål for hurtig-opplasting-frå-kort sine feilmeldingar -- ei
+    // slik handling skjer utanfor både redigeringsmodalen og detaljmodalen,
+    // så det finst ingen [data-ei-status]/[data-ei-detail-status] å skrive
+    // til. Tom som standard, same is-err-klasse som dei andre statuslinjene.
+    return eiendelerSummary(_eiAssets) + '<p class="form__status" data-ei-quick-status></p>' + body;
   }
 
   function eiField(name, label, value, opts) {
@@ -1506,6 +1529,14 @@
       (ownership === "leased" ? input("purchaseOption", "Eventuell kjøpsopsjon", asset.purchase_option) : "");
   }
 
+  // Fase 3: same vesle miniatyr som eiendelerVisual() sin "utan bilete"-gren
+  // brukar (utan quickUpload-knappen -- her har skjemaet sitt eige fil-input
+  // rett under, ein ekstra knapp inni miniatyren ville berre vore forvirrande).
+  function eiendelerImagePreviewHtml(imageUrl) {
+    if (!imageUrl) return '<div class="ei-visual ei-visual--placeholder"><span class="ti ti-package"></span></div>';
+    return '<div class="ei-visual"><img src="' + esc(App.media.resolve(imageUrl)) + '" alt=""></div>';
+  }
+
   function eiendelerEditorHtml(asset) {
     asset = asset || {};
     var ownership = asset.ownership || "owned";
@@ -1515,6 +1546,16 @@
 
     return '<form class="od-form" data-ei-form>' +
       input("name", "Navn på eiendel", asset.name, true) +
+      '<label>Bilde' +
+        '<div class="ei-image-field" data-ei-image-field>' +
+          '<div data-ei-image-preview>' + eiendelerImagePreviewHtml(asset.image_url) + '</div>' +
+          '<div class="ei-image-field__actions">' +
+            '<input type="file" accept="image/*" data-ei-image-input>' +
+            (asset.image_url ? '<button type="button" class="btn btn--ghost btn--sm" data-ei-image-clear>Fjern bilde</button>' : '') +
+          '</div>' +
+        '</div>' +
+      '</label>' +
+      '<input type="hidden" name="imageUrl" value="' + esc(asset.image_url || "") + '" data-ei-image-hidden>' +
       '<label>Eierskap' +
         '<div class="ei-ownership-choice" data-ei-ownership-choice>' +
           ["owned", "leased", "borrowed"].map(function (o) {
@@ -1594,6 +1635,11 @@
     if (idx < 0) { cb(null); return; }
     var removed = _eiAssets[idx];
     _eiAssets.splice(idx, 1);
+    // Fase 3: frigjer biletet (Supabase Storage-objekt eller lokal "media:"-
+    // referanse) samstundes -- elles hopar sletta eiendelar seg opp som
+    // foreldrelause filer i den delte "media"-bucketen, same disiplin som
+    // core.js sin eigen Media.free() alt handhevar ved erstatt/fjern.
+    if (removed.image_url) App.media.free(removed.image_url);
     if (!_sb) {
       // Utan Supabase finst det ingen ON DELETE CASCADE -- fjern historikken
       // for hand, elles vert han verande att som foreldrelause rader i
@@ -1670,6 +1716,7 @@
         category_id: categoryId,
         model:       String(fd.get("model") || "").trim() || null,
         note:        String(fd.get("note") || "").trim() || null,
+        image_url:   String(fd.get("imageUrl") || "").trim() || null,
         location:    String(fd.get("location") || "").trim() || null
       };
       if (ownership === "owned") {
@@ -1698,6 +1745,7 @@
   }
 
   function bindEiendelerEditor(scope, root, asset) {
+    var statusEl = scope.querySelector("[data-ei-status]");
     var ownershipChoice = scope.querySelector("[data-ei-ownership-choice]");
     var hiddenOwnership = scope.querySelector('[name="ownership"]');
     var fieldsWrap = scope.querySelector("[data-ei-ownership-fields]");
@@ -1712,12 +1760,57 @@
       });
     }
 
+    // Fase 3: biletopplasting inni skjemaet. imageHidden held den faktiske
+    // verdien som vert lagra (URL/"media:"-ref) -- fil-input og "Fjern
+    // bilde" oppdaterer berre DENNE og re-rendrar miniatyren, sjølve
+    // lagringa skjer fyrst når heile skjemaet lagrast (data-ei-save under).
+    var imageField   = scope.querySelector("[data-ei-image-field]");
+    var imageInput   = scope.querySelector("[data-ei-image-input]");
+    var imageHidden  = scope.querySelector("[data-ei-image-hidden]");
+    var imagePreview = scope.querySelector("[data-ei-image-preview]");
+
+    function bindImageClearBtn() {
+      var btn = imageField.querySelector("[data-ei-image-clear]");
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        App.media.free(imageHidden.value);
+        imageHidden.value = "";
+        imagePreview.innerHTML = eiendelerImagePreviewHtml("");
+        syncImageClearBtn();
+      });
+    }
+    function syncImageClearBtn() {
+      var actions = imageField.querySelector(".ei-image-field__actions");
+      var existing = imageField.querySelector("[data-ei-image-clear]");
+      if (imageHidden.value && !existing) {
+        actions.insertAdjacentHTML("beforeend", '<button type="button" class="btn btn--ghost btn--sm" data-ei-image-clear>Fjern bilde</button>');
+        bindImageClearBtn();
+      } else if (!imageHidden.value && existing) {
+        existing.parentNode.removeChild(existing);
+      }
+    }
+    bindImageClearBtn();
+
+    if (imageInput) imageInput.addEventListener("change", function () {
+      var f = imageInput.files && imageInput.files[0];
+      imageInput.value = "";
+      if (!f) return;
+      var previousUrl = imageHidden.value;
+      App.media.put(f).then(function (url) {
+        if (previousUrl) App.media.free(previousUrl);
+        imageHidden.value = url;
+        imagePreview.innerHTML = eiendelerImagePreviewHtml(url);
+        syncImageClearBtn();
+      }).catch(function (err) {
+        if (statusEl) { statusEl.textContent = "Kunne ikke laste opp bildet: " + (err.message || "ukjent feil") + ". Prøv et mindre bilde."; statusEl.className = "form__status is-err"; }
+      });
+    });
+
     scope.querySelector("[data-ei-cancel]").addEventListener("click", closeModal);
     scope.querySelector("[data-ei-save]").addEventListener("click", function () {
       var formEl = scope.querySelector("[data-ei-form]");
       if (!formEl.checkValidity()) { formEl.reportValidity(); return; }
       var fd = new FormData(formEl);
-      var statusEl = scope.querySelector("[data-ei-status]");
       var newOwnership = String(fd.get("ownership") || "owned");
       var ownershipChanged = !!(asset && asset.ownership !== newOwnership);
       // Fase 2: eierskapsbytte er ei reell driftsendring (påverkar oversikt
@@ -1768,7 +1861,7 @@
     var a = (_eiAssets || []).filter(function (x) { return x.id === assetId; })[0];
     if (!a) return;
     var isAdmin = isAdminRole();
-    var body = eiendelerVisual(a) +
+    var body = eiendelerVisual(a, { quickUpload: true }) +
       '<div class="od-kv">' +
         '<div><strong>Eierskap:</strong> ' + esc(EI_OWNERSHIP_LABELS[a.ownership] || a.ownership) + '</div>' +
         '<div><strong>Kategori:</strong> ' + esc(eiendelerCategoryName(a.category_id)) + '</div>' +
@@ -1798,6 +1891,24 @@
 
     openModal(a.name + " · " + (EI_OWNERSHIP_LABELS[a.ownership] || a.ownership), '<span class="od-pill">' + esc(eiendelerCategoryName(a.category_id)) + '</span>' + body, function (modal) {
       modal.querySelector("[data-od-modal-close]").addEventListener("click", closeModal);
+      var quickUploadBtn = modal.querySelector("[data-ei-quick-upload]");
+      if (quickUploadBtn) quickUploadBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        triggerEiQuickUpload(a.id, function (err) {
+          if (err) {
+            var statusEl = modal.querySelector("[data-ei-detail-status]");
+            if (statusEl) { statusEl.textContent = "Kunne ikke laste opp bildet: " + (err.message || "ukjent feil") + ". Prøv igjen, eller bruk et mindre bilde."; statusEl.className = "form__status is-err"; }
+            return;
+          }
+          // Enklaste måte å syne det nye biletet med det same: lat att og opne
+          // detaljvisinga på nytt (same "lukk + tegn på nytt"-mønster som
+          // rediger/slett-handsamarane over) -- unngår å måtte duplisere
+          // eiendelerVisual()-oppdateringslogikken inni ein alt open modal.
+          closeModal();
+          draw(root, "eiendeler", "");
+          openEiendelerDetail(root, a.id);
+        });
+      });
       var editBtn = modal.querySelector("[data-ei-modal-edit]");
       if (editBtn) editBtn.addEventListener("click", function () {
         if (!isAdminRole()) return;
@@ -1826,7 +1937,42 @@
     });
   }
 
+  // Fase 3: hurtig-opplasting utanfor både redigerings- og detaljmodalen --
+  // ein mellombels, usynleg fil-input som fjernar seg sjølv etter bruk (same
+  // "trigger eit skjult input"-triks som mange skjermlesar-venlege opplastings-
+  // knappar i heile nettet bruker, ingen eigen komponent finst i kodebasen
+  // frå før å gjenbruke her).
+  function triggerEiQuickUpload(assetId, cb) {
+    var input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      if (input.parentNode) input.parentNode.removeChild(input);
+      if (!f) return;
+      App.media.put(f).then(function (url) {
+        updateAsset(assetId, { image_url: url }, function (err) { cb(err || null); });
+      }).catch(function (err) { cb(err || new Error("upload")); });
+    });
+    input.click();
+  }
+
   function bindEiendelerDynamic(root) {
+    root.querySelectorAll("[data-ei-quick-upload]").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        triggerEiQuickUpload(btn.getAttribute("data-ei-quick-upload"), function (err) {
+          var statusEl = root.querySelector("[data-ei-quick-status]");
+          if (err) {
+            if (statusEl) { statusEl.textContent = "Kunne ikke laste opp bildet: " + (err.message || "ukjent feil") + ". Prøv igjen, eller bruk et mindre bilde."; statusEl.className = "form__status is-err"; }
+            return;
+          }
+          rerenderEiendelerContent(root);
+        });
+      });
+    });
     root.querySelectorAll("[data-ei-open]").forEach(function (el) {
       el.addEventListener("click", function () { openEiendelerDetail(root, el.getAttribute("data-ei-open")); });
       el.addEventListener("keydown", function (e) {
