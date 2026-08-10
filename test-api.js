@@ -570,6 +570,8 @@ async function main() {
     !JSON.stringify(edgeRpcBody).includes("203.0.113.42") && !JSON.stringify(edgeRpcBody).includes("Test Browser/1.0") &&
     !JSON.stringify(edgeRpcBody).includes("kunde.example"),
     "g6: service-kallet inneheld hending + hash, men aldri rå IP, UA eller Origin/site");
+  assert(edgeRpcBody.p_utm_source === null && edgeRpcBody.p_utm_medium === null && edgeRpcBody.p_utm_campaign === null,
+    "g6b: utan utm-felt i innsendinga sender Edge eksplisitt null, ikkje undefined, til service-helperen");
 
   const firstDayHash = edgeRpcBody.p_session_id;
   edgeFetchCalls = [];
@@ -610,6 +612,29 @@ async function main() {
   body = await r.json();
   assert(r.status === 500 && body.error === "Kunne ikke lagre hendelsen" && JSON.stringify(body).indexOf("hemmeleg detalj") === -1,
     "g11: service-feil vert generiske og lekkjer ikkje database-/headerdetaljar");
+
+  edgeFetchCalls = [];
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, Object.assign({}, eventBody, {
+    utm_source: "google", utm_medium: "cpc", utm_campaign: "sommersalg"
+  })), sidetellingOptions(okEdgeFetch));
+  const utmRpcBody = JSON.parse(edgeFetchCalls[0].init.body);
+  assert(r.status === 202 && utmRpcBody.p_utm_source === "google" && utmRpcBody.p_utm_medium === "cpc" && utmRpcBody.p_utm_campaign === "sommersalg",
+    "g12: gyldige utm-felt sendes uendra vidare til service-helperen");
+
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, Object.assign({}, eventBody, {
+    utm_source: "a".repeat(101)
+  })), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 400, "g13: ein utm_source over 100 teikn vert avvist før service-helperen");
+
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, Object.assign({}, eventBody, {
+    utm_campaign: "kampanjemed-kontrollteikn"
+  })), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 400, "g14: eit utm-felt med kontrollteikn vert avvist (loggforureining-/skrivefeil-vern)");
+
+  r = await handleSidetellingEvent(sidetellingRequest("POST", eventHeaders, Object.assign({}, eventBody, {
+    utm_source: "kampanje‮med-rtlo-overstyring"
+  })), sidetellingOptions(okEdgeFetch));
+  assert(r.status === 400, "g15: eit utm-felt med eit Unicode bidi-overstyringsteikn (RTLO) vert avvist -- retta Security Auditor-funn (LOW, 2026-08-07), visuell forfalsking i adminpanelet");
 
   console.log("\nResultat: OK " + __ok + " / FEIL " + __err);
 }
