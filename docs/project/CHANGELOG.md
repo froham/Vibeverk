@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.109.0 — 2026-08-10
+
+**Personvern-Standardforslag: kritisk krasjfiks + overskriv-oppførsel + kapitteloverskrifter + skjematekst-generator.** Brukar fann (via reell testing på Vibeverk sin eigen tenant) at "Standardforslag"-knappen ikkje gjorde noko, og at Dokument-fana vart tom ved fanebyte tilbake til henne -- begge spora til éin felles rotårsak.
+
+- **Krasjfiks**: `computeTenantPrivacyBlocks()` las `sc.contact.email`/`sc.company.name` rått, utan fallback. Vibeverk sin eigen konfig manglar `sc.contact` heilt, som kasta ein uoppfanga `TypeError` INNI ein promise-kjede -- difor synte feilen seg aldri som ei feilmelding, berre som "ingenting skjer" ved klikk på Standardforslag, og eit tomt panel ved fanebyte tilbake til ei PUBLISERT Dokument-fane (drift-sjekken kalla same funksjon synkront FØR HTML-en vart bygd). Retta med same `|| {}`-forsvarsmønster resten av fila alt bruker.
+- **Brukarvedtak (ingen ekte kundar enno, difor akseptabelt å endre standardåtferd no)**: "Standardforslag" overskreiv tidlegare stille aldri eit avsnitt operatøren hadde redigert (`edited:true`) -- no overskriv han dei, MEN berre etter ei eksplisitt åtvaring, og ALDRI eigne manuelt tilføyde avsnitt. Kvart redigert avsnitt får i tillegg ei permanent synleg merkelapp ("Avviker fra standardforslag") i editoren, slik at det alltid er tydeleg kva som er Vibeverk sin standardtekst og kva som er kunde-/operatør-redigert.
+- **Kapitteloverskrifter**: den delte `App.ui.textToRichHtml()` gjorde ingen skilnad på tittel-linje og brødtekst -- alt vart identisk formatert. Ny, privacy-spesifikk `privacyTextToRichHtml()` (eiga funksjon, rører IKKJE den delte `textToRichHtml()` som `migrateLegacyPrivacyText()` framleis brukar for fritt gamalt innhald) tolkar ei `"# "`-prefikset linje som feit overskrift for resten av avsnittet. Retta samstundes ein pre-eksisterande feil i `computeRetentionBlock()`/`computeSupplierBlock()` sine linjeslåingar som ville ha gjort kvar enkelt lagringstid-/leverandørrad til sin eigen (feilaktige) overskrift.
+- **Ny "Foreslå tekst"-knapp i Skjematekster-fana**: genererer eit kort, redigerbart forslag til "Korttekst ved skjemaet" ut frå Formål + Behandlingsgrunnlag + Lagringstid, med referanse til hovudpersonvernerklæringa i staden for å gjenta alt. Ny delt hjelpefunksjon `App.ui.setRichTextField()` (motstykket til `readRichTextField()`) i `core.js`.
+- Console har ingen automatisert testdekning (ikkje del av `test.js`/`test-workspace.js`/`test-api.js`) -- verifisert med `node --check` + grundig manuell kodegjennomgang av alle nye/endra funksjonar, samt at dei tre eksisterande testsuitene framleis er grøne (733/210/109, uendra sidan ingen av dei rører Console). Reell verifisering skjer i brukaren si eiga, allereie innlogga Console-økt.
+- Cache-bust: `console-core.js?v=233`, `core.js?v=91` (sistnemnde deler cache-bust med det tidlegare UTM-arbeidet, som aldri fekk bumpa denne spesifikke fila sin referanse i `console/index.html`).
+
+---
+
 ## 0.108.0 — 2026-08-07
 
 **UTM-kampanjemerking i den interne sidetellingen.** Etter Plausible-samanlikninga (sjå 0.106.0-oppføringa) vart UTM-sporing plukka ut som den einaste av dei attverande forslaga (UTM/geolokasjon) som ikkje påverkar samtykke/cookiefri status — Arkitekt-konsultert plan før koding, sidan endringa rører same RPC-signatur som 0.107.0 sin server-side hash-ombygging. Geolokasjon står framleis medvite ikkje bygd (sjå `docs/architecture/sidetelling.md` sin eigen "Bevisst ikkje bygd"-seksjon).
@@ -41,7 +54,7 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - Personvern-standardteksten (`core.js` og Console sin tilsvarande kopi i `console/console-core.js`) nemner no UTM-kampanjemerking som eit av dei faktisk lagra felta, i vanleg språk.
 - `node test.js`: 733/0 (7 nye/utvida assertions, inkludert ein dedikert URL-utlesing-fixtur og ein adminpanel-escaping-sjekk mot eit reelt `<img onerror>`-forsøk). `node test-api.js`: 109/0 (g6b/g12-g15: null-gjennomgang, gyldig gjennomgang, for-lang-avvising, kontrollteikn-avvising, bidi-teikn-avvising). `node test-workspace.js`: 210/0, uendra.
 - **Ikkje deployert.** Ingen migrasjon er køyrd og ingen Edge Function-endring er deploya mot staging eller produksjon frå denne posten -- kode + kontraktstestar ligg i arbeidskopien, klare for same "migrasjon → Edge → staging-verifisering → cache-busta frontend"-rekkjefølgje som 0.107.0 sjølv følgde.
-- Denne oppføringa vart delvis skriven av ei anna, samtidig økt (som fann og dokumenterte dette arbeidet medan det stod ope i same arbeidstre) og er sidan utvida/korrigert her til å dekkje tryggleiks-/UX-rettingane over. `VIBEVERK_VERSION`/cache-bust for `console/console-core.js` er IKKJE del av denne commiten -- den filen inneheld samtidig, ikkje-relatert AI Lab-arbeid (sjå 0.109.0-oppføringa over) som ikkje er mitt å committe; `VIBEVERK_VERSION` står difor att på `0.107.0` i den commita koden inntil den andre økta sjølv committar og bumpar vidare.
+- Denne oppføringa vart delvis skriven av ei anna, samtidig økt (som fann og dokumenterte dette arbeidet medan det stod ope i same arbeidstre) og er sidan utvida/korrigert her til å dekkje tryggleiks-/UX-rettingane over. `VIBEVERK_VERSION`/cache-bust for `console/console-core.js` var IKKJE del av denne commiten den gongen -- sjå 0.109.0-oppføringa under for den faktiske bumpen (kom seinare, som ein separat personvern-relatert commit, ikkje som ei vidareføring av dette punktet).
 
 ---
 

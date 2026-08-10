@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.107.0";
+  var VIBEVERK_VERSION = "0.109.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -3241,6 +3241,17 @@ window.VwConsole = (function () {
     ["berettiget_interesse", "Berettiget interesse"],
     ["rettslig_plikt", "Rettslig plikt"]
   ];
+  // Brukt av "Foreslå tekst" (Skjematekster-fana, 2026-08-10) -- kort,
+  // kundevendt formulering av kvart behandlingsgrunnlag, sett inn i ei
+  // enkeltsetning saman med Formål/Lagringstid. Ikkje meint som juridisk
+  // fasitforklaring, berre eit lesbart utgangspunkt (same fråskriving som
+  // Standardforslag sjølv).
+  var PRIVACY_LEGAL_BASIS_BLURB = {
+    avtale: "fordi det er nødvendig for å inngå eller oppfylle avtalen med deg",
+    samtykke: "basert på samtykket du gir når du sender inn skjemaet -- du kan når som helst trekke samtykket tilbake",
+    berettiget_interesse: "fordi vi har en berettiget interesse i å kunne følge opp henvendelsen din",
+    rettslig_plikt: "for å oppfylle en rettslig plikt"
+  };
 
   // Fase 4 (godkjenning/eksport, 2026-08-06): REIN INTERN journalføring --
   // brukaren avklarte eksplisitt (AskUserQuestion) at det IKKJE skal byggjast
@@ -3537,6 +3548,42 @@ window.VwConsole = (function () {
   // sitt konkrete utkast (køyrt denne økta, las faktisk kode/dokumentasjon
   // FØR forslaget vart skrive) -- framleis "berre eit utgangspunkt frå oss",
   // ikkje juridisk kvalitetssikra åleine.
+  // UX-funn (2026-08-10, brukar): App.ui.textToRichHtml() gjer ingen skilnad
+  // på ei "tittel-linje" og brødtekst -- alt vart like usynleg formatert som
+  // vanlege avsnitt, sjølv om kvar blokk under alt er skriven med ei tydeleg
+  // "tittel fyrst"-line. Denne funksjonen er ein eigen, privacy-spesifikk
+  // variant (IKKJE ei endring av den delte App.ui.textToRichHtml(), som òg
+  // brukast av migrateLegacyPrivacyText() for fritt, ustrukturert gamalt
+  // innhald utan nokon "# "-konvensjon -- ei endring der ville feiltolka
+  // vilkårleg gamal tekst som overskrifter).
+  //
+  // Konvensjon: ei linje som startar med "# " vert overskrift (feit, eiga
+  // linje) for RESTEN av same avsnitt (til neste \n\n). Ei linje UTAN "# "
+  // vert verande vanleg brødtekst. Dette let fleire avsnitt i éin og same
+  // blokk få kvar sin overskrift (t.d. "Hvor lagres opplysningene?" OG "Dine
+  // rettigheter" i baseline-blokka), MEN listeaktig innhald (leverandørrader,
+  // lagringstid-linjer) som medvite IKKJE skal bli eigne overskrifter kan
+  // stå urørt utan prefikset.
+  //
+  // Rendrar som <p><strong>…</strong></p>, ikkje ein ekte <hN>-tag -- unngår
+  // å måtte utvide RICH_ALLOWED_TAGS (components.js sin sanitizeRichHtml())
+  // for noko brukaren sjølv ba om i reint visuelle termar ("fet skrift på
+  // overskrifter"), og er trygt IDEMPOTENT gjennom rik-tekst-editoren sin
+  // eigen sanering (B/STRONG/P er alt tillatne, ingen ny åtferd der).
+  function privacyTextToRichHtml(text) {
+    return String(text || "").split(/\n\n+/).map(function (para) {
+      var lines = para.split("\n");
+      if (lines[0].indexOf("# ") === 0) {
+        var heading = lines[0].slice(2);
+        var restLines = lines.slice(1);
+        var html = "<p><strong>" + C.esc(heading) + "</strong></p>";
+        if (restLines.length) html += "<p>" + C.esc(restLines.join("\n")).replace(/\n/g, "<br>") + "</p>";
+        return html;
+      }
+      return "<p>" + C.esc(para).replace(/\n/g, "<br>") + "</p>";
+    }).join("");
+  }
+
   function computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) {
     var forms = sc.privacy.forms || {};
     // "nyhetsbrev" MEDVITE utelaten -- ingen features.*-flagg bak det i det
@@ -3548,7 +3595,11 @@ window.VwConsole = (function () {
     if (hasBooking)      activeIds.push("booking");
 
     var filled = activeIds.filter(function (id) { return forms[id] && forms[id].retention; });
-    var lines = ["Hvor lenge lagrer vi opplysningene?"];
+    // "# "-prefikset FØRSTE linje vert overskrifta (sjå privacyTextToRichHtml());
+    // resten skal vere BRØDTEKST under same overskrift, difor \n (ikkje \n\n)
+    // ved samanslåing under -- elles ville kvar enkelt lagringstid-linje blitt
+    // sin eigen (feilaktige) overskrift i staden for éin liste under éi.
+    var lines = ["# Hvor lenge lagrer vi opplysningene?"];
 
     if (!activeIds.length || !filled.length) {
       // Ingen aktive skjema, ELLER ingen av dei har fylt inn lagringstid --
@@ -3563,7 +3614,7 @@ window.VwConsole = (function () {
       var unfilled = activeIds.filter(function (id) { return filled.indexOf(id) === -1; });
       if (unfilled.length) lines.push("For øvrige henvendelser lagrer vi ikke opplysningene lenger enn nødvendig for formålet.");
     }
-    return App.ui.textToRichHtml(lines.join("\n\n"));
+    return privacyTextToRichHtml(lines.join("\n"));
   }
 
   function computeTenantPrivacyBlocks(sc, an) {
@@ -3573,39 +3624,52 @@ window.VwConsole = (function () {
     var hasBooking       = !!ft.booking;
     var hasAnalytics     = !!(an && (an.plausible || an.plausibleEmbed));
     var hasSidetelling   = !hasAnalytics && ft.sidetelling === true;
-    var contactInfo = [sc.contact.email, sc.contact.phone, sc.contact.address].filter(Boolean);
+    // Konsolekrasj (2026-08-10, funne av brukar via reell testing på Vibeverk
+    // sin eigen tenant): sc.contact/sc.company vart tidlegare lest rått, utan
+    // fallback. Vibeverk sin eigen konfig manglar sc.contact heilt, som gav
+    // "Cannot read properties of undefined (reading 'email')" -- kasta INNI
+    // ein promise-kjede (både Standardforslag-klikket og drift-sjekken i den
+    // publiserte visinga kallar denne funksjonen), så feilen synte seg aldri
+    // som ei synleg feilmelding -- berre som "ingenting skjer" ved klikk, og
+    // eit tomt Dokument-panel ved fanebyte tilbake (render kutta av FØR
+    // pane.innerHTML vart sett, sidan begge stadene skjer FØR sjølve HTML-en
+    // vert bygd). Same forsvarsmønster som resten av fila alt bruker andre
+    // stader (t.d. sc.company || {} i renderSystem()).
+    var company = sc.company || {};
+    var contact = sc.contact || {};
+    var contactInfo = [contact.email, contact.phone, contact.address].filter(Boolean);
 
     var blocks = [];
-    blocks.push({ id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: App.ui.textToRichHtml(
-      "Om denne personvernerklæringen\nDenne personvernerklæringen forteller deg hvilke personopplysninger vi samler inn gjennom denne nettsiden, hva vi bruker dem til, hvor lenge vi lagrer dem, og hvilke rettigheter du har. Den gjelder for alle som besøker nettsiden eller tar kontakt med oss via skjemaene her."
+    blocks.push({ id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Om denne personvernerklæringen\nDenne personvernerklæringen forteller deg hvilke personopplysninger vi samler inn gjennom denne nettsiden, hva vi bruker dem til, hvor lenge vi lagrer dem, og hvilke rettigheter du har. Den gjelder for alle som besøker nettsiden eller tar kontakt med oss via skjemaene her."
     ) });
-    blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: App.ui.textToRichHtml(
-      "Hvem er behandlingsansvarlig?\n" + sc.company.name + " er behandlingsansvarlig for personopplysningene som samles inn gjennom denne nettsiden. Det betyr at det er " + sc.company.name + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
+    blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + " er behandlingsansvarlig for personopplysningene som samles inn gjennom denne nettsiden. Det betyr at det er " + (company.name || "vi") + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
       (contactInfo.length ? " Har du spørsmål om personvern, kan du kontakte oss på " + contactInfo.join(", ") + "." : "")
     ) });
-    blocks.push({ id: "baseline", source: "module", moduleId: "baseline", included: true, edited: false, body: App.ui.textToRichHtml(
-      "Hvor lagres opplysningene?\nNettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
-      "Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold. Du har også rett til å klage til Datatilsynet dersom du mener vi behandler personopplysningene dine i strid med regelverket. Du finner informasjon om hvordan du klager på datatilsynet.no."
+    blocks.push({ id: "baseline", source: "module", moduleId: "baseline", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Hvor lagres opplysningene?\nNettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
+      "# Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold. Du har også rett til å klage til Datatilsynet dersom du mener vi behandler personopplysningene dine i strid med regelverket. Du finner informasjon om hvordan du klager på datatilsynet.no."
     ) });
-    if (hasContactForm) blocks.push({ id: "mod-kontakt", source: "module", moduleId: "contactForm", included: true, edited: false, body: App.ui.textToRichHtml(
-      "Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, og deles ikke med tredjeparter for markedsføringsformål."
+    if (hasContactForm) blocks.push({ id: "mod-kontakt", source: "module", moduleId: "contactForm", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, og deles ikke med tredjeparter for markedsføringsformål."
     ) });
-    if (hasTilbud) blocks.push({ id: "mod-tilbud", source: "module", moduleId: "quote", included: true, edited: false, body: App.ui.textToRichHtml(
-      "Tilbudsforespørsel\nNår du ber om tilbud, lagrer vi navn, e-postadresse, telefonnummer, innholdet i forespørselen og eventuelle vedlegg du laster opp. Opplysningene brukes til å utarbeide og sende deg et tilbud."
+    if (hasTilbud) blocks.push({ id: "mod-tilbud", source: "module", moduleId: "quote", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Tilbudsforespørsel\nNår du ber om tilbud, lagrer vi navn, e-postadresse, telefonnummer, innholdet i forespørselen og eventuelle vedlegg du laster opp. Opplysningene brukes til å utarbeide og sende deg et tilbud."
     ) });
-    if (hasBooking) blocks.push({ id: "mod-booking", source: "module", moduleId: "booking", included: true, edited: false, body: App.ui.textToRichHtml(
-      "Booking\nNår du reserverer en time/booking, lagrer vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding. Opplysningene brukes til å gjennomføre avtalen."
+    if (hasBooking) blocks.push({ id: "mod-booking", source: "module", moduleId: "booking", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Booking\nNår du reserverer en time/booking, lagrer vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding. Opplysningene brukes til å gjennomføre avtalen."
     ) });
     blocks.push({ id: "retention", source: "module", moduleId: "retention", included: true, edited: false, body: computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) });
     var cookieText = hasAnalytics
       ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
       : hasSidetelling
-      ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk og hvilke sider besøkende kommer fra/går til). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
+      ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk, hvilke sider besøkende kommer fra/går til, og hvilken kampanje en lenke er merket med hvis du selv har lagt til dette i lenken, ofte kalt UTM). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
-    blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: App.ui.textToRichHtml("Bruker vi cookies?\n" + cookieText) });
+    blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: privacyTextToRichHtml("# Bruker vi cookies?\n" + cookieText) });
     blocks.push({ id: "mod-suppliers", source: "module", moduleId: "suppliers", included: true, edited: false, body: computeSupplierBlock(sc, an) });
-    blocks.push({ id: "breach", source: "module", moduleId: "breach", included: true, edited: false, body: App.ui.textToRichHtml(
-      "Melding ved brudd på personopplysningssikkerheten\nDersom det skulle oppstå et brudd på personopplysningssikkerheten — for eksempel uautorisert tilgang til eller tap av opplysninger — som medfører risiko for dine rettigheter og friheter, vil vi varsle Datatilsynet uten unødig opphold og senest innen 72 timer etter at vi ble kjent med bruddet, i tråd med personvernforordningen (GDPR) artikkel 33. Dersom bruddet innebærer høy risiko for deg, vil vi også varsle deg direkte."
+    blocks.push({ id: "breach", source: "module", moduleId: "breach", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Melding ved brudd på personopplysningssikkerheten\nDersom det skulle oppstå et brudd på personopplysningssikkerheten — for eksempel uautorisert tilgang til eller tap av opplysninger — som medfører risiko for dine rettigheter og friheter, vil vi varsle Datatilsynet uten unødig opphold og senest innen 72 timer etter at vi ble kjent med bruddet, i tråd med personvernforordningen (GDPR) artikkel 33. Dersom bruddet innebærer høy risiko for deg, vil vi også varsle deg direkte."
     ) });
     return blocks;
   }
@@ -3626,7 +3690,7 @@ window.VwConsole = (function () {
   // av forslagsteksten alt brukar (aldri påstå meir enn vi veit).
   function computeSupplierBlock(sc, an) {
     var region = (sc.privacy.suppliers && sc.privacy.suppliers.supabaseRegion) || "";
-    var lines = ["Hvilke leverandører behandler opplysningene dine?"];
+    var lines = ["# Hvilke leverandører behandler opplysningene dine?"];
     var transferLines = [];
     VIBEVERK_VENDORS.forEach(function (v) {
       if (!v.isActive(an)) return;
@@ -3642,23 +3706,30 @@ window.VwConsole = (function () {
       }
     });
     if (transferLines.length) {
-      lines.push("Overføring av opplysninger utenfor EU/EØS\nNoen av leverandørene våre er etablert utenfor EU/EØS. Vi sørger for at slike overføringer skjer i tråd med personvernregelverket:\n" + transferLines.join("\n"));
+      lines.push("# Overføring av opplysninger utenfor EU/EØS\nNoen av leverandørene våre er etablert utenfor EU/EØS. Vi sørger for at slike overføringer skjer i tråd med personvernregelverket:\n" + transferLines.join("\n"));
     }
-    return App.ui.textToRichHtml(lines.join("\n\n"));
+    return privacyTextToRichHtml(lines.join("\n\n"));
   }
 
   // Slår saman eit friskt sett med modul-forslag med det som alt står i
-  // dokumentet: ei blokk operatøren HAR REDIGERT (edited:true) vert aldri
-  // stille overskriven; manuelle blokker vert alltid tekne vare på; ei
-  // modul-blokk for ein modul som ikkje lenger er aktiv vert òg teken vare
-  // på (operatøren må fjerne ho sjølv via hybrid-vakta sitt varsel) -- aldri
-  // stille sletta berre fordi ho ikkje dukka opp i det friske forslaget.
-  function mergePrivacyBlocks(existingBlocks, freshBlocks) {
+  // dokumentet: ei blokk operatøren HAR REDIGERT (edited:true) vert normalt
+  // aldri stille overskriven; manuelle blokker vert ALLTID tekne vare på
+  // (uansett forceOverwrite); ei modul-blokk for ein modul som ikkje lenger
+  // er aktiv vert òg teken vare på (operatøren må fjerne ho sjølv via
+  // hybrid-vakta sitt varsel) -- aldri stille sletta berre fordi ho ikkje
+  // dukka opp i det friske forslaget.
+  //
+  // forceOverwrite (2026-08-10, brukarvedtak): "Standardforslag" skal kunne
+  // nullstille redigerte modul-avsnitt til fersk standardtekst -- MEN aldri
+  // røre eigne, manuelt tilføyde avsnitt (source:"manual" er urørt uansett,
+  // sjå pushen under). Klikk-handteraren viser ei åtvaring FØR dette kallet
+  // skjer dersom det faktisk finst noko redigert å overskrive.
+  function mergePrivacyBlocks(existingBlocks, freshBlocks, forceOverwrite) {
     var existingById = {};
     (existingBlocks || []).forEach(function (b) { existingById[b.id] = b; });
     var merged = freshBlocks.map(function (fresh) {
       var existing = existingById[fresh.id];
-      if (existing && existing.edited) return existing;
+      if (existing && existing.edited && !forceOverwrite) return existing;
       return Object.assign({}, fresh, { included: existing ? existing.included : true });
     });
     var freshIds = {};
@@ -3848,9 +3919,18 @@ window.VwConsole = (function () {
       var isModule = b.source === "module";
       var moduleActive = isModule && privacyModuleActive(sc, sc._privacyAn || {}, b.moduleId);
       var sourceLabel = isModule ? ("Modul: " + (PRIVACY_MODULE_LABEL[b.moduleId] || b.moduleId || "")) : "Manuelt lagt til";
+      // Brukarvedtak (2026-08-10): sidan "Standardforslag" no kan overskrive
+      // redigerte avsnitt (sjå #cs-priv-fetch), skal det ALLTID vere synleg,
+      // ikkje berre hugsa i data, kva for avsnitt som faktisk avviker fra
+      // Vibeverk sin standardtekst -- gjev operatøren (og reelt Vibeverk sjølv
+      // om noko seinare vert juridisk omtvista) eit tydeleg spor over kven som
+      // har endra kva.
+      var deviationPill = (isModule && b.edited)
+        ? ' <span class="kd-pill kd-pill--provisioning" title="Denne teksten er redigert bort fra Vibeverk sitt standardforslag">Avviker fra standardforslag</span>'
+        : '';
       return '<div class="admin-group" data-privacy-block="' + C.esc(b.id) + '" style="margin-bottom:1rem">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.5rem">' +
-          '<span style="font-size:.76rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.03em">' + C.esc(sourceLabel) + '</span>' +
+          '<span style="display:flex;align-items:center;flex-wrap:wrap;gap:.4rem"><span style="font-size:.76rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.03em">' + C.esc(sourceLabel) + '</span>' + deviationPill + '</span>' +
           '<label style="font-size:.85rem;display:flex;align-items:center;gap:.4rem"><input type="checkbox" data-privacy-block-included="' + C.esc(b.id) + '"' + (b.included ? " checked" : "") + '> Inkluder i publisert tekst</label>' +
         '</div>' +
         (moduleActive && !b.included ? '<p style="font-size:.78rem;color:#c0392b;margin:0 0 .5rem">⚠ Denne modulen er aktiv for kunden, men avsnittet er ekskludert — kan ikkje publiserast slik.</p>' : '') +
@@ -3867,7 +3947,7 @@ window.VwConsole = (function () {
           C.button({ label: "Standardforslag", variant: "ghost", attrs: 'type="button" id="cs-priv-fetch"' }) +
           C.button({ label: "+ Legg til eige avsnitt", variant: "ghost", attrs: 'type="button" id="cs-priv-add"' }) +
         '</div>' +
-        '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 1rem">"Standardforslag" set saman eit fullstendig utkast: avsnitt for kvar aktiv modul (kontaktskjema, tilbud, booking, cookies/analyse, leverandørar) pluss Vibeverk sine faste standardavsnitt (innleiing, behandlingsansvarleg, lagringstid, avviksvarsling). Alle desse avsnitta kan redigerast fritt, men — i likskap med «Generelt» og «Leverandørar» — kan dei IKKJE ekskluderast frå publisert tekst med avkryssingsboksen, sidan dei gjeld alle kundar likt. Manuelt lagde avsnitt kan derimot fjernast heilt. <strong>Dette er berre eit utgangspunkt frå oss</strong> — kunden er juridisk ansvarleg for at teksten faktisk stemmer.</p>' +
+        '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 1rem">"Standardforslag" set saman eit fullstendig utkast: avsnitt for kvar aktiv modul (kontaktskjema, tilbud, booking, cookies/analyse, leverandørar) pluss Vibeverk sine faste standardavsnitt (innleiing, behandlingsansvarleg, lagringstid, avviksvarsling). Alle desse avsnitta kan redigerast fritt, men — i likskap med «Generelt» og «Leverandørar» — kan dei IKKJE ekskluderast frå publisert tekst med avkryssingsboksen, sidan dei gjeld alle kundar likt. Manuelt lagde avsnitt kan derimot fjernast heilt. <strong>Trykker du "Standardforslag" på nytt, blir tidlegare redigerte avsnitt overskrivne med fersk standardtekst (etter ei åtvaring) — eigne, manuelt tilføyde avsnitt vert aldri rørt.</strong> Redigerte avsnitt er merkte "Avviker fra standardforslag" så du ser kva som er endra. <strong>Dette er berre eit utgangspunkt frå oss</strong> — kunden er juridisk ansvarleg for at teksten faktisk stemmer.</p>' +
         '<div id="privacy-blocks">' + blocksHtml + '</div>' +
       '</fieldset>' +
       '<fieldset class="admin-group"><legend>Godkjenning frå kunden</legend>' +
@@ -3991,6 +4071,18 @@ window.VwConsole = (function () {
 
     pane.querySelector("#cs-priv-fetch").addEventListener("click", function () {
       captureFieldEdits();
+      // Brukarvedtak (2026-08-10, ingen ekte kundar enno): "Standardforslag"
+      // skal nullstille redigerte modul-avsnitt til fersk standardtekst i
+      // staden for å stille la dei stå (den gamle, trygge fletting-åtferda) --
+      // grunngjeving: ein operatør som sjølv har endra teksten, og seinare
+      // trur eit nytt klikk faktisk oppdaterer henne, skal ikkje sitje att med
+      // ei stille uendra, kanskje utdatert side utan å vite det. Åtvarar FØR
+      // noko skjer, og berre når det faktisk finst noko å overskrive -- eit
+      // heilt ferskt/urørt dokument treng ingen åtvaring. Eigne, manuelt
+      // tilføyde avsnitt (source:"manual") vert ALDRI overskrivne/fjerna,
+      // uansett -- sjå mergePrivacyBlocks() sin eigen kommentar.
+      var hasEditedModuleBlocks = (blocks || []).some(function (b) { return b.source === "module" && b.edited; });
+      if (hasEditedModuleBlocks && !confirm("Dette vil overskrive alle avsnitt du har redigert bort fra Vibeverk sitt standardforslag, med fersk standardtekst. Egne, manuelt tilføyde avsnitt blir ikke rørt. Fortsette?")) return;
       getStoreKey("analytics", function (an) {
         // UX-review-funn 2026-08-06 (HIGH): fangar felta PÅ NYTT etter det
         // asynkrone spranget -- ein operatør kan ha rokke å skrive meir i eit
@@ -3999,7 +4091,7 @@ window.VwConsole = (function () {
         captureFieldEdits();
         sc._privacyAn = an;
         var fresh = computeTenantPrivacyBlocks(sc, an);
-        version.bodyBlocks = mergePrivacyBlocks(version.bodyBlocks, fresh);
+        version.bodyBlocks = mergePrivacyBlocks(version.bodyBlocks, fresh, true);
         renderPersonvernDokument(sc, pane, wrap);
       });
     });
@@ -4091,6 +4183,7 @@ window.VwConsole = (function () {
               '</select></div>' +
             C.field({ id: "priv-form-" + f.id + "-retention", label: "Lagringstid", value: form.retention || "", placeholder: "Ikke fastsatt", hint: "Hvor lenge opplysningene beholdes, f.eks. «12 måneder etter avsluttet dialog»." }) +
             C.field({ id: "priv-form-" + f.id + "-recipients", label: "Mottakere", value: form.recipients || "", hint: "Andre som mottar disse opplysningene, f.eks. et bookingsystem eller regnskapsfører. La stå tomt om ingen." }) +
+            '<div style="margin:.4rem 0 .3rem">' + C.button({ label: "Foreslå tekst", variant: "ghost", attrs: 'type="button" data-priv-form-suggest="' + C.esc(f.id) + '"' }) + '</div>' +
             C.richTextField({ id: "priv-form-" + f.id + "-blurb", label: "Korttekst ved skjemaet", value: form.blurbHtml || "" }) +
           '</fieldset>';
         }).join("") +
@@ -4098,6 +4191,29 @@ window.VwConsole = (function () {
       '</form>';
 
     App.ui.bindRichTextFields(pane);
+
+    // "Foreslå tekst" (2026-08-10, brukarønske): genererer eit kort,
+    // redigerbart forslag til "Korttekst ved skjemaet" basert på Formål +
+    // Behandlingsgrunnlag + Lagringstid -- MEDVITE kort, viser til
+    // hovudpersonvernerklæringa for detaljar i staden for å gjenta heile
+    // teksten her (same "eitt utgangspunkt, aldri siste ord"-filosofi som
+    // Standardforslag). Landar rett i tekstboksen (App.ui.setRichTextField),
+    // ikkje eit eige forslags-steg -- operatøren redigerer/lagrar sjølv.
+    pane.querySelectorAll("[data-priv-form-suggest]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var fid = btn.getAttribute("data-priv-form-suggest");
+        var legalBasis = pane.querySelector("#priv-form-" + fid + "-legalbasis").value;
+        if (!legalBasis) { alert("Velg et behandlingsgrunnlag over først, så genereres et forslag ut fra det."); return; }
+        var purpose = pane.querySelector("#priv-form-" + fid + "-purpose").value.trim();
+        var retention = pane.querySelector("#priv-form-" + fid + "-retention").value.trim();
+        var basisText = PRIVACY_LEGAL_BASIS_BLURB[legalBasis] || "";
+        var purposeText = purpose ? " for å " + purpose.charAt(0).toLowerCase() + purpose.slice(1).replace(/\.+$/, "") : "";
+        var text = "Vi behandler opplysningene du oppgir her" + purposeText + (basisText ? ", " + basisText : "") + "." +
+          (retention ? " Vi lagrer opplysningene i " + retention + "." : "") +
+          " Se vår fullstendige personvernerklæring for mer informasjon.";
+        App.ui.setRichTextField(pane, "priv-form-" + fid + "-blurb", "<p>" + C.esc(text) + "</p>");
+      });
+    });
 
     // UX-review-funn 2026-08-06: same "flush ved fanebyte"-mønster som
     // Dokument-fana (sjå renderPersonvern()) -- skrivne-men-ikkje-lagra felt

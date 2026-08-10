@@ -2058,6 +2058,27 @@ window.App = (function () {
     const el = scope.querySelector("#" + id);
     return el ? C.sanitizeRichHtml(el.value) : "";
   }
+  // Motstykket til readRichTextField() -- skriv HTML programmatisk inn i eit
+  // rik-tekst-felt (både den synlege contenteditable-editoren OG det skjulte
+  // feltet bindRichTextFields() les frå), for t.d. eit generert tekstforslag
+  // ein knapp fyller inn. Oppdaterer teiknteljaren same veg som sync() gjer
+  // ved vanleg skriving, slik at han ikkje står att feil inntil neste tastetrykk.
+  function setRichTextField(scope, id, html) {
+    const hidden = scope.querySelector("#" + id);
+    if (!hidden) return;
+    const wrap = hidden.closest("[data-rtfield]");
+    const editor = wrap && wrap.querySelector("[data-rt-editor]");
+    const sanitized = C.sanitizeRichHtml(html || "");
+    hidden.value = sanitized;
+    if (editor) editor.innerHTML = sanitized;
+    const counter = wrap && wrap.querySelector("[data-rtfield-counter]");
+    if (counter && editor) {
+      const max = parseInt(counter.getAttribute("data-max"), 10) || 0;
+      const len = editor.textContent.length;
+      counter.textContent = len + "/" + max + " tegn";
+      counter.classList.toggle("is-over", len > max);
+    }
+  }
   // Plain text (med \n\n for avsnitt) → trygg HTML for å fylle en rik-tekst-editor
   // programmatisk, f.eks. fra et generert forslag.
   function textToRichHtml(text) {
@@ -5637,6 +5658,7 @@ window.App = (function () {
       buildConsentSnapshot: buildConsentSnapshot,     // (container, idPrefix, formType) → { formKey, privacyVersionId, privacyPublishedAt, purposes[] } | null
       bindRichTextFields: bindRichTextFields,        // kobler opp verktøylinje for alle rik-tekst-felt i et område
       readRichTextField: readRichTextField,           // (scope, id) → sanert HTML-streng
+      setRichTextField: setRichTextField,             // (scope, id, html) → skriv inn i editor + skjult felt programmatisk
       textToRichHtml: textToRichHtml,                 // ren tekst (\n\n avsnitt) → trygg HTML, for migrering av gammel plain-text inn i rik-tekst-felt
       bindHelpIcons: bindHelpIcons,                   // C.helpIcon()-klikk-toggle — kall ÉIN gong per side (delegert på document), Web-admin gjer dette sjølv via init()
       bindPasswordToggles: bindPasswordToggles,       // C.passwordToggle()/.pw-field-klikk-toggle — same mønster, kalt frå boot()
