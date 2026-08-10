@@ -376,10 +376,14 @@ nav("#/notes"); nav("#/orgdrift/eiendeler"); nav("#/notes"); nav("#/orgdrift/eie
 // (same load-time-only mønster som CFG.intranettFeatures.orgdrift si eiga
 // gate, linje ~41 i same fil) -- ikkje reaktivt for ei seinare runtime-
 // mutering av window.SITE_CONFIG. Difor: stadfest den ekte standarden
-// (false) direkte i kjeldeteksten til config.js, i staden for å mutere og
-// forvente ein synleg UI-endring som arkitekturen aldri var meint å gje.
-assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
-  "n18: config.js sin ekte, upatcha standard for intranettFeatures.eiendeler er false (av) — testmiljøet over overstyrer dette eksplisitt til true for resten av denne fila sine testar");
+// direkte i kjeldeteksten til config.js, i staden for å mutere og forvente
+// ein synleg UI-endring som arkitekturen aldri var meint å gje.
+// Sett til TRUE ved produksjonsutrulling 2026-08-10 (brukaren ønska å teste
+// fana direkte i produksjon) -- "av"-koden (mount() sin fallback til
+// "people") er framleis dekt, sjå AF-seksjonen sin eigen eksplisitte
+// overstyring.
+assert(/eiendeler:\s*true/.test(fs.readFileSync("config.js", "utf8")),
+  "n18: config.js sin ekte standard for intranettFeatures.eiendeler er true (på i produksjon sidan 2026-08-10) — testmiljøet over overstyrer dette eksplisitt uansett for resten av denne fila sine testar");
 
 /* --- N2c) EIENDELER: BILDER (Fase 3, 2026-08-10) --------------------------
    App.media.put() sin eigen nedskalerings-/opplastingspipeline (FileReader +
@@ -1370,12 +1374,14 @@ nav("#/notes"); nav("#/dashboard");
     "ae4: #/oversikt fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
 })();
 
-/* --- AF) EIENDELER AV: intranettFeatures.eiendeler = false (dagens faktiske
-   standard) skal skjule fana heilt -- OG (Security Auditor-funn LOW,
-   2026-08-10) direkte navigering til #/orgdrift/eiendeler skal falle attende
-   til "people"-fana i staden for å vise Eiendeler-innhaldet likevel. Eigen
-   DOM av same grunn som Z/AC/AE over: EIENDELER_ENABLED vert lest éin gong
-   ved skriptlasting. ------------------------------------------------------ */
+/* --- AF) EIENDELER AV: intranettFeatures.eiendeler = false skal skjule fana
+   heilt -- OG (Security Auditor-funn LOW, 2026-08-10) direkte navigering til
+   #/orgdrift/eiendeler skal falle attende til "people"-fana i staden for å
+   vise Eiendeler-innhaldet likevel. Eigen DOM av same grunn som Z/AC/AE over:
+   EIENDELER_ENABLED vert lest éin gong ved skriptlasting -- difor ei
+   eksplisitt overstyring rett etter config.js er lasta (sjå under), ikkje ein
+   ekte upatcha standard (den er no TRUE, sett ved produksjonsutrulling
+   2026-08-10). --------------------------------------------------------- */
 (function () {
   const dom7 = new JSDOM(html, {
     runScripts: "outside-only", pretendToBeVisual: true,
@@ -1394,9 +1400,17 @@ nav("#/notes"); nav("#/dashboard");
   window7.URL.revokeObjectURL = window7.URL.revokeObjectURL || (() => {});
   window7.confirm = () => true;
 
-  // Ingen intranettFeatures-patching -- ekte, upatcha standard (eiendeler: false).
+  // config.js sin faktiske standard vart sett til TRUE ved produksjonsutrulling
+  // 2026-08-10 (brukaren ønska å teste fana direkte i produksjon, ikkje berre
+  // via ei mellombels flagg-overstyring). Denne seksjonen testar likevel
+  // "av"-koden (Security Auditor-funn LOW: direkte navigering skal falle
+  // attende til "people") -- overstyrer difor eksplisitt RETT ETTER config.js
+  // er lasta, FØR resten av skripta les CFG.intranettFeatures (som framleis
+  // berre skjer éin gong ved skriptlasting, sjå kommentaren over).
+  window7.eval(fs.readFileSync("config.js", "utf8"));
+  window7.eval('window.SITE_CONFIG.intranettFeatures.eiendeler = false;');
   [
-    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
     "workspace/workspace-core.js",
     "workspace/module-orgdrift.js"
   ].forEach(f => window7.eval(fs.readFileSync(f, "utf8")));
@@ -1412,7 +1426,7 @@ nav("#/notes"); nav("#/dashboard");
   }
 
   assert(window7.SITE_CONFIG.intranettFeatures.eiendeler === false,
-    "af1: føresetnad for denne seksjonen -- config.js sin ekte standard har eiendeler: false");
+    "af1: føresetnad for denne seksjonen -- eksplisitt overstyrt til av (produksjonens ekte standard er no true, sjå config.js)");
   nav7("#/notes"); nav7("#/orgdrift");
   assert(!doc7.querySelector('[data-od-tab="eiendeler"]'),
     "af2: Eiendeler-fana finst ikkje i fane-navigasjonen når funksjonen er av");
