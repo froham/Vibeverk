@@ -478,6 +478,96 @@ assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
   App.store.set("wsp-eiendeler-assets", []);
   App.store.set("wsp-eiendeler-categories", []);
   App.store.set("wsp-eiendeler-history", []);
+  App.store.set("wsp-eiendeler-valuations", []);
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+})();
+
+/* --- N2d) EIENDELER: VERDIBEREGNING (Fase 4, 2026-08-10) ------------------
+   verdi = kjøpspris × (1 − kategoriens rate)^alder. Testar bruker ein
+   kjøpsdato langt tilbake i tid (10 år) slik at det beregna resultatet blir
+   stabilt og godt under kjøpsprisen, uavhengig av nøyaktig kva klokkeslett
+   testen køyrer på (ingen brøkdel-av-eit-år-uvisse ved grensa mellom to
+   heiltalsår). */
+(function () {
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+  var TEN_YEARS_AGO = new Date(Date.now() - 10 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m1 = doc.querySelector("[data-od-modal]");
+  m1.querySelector('[name="name"]').value = "Bærbar PC";
+  m1.querySelector('[name="categoryName"]').value = "IT-utstyr";
+  m1.querySelector('[name="acquisitionDate"]').value = TEN_YEARS_AGO;
+  m1.querySelector('[name="purchasePrice"]').value = "20000";
+  m1.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  // Auto-oppretta kategori («IT-utstyr») bruker standardraten frå migrasjonen
+  // (18 %, sjå createAssetCategory()) -- ingen grunn til å overstyre han her,
+  // held testen uavhengig av modulen sin (elles ikkje-eksponerte) in-memory
+  // kategori-cache.
+
+  doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var detail1 = doc.querySelector("[data-od-modal]");
+  assert(/Ikke vurdert/.test(detail1.textContent), "n33: nyopprettet eiendel har ingen estimert verdi før noen beregning er gjort");
+  assert(!!detail1.querySelector("[data-ei-recalc-one]"), "n34: «Beregn verdi på nytt»-knappen finnes for en eid eiendel med kjøpsdato+pris+kategori");
+
+  detail1.querySelector("[data-ei-recalc-one]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var proposal1 = detail1.querySelector("[data-ei-valuation-proposal]");
+  // 20000 × 0,82^10 ≈ 2749 -> avrunda til næraste hundre = 2700
+  assert(/2\s?700/.test(proposal1.textContent.replace(/ /g, " ")), "n35: forslått verdi vises korrekt beregnet (20 000 × 0,82^10 ≈ 2 700 kr): " + proposal1.textContent);
+  assert(/ikke en AI-vurdering|ikke.*markedspris|regnskapsmessig/i.test(proposal1.textContent), "n36: forslaget er tydelig merket som en enkel kalkulasjon, ikke AI/markedspris/regnskapsmessig avskrivning");
+  assert(App.store.get("wsp-eiendeler-assets", [])[0].estimated_value == null, "n37: ingenting lagres før forslaget er eksplisitt godkjent");
+
+  proposal1.querySelector("[data-ei-valuation-approve]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var afterApprove = App.store.get("wsp-eiendeler-assets", []).filter(function (a) { return a.name === "Bærbar PC"; })[0];
+  assert(Number(afterApprove.estimated_value) === 2700, "n38: godkjent forslag lagres som eiendelens estimerte verdi: " + JSON.stringify(afterApprove));
+  var valuations = App.store.get("wsp-eiendeler-valuations", []);
+  assert(valuations.length === 1 && Number(valuations[0].value) === 2700 && valuations[0].method === "category_depreciation",
+    "n39: godkjenningen skriver en verdiberegningshistorikk-rad: " + JSON.stringify(valuations));
+
+  // Eiendel nummer to: eid, men mangler kjøpsdato -- kan ikke beregnes.
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m2 = doc.querySelector("[data-od-modal]");
+  m2.querySelector('[name="name"]').value = "Kaffemaskin";
+  m2.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var card2 = Array.prototype.slice.call(doc.querySelectorAll("[data-ei-open]")).filter(function (el) { return /Kaffemaskin/.test(el.textContent); })[0];
+  card2.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var detail2 = doc.querySelector("[data-od-modal]");
+  detail2.querySelector("[data-ei-recalc-one]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(/krever kjøpsdato/i.test(detail2.querySelector("[data-ei-valuation-proposal]").textContent),
+    "n40: mangler kjøpsdato/pris/kategori gir en forklarende melding i stedet for et (feilaktig) tall");
+  doc.querySelector("[data-od-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  // Samla rekalkulering: Bærbar PC har alt riktig verdi (2700, uendret sidan
+  // klokka knapt har rørt seg mellom dei to utrekningane over) -- Kaffemaskin
+  // kan framleis ikkje reknast. Legg til ein TREDJE eiendel med feil/gamal
+  // verdi for å stadfeste at samla rekalkulering faktisk oppdaterer og
+  // historikkfører EI eiendel som treng det.
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m3 = doc.querySelector("[data-od-modal]");
+  m3.querySelector('[name="name"]').value = "Skjerm";
+  m3.querySelector('[name="categoryName"]').value = "IT-utstyr";
+  m3.querySelector('[name="acquisitionDate"]').value = TEN_YEARS_AGO;
+  m3.querySelector('[name="purchasePrice"]').value = "5000";
+  m3.querySelector('[name="estimatedValue"]').value = "5000"; // urealistisk gamal/feil verdi -- skal endrast av rekalkulering
+  m3.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  var savedConfirm = window.confirm;
+  window.confirm = () => true;
+  doc.querySelector("[data-ei-recalc-all]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  window.confirm = savedConfirm;
+
+  var skjerm = App.store.get("wsp-eiendeler-assets", []).filter(function (a) { return a.name === "Skjerm"; })[0];
+  // 5000 × 0,82^10 ≈ 687 -> avrunda til næraste hundre = 700
+  assert(Number(skjerm.estimated_value) === 700, "n41: samlet rekalkulering oppdaterer en eiendel med utdatert verdi: " + JSON.stringify(skjerm));
+  var valuationsAfterBulk = App.store.get("wsp-eiendeler-valuations", []);
+  assert(valuationsAfterBulk.length === 2, "n42: samlet rekalkulering historikkfører kun eiendelen som faktisk endret seg (Bærbar PC, uendret, fikk ingen ny rad): " + JSON.stringify(valuationsAfterBulk));
+  var statusAfterBulk = doc.querySelector("[data-ei-quick-status]");
+  assert(!!statusAfterBulk && /Oppdaterte verdien for 1 eiendel/.test(statusAfterBulk.textContent),
+    "n43: samlet rekalkulering viser et sammendrag inline (ingen alert())");
+
+  App.store.set("wsp-eiendeler-assets", []);
+  App.store.set("wsp-eiendeler-categories", []);
+  App.store.set("wsp-eiendeler-history", []);
+  App.store.set("wsp-eiendeler-valuations", []);
   nav("#/notes"); nav("#/orgdrift/eiendeler");
 })();
 

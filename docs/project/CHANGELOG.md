@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.113.0 — 2026-08-10
+
+**Eiendeler (Fase 4 av 5: verdiberegning).** Enkel, tydelig merket kalkulasjon -- ikke AI, markedspris eller regnskapsmessig avskrivning (samme ansvarsfraskrivelse som kildeprototypen selv brukte).
+
+- Ny tabell `asset_valuation_history` (migrasjon `20260810104844_eiendeler_valuation_history.sql`): éin rad per godkjent verdiestimering (`value`, `valued_on`, `method` DEFAULT `'category_depreciation'`, `assumptions jsonb`, `approved_by`). Same admin-only to-policy-RLS-mønster og `ON DELETE CASCADE` som resten av Eiendeler.
+- Formel: `verdi = kjøpspris × (1 − kategoriens årlige verdifallsats)^alder`, avrunda til næraste hundrelapp. Krev eid eiendel med kjøpsdato, kjøpspris og ein kategori med verdifallsats -- viser ei forklarande melding i staden for eit (feilaktig) tal når noko manglar.
+- **Enkeltvis** "Beregn verdi på nytt" (detaljvisning): viser forslaget FØR noko lagres, krev eksplisitt "Bruk denne verdien" -- ingen automatisk lagring.
+- **Samla** "Rekalkuler verdi i dag" (verktøylinja for Eiendeler-fana): éin Tier B-`confirm()` for heile operasjonen, oppdaterer og historikkfører kun eiendelene der verdien faktisk endrer seg (ikke støy i historikken for uendrede verdier). Sammendrag vises inline, ikke som `alert()`.
+- `node test-workspace.js`: 261/0 (11 nye assertions: enkelt-godkjenning krever eksplisitt godkjenning før lagring, manglende data gir forklarende melding, samlet rekalkulering oppdaterer kun det som endret seg og historikkfører riktig antall rader). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendret.
+- Cache-bust: `module-orgdrift.js?v=8`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som dei føregåande Eiendeler-oppføringane sine eigne fotnotar).
+- **Ikke deployert.** Neste steg (Fase 5, siste): OCR + Excel-import.
+
+---
+
 ## 0.112.0 — 2026-08-10
 
 **Eiendeler (Fase 3 av 5: bilder).** Kobler den delte `App.media` (core.js sin `Media`, eksponert som `App.media`) inn i Eiendeler -- ingen ny bildepipeline, ingen ny bucket, direkte gjenbruk.

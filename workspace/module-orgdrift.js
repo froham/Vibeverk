@@ -296,7 +296,10 @@
       ".ei-image-field__actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}",
       // .ei-visual sjølv fekk position:relative lagt til øvst i denne lista
       // (Fase 3) -- treng ein eigen posisjoneringskontekst for denne knappen.
-      ".ei-visual__upload{position:absolute;bottom:.5rem;left:50%;transform:translateX(-50%)}"
+      ".ei-visual__upload{position:absolute;bottom:.5rem;left:50%;transform:translateX(-50%)}",
+      /* --- Eiendeler, Fase 4: verdiberegning ---------------------------------- */
+      ".ei-valuation-proposal{margin-top:.8rem;padding:.7rem .8rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-alt,rgba(148,163,184,.08))}",
+      ".ei-valuation-proposal p{margin:0 0 .4rem}"
     ].join("");
     document.head.appendChild(s);
   }
@@ -313,7 +316,7 @@
       stats(data) +
       tabs(tab) +
       '<div class="od-help">' + esc(TAB_HELP[tab] || "") + (isAdmin ? "" : ' Kun lesetilgang for din rolle.') + '</div>' +
-      tools(view, q, isAdmin) +
+      tools(view, q, isAdmin, tab) +
       '<div data-od-content>' + content(tab, data, q || "", view, isAdmin) + '</div>';
 
     bind(root, tab, isAdmin);
@@ -349,13 +352,18 @@
     }).join("") + '</div>';
   }
 
-  function tools(view, q, isAdmin) {
+  function tools(view, q, isAdmin, tab) {
     return '<div class="od-tools">' +
       '<input class="od-search" data-od-search type="search" placeholder="Søk eller bruk felt: verdi, f.eks. Avdeling: drift" value="' + esc(q || "") + '">' +
       '<div class="od-view-toggle">' +
         '<button data-od-view="cards" class="' + (view === "cards" ? "is-active" : "") + '">Kort</button>' +
         '<button data-od-view="list" class="' + (view === "list" ? "is-active" : "") + '">Liste</button>' +
       '</div>' +
+      // Fase 4: berre Eiendeler-fana har noko å rekalkulere -- knappen finst
+      // difor ikkje i den delte tools()-baren sin generelle form, berre lagt
+      // til for denne eine fana (same idé som EIENDELER-seksjonen elles: eigne
+      // funksjonar for denne fana, urørt delt kode for dei fem andre).
+      (isAdmin && tab === "eiendeler" ? '<button data-ei-recalc-all class="od-view-toggle-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Rekalkuler verdi i dag</button>' : '') +
       (isAdmin ? '<button data-od-new class="od-view-toggle-btn od-new-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Ny</button>' : '') +
     '</div>';
   }
@@ -788,6 +796,14 @@
         if (!isAdminRole()) return; // «Ny» skal aldri fungere for editor/member, sjølv ved direkte kall
         if (tab === "eiendeler") openEiendelerEditor(root, null);
         else openEditor(root, tab, null);
+      });
+    }
+
+    var recalcAllBtn = root.querySelector("[data-ei-recalc-all]");
+    if (recalcAllBtn) {
+      recalcAllBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        recalculateAllEiendelerValues(root);
       });
     }
 
@@ -1289,9 +1305,10 @@
      re-rendrar berre [data-od-content] når svaret kjem (same mønster som
      søkefeltet sin eigen handterar over).
      ====================================================================== */
-  var EI_STORE_KEY            = "wsp-eiendeler-assets";
-  var EI_CATEGORIES_STORE_KEY = "wsp-eiendeler-categories";
-  var EI_HISTORY_STORE_KEY    = "wsp-eiendeler-history";
+  var EI_STORE_KEY             = "wsp-eiendeler-assets";
+  var EI_CATEGORIES_STORE_KEY  = "wsp-eiendeler-categories";
+  var EI_HISTORY_STORE_KEY     = "wsp-eiendeler-history";
+  var EI_VALUATION_STORE_KEY   = "wsp-eiendeler-valuations";
 
   var EI_OWNERSHIP_LABELS = { owned: "Eid", leased: "Leid", borrowed: "Lånt" };
   var EI_STATUS_LABELS    = { in_use: "I bruk", in_storage: "På lager", in_service: "Til service" };
@@ -1304,6 +1321,9 @@
   // _eiAssets, sidan detaljvisinga (den einaste som treng han) berre er
   // nåbar etter at _eiAssets alt har gått frå null til ei liste.
   var _eiHistory    = [];
+  // Verdiberegningshistorikk (Fase 4) -- same "henta saman med resten"-mønster
+  // som _eiHistory over.
+  var _eiValuations = [];
   var _eiLoadError  = null;
   var _eiLoading    = false;
 
@@ -1322,10 +1342,11 @@
       _eiCategories = App.store.get(EI_CATEGORIES_STORE_KEY, []) || [];
       _eiAssets     = App.store.get(EI_STORE_KEY, []) || [];
       _eiHistory    = App.store.get(EI_HISTORY_STORE_KEY, []) || [];
+      _eiValuations = App.store.get(EI_VALUATION_STORE_KEY, []) || [];
       cb(null);
       return;
     }
-    // Sekvensielt, ikkje parallelt -- tre små spørringar, enklare å resonnere
+    // Sekvensielt, ikkje parallelt -- fire små spørringar, enklare å resonnere
     // om enn ein pending-teljar for eit marginalt tidsgevinst.
     _sb.from("asset_categories").select("*").order("name").then(function (catRes) {
       if (catRes.error) { cb(catRes.error); return; }
@@ -1333,10 +1354,14 @@
         if (assetRes.error) { cb(assetRes.error); return; }
         _sb.from("asset_ownership_history").select("*").order("changed_on", { ascending: false }).then(function (histRes) {
           if (histRes.error) { cb(histRes.error); return; }
-          _eiCategories = catRes.data || [];
-          _eiAssets     = assetRes.data || [];
-          _eiHistory    = histRes.data || [];
-          cb(null);
+          _sb.from("asset_valuation_history").select("*").order("valued_on", { ascending: false }).then(function (valRes) {
+            if (valRes.error) { cb(valRes.error); return; }
+            _eiCategories = catRes.data || [];
+            _eiAssets     = assetRes.data || [];
+            _eiHistory    = histRes.data || [];
+            _eiValuations = valRes.data || [];
+            cb(null);
+          });
         });
       });
     });
@@ -1643,10 +1668,12 @@
     if (!_sb) {
       // Utan Supabase finst det ingen ON DELETE CASCADE -- fjern historikken
       // for hand, elles vert han verande att som foreldrelause rader i
-      // App.store (den ekte asset_ownership_history-tabellen kaskaderer
-      // dette sjølv, sjå migrasjonen).
+      // App.store (dei ekte asset_ownership_history-/asset_valuation_history-
+      // tabellane kaskaderer dette sjølv, sjå migrasjonane).
       _eiHistory = (_eiHistory || []).filter(function (h) { return h.asset_id !== id; });
+      _eiValuations = (_eiValuations || []).filter(function (v) { return v.asset_id !== id; });
       App.store.set(EI_HISTORY_STORE_KEY, _eiHistory);
+      App.store.set(EI_VALUATION_STORE_KEY, _eiValuations);
       App.store.set(EI_STORE_KEY, _eiAssets);
       cb(null);
       return;
@@ -1690,6 +1717,105 @@
       if (r.error) { cb(r.error); return; }
       _eiHistory.push(r.data);
       cb(null);
+    });
+  }
+
+  // Fase 4 (2026-08-10): enkel, tydeleg merkt kalkulasjon -- IKKJE AI,
+  // marknadspris eller rekneskapsmessig avskriving (same ansvarsfråskriving
+  // som kjeldeprototypen sjølv gjorde). Returnerer null når det manglar nok
+  // data til å rekne (ikkje Eid, eller kjøpsdato/kjøpspris/kategori manglar)
+  // -- kallar sjølve avgjer korleis dét skal visast.
+  var EI_MS_PER_YEAR = 365.25 * 24 * 3600 * 1000;
+  function eiendelerCalculateValue(asset, category) {
+    if (!asset || asset.ownership !== "owned" || asset.purchase_price == null || !asset.acquisition_date || !category) return null;
+    var rate = Number(category.annual_depreciation_rate);
+    if (!(rate >= 0 && rate <= 1)) return null;
+    var acquired = new Date(asset.acquisition_date);
+    if (isNaN(acquired.getTime())) return null;
+    var ageYears = Math.max(0, (Date.now() - acquired.getTime()) / EI_MS_PER_YEAR);
+    var raw = Number(asset.purchase_price) * Math.pow(1 - rate, ageYears);
+    var value = Math.max(0, Math.round(raw / 100) * 100);
+    return { value: value, ageYears: ageYears, rate: rate };
+  }
+
+  // Oppdaterer sjølve eiendelen OG skriv ei godkjend historikkrad -- kalla
+  // BÅDE frå enkelt-godkjenning ("Bruk denne verdien" i detaljvisinga) og
+  // frå samla rekalkulering (eitt kall per endra eiendel). `cb` er alltid
+  // (err) -- ingen suksessdata treng leverast attende her.
+  function applyEiendelerValuation(assetId, value, meta, cb) {
+    var valuedOn = new Date().toISOString().slice(0, 10);
+    updateAsset(assetId, { estimated_value: value, estimated_value_at: valuedOn }, function (err) {
+      if (err) { cb(err); return; }
+      var row = { asset_id: assetId, value: value, valued_on: valuedOn, method: meta.method, assumptions: meta.assumptions };
+      if (!_sb) {
+        row.id = uid("eiv");
+        row.created_at = new Date().toISOString();
+        _eiValuations.push(row);
+        App.store.set(EI_VALUATION_STORE_KEY, _eiValuations);
+        cb(null);
+        return;
+      }
+      var ctx = Intranet.getContext();
+      _sb.from("asset_valuation_history").insert(Object.assign({}, row, { approved_by: ctx && ctx.userId })).select().single().then(function (r) {
+        if (r.error) { cb(r.error); return; }
+        _eiValuations.push(r.data);
+        cb(null);
+      });
+    });
+  }
+
+  // Samla "Rekalkuler verdi i dag" -- éin confirm() for HEILE operasjonen
+  // (ikkje éin per eiendel), skriv historikk berre for eiendelar der verdien
+  // FAKTISK endrar seg (unngår støy i historikken for uendra verdiar).
+  function recalculateAllEiendelerValues(root) {
+    var candidates = (_eiAssets || [])
+      .map(function (a) {
+        var category = _eiCategories.filter(function (c) { return c.id === a.category_id; })[0];
+        var calc = eiendelerCalculateValue(a, category);
+        return calc ? { asset: a, calc: calc } : null;
+      })
+      .filter(Boolean);
+
+    var statusEl = root.querySelector("[data-ei-quick-status]");
+    if (!candidates.length) {
+      if (statusEl) { statusEl.textContent = "Ingen eide eiendeler har nok informasjon (kjøpsdato, kjøpspris og kategori med verdifallsats) til å beregne verdi."; statusEl.className = "form__status"; }
+      return;
+    }
+    if (!confirm("Rekalkulere verdi i dag for " + candidates.length + " eide eiendeler med kjøpsdato og kategori registrert? " +
+        "Dette oppdaterer estimert verdi og legges til i historikken for hver eiendel som endres.")) return;
+
+    var changing = candidates.filter(function (x) {
+      return x.asset.estimated_value == null || Number(x.asset.estimated_value) !== x.calc.value;
+    });
+    if (!changing.length) {
+      if (statusEl) { statusEl.textContent = "Ingen av de " + candidates.length + " beregnede verdiene er endret siden sist."; statusEl.className = "form__status"; }
+      return;
+    }
+
+    var remaining = changing.length;
+    var failed = [];
+    changing.forEach(function (x) {
+      applyEiendelerValuation(x.asset.id, x.calc.value, {
+        method: "category_depreciation",
+        assumptions: { age_years: Number(x.calc.ageYears.toFixed(2)), rate: x.calc.rate, purchase_price: x.asset.purchase_price }
+      }, function (err) {
+        remaining--;
+        if (err) failed.push(x.asset.name);
+        if (remaining === 0) {
+          draw(root, "eiendeler", "");
+          var statusEl2 = root.querySelector("[data-ei-quick-status]");
+          if (statusEl2) {
+            if (failed.length) {
+              statusEl2.textContent = "Oppdaterte " + (changing.length - failed.length) + " av " + changing.length + " eiendeler. Feilet for: " + failed.join(", ") + ".";
+              statusEl2.className = "form__status is-err";
+            } else {
+              statusEl2.textContent = "Oppdaterte verdien for " + changing.length + " eiendeler.";
+              statusEl2.className = "form__status";
+            }
+          }
+          if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Rekalkulerte verdi for " + (changing.length - failed.length) + " eiendeler" });
+        }
+      });
     });
   }
 
@@ -1870,7 +1996,8 @@
         (a.ownership === "owned"
           ? '<div><strong>Kjøpsdato:</strong> ' + esc(eiendelerDateNo(a.acquisition_date) || "Ikke registrert") + '</div>' +
             '<div><strong>Kjøpspris:</strong> ' + (a.purchase_price != null ? eiKr(a.purchase_price) : "Ikke registrert") + '</div>' +
-            '<div><strong>Estimert verdi i dag:</strong> ' + (a.estimated_value != null ? eiKr(a.estimated_value) : "Ikke vurdert") + '</div>'
+            '<div><strong>Estimert verdi i dag:</strong> ' + (a.estimated_value != null ? eiKr(a.estimated_value) : "Ikke vurdert") +
+              (a.estimated_value != null && a.estimated_value_at ? ' <span class="od-muted">(beregnet ' + esc(eiendelerDateNo(a.estimated_value_at)) + ')</span>' : '') + '</div>'
           : '<div><strong>' + (a.ownership === "leased" ? "Leverandør/utleier" : "Eier/utlåner") + ':</strong> ' + esc(a.supplier || "Ikke registrert") + '</div>' +
             (a.agreement_number ? '<div><strong>Avtalenummer:</strong> ' + esc(a.agreement_number) + '</div>' : "") +
             (a.ownership === "leased" ? '<div><strong>Leie per måned:</strong> ' + eiKr(a.rent_per_month) + '</div>' : "") +
@@ -1882,8 +2009,10 @@
         '<div><strong>Notat:</strong> ' + richValue(a.note) + '</div>' +
       '</div>' +
       eiendelerHistoryHtml(a.id) +
+      (isAdmin && a.ownership === "owned" ? '<div data-ei-valuation-proposal></div>' : '') +
       '<div class="od-actions">' +
         (isAdmin ? '<button class="btn btn--primary btn--sm" data-ei-modal-edit="' + esc(a.id) + '" type="button">Rediger</button>' : "") +
+        (isAdmin && a.ownership === "owned" ? '<button class="btn btn--ghost btn--sm" data-ei-recalc-one="' + esc(a.id) + '" type="button">Beregn verdi på nytt</button>' : "") +
         (isAdmin ? '<button class="btn btn--danger btn--sm" data-ei-modal-del="' + esc(a.id) + '" type="button">Slett</button>' : "") +
         '<button class="btn btn--ghost btn--sm" data-od-modal-close type="button">Lukk</button>' +
       '</div>' +
@@ -1914,6 +2043,45 @@
         if (!isAdminRole()) return;
         closeModal();
         openEiendelerEditor(root, a.id);
+      });
+      var recalcOneBtn = modal.querySelector("[data-ei-recalc-one]");
+      if (recalcOneBtn) recalcOneBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        var proposalEl = modal.querySelector("[data-ei-valuation-proposal]");
+        var category = _eiCategories.filter(function (c) { return c.id === a.category_id; })[0];
+        var calc = eiendelerCalculateValue(a, category);
+        if (!calc) {
+          proposalEl.innerHTML = '<p class="od-help">Kan ikke beregne verdi: krever kjøpsdato, kjøpspris og en kategori med verdifallsats registrert.</p>';
+          return;
+        }
+        // Krev eksplisitt godkjenning FØR lagring (brukarvedtak/plan) --
+        // forslaget vert vist, ingenting lagra før "Bruk denne verdien".
+        proposalEl.innerHTML =
+          '<div class="ei-valuation-proposal">' +
+            '<p><strong>Foreslått verdi: ' + eiKr(calc.value) + '</strong></p>' +
+            '<p class="od-help">Enkel kalkulasjon: kjøpspris × (1 − ' + Math.round(calc.rate * 100) + ' % årlig verdifall) opphøyd i eiendelens alder (' + calc.ageYears.toFixed(1) + ' år). Dette er ikke en AI-vurdering, markedspris eller regnskapsmessig avskrivning.</p>' +
+            '<div class="od-actions">' +
+              '<button class="btn btn--primary btn--sm" data-ei-valuation-approve type="button">Bruk denne verdien</button>' +
+              '<button class="btn btn--ghost btn--sm" data-ei-valuation-dismiss type="button">Avbryt</button>' +
+            '</div>' +
+          '</div>';
+        proposalEl.querySelector("[data-ei-valuation-dismiss]").addEventListener("click", function () { proposalEl.innerHTML = ""; });
+        proposalEl.querySelector("[data-ei-valuation-approve]").addEventListener("click", function () {
+          applyEiendelerValuation(a.id, calc.value, {
+            method: "category_depreciation",
+            assumptions: { age_years: Number(calc.ageYears.toFixed(2)), rate: calc.rate, purchase_price: a.purchase_price }
+          }, function (err) {
+            if (err) {
+              var statusEl = modal.querySelector("[data-ei-detail-status]");
+              if (statusEl) { statusEl.textContent = "Kunne ikke lagre ny verdi: " + (err.message || "ukjent feil") + ". Prøv igjen."; statusEl.className = "form__status is-err"; }
+              return;
+            }
+            closeModal();
+            draw(root, "eiendeler", "");
+            openEiendelerDetail(root, a.id);
+            if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Beregnet ny verdi for: " + a.name });
+          });
+        });
       });
       var delBtn = modal.querySelector("[data-ei-modal-del]");
       if (delBtn) delBtn.addEventListener("click", function () {
