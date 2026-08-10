@@ -73,7 +73,7 @@ window.confirm = () => true;
     src = src.replace(/intranettFeatures:\s*\{[^}]*\}/s, `intranettFeatures: {
     announcements: true, notes: true, orgdrift: true, links: true,
     crm: true, booking: true, quote: true, contact: true,
-    kb: true, mediaInternal: true
+    kb: true, mediaInternal: true, eiendeler: true
   }`);
   }
   window.eval(src);
@@ -285,6 +285,307 @@ assert(!!doc.querySelector("#orgdrift-root"), "n1: orgdrift-root");
 assert(!!doc.querySelector(".od-tabs"),       "n2: fane-navigasjon");
 const orgData = App.store.get("wsp-orgdrift",{});
 assert(Array.isArray(orgData.people)&&orgData.people.length>0, "n3: people-data");
+
+/* --- N2) EIENDELER (fane i Organisasjon & drift, Fase 1, 2026-08-10) ------
+   App.supabase er ikkje konfigurert i dette testmiljøet (ingen window.supabase-
+   CDN-stub), så _sb i module-orgdrift.js er falsy -- dette øver difor den ekte
+   App.store-fallback-koden, ikkje ein mocka Supabase-klient. */
+nav("#/notes");
+nav("#/orgdrift/eiendeler");
+assert(!!doc.querySelector('[data-od-tab="eiendeler"]'), "n4: Eiendeler-fana finst i fane-navigasjonen");
+assert(doc.querySelector('[data-od-tab="eiendeler"]').classList.contains("is-active"), "n5: Eiendeler-fana er aktiv etter direkte lenke (#/orgdrift/eiendeler)");
+assert(/Ingen eiendeler registrert/.test(doc.querySelector("[data-od-content]").textContent),
+  "n6: tom tilstand vises, ingen dummydata (ulikt dei andre fem fanene sin defaults())");
+
+doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiModal = doc.querySelector("[data-od-modal]");
+assert(!!eiModal, "n7: «Ny eiendel»-dialog opnar seg");
+eiModal.querySelector('[name="name"]').value = "MacBook Pro 14";
+eiModal.querySelector('[name="categoryName"]').value = "Datautstyr";
+eiModal.querySelector('[name="acquisitionDate"]').value = "2026-01-15";
+eiModal.querySelector('[name="purchasePrice"]').value = "28990";
+eiModal.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!doc.querySelector("[data-od-modal]"), "n8: dialogen lukkes etter lagring");
+var eiAfterCreate = App.store.get("wsp-eiendeler-assets", []);
+assert(eiAfterCreate.length === 1 && eiAfterCreate[0].name === "MacBook Pro 14" && eiAfterCreate[0].ownership === "owned",
+  "n9: eiendelen er lagret: " + JSON.stringify(eiAfterCreate));
+assert(App.store.get("wsp-eiendeler-categories", []).some(function (c) { return c.name === "Datautstyr"; }),
+  "n10: ny kategori («Datautstyr») ble opprettet automatisk siden den ikke fantes fra før");
+assert(/MacBook Pro 14/.test(doc.querySelector("[data-od-content]").textContent), "n11: den nye eiendelen vises i listen");
+
+var eiCard = doc.querySelector("[data-ei-open]");
+eiCard.dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiDetail = doc.querySelector("[data-od-modal]");
+assert(!!eiDetail, "n12: detaljvisning åpnes ved klikk på kort");
+eiDetail.querySelector("[data-ei-modal-edit]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiEditModal = doc.querySelector("[data-od-modal]");
+eiEditModal.querySelector('[data-ei-ownership="leased"]').dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!!eiEditModal.querySelector('[name="rentPerMonth"]'), "n13: skjemaet bytter til leie-felt når eierskap velges til Leid, uten å lukke/åpne dialogen på nytt");
+eiEditModal.querySelector('[name="rentPerMonth"]').value = "500";
+eiEditModal.querySelector('[name="supplier"]').value = "Leverandør AS";
+eiEditModal.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiAfterEdit = App.store.get("wsp-eiendeler-assets", []);
+assert(eiAfterEdit[0].ownership === "leased" && Number(eiAfterEdit[0].rent_per_month) === 500,
+  "n14: eierskap og felt oppdateres korrekt ved redigering: " + JSON.stringify(eiAfterEdit[0]));
+assert(eiAfterEdit[0].purchase_price === null, "n15: eid-spesifikke felt nulles ut når eierskap endres bort fra Eid");
+
+/* --- N2b) EIENDELER: EIERSKAPSHISTORIKK (Fase 2, 2026-08-10) --------------
+   Redigeringa over (n13-n15) endra allerede eierskap Eid -> Leid, med
+   window.confirm mocka til alltid true (linje ~47) -- ei historikkrad skal
+   difor alt vere skrevet. */
+var eiHistAfterChange = App.store.get("wsp-eiendeler-history", []);
+assert(eiHistAfterChange.length === 1 &&
+  eiHistAfterChange[0].from_ownership === "owned" && eiHistAfterChange[0].to_ownership === "leased",
+  "n15b: eierskapsbytte (Eid -> Leid) skriver en historikkrad: " + JSON.stringify(eiHistAfterChange));
+
+doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(/Eierskapshistorikk/.test(doc.querySelector("[data-od-modal]").textContent) &&
+  /Eid\s*→\s*Leid/.test(doc.querySelector("[data-od-modal]").textContent.replace(/\s+/g, " ")),
+  "n15c: detaljvisningen viser eierskapshistorikken (Eid → Leid)");
+doc.querySelector("[data-od-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+// Bytt tilbake til Eid uten å bekrefte (confirm = false) -- lagringen skal
+// avbrytes i sin helhet (ikke bare historikkskrivingen), eierskapet forblir Leid.
+nav("#/notes"); nav("#/orgdrift/eiendeler");
+var savedConfirm = window.confirm;
+window.confirm = () => false;
+doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+doc.querySelector("[data-ei-modal-edit]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiEditModal2 = doc.querySelector("[data-od-modal]");
+eiEditModal2.querySelector('[data-ei-ownership="owned"]').dispatchEvent(new window.Event("click", { bubbles: true }));
+eiEditModal2.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+window.confirm = savedConfirm;
+assert(!!doc.querySelector("[data-od-modal]"), "n15d: avvist eierskapsbytte-bekreftelse lar dialogen forbli åpen");
+assert(App.store.get("wsp-eiendeler-assets", [])[0].ownership === "leased",
+  "n15e: avvist bekreftelse endrer ikke eierskapet (forblir Leid, ingen ny historikkrad)");
+assert(App.store.get("wsp-eiendeler-history", []).length === 1, "n15f: avvist bekreftelse skriver ingen ekstra historikkrad");
+doc.querySelector("[data-ei-cancel]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+doc.querySelector("[data-ei-modal-del]").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(App.store.get("wsp-eiendeler-assets", []).length === 0, "n16: eiendelen er slettet");
+assert(App.store.get("wsp-eiendeler-history", []).length === 0, "n16b: tilhørende eierskapshistorikk slettes med eiendelen (App.store-fallback speiler ON DELETE CASCADE)");
+
+window.sessionStorage.setItem(_NS + ":admin", "editor");
+nav("#/notes"); nav("#/orgdrift/eiendeler"); nav("#/notes"); nav("#/orgdrift/eiendeler");
+assert(!doc.querySelector("[data-od-new]"), "n17: editor-rolle ser ikke «Ny»-knappen i Eiendeler (samme admin-only-regel som resten av «Organisasjon & drift», brukarvedtak 2026-08-10)");
+window.sessionStorage.setItem(_NS + ":admin", "admin");
+nav("#/notes"); nav("#/orgdrift/eiendeler"); nav("#/notes"); nav("#/orgdrift/eiendeler");
+
+// EIENDELER_ENABLED (module-orgdrift.js) vert lest ÉIN gong ved modul-lasting
+// (same load-time-only mønster som CFG.intranettFeatures.orgdrift si eiga
+// gate, linje ~41 i same fil) -- ikkje reaktivt for ei seinare runtime-
+// mutering av window.SITE_CONFIG. Difor: stadfest den ekte standarden
+// (false) direkte i kjeldeteksten til config.js, i staden for å mutere og
+// forvente ein synleg UI-endring som arkitekturen aldri var meint å gje.
+assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
+  "n18: config.js sin ekte, upatcha standard for intranettFeatures.eiendeler er false (av) — testmiljøet over overstyrer dette eksplisitt til true for resten av denne fila sine testar");
+
+/* --- N2c) EIENDELER: BILDER (Fase 3, 2026-08-10) --------------------------
+   App.media.put() sin eigen nedskalerings-/opplastingspipeline (FileReader +
+   Image + canvas) er alt dekt av test.js (public site, seksjon 5) -- jsdom i
+   DENNE fila manglar canvas-støtte heilt (ingen "canvas"-npm-pakke installert,
+   stadfesta av "Not implemented: HTMLCanvasElement's getContext()"-åtvaringa
+   andre testar i denne fila alt viser). I staden for å duplisere test.js sin
+   canvas-/Image-stubbing, stubbar denne seksjonen App.media.put() sjølv --
+   testar VÅR eiga skjema-/kort-/detalj-koplingslogikk (det Fase 3 faktisk la
+   til), ikkje core.js sin allereie testa opplastingspipeline. Stubben er eit
+   "thenable" som køyrer synkront -- denne fila har ingen async/await-
+   presedens frå før, og App.store-fallback-grenen (App.supabase er falsy her)
+   er sjølv heilt synkron, så heile kjeda kan testast utan å endre fila sin
+   etablerte synkrone stil. */
+(function () {
+  var realPut = App.media.put;
+  function fakePutOk(url) {
+    return { then: function (onOk) { onOk(url); return { catch: function () {} }; } };
+  }
+  function fakePutErr(err) {
+    return { then: function () { return { catch: function (onErr) { onErr(err); } }; } };
+  }
+  function fakeFile(name) {
+    return new window.File([new Uint8Array([1, 2, 3])], name || "foto.jpg", { type: "image/jpeg" });
+  }
+
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m1 = doc.querySelector("[data-od-modal]");
+  assert(!m1.querySelector("[data-ei-image-clear]"), "n19: «Fjern bilde»-knappen vises ikke når skjemaet er tomt");
+  assert(!!m1.querySelector(".ei-visual--placeholder"), "n20: tom biletminiatyr vises som plassholder i skjemaet");
+
+  App.media.put = function () { return fakePutOk("https://cdn.example.test/eiendel-1.jpg"); };
+  Object.defineProperty(m1.querySelector("[data-ei-image-input]"), "files", { value: [fakeFile()], configurable: true });
+  m1.querySelector("[data-ei-image-input]").dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert(m1.querySelector("[data-ei-image-hidden]").value === "https://cdn.example.test/eiendel-1.jpg",
+    "n21: valgt fil lastes opp (stubbet) og fyller det skjulte image-feltet");
+  assert(!!m1.querySelector("[data-ei-image-preview] img"), "n22: forhåndsvisningen viser bildet umiddelbart, uten å lagre skjemaet først");
+  assert(!!m1.querySelector("[data-ei-image-clear]"), "n23: «Fjern bilde»-knappen dukker opp så snart et bilde er valgt");
+
+  m1.querySelector("[data-ei-image-clear]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(m1.querySelector("[data-ei-image-hidden]").value === "", "n24: «Fjern bilde» tømmer det skjulte feltet");
+  assert(!m1.querySelector("[data-ei-image-clear]"), "n25: «Fjern bilde»-knappen forsvinner igjen etter at bildet er fjernet");
+
+  Object.defineProperty(m1.querySelector("[data-ei-image-input]"), "files", { value: [fakeFile()], configurable: true });
+  m1.querySelector("[data-ei-image-input]").dispatchEvent(new window.Event("change", { bubbles: true }));
+  m1.querySelector('[name="name"]').value = "Prosjektor";
+  m1.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var eiAfterImgSave = App.store.get("wsp-eiendeler-assets", []);
+  assert(eiAfterImgSave.length === 1 && eiAfterImgSave[0].image_url === "https://cdn.example.test/eiendel-1.jpg",
+    "n26: bildet lagres sammen med resten av eiendelen: " + JSON.stringify(eiAfterImgSave[0]));
+  assert(!!doc.querySelector("[data-ei-open] img"), "n27: kortvisningen viser det lagrede bildet, ikke plassholderen");
+
+  // Ny eiendel UTEN bilde -- kortet skal vise «Last opp bilde» (quick-upload),
+  // sidan brukaren er admin (samme knapp finst også i detaljvisinga «når
+  // bildet mangler», delt via eiendelerVisual()'s opts.quickUpload).
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m2 = doc.querySelector("[data-od-modal]");
+  m2.querySelector('[name="name"]').value = "Whiteboard";
+  m2.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var quickBtn = doc.querySelector("[data-ei-quick-upload]");
+  assert(!!quickBtn, "n28: kort uten bilde viser «Last opp bilde»-knappen direkte (quick-upload, uten å åpne redigeringsskjemaet)");
+
+  // UX-review-funn (BLOCKER, 2026-08-10): knappen ligger NESTET inni kortet
+  // sitt eget tabindex="0" role="button"-element -- uten stopPropagation()
+  // på keydown ville et Enter/Space-tastetrykk boblet opp til KORTETS egen
+  // keydown-handler og åpnet detaljvisningen i stedet for opplastingsknappens
+  // egen aktivering (mus/touch var alt trygt via click sin stopPropagation).
+  quickBtn.dispatchEvent(new window.Event("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  assert(!doc.querySelector("[data-od-modal]"), "n28b: Enter-tastetrykk på quick-upload-knappen bobler ikke opp og åpner detaljvisningen ved et uhell");
+
+  App.media.put = function () { return fakePutOk("https://cdn.example.test/eiendel-2.jpg"); };
+  quickBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var pendingInput = Array.prototype.slice.call(doc.body.querySelectorAll('input[type="file"]')).pop();
+  assert(!!pendingInput, "n29: quick-upload-knappen oppretter et midlertidig filvalg-input");
+  Object.defineProperty(pendingInput, "files", { value: [fakeFile()], configurable: true });
+  pendingInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  var eiAfterQuick = App.store.get("wsp-eiendeler-assets", []).filter(function (a) { return a.name === "Whiteboard"; })[0];
+  assert(eiAfterQuick.image_url === "https://cdn.example.test/eiendel-2.jpg",
+    "n30: quick-upload lagrer bildet direkte, uten å åpne redigeringsskjemaet: " + JSON.stringify(eiAfterQuick));
+  assert(!doc.body.contains(pendingInput), "n31: det midlertidige filvalg-inputet fjernes selv etter bruk");
+
+  // Feilhåndtering: quick-upload-feil skal vises inline (data-ei-quick-status),
+  // ikke som en blokkerende alert() -- samme is-err-mønster som resten av
+  // Eiendeler-fana (UX-review-funn, Fase 1). Ny eiendel uten bilde, sidan dei
+  // to over no begge har fått eit (ingen quick-upload-knapp elles å klikke).
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m3 = doc.querySelector("[data-od-modal]");
+  m3.querySelector('[name="name"]').value = "Skriver";
+  m3.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  App.media.put = function () { return fakePutErr(new Error("nettverksfeil")); };
+  var quickBtn2 = doc.querySelector("[data-ei-quick-upload]");
+  assert(!!quickBtn2, "n32-forutsetning: «Skriver» mangler bilde og har en quick-upload-knapp å teste feilhåndtering på");
+  quickBtn2.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var pendingInput2 = Array.prototype.slice.call(doc.body.querySelectorAll('input[type="file"]')).pop();
+  Object.defineProperty(pendingInput2, "files", { value: [fakeFile()], configurable: true });
+  pendingInput2.dispatchEvent(new window.Event("change", { bubbles: true }));
+  var quickStatus = doc.querySelector("[data-ei-quick-status]");
+  assert(!!quickStatus && /nettverksfeil/.test(quickStatus.textContent) && quickStatus.className.indexOf("is-err") >= 0,
+    "n32: mislykket quick-upload vises inline i stedet for en blokkerende alert()");
+
+  App.media.put = realPut;
+  // Ingen reset-hook eksponert for _eiAssets/_eiCategories (modulens
+  // in-memory cache) -- eit direkte App.store.set(..., []) her ville berre
+  // vore kosmetisk: neste createAsset()/updateAsset() skriv uansett den
+  // FULLE (framleis populerte) in-memory-arrayen attende til App.store,
+  // og "nullstillinga" ville stille forsvinne att (fanga live 2026-08-10,
+  // sjå n49 sin fyrste, feilslåtte versjon). Seinare seksjonar sine
+  // assertions filtrerer difor på namn / måler før-/etter-differansen,
+  // i staden for å stole på absolutte lengder.
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+})();
+
+/* --- N2d) EIENDELER: VERDIBEREGNING (Fase 4, 2026-08-10) ------------------
+   verdi = kjøpspris × (1 − kategoriens rate)^alder. Testar bruker ein
+   kjøpsdato langt tilbake i tid (10 år) slik at det beregna resultatet blir
+   stabilt og godt under kjøpsprisen, uavhengig av nøyaktig kva klokkeslett
+   testen køyrer på (ingen brøkdel-av-eit-år-uvisse ved grensa mellom to
+   heiltalsår). */
+(function () {
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+  var TEN_YEARS_AGO = new Date(Date.now() - 10 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m1 = doc.querySelector("[data-od-modal]");
+  m1.querySelector('[name="name"]').value = "Bærbar PC";
+  m1.querySelector('[name="categoryName"]').value = "IT-utstyr";
+  m1.querySelector('[name="acquisitionDate"]').value = TEN_YEARS_AGO;
+  m1.querySelector('[name="purchasePrice"]').value = "20000";
+  m1.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  // Auto-oppretta kategori («IT-utstyr») bruker standardraten frå migrasjonen
+  // (18 %, sjå createAssetCategory()) -- ingen grunn til å overstyre han her,
+  // held testen uavhengig av modulen sin (elles ikkje-eksponerte) in-memory
+  // kategori-cache.
+
+  doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var detail1 = doc.querySelector("[data-od-modal]");
+  assert(/Ikke vurdert/.test(detail1.textContent), "n33: nyopprettet eiendel har ingen estimert verdi før noen beregning er gjort");
+  assert(!!detail1.querySelector("[data-ei-recalc-one]"), "n34: «Beregn verdi på nytt»-knappen finnes for en eid eiendel med kjøpsdato+pris+kategori");
+
+  detail1.querySelector("[data-ei-recalc-one]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var proposal1 = detail1.querySelector("[data-ei-valuation-proposal]");
+  // 20000 × 0,82^10 ≈ 2749 -> avrunda til næraste hundre = 2700
+  assert(/2\s?700/.test(proposal1.textContent.replace(/ /g, " ")), "n35: forslått verdi vises korrekt beregnet (20 000 × 0,82^10 ≈ 2 700 kr): " + proposal1.textContent);
+  assert(/ikke en AI-vurdering|ikke.*markedspris|regnskapsmessig/i.test(proposal1.textContent), "n36: forslaget er tydelig merket som en enkel kalkulasjon, ikke AI/markedspris/regnskapsmessig avskrivning");
+  assert(App.store.get("wsp-eiendeler-assets", [])[0].estimated_value == null, "n37: ingenting lagres før forslaget er eksplisitt godkjent");
+
+  proposal1.querySelector("[data-ei-valuation-approve]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var afterApprove = App.store.get("wsp-eiendeler-assets", []).filter(function (a) { return a.name === "Bærbar PC"; })[0];
+  assert(Number(afterApprove.estimated_value) === 2700, "n38: godkjent forslag lagres som eiendelens estimerte verdi: " + JSON.stringify(afterApprove));
+  var valuations = App.store.get("wsp-eiendeler-valuations", []);
+  assert(valuations.length === 1 && Number(valuations[0].value) === 2700 && valuations[0].method === "category_depreciation",
+    "n39: godkjenningen skriver en verdiberegningshistorikk-rad: " + JSON.stringify(valuations));
+
+  // Eiendel nummer to: eid, men mangler kjøpsdato -- kan ikke beregnes.
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m2 = doc.querySelector("[data-od-modal]");
+  m2.querySelector('[name="name"]').value = "Kaffemaskin";
+  m2.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var card2 = Array.prototype.slice.call(doc.querySelectorAll("[data-ei-open]")).filter(function (el) { return /Kaffemaskin/.test(el.textContent); })[0];
+  card2.dispatchEvent(new window.Event("click", { bubbles: true }));
+  var detail2 = doc.querySelector("[data-od-modal]");
+  detail2.querySelector("[data-ei-recalc-one]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(/krever kjøpsdato/i.test(detail2.querySelector("[data-ei-valuation-proposal]").textContent),
+    "n40: mangler kjøpsdato/pris/kategori gir en forklarende melding i stedet for et (feilaktig) tall");
+  doc.querySelector("[data-od-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  // Samla rekalkulering: Bærbar PC har alt riktig verdi (2700, uendret sidan
+  // klokka knapt har rørt seg mellom dei to utrekningane over) -- Kaffemaskin
+  // kan framleis ikkje reknast. Legg til ein TREDJE eiendel med feil/gamal
+  // verdi for å stadfeste at samla rekalkulering faktisk oppdaterer og
+  // historikkfører EI eiendel som treng det.
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var m3 = doc.querySelector("[data-od-modal]");
+  m3.querySelector('[name="name"]').value = "Skjerm";
+  m3.querySelector('[name="categoryName"]').value = "IT-utstyr";
+  m3.querySelector('[name="acquisitionDate"]').value = TEN_YEARS_AGO;
+  m3.querySelector('[name="purchasePrice"]').value = "5000";
+  m3.querySelector('[name="estimatedValue"]').value = "5000"; // urealistisk gamal/feil verdi -- skal endrast av rekalkulering
+  m3.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  var savedConfirm = window.confirm;
+  window.confirm = () => true;
+  doc.querySelector("[data-ei-recalc-all]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  window.confirm = savedConfirm;
+
+  var skjerm = App.store.get("wsp-eiendeler-assets", []).filter(function (a) { return a.name === "Skjerm"; })[0];
+  // 5000 × 0,82^10 ≈ 687 -> avrunda til næraste hundre = 700
+  assert(Number(skjerm.estimated_value) === 700, "n41: samlet rekalkulering oppdaterer en eiendel med utdatert verdi: " + JSON.stringify(skjerm));
+  var valuationsAfterBulk = App.store.get("wsp-eiendeler-valuations", []);
+  assert(valuationsAfterBulk.length === 2, "n42: samlet rekalkulering historikkfører kun eiendelen som faktisk endret seg (Bærbar PC, uendret, fikk ingen ny rad): " + JSON.stringify(valuationsAfterBulk));
+  var statusAfterBulk = doc.querySelector("[data-ei-quick-status]");
+  assert(!!statusAfterBulk && /Oppdaterte verdien for 1 eiendel/.test(statusAfterBulk.textContent),
+    "n43: samlet rekalkulering viser et sammendrag inline (ingen alert())");
+
+  // Ingen reset-hook eksponert for _eiAssets/_eiCategories (modulens
+  // in-memory cache) -- eit direkte App.store.set(..., []) her ville berre
+  // vore kosmetisk: neste createAsset()/updateAsset() skriv uansett den
+  // FULLE (framleis populerte) in-memory-arrayen attende til App.store,
+  // og "nullstillinga" ville stille forsvinne att (fanga live 2026-08-10,
+  // sjå n49 sin fyrste, feilslåtte versjon). Seinare seksjonar sine
+  // assertions filtrerer difor på namn / måler før-/etter-differansen,
+  // i staden for å stole på absolutte lengder.
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+})();
 
 /* --- O) WORKSPACESHIP ----------------------------------------------------- */
 assert(!doc.querySelector('[data-inav="workspaceship"]'), "o1: workspaceship skjult");
@@ -1069,13 +1370,226 @@ nav("#/notes"); nav("#/dashboard");
     "ae4: #/oversikt fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
 })();
 
-/* --- RESULTAT ------------------------------------------------------------- */
-const ok  = globalThis.__ok  || 0;
-const err = globalThis.__err || 0;
-console.log(`\n${ok+err} tester — ${ok} OK, ${err} FEIL`);
+/* --- AF) EIENDELER AV: intranettFeatures.eiendeler = false (dagens faktiske
+   standard) skal skjule fana heilt -- OG (Security Auditor-funn LOW,
+   2026-08-10) direkte navigering til #/orgdrift/eiendeler skal falle attende
+   til "people"-fana i staden for å vise Eiendeler-innhaldet likevel. Eigen
+   DOM av same grunn som Z/AC/AE over: EIENDELER_ENABLED vert lest éin gong
+   ved skriptlasting. ------------------------------------------------------ */
+(function () {
+  const dom7 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window7 = dom7.window;
+  window7.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window7.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window7.scrollTo = () => {};
+  window7.HTMLElement.prototype.scrollIntoView = () => {};
+  window7.URL.createObjectURL = window7.URL.createObjectURL || (() => "blob:mock");
+  window7.URL.revokeObjectURL = window7.URL.revokeObjectURL || (() => {});
+  window7.confirm = () => true;
 
-// Appen startar setInterval-ar (t.d. admin-badge-refresh) som jsdom ikkje
-// eksponerer som ekte Node-timerar (ingen .unref()) — dei held elles Node-
-// prosessen open. Ventar på at stdout er flush først, elles kan siste
-// linje kuttast bort når output vert omdirigert/pipa.
-process.stdout.write("", () => process.exit(process.exitCode || 0));
+  // Ingen intranettFeatures-patching -- ekte, upatcha standard (eiendeler: false).
+  [
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-orgdrift.js"
+  ].forEach(f => window7.eval(fs.readFileSync(f, "utf8")));
+
+  const _NS7 = window7.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window7.eval(`sessionStorage.setItem("${_NS7}:admin","admin")`);
+  window7.document.dispatchEvent(new window7.Event("DOMContentLoaded", { bubbles: true }));
+  const doc7 = window7.document;
+
+  function nav7(hash) {
+    window7.location.hash = hash;
+    window7.dispatchEvent(new window7.Event("hashchange"));
+  }
+
+  assert(window7.SITE_CONFIG.intranettFeatures.eiendeler === false,
+    "af1: føresetnad for denne seksjonen -- config.js sin ekte standard har eiendeler: false");
+  nav7("#/notes"); nav7("#/orgdrift");
+  assert(!doc7.querySelector('[data-od-tab="eiendeler"]'),
+    "af2: Eiendeler-fana finst ikkje i fane-navigasjonen når funksjonen er av");
+
+  nav7("#/notes"); nav7("#/orgdrift/eiendeler");
+  assert(!/Ingen eiendeler registrert/.test(doc7.getElementById("intranet-main").textContent),
+    "af3: direkte lenke til #/orgdrift/eiendeler viser IKKJE Eiendeler-innhaldet når funksjonen er av (mount() sin fallback til «people»)");
+  assert(doc7.getElementById("intranet-main").textContent.indexOf("Kontakt- og rollekart") > -1,
+    "af4: direkte lenke til #/orgdrift/eiendeler fell i staden attende til «Personer»-fana");
+})();
+
+/* --- AG) EIENDELER: EXCEL-IMPORT + OCR (Fase 5, 2026-08-10) ---------------
+   xlsx og tesseract.js er lasta lazy via ein injisert <script>-tag (sjå
+   eiLoadScriptOnce() i module-orgdrift.js) -- jsdom (runScripts:
+   "outside-only", ingen resourceLoader) køyrer ALDRI eit slikt injisert
+   scriptelement sitt innhald eller fyrer load/error på det. Testane set difor
+   window.XLSX/window.Tesseract FØR kvar handling, slik at modulen sin eigen
+   alreadyLoaded()-snarveg trer i kraft og aldri prøver å injisere noko script
+   i det heile. Sjølve nettverks-/CDN-lastinga er ikkje noko denne fila kan
+   teste meiningsfullt uansett (ingen ekte nettverk i jsdom); det som testast
+   her er VÅR EIGEN skjema-/import-/OCR-koplingslogikk.
+
+   Denne seksjonen er (i motsetnad til resten av fila) ein ekte async IIFE --
+   f.arrayBuffer() og dei påfølgjande XLSX-/Tesseract-kjedene er ekte native
+   Promise-ar (eiLoadXlsx()/eiLoadTesseract() returnerer alltid ein ekte
+   Promise.resolve(), ikkje eit stubbart syntetisk thenable slik Fase 3 sin
+   App.media.put()-stubbing kunne gjere), så det finst ingen fullstendig
+   synkron veg gjennom kjeda. Same mønster som test.js sin eigen
+   __asyncTests-IIFE (linje ~487 der) -- RESULTAT-utskrifta lengre ned ventar
+   no på at denne IIFE-en er ferdig FØR han køyrer, elles ville testane sine
+   assert()-kall ha kome EFTER at resultatet alt var skrive ut og prosessen
+   var i ferd med å avslutte. */
+const __phase5Tests = (async () => {
+  function fakeFile(name) {
+    return new window.File([new Uint8Array([1, 2, 3])], name || "ark.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+  async function tick() { await new Promise((r) => setTimeout(r, 20)); }
+  // Innhaldet i denne rada betyr ingenting for modulen -- den slicar alltid
+  // vekk fyrste rad (header) før validering, uansett kva som faktisk står i
+  // henne. Berre at ho ER TIL STADES som rad 0 er det som testast her.
+  var EI_IMPORT_HEADERS_FOR_TEST = ["Navn *", "Kategori *", "Merke / modell", "Eierskap *", "Status", "Kjøpsdato", "Kjøpspris (kr)", "Estimert verdi (kr)", "Plassering", "Leverandør / eier", "Avtalenummer", "Leie per måned (kr)", "Avtalestart", "Avtaleslutt / returfrist", "Ansvarlig", "Notat"];
+
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+
+  // --- Excel-mal ------------------------------------------------------------
+  var xlsxWriteCalls = [];
+  window.XLSX = {
+    utils: {
+      aoa_to_sheet: function (rows) { return { __rows: rows }; },
+      book_new: function () { return { __sheets: [] }; },
+      book_append_sheet: function (wb, ws, name) { wb.__sheets.push({ ws: ws, name: name }); },
+      sheet_to_json: function () { return []; } // overstyrt per test under
+    },
+    writeFile: function (wb, filename) { xlsxWriteCalls.push({ wb: wb, filename: filename }); },
+    read: function () { return { SheetNames: ["Ark1"], Sheets: { Ark1: {} } }; } // overstyrt per test under
+  };
+
+  doc.querySelector("[data-ei-import]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var importModal = doc.querySelector("[data-od-modal]");
+  assert(!!importModal, "n44: «Importer fra Excel»-knappen åpner en importdialog");
+  importModal.querySelector("[data-ei-import-template]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  await tick();
+  assert(xlsxWriteCalls.length === 1 && xlsxWriteCalls[0].filename === "eiendeler-mal.xlsx",
+    "n45: «Last ned mal» laster xlsx og trigger en nedlasting: " + JSON.stringify(xlsxWriteCalls.map(function (c) { return c.filename; })));
+  var templateHeaderRow = xlsxWriteCalls[0].wb.__sheets[0].ws.__rows[0];
+  assert(templateHeaderRow[0] === "Navn *" && templateHeaderRow[3] === "Eierskap *" && templateHeaderRow.length === 16,
+    "n46: malen bruker de forventede kolonneoverskriftene fra kildeprototypen: " + JSON.stringify(templateHeaderRow));
+
+  // --- Import: gyldig rad + rad med feil + for mange rader -------------------
+  var validRow = ["Kontorstol", "Møbler", "Ergonomisk", "Eid", "I bruk", "2024-05-01", "3000", "2500", "Kontor", "", "", "", "", "", "", "Kjøpt på tilbud"];
+  var invalidRow = ["", "Møbler", "", "Eid", "", "", "", "", "", "", "", "", "", "", "", ""];
+  window.XLSX.utils.sheet_to_json = function () {
+    return [EI_IMPORT_HEADERS_FOR_TEST, validRow, invalidRow];
+  };
+  var fileInput = importModal.querySelector("[data-ei-import-file]");
+  var file1 = fakeFile();
+  file1.arrayBuffer = function () { return Promise.resolve(new ArrayBuffer(0)); };
+  Object.defineProperty(fileInput, "files", { value: [file1], configurable: true });
+  fileInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+
+  var previewEl = importModal.querySelector("[data-ei-import-preview]");
+  assert(/1 av 2 rader er klare til import/.test(previewEl.textContent), "n47: forhåndsvisningen skiller riktig antall gyldige/ugyldige rader: " + previewEl.textContent);
+  assert(/Navn mangler/.test(previewEl.textContent), "n48: en ugyldig rad viser en forklarende feilmelding i stedet for å bli importert stille");
+
+  // Fila si eiga N2c/N2d-testseksjon set App.store direkte til [] ved
+  // "opprydding" utan å kunne tømme modulen sin in-memory _eiAssets-cache
+  // (ingen slik tilbakestillings-hook er eksponert -- éin gong lasta, held
+  // modulen fram med å byggje vidare på same array resten av prosessens
+  // levetid). Absolutte lengder er difor upålitelege her -- mål i staden
+  // FØR/ETTER-differansen for akkurat DENNE importen.
+  var countBeforeImport = App.store.get("wsp-eiendeler-assets", []).length;
+  previewEl.querySelector("[data-ei-import-run]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  await tick();
+  var assetsAfterImport = App.store.get("wsp-eiendeler-assets", []);
+  var importedRow = assetsAfterImport.filter(function (a) { return a.name === "Kontorstol"; })[0];
+  assert(assetsAfterImport.length === countBeforeImport + 1 && !!importedRow && Number(importedRow.purchase_price) === 3000,
+    "n49: kun den gyldige raden importeres, med riktige verdier: " + JSON.stringify(importedRow));
+  assert(App.store.get("wsp-eiendeler-categories", []).some(function (c) { return c.name === "Møbler"; }),
+    "n50: manglende kategori opprettes automatisk under import, samme som ved vanlig registrering");
+
+  // For mange rader -- avvist FØR noe importeres.
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+  doc.querySelector("[data-ei-import]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var importModal2 = doc.querySelector("[data-od-modal]");
+  var countBeforeTooMany = App.store.get("wsp-eiendeler-assets", []).length;
+  var tooManyRows = [EI_IMPORT_HEADERS_FOR_TEST];
+  for (var i = 0; i < 201; i++) tooManyRows.push(["Ting " + i, "Diverse", "", "Eid", "", "", "", "", "", "", "", "", "", "", "", ""]);
+  window.XLSX.utils.sheet_to_json = function () { return tooManyRows; };
+  var file2 = fakeFile();
+  file2.arrayBuffer = function () { return Promise.resolve(new ArrayBuffer(0)); };
+  var fileInput2 = importModal2.querySelector("[data-ei-import-file]");
+  Object.defineProperty(fileInput2, "files", { value: [file2], configurable: true });
+  fileInput2.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+  assert(/Maks 200 rader/.test(importModal2.querySelector("[data-ei-import-status]").textContent),
+    "n51: import med over 200 rader avvises med en forklarende melding, ingenting importeres");
+  assert(App.store.get("wsp-eiendeler-assets", []).length === countBeforeTooMany,
+    "n52: ingen rader importeres når raden-grensen overskrides");
+  doc.querySelector("[data-od-x]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  // --- OCR: gjennomlest tekst legges KUN til notatfeltet etter godkjenning ---
+  window.Tesseract = { recognize: function () { return Promise.resolve({ data: { text: "  Serienummer 12345  " } }); } };
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var ocrModal = doc.querySelector("[data-od-modal]");
+  ocrModal.querySelector('[name="note"]').value = "Eksisterende notat";
+  var ocrInput = ocrModal.querySelector("[data-ei-ocr-input]");
+  var ocrFile = fakeFile("kvittering.jpg");
+  Object.defineProperty(ocrInput, "files", { value: [ocrFile], configurable: true });
+  ocrInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+  var ocrReview = ocrModal.querySelector("[data-ei-ocr-review]");
+  assert(ocrReview.style.display !== "none" && ocrModal.querySelector("[data-ei-ocr-text]").value === "Serienummer 12345",
+    "n53: gjenkjent tekst vises til gjennomgang, ikke lagt rett i notatfeltet: " + ocrModal.querySelector("[data-ei-ocr-text]").value);
+  assert(ocrModal.querySelector('[name="note"]').value === "Eksisterende notat",
+    "n54: notatfeltet er uendret helt til brukeren eksplisitt godkjenner den gjennomleste teksten");
+
+  ocrModal.querySelector("[data-ei-ocr-text]").value = "Serienummer 12345 (rettet)";
+  ocrModal.querySelector("[data-ei-ocr-add]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(ocrModal.querySelector('[name="note"]').value === "Eksisterende notat\n\nSerienummer 12345 (rettet)",
+    "n55: godkjent (og eventuelt redigert) tekst legges til i notatfeltet, uten å overskrive det som stod der");
+  assert(ocrModal.querySelector("[data-ei-ocr-review]").style.display === "none", "n56: gjennomgangsboksen skjules igjen etter at teksten er lagt til");
+
+  // Forkast: teksten skal ALDRI havne i notatfeltet.
+  window.Tesseract = { recognize: function () { return Promise.resolve({ data: { text: "Skal forkastes" } }); } };
+  Object.defineProperty(ocrInput, "files", { value: [fakeFile("kvittering2.jpg")], configurable: true });
+  ocrInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+  ocrModal.querySelector("[data-ei-ocr-discard]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(ocrModal.querySelector('[name="note"]').value.indexOf("Skal forkastes") === -1,
+    "n57: forkastet OCR-tekst havner aldri i notatfeltet");
+  doc.querySelector("[data-ei-cancel]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  delete window.XLSX;
+  delete window.Tesseract;
+  // Ingen reset-hook eksponert for _eiAssets/_eiCategories (modulens
+  // in-memory cache) -- eit direkte App.store.set(..., []) her ville berre
+  // vore kosmetisk: neste createAsset()/updateAsset() skriv uansett den
+  // FULLE (framleis populerte) in-memory-arrayen attende til App.store,
+  // og "nullstillinga" ville stille forsvinne att (fanga live 2026-08-10,
+  // sjå n49 sin fyrste, feilslåtte versjon). Seinare seksjonar sine
+  // assertions filtrerer difor på namn / måler før-/etter-differansen,
+  // i staden for å stole på absolutte lengder.
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+})();
+
+/* --- RESULTAT ------------------------------------------------------------- */
+__phase5Tests
+  .catch((e) => { console.error("FEIL: async testblokk (Fase 5) kasta", e); process.exitCode = 1; })
+  .then(() => {
+    const ok  = globalThis.__ok  || 0;
+    const err = globalThis.__err || 0;
+    console.log(`\n${ok+err} tester — ${ok} OK, ${err} FEIL`);
+
+    // Appen startar setInterval-ar (t.d. admin-badge-refresh) som jsdom ikkje
+    // eksponerer som ekte Node-timerar (ingen .unref()) — dei held elles Node-
+    // prosessen open. Ventar på at stdout er flush først, elles kan siste
+    // linje kuttast bort når output vert omdirigert/pipa.
+    process.stdout.write("", () => process.exit(process.exitCode || 0));
+  });

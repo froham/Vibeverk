@@ -30,6 +30,97 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.115.0 — 2026-08-10
+
+**Eiendeler: uavhengig Security Auditor- og UX/Mobile Reviewer-pass over Fase 2-5, funn retta.** Kjørt etter at alle 5 faser var bygget, per planen sitt eige punkt om ein samla gjennomgang før PR/deploy (ikkje éin separat runde per fase for Fase 2-4, sidan ingenting vart pusha/merga undervegs).
+
+- **Security Auditor, HIGH, retta**: `xlsx`s siste npm-publiserte versjon (0.18.5, brukt sidan Fase 5) har to kjende, aldri npm-retta CVE-ar -- CVE-2023-30533 (prototype pollution) og CVE-2024-22363 (ReDoS) -- begge utløyst ved å LESE eit ondsinna `.xlsx`-ark, nøyaktig det "Importer fra Excel" gjer med eit admin-opplasta ark (kan i praksis stamme frå ein ekstern leverandør/rekneskapsførar). SheetJS distribuerer berre dei retta versjonane via sin eigen CDN (npm/jsDelivr sin siste er permanent 0.18.5). Bytta til `https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js` (retta versjon, kjeldesjekka via bibliotekets eiga `package.json`), la til `https://cdn.sheetjs.com` i CSP sin `script-src`, og la til `raw:true` på `sheet_to_json()`-kallet som eit ekstra forsvarslag (unngår heilt å køyre SSF-talformaterings-tolkinga der ReDoS-regexen låg, uavhengig av versjon).
+- **Security Auditor, LOW, retta**: dei to quick-upload-knappane (kort-/detaljvisning) mangla ein eksplisitt `isAdminRole()`-sjekk i klikk-handsamaren, ulikt alle andre admin-gata handlingar i same fil (rediger/slett/rekalkuler/importer sjekkar alle eksplisitt). Ikkje ein reell utnytting (knappen vert berre rendra for admin i utgangspunktet), men lagt til for konsistens.
+- **UX/Mobile Reviewer, BLOCKER, retta**: quick-upload-knappen ligg nesta inni kortet sitt eige `tabindex="0" role="button"`-element -- eit Enter/Space-tastetrykk bobla opp til KORTET sin eigen `keydown`-handsamar, som kalla `preventDefault()` og opna detaljvisinga i staden for å utløyse knappen sin eigen aktivering. Mus/touch var alt trygt (klikk sin eigen `stopPropagation()`), berre tastatur/skjermlesar var råka. Retta med same `stopPropagation()` på knappen sin `keydown`. Ny regresjonstest (n28b).
+- **UX/Mobile Reviewer, HIGH, retta**: detaljvisinga sin handlingsrad (`.od-actions`) kunne skyte over 375px-breidda no som Fase 4 la til ein fjerde knapp ("Beregn verdi på nytt") -- lagt til `flex-wrap`. Verktøylinja sine to nye Eiendeler-only-knappar ("Rekalkuler verdi i dag", "Importer fra Excel") mista mellomrommet seg imellom på smal skjerm sidan `gap` ikkje verkar når `@media`-regelen fell tilbake til `display:block` -- lagt til ein `margin`-reserve for `.od-view-toggle-btn`. Excel-import av opptil 200 rader mot ein ekte Supabase-tilkopling kunne stå lenge med berre ein deaktivert knapp som einaste teikn på aktivitet -- lagt til «Importerer rad X av Y …»-framdrift.
+- **UX/Mobile Reviewer, MEDIUM, retta**: begge nye `confirm()`-dialogane (eierskapsbytte, samla rekalkulering) fekk ei eksplisitt setning om at føregåande verdi IKKJE vert automatisk gjenoppretta (copy-style-guide.md sitt Tier B-krav om reversibilitet). OCR-knappen mangla ein `od-help`-forklaring (Excel-importen fekk ein tilsvarande i Fase 5, OCR gjorde det ikkje) -- lagt til.
+- **UX/Mobile Reviewer, HIGH, medvite IKKJE retta**: manglande 44px-touch-mål på dei nye knappane. Alle nye Fase 2-5-knappar bruker den DELTE `.btn`/`.btn--sm`-klassen (definert i `workspace/index.html`, ingen `min-height`) -- akkurat same klasse Fase 1 sine eigne Rediger/Slett/Lukk-knappar alt bruker. Dette er difor IKKJE ein ny regresjon frå Fase 2-5, men eit eksisterande, kodebase-breitt gap som gjeld `.btn--sm` over heile Workspace (og truleg Console/nettsida), langt utanfor Eiendeler sitt omfang -- ein skalert fiks her ville anten vore inkonsekvent (nye knappar 44px, gamle søsken-knappar under) eller kravd ei separat, eigen-vurdert kodebase-brei tilgjengelegheitsrunde. Same vurdering for valideringshistorikk-vising (finst i data, ikkje i UI enno) og nokre POLISH-funn -- notert, ikkje del av dette omfanget.
+- `node test-workspace.js`: 276/0 (1 ny regresjonstest for tastatur-boblinga). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-orgdrift.js?v=10`.
+- **Framleis ikkje deployert eller pusha.** Alle 5 faser + denne gjennomgangsrunden er no klare for PR, når brukaren gir eksplisitt godkjenning.
+
+---
+
+## 0.114.0 — 2026-08-10
+
+**Eiendeler (Fase 5 av 5, siste: OCR + Excel-import).** Modulen er nå funksjonelt komplett per den opprinnelige overleveringspakken sine 13 krav.
+
+- `xlsx@0.18.5` og `tesseract.js@7.0.0` lastes lazy (kun når «Importer fra Excel» eller OCR-knappen faktisk brukes) via en injisert, versjonspinnet `<script>`-tag -- ikke i `workspace/index.html`s faste skriptliste, siden de fleste kunder aldri bruker disse to funksjonene. Versjoner sjekket mot `data.jsdelivr.com` før pinning (CLAUDE.md).
+- **Dokumentert avvik fra opprinnelig plan**: planen antok at `tesseract.js` sine `workerPath`/`corePath`/`langPath` måtte overstyres eksplisitt for å unngå "å ende stille opp på sin egen standard-CDN". Lest kildekoden til `tesseract.js@7.0.0` (ikke antatt) før implementering: alle tre standardverdiene er allerede deterministisk avledet fra enten den pinnede `tesseract.js`-versjonen selv, dens eksakte `tesseract.js-core`-avhengighet (lest fra bibliotekets egen `package.json`), eller en fast dataformat-versjon (`@tesseract.js-data/nor/4.0.0_best_int`) -- ingen av dem er en flytende "latest". Eksplisitt override droppet som unødvendig kompleksitet; standardene brukes som de er.
+- CSP (`workspace/index.html`) utvidet: `'wasm-unsafe-eval'` i `script-src` og en ny `worker-src 'self' blob: https://cdn.jsdelivr.net;`-linje -- uten disse feiler OCR helt tigjen, kun med et generisk CSP-avvisningsvarsel i konsollen. `xlsx` trenger ingen av delene (ren JS, ingen Worker/WASM).
+- Excel-mal (kolonnenavn identiske med kildeprototypen) + import med validering per rad (påkrevde felt, gyldig eierskap/status/dato/tall), duplikat-navn-advarsel (ikke blokkerende), og en øvre grense på 200 rader. Kun rader uten feil importeres; resultatet vises radvis før og etter import.
+- OCR legger **kun gjennomlest og eventuelt redigert** tekst til notatfeltet, aldri automatisk -- brukeren må eksplisitt godkjenne («Legg til i notat») etter å ha sett gjenkjenningsresultatet i en egen tekstboks. Bruker `nor` alene (ikke `nor+eng`) for å holde nedlastingen av språkdata mindre.
+- `node test-workspace.js`: 275/0 (14 nye assertions: mal-nedlasting med riktige kolonner, import skiller gyldige/ugyldige rader og oppretter manglende kategori, rad-grense håndheves, OCR viser tekst til gjennomgang og legger den ALDRI til automatisk, forkastet OCR-tekst havner aldri i notatfeltet). Testene stubber `window.XLSX`/`window.Tesseract` direkte (samme begrunnelse som Fase 3s `App.media.put()`-stubbing: ekte CDN-nettverkslasting er ikke meningsfullt testbart i jsdom, og dette er uansett ikke det som skal testes her). Denne seksjonen er filens første ekte async-testblokk (`__phase5Tests`, speiler `test.js` sitt eget `__asyncTests`-mønster) siden `Blob.arrayBuffer()` alltid returnerer en ekte native Promise -- RESULTAT-utskriften venter nå på at den er ferdig. `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendret.
+- Cache-bust: `module-orgdrift.js?v=9`.
+- **Alle 5 faser er nå bygget, ingenting deployert.** Migrasjonene (Fase 1/2/4) er ikke kjørt mot staging eller produksjon; ingenting er pushet. Neste steg: uavhengig Security Auditor- og UX/Mobile Reviewer-pass over hele Eiendeler-diffen (Fase 1-5 samlet) før PR/deploy, per planen.
+
+---
+
+## 0.113.0 — 2026-08-10
+
+**Eiendeler (Fase 4 av 5: verdiberegning).** Enkel, tydelig merket kalkulasjon -- ikke AI, markedspris eller regnskapsmessig avskrivning (samme ansvarsfraskrivelse som kildeprototypen selv brukte).
+
+- Ny tabell `asset_valuation_history` (migrasjon `20260810104844_eiendeler_valuation_history.sql`): éin rad per godkjent verdiestimering (`value`, `valued_on`, `method` DEFAULT `'category_depreciation'`, `assumptions jsonb`, `approved_by`). Same admin-only to-policy-RLS-mønster og `ON DELETE CASCADE` som resten av Eiendeler.
+- Formel: `verdi = kjøpspris × (1 − kategoriens årlige verdifallsats)^alder`, avrunda til næraste hundrelapp. Krev eid eiendel med kjøpsdato, kjøpspris og ein kategori med verdifallsats -- viser ei forklarande melding i staden for eit (feilaktig) tal når noko manglar.
+- **Enkeltvis** "Beregn verdi på nytt" (detaljvisning): viser forslaget FØR noko lagres, krev eksplisitt "Bruk denne verdien" -- ingen automatisk lagring.
+- **Samla** "Rekalkuler verdi i dag" (verktøylinja for Eiendeler-fana): éin Tier B-`confirm()` for heile operasjonen, oppdaterer og historikkfører kun eiendelene der verdien faktisk endrer seg (ikke støy i historikken for uendrede verdier). Sammendrag vises inline, ikke som `alert()`.
+- `node test-workspace.js`: 261/0 (11 nye assertions: enkelt-godkjenning krever eksplisitt godkjenning før lagring, manglende data gir forklarende melding, samlet rekalkulering oppdaterer kun det som endret seg og historikkfører riktig antall rader). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendret.
+- Cache-bust: `module-orgdrift.js?v=8`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som dei føregåande Eiendeler-oppføringane sine eigne fotnotar).
+- **Ikke deployert.** Neste steg (Fase 5, siste): OCR + Excel-import.
+
+---
+
+## 0.112.0 — 2026-08-10
+
+**Eiendeler (Fase 3 av 5: bilder).** Kobler den delte `App.media` (core.js sin `Media`, eksponert som `App.media`) inn i Eiendeler -- ingen ny bildepipeline, ingen ny bucket, direkte gjenbruk.
+
+- Opplasting fire steder, som spesifisert: i redigeringsskjemaet (opprett/rediger), «hurtig-opplasting» direkte fra kortvisningen når bildet mangler, og samme hurtig-opplasting i detaljvisningen. Alle tre går via `App.media.put(file)` og skriver til den eksisterende, delte `media`-bucketen.
+- `App.media.resolve()` brukes konsekvent ved visning (kort, liste-forhåndsvisning i skjema, detaljvisning) sidan verdien enten er en ekte Supabase-URL eller en lokal `"media:"`-referanse (når `App.supabase` er ukonfigurert) -- uten dette ville `"media:"`-referanser vist et knekt bilde.
+- `App.media.free()` kalles ved fjerning/erstatning av et bilde i skjemaet og ved sletting av hele eiendelen, for å unngå foreldreløse filer i den delte bucketen -- samme disiplin core.js selv håndhever andre steder.
+- Opplastingsfeil (skjema og hurtig-opplasting) vises inline (`.form__status`/`data-ei-quick-status`), aldri som en blokkerende `alert()` -- fortsetter samme UX-retting fra Fase 1.
+- `node test-workspace.js`: 250/0 (14 nye assertions: skjema-opplasting/fjerning/lagring, kortvisningens hurtig-opplasting, feilhåndtering ved mislykket hurtig-opplasting). Testene stubber `App.media.put()` fremfor å duplisere `test.js` sin egen canvas-/Image-mocking for `Media.put()` sin nedskaleringspipeline (allerede dekket der) -- denne fasen tester kun Eiendeler sin egen skjema-/kort-/detalj-koblingslogikk. `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendret.
+- Cache-bust: `module-orgdrift.js?v=7`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som dei føregåande Eiendeler-oppføringane sine eigne fotnotar).
+- **Ikke deployert.** Neste steg (Fase 4): verdiberegning.
+
+---
+
+## 0.111.0 — 2026-08-10
+
+**Eiendeler (Fase 2 av 5: eierskapshistorikk).** Overgang mellom Eid/Leid/Lånt i redigeringsskjemaet er no ei stadfesta, historikkført hending -- ikkje berre ei stille felt-endring.
+
+- Ny tabell `asset_ownership_history` (migrasjon `20260810100128_eiendeler_ownership_history.sql`): éin rad per stadfesta overgang (`from_ownership`, `to_ownership`, `changed_on`, `snapshot jsonb`, `changed_by`). Same admin-only to-policy-RLS-mønster som `assets`/`asset_categories` frå Fase 1 (`is_admin_or_owner()`), `ON DELETE CASCADE` frå `assets`.
+- Endrar brukaren eierskapet ved lagring av ein eksisterande eiendel, krevst ei Tier B-stadfesting (`confirm()`) før lagring i det heile -- avviser brukaren, vert HEILE lagringa avbroten (ikkje berre historikkskrivinga), eiendelen forblir urørt.
+- `snapshot` tek vare på dei ownership-spesifikke felta (kjøpspris/verdi for eigde, avtaledetaljar for leigde/lånte) FRÅ FØR overgangen, sidan sjølve lagringa nullar dei ut med det same. Fanga eksplisitt før lagring køyrer -- ein reell feile-fyrst-feil undervegs: `updateAsset()` sin `App.store`-fallback muterer same objektreferanse in-place, så eit forsøk på å lese "frå"-verdien av `asset.ownership` ETTER lagring viste alt den NYE verdien (fanga av eiga testregresjon, n15b, før commit).
+- Detaljvisinga syner full eierskapshistorikk (dato + frå → til) under dei vanlege feltdetaljane.
+- `App.store`-fallback (ingen Supabase-tilkopling) speglar `ON DELETE CASCADE` for hand ved sletting av ein eiendel -- den ekte tabellen treng det ikkje, men fallback-laget har ingen database til å gjere det for seg.
+- `node test-workspace.js`: 235/0 (10 nye assertions: historikkskriving ved bekrefta overgang, historikkvising i detaljvisinga, avvist-bekreftelse-avbryt-heile-lagringa, kaskade-sletting i fallback-laget). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-orgdrift.js?v=6`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som 0.110.0/0.109.0-oppføringane sine eigne fotnotar).
+- **Ikkje deployert.** Migrasjonen er ikkje køyrd mot staging eller produksjon. Neste steg (Fase 3): bilete via `Media.put()`.
+
+---
+
+## 0.110.0 — 2026-08-10
+
+**Eiendeler — ny fane i Workspace sin "Organisasjon & drift" (Fase 1 av 5: kjerne-CRUD).** Ekstern overleveringspakke (fungerande React/Next.js-prototype + eit uttrykkeleg "ikkje ein blind fasit"-forslag til Postgres-skjema) tilpassa til faktisk Vibeverk-arkitektur -- ingen kode porta direkte (Vibeverk har ingen bundler/framework), skjemaet endra vesentleg. Arkitekt-konsultert plan før koding.
+
+- **Fane i eksisterande modul, ikkje ny modul** (brukarvedtak): prototypen sin eigen "Organisasjon og drift"-kategoriplassering vart teken bokstaveleg -- Eiendeler er ei sjette fane i `module-orgdrift.js`, ikkje ei eiga `Intranet.registerModule()`-oppføring med eige navigasjonspunkt.
+- **Ekte Supabase-tabellar, ikkje JSON-blobben dei andre fem fanene brukar**: `assets`/`asset_categories` (ny migrasjon), med ekte per-rad RLS -- naudsynt sidan blob-mønsteret (`App.store("wsp-orgdrift")`) ikkje kan skilje lese-/skriverettar finare enn heile nøkkelen, og fordi blobben sin eigen `defaults()` sår synleg testdata ("Kari Nordmann") som ville brote "ingen dummydata"-kravet for denne fana.
+- **Admin-only skriv, konsekvent med resten av modulen** (brukarvedtak, korrigert frå eit fyrsteutkast som ubegrunna følgde `tasks`/`kb_articles` sitt admin+editor-mønster): `is_admin_or_owner()` i RLS, `isAdminRole()` i UI -- éin regel for heile "Organisasjon & drift", ikkje ulikt tilgangsnivå per fane.
+- Kategoriar har depreciation-rate PÅ seg sjølve (`annual_depreciation_rate`, standard 18 %) -- ingen eigen config-tabell, ingen sådd rad. Skjema for oppretting/redigering er identisk (eitt skjema, ikkje to). `image_path`→`image_url`, `responsible_person_id`→`responsible_user_id` (ekte `users`-FK, pluss `responsible_name`-fritekstfallback) -- begge medvitne avvik frå kjeldeforslaget.
+- Nytt flagg `intranettFeatures.eiendeler` (standard av), sjølvstendig frå `orgdrift`-flagget -- fana krev begge på.
+- **Uavhengig Claude Security Auditor-pass, ingen BLOCKER/HIGH, fire LOW retta før merge**: idempotent `CREATE TYPE` (DO-blokk med exception-fangst -- Postgres manglar `IF NOT EXISTS` for enum-typar), eksplisitt `REVOKE ... FROM anon` (forsvar i djupna, RLS nekta alt implisitt), `NOTIFY pgrst, 'reload schema'` lagt til, og eit reelt funn: direkte lenke til `#/orgdrift/eiendeler` synte fana sjølv når flagget var av (`mount()` tok imot URL-en sin `sub` urørt) -- retta med ein eksplisitt fallback til "Personer" når flagget er av.
+- **Uavhengig UX/Mobile-pass, ingen BLOCKER, to HIGH + fleire MEDIUM retta**: mobil listevisning stabla kjøpspris/verdi-i-dag utan skilje når kolonneoverskrifta vart skjult under 650px (retta med inline mikro-etikettar som berre vises der); lagrings-/slettefeil brukte ein blokkerande `alert()` i staden for inline `.form__status`-melding som koden sjølv hevda å spegle frå `module-tasks.js` (retta). Mindre funn: eigarskap-vel-knappar målt til 36px høgd (heva til min-height:44px), "Eid"-merkelappen brukte ein fast blåfarge i staden for `--color-tint`, slett-knappen dupliserte `.btn--danger` sin fargekode i staden for å bruke klassen, Slett/Rediger-rekkjefølgja i detaljvisinga var omvendt av resten av modulen sin konvensjon, og den delte modal-overskrifta fekk `position:sticky` sidan dei lengre eigarskaps-skjemaa (14 felt) elles kunne skrolle ×-knappen ut av syne (kjem alle seks faner til gode, ikkje berre Eiendeler).
+- `node test-workspace.js`: 229/0 (15 nye assertions for sjølve fana + CRUD-flyten via `App.store`-fallback sidan testmiljøet ikkje har ein reell Supabase-tilkopling, pluss 4 nye for av-som-standard/direkte-lenke-fallback). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-orgdrift.js?v=5`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som 0.109.0-oppføringa sin eigen fotnote -- den filen inneheld samtidig, ikkje-relatert AI Lab-arbeid som ikkje er mitt å committe).
+- **Ikkje deployert.** Migrasjonen er ikkje køyrd mot staging eller produksjon. Neste steg (Fase 2): eigarskapshistorikk ved overgang Eid/Leid/Lånt.
+
+---
+
 ## 0.109.0 — 2026-08-10
 
 **Personvern-Standardforslag: kritisk krasjfiks + overskriv-oppførsel + kapitteloverskrifter + skjematekst-generator.** Brukar fann (via reell testing på Vibeverk sin eigen tenant) at "Standardforslag"-knappen ikkje gjorde noko, og at Dokument-fana vart tom ved fanebyte tilbake til henne -- begge spora til éin felles rotårsak.

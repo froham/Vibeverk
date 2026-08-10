@@ -43,6 +43,9 @@
   var STORE_KEY = "wsp-orgdrift";
   var VIEW_KEY = "wsp-orgdrift-view";
   var FILTER_KEY = "wsp-orgdrift-filters";
+  // Berre Eiendeler-fana bruker _sb -- dei fem andre fanene i denne modulen
+  // er reint App.store-baserte (sjå kommentaren ved isAdminRole() under).
+  var _sb = App.supabase;
 
   var esc = C.esc || function (s) {
     return String(s == null ? "" : s)
@@ -53,6 +56,14 @@
       .replace(/'/g, "&#39;");
   };
 
+  // Eiendeler (2026-08-10): eigen fane i denne modulen, men BAKA av ekte
+  // Supabase-tabellar (assets/asset_categories) i staden for wsp-orgdrift-
+  // blobben dei fem andre fanene brukar — sjå den store kommentarblokka lenger
+  // ned ("EIENDELER") for grunngjeving og den fulle implementasjonen. Eige
+  // flagg (intranettFeatures.eiendeler) i tillegg til orgdrift-flagget over,
+  // sidan dette er ein nyare, meir omfattande fane enn resten av modulen.
+  var EIENDELER_ENABLED = !!(CFG.intranettFeatures && CFG.intranettFeatures.eiendeler === true);
+
   var TABS = [
     ["people", "Personer"],
     ["responsibilities", "Ansvar"],
@@ -60,13 +71,15 @@
     ["systems", "Systemer"],
     ["purchasing", "Innkjøp"]
   ];
+  if (EIENDELER_ENABLED) TABS.push(["eiendeler", "Eiendeler"]);
 
   var TAB_HELP = {
     people: "Kontakt- og rollekart for personer i organisasjonen. Bruk søk, f.eks. «Avdeling: drift» eller «Rolle: leder».",
     responsibilities: "Oversikt over hvem som eier interne ansvarsområder, med eventuell backup og forklaring.",
     vendors: "Leverandører og partnere med kontaktinfo, kundenummer, portal og hvordan bestilling skjer.",
     systems: "IT-systemer, abonnementer og digitale tjenester. Bruk søk, f.eks. «Kategori: IT-system», «Kritikalitet: høy» eller «Integrasjoner: ja».",
-    purchasing: "Innkjøpsoversikt og regler: hva kjøpes hvor, hvem godkjenner og hvilke beløpsgrenser gjelder."
+    purchasing: "Innkjøpsoversikt og regler: hva kjøpes hvor, hvem godkjenner og hvilke beløpsgrenser gjelder.",
+    eiendeler: "Utstyr og eiendeler virksomheten eier, leier eller låner, med verdi og eierskapshistorikk."
   };
 
   var sortState = { type: "", key: "", dir: "asc" };
@@ -163,6 +176,14 @@
   function mount(outlet, ctx, sub) {
     injectStyles();
     var root = outlet.querySelector("#orgdrift-root") || outlet;
+    // Security Auditor-funn (LOW, 2026-08-10): utan denne sjekken kunne
+    // direkte lenke/bokmerke til #/orgdrift/eiendeler nå fana sjølv om
+    // intranettFeatures.eiendeler er av -- TABS-lista (fane-knappane) er alt
+    // korrekt filtrert, men mount() tok tidlegare imot `sub` frå URL-en urørt.
+    // Ikkje ein tilgangskontroll (RLS handhevar det uansett), berre konsistent
+    // "skjult skal faktisk vere skjult"-åtferd, same idé som andre valfrie
+    // modular sin "Modul ikke funnet"-fallback.
+    if (sub === "eiendeler" && !EIENDELER_ENABLED) sub = "people";
     draw(root, sub || "people", "");
   }
 
@@ -200,7 +221,11 @@
       ".od-kv{display:grid;gap:.26rem;margin-top:.55rem}",
       ".od-kv div{font-size:.84rem;color:var(--color-muted);line-height:1.4}",
       ".od-kv strong{color:var(--color-text)}",
-      ".od-actions{display:flex;justify-content:flex-end;gap:.4rem;margin-top:.75rem}",
+      // UX-review-funn (HIGH, 2026-08-10): utan flex-wrap kunne handlingsrada
+      // i detaljvisinga (Rediger/Beregn verdi på nytt/Slett/Lukk -- fire
+      // knappar for eigde eiendelar sidan Fase 4, mot tre i Fase 1) skyte
+      // over den smale modal-bredda på 375px.
+      ".od-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.4rem;margin-top:.75rem}",
       ".od-empty{border:1px dashed var(--color-border);border-radius:var(--radius);padding:1rem;color:var(--color-muted);font-size:.9rem}",
       ".od-table-wrap{border:1px solid var(--color-border);border-radius:var(--radius);overflow:auto;background:var(--color-surface)}",
       ".od-table{width:100%;border-collapse:collapse;font-size:.88rem}",
@@ -226,7 +251,72 @@
       ".od-modal-head h3{margin:0}",
       ".od-modal-body{padding:1rem}",
       ".od-close{border:0;background:transparent;font-size:1.4rem;cursor:pointer;color:var(--color-muted)}",
-      "@media(max-width:650px){.od-head{display:block}.od-tools{display:block}.od-search{width:100%;box-sizing:border-box;margin-bottom:.6rem}.od-row{grid-template-columns:1fr}.od-view-toggle{margin-bottom:.6rem}}"
+      // UX-review-funn (MEDIUM, 2026-08-10): utan sticky forsvinn ×-knappen
+      // ut av synsfeltet på dei lengre Eiendeler-skjemaa (14 felt for leigd/
+      // lånt) ved liggjande mobilvising -- gjeld alle seks faner sine skjema,
+      // ikkje berre Eiendeler, difor retta her på den delte regelen.
+      ".od-modal-head{position:sticky;top:0;background:var(--color-surface);z-index:1}",
+      // UX-review-funn (HIGH, 2026-08-10): .od-tools sin flex-gap forsvinn
+      // heilt når layouten fell attende til display:block her -- usynleg så
+      // lenge "Ny" var den einaste knappen i rada, men Fase 4/5 sine to nye
+      // Eiendeler-only-knappar (deler .od-view-toggle-btn-klassen) ville elles
+      // stå heilt inntil kvarandre utan mellomrom på smal skjerm.
+      "@media(max-width:650px){.od-head{display:block}.od-tools{display:block}.od-search{width:100%;box-sizing:border-box;margin-bottom:.6rem}.od-row{grid-template-columns:1fr}.od-view-toggle{margin-bottom:.6rem}.od-view-toggle-btn{margin:0 .4rem .4rem 0}}",
+      /* --- Eiendeler (2026-08-10) ------------------------------------------- */
+      ".ei-visual{position:relative;width:100%;aspect-ratio:16/9;border-radius:.7rem;background:var(--color-alt,rgba(148,163,184,.12));display:flex;align-items:center;justify-content:center;margin-bottom:.6rem;overflow:hidden}",
+      ".ei-visual img{width:100%;height:100%;object-fit:cover}",
+      ".ei-visual--placeholder{color:var(--color-muted);font-size:1.6rem}",
+      ".ei-ownership{display:inline-block;border-radius:999px;padding:.1rem .5rem;font-size:.72rem;font-weight:650;vertical-align:middle}",
+      // --owned brukte tidlegare ein fast blåfarge -- retta til --color-tint
+      // (UX-review-funn MEDIUM) sidan det er nettopp "lys tone av primærfarge"-
+      // bruken den variabelen finst for; --leased/--borrowed sine faste amber/
+      // slate-fargar er OK, matchar .stat-badge sitt eige mønster for status.
+      ".ei-ownership--owned{background:var(--color-tint);color:var(--color-primary)}",
+      ".ei-ownership--leased{background:rgba(217,119,6,.14);color:#b45309}",
+      ".ei-ownership--borrowed{background:rgba(100,116,139,.14);color:#475569}",
+      ".ei-list{display:grid;gap:.4rem}",
+      ".ei-list__head{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:.6rem;padding:.3rem .6rem;color:var(--color-muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.04em}",
+      ".ei-list__row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:.6rem;align-items:center;padding:.65rem .6rem;border:1px solid var(--color-border);border-radius:.7rem;background:var(--color-surface);cursor:pointer}",
+      ".ei-list__row:hover{border-color:var(--color-primary)}",
+      // Skjult over 650px (kolonneoverskrifta over gjer jobben der) -- synleg
+      // under, der .ei-list__head sjølv vert skjult (UX-review-funn HIGH:
+      // utan denne var Kjøpspris/Verdi umoglege å skilje på smal skjerm).
+      ".ei-list__mlabel{display:none;color:var(--color-muted);font-weight:600}",
+      ".ei-ownership-choice{display:flex;gap:.4rem;margin-top:.3rem}",
+      // min-height:44px (UX-review-funn MEDIUM: målt til berre 36px) -- same
+      // touch-mål-minimum som resten av kodebasen alt handhevar andre stader.
+      ".ei-ownership-choice button{flex:1;min-height:44px;border:1px solid var(--color-border);background:var(--color-surface);border-radius:.7rem;padding:.5rem;cursor:pointer;font:inherit}",
+      ".ei-ownership-choice button.is-active{background:var(--color-primary);border-color:var(--color-primary);color:#fff}",
+      // Delt fokus-ring-mønster (same som .crm-tl-row/.pw-toggle:focus-visible
+      // i index.html) -- UX-review-funn (POLISH): nye interaktive element
+      // hadde berre nettlesaren sin standardkant, ikkje appen sin eigen stil.
+      ".od-card:focus-visible,.ei-list__row:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}",
+      "@media(max-width:650px){.ei-list__head{display:none}.ei-list__row{grid-template-columns:1fr;gap:.25rem}.ei-list__mlabel{display:inline}}",
+      /* --- Eiendeler, Fase 2: eierskapshistorikk ----------------------------- */
+      ".ei-history{margin-top:.8rem;padding-top:.6rem;border-top:1px solid var(--color-border)}",
+      ".ei-history h4{margin:0 0 .3rem;font-size:.85rem;color:var(--color-muted)}",
+      ".ei-history ul{margin:0;padding-left:1.1rem;font-size:.9rem}",
+      ".ei-history li+li{margin-top:.15rem}",
+      /* --- Eiendeler, Fase 3: bilder ------------------------------------------ */
+      // Miniatyren i skjemaet skal ikkje ta heile bredda som kort-/detalj-
+      // visinga sin 16:9-versjon -- avgrensa til ei fast, mindre høgd.
+      ".ei-image-field{display:grid;gap:.5rem}",
+      ".ei-image-field .ei-visual{max-width:220px;aspect-ratio:4/3;margin-bottom:0}",
+      ".ei-image-field__actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}",
+      // .ei-visual sjølv fekk position:relative lagt til øvst i denne lista
+      // (Fase 3) -- treng ein eigen posisjoneringskontekst for denne knappen.
+      ".ei-visual__upload{position:absolute;bottom:.5rem;left:50%;transform:translateX(-50%)}",
+      /* --- Eiendeler, Fase 4: verdiberegning ---------------------------------- */
+      ".ei-valuation-proposal{margin-top:.8rem;padding:.7rem .8rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-alt,rgba(148,163,184,.08))}",
+      ".ei-valuation-proposal p{margin:0 0 .4rem}",
+      /* --- Eiendeler, Fase 5: OCR + Excel-import ------------------------------ */
+      ".ei-ocr{margin:.6rem 0;padding:.6rem .7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-alt,rgba(148,163,184,.06))}",
+      ".ei-ocr textarea{width:100%;box-sizing:border-box;font:inherit}",
+      ".ei-import-list{display:grid;gap:.4rem;margin:.6rem 0;max-height:280px;overflow:auto}",
+      ".ei-import-row{display:flex;justify-content:space-between;gap:.6rem;padding:.5rem .6rem;border:1px solid var(--color-border);border-radius:.6rem;font-size:.86rem}",
+      ".ei-import-row.is-ok{border-color:rgba(34,197,94,.4)}",
+      ".ei-import-row.is-warn{border-color:rgba(217,119,6,.4)}",
+      ".ei-import-row.is-err{border-color:rgba(192,57,43,.4);color:#c0392b}"
     ].join("");
     document.head.appendChild(s);
   }
@@ -243,7 +333,7 @@
       stats(data) +
       tabs(tab) +
       '<div class="od-help">' + esc(TAB_HELP[tab] || "") + (isAdmin ? "" : ' Kun lesetilgang for din rolle.') + '</div>' +
-      tools(view, q, isAdmin) +
+      tools(view, q, isAdmin, tab) +
       '<div data-od-content>' + content(tab, data, q || "", view, isAdmin) + '</div>';
 
     bind(root, tab, isAdmin);
@@ -279,13 +369,20 @@
     }).join("") + '</div>';
   }
 
-  function tools(view, q, isAdmin) {
+  function tools(view, q, isAdmin, tab) {
     return '<div class="od-tools">' +
       '<input class="od-search" data-od-search type="search" placeholder="Søk eller bruk felt: verdi, f.eks. Avdeling: drift" value="' + esc(q || "") + '">' +
       '<div class="od-view-toggle">' +
         '<button data-od-view="cards" class="' + (view === "cards" ? "is-active" : "") + '">Kort</button>' +
         '<button data-od-view="list" class="' + (view === "list" ? "is-active" : "") + '">Liste</button>' +
       '</div>' +
+      // Fase 4: berre Eiendeler-fana har noko å rekalkulere -- knappen finst
+      // difor ikkje i den delte tools()-baren sin generelle form, berre lagt
+      // til for denne eine fana (same idé som EIENDELER-seksjonen elles: eigne
+      // funksjonar for denne fana, urørt delt kode for dei fem andre).
+      (isAdmin && tab === "eiendeler" ? '<button data-ei-recalc-all class="od-view-toggle-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Rekalkuler verdi i dag</button>' : '') +
+      // Fase 5: same "berre denne fana"-idé som rekalkuler-knappen over.
+      (isAdmin && tab === "eiendeler" ? '<button data-ei-import class="od-view-toggle-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Importer fra Excel</button>' : '') +
       (isAdmin ? '<button data-od-new class="od-view-toggle-btn od-new-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Ny</button>' : '') +
     '</div>';
   }
@@ -384,6 +481,10 @@
     if (tab === "purchasing") {
       items = smartSearch("purchasing", data.purchasing, q);
       return renderCollection(tab, items, view, purchaseDef(), isAdmin);
+    }
+
+    if (tab === "eiendeler") {
+      return eiendelerContent(q, view);
     }
 
     return "";
@@ -712,14 +813,34 @@
     if (newBtn) {
       newBtn.addEventListener("click", function () {
         if (!isAdminRole()) return; // «Ny» skal aldri fungere for editor/member, sjølv ved direkte kall
-        openEditor(root, tab, null);
+        if (tab === "eiendeler") openEiendelerEditor(root, null);
+        else openEditor(root, tab, null);
+      });
+    }
+
+    var recalcAllBtn = root.querySelector("[data-ei-recalc-all]");
+    if (recalcAllBtn) {
+      recalcAllBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        recalculateAllEiendelerValues(root);
+      });
+    }
+
+    var importBtn = root.querySelector("[data-ei-import]");
+    if (importBtn) {
+      importBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        openEiendelerImportModal(root);
       });
     }
 
     bindDynamic(root, tab);
+    if (tab === "eiendeler") loadEiendelerDataIfNeeded(root);
   }
 
   function bindDynamic(root, tab) {
+    if (tab === "eiendeler") { bindEiendelerDynamic(root); return; }
+
     root.querySelectorAll("[data-od-sort]").forEach(function (th) {
       th.addEventListener("click", function () {
         var parts = th.getAttribute("data-od-sort").split(":");
@@ -1190,6 +1311,1298 @@
       if (!x || seen[x]) return false;
       seen[x] = true;
       return true;
+    });
+  }
+
+  /* =========================================================================
+     EIENDELER (Fase 1, 2026-08-10) — eigen fane i denne modulen, men EKTE
+     Supabase-tabellar (assets/asset_categories) i staden for wsp-orgdrift-
+     blobben dei andre fem fanene brukar over. Grunngjeving: RLS kan ikkje
+     skilje lese/skrive-rettar innanfor éin JSON-blob (sjå kommentaren ved
+     isAdminRole() over), og "ingen dummydata"-kravet for denne fana kolliderer
+     med defaults() sin sådde testdata same stad. Same tilgangsnivå som resten
+     av modulen likevel (admin-only skriv, isAdminRole() + is_admin_or_owner()
+     i RLS) -- brukarvedtak, konsekvens for heile "Organisasjon & drift", ikkje
+     eit hierarki av ulike tilgangsnivå per fane.
+
+     Datahenting/skriving går via _sb.from("assets"/"asset_categories") med
+     App.store-fallback når Supabase manglar, same idiom som module-tasks.js.
+     _eiAssets/_eiCategories er modulvariablar (cache) -- draw()/content() les
+     dei synkront, loadEiendelerDataIfNeeded() fyller dei async ved behov og
+     re-rendrar berre [data-od-content] når svaret kjem (same mønster som
+     søkefeltet sin eigen handterar over).
+     ====================================================================== */
+  var EI_STORE_KEY             = "wsp-eiendeler-assets";
+  var EI_CATEGORIES_STORE_KEY  = "wsp-eiendeler-categories";
+  var EI_HISTORY_STORE_KEY     = "wsp-eiendeler-history";
+  var EI_VALUATION_STORE_KEY   = "wsp-eiendeler-valuations";
+
+  var EI_OWNERSHIP_LABELS = { owned: "Eid", leased: "Leid", borrowed: "Lånt" };
+  var EI_STATUS_LABELS    = { in_use: "I bruk", in_storage: "På lager", in_service: "Til service" };
+  var EI_STATUS_VALUE_BY_LABEL = { "I bruk": "in_use", "På lager": "in_storage", "Til service": "in_service" };
+  var EI_OWNERSHIP_VALUE_BY_LABEL = { eid: "owned", leid: "leased", "lånt": "borrowed", lant: "borrowed" };
+
+  // Fase 5 (2026-08-10): xlsx og tesseract.js er MEDVITE ikkje lasta i
+  // workspace/index.html sin faste skriptliste (dei fleste kundar importerer
+  // aldri eit Excel-ark eller køyrer OCR) -- lasta først når brukaren faktisk
+  // opnar import- eller OCR-flyten, via éin delt loadScriptOnce()-hjelpar.
+  //
+  // xlsx: IKKJE frå cdn.jsdelivr.net/npm (Security Auditor-funn, HIGH,
+  // 2026-08-10) -- npm sin siste publiserte versjon av "xlsx" er 0.18.5,
+  // som har to kjende, aldri npm-retta sårbarheiter: CVE-2023-30533
+  // (prototype pollution ved lesing av eit ondsinna .xlsx-ark, retta i
+  // 0.19.3) og CVE-2024-22363 (ReDoS, retta i 0.20.2). SheetJS slutta å
+  // publisere retta versjonar til npm og distribuerer dei berre via sin
+  // eigen CDN. Sidan "Importer fra Excel" nettopp LES eit brukar-/admin-
+  // opplasta ark (kan i praksis stamme frå ein ekstern part, t.d. ein
+  // leverandør eller rekneskapsførar) er dette den nøyaktige trusselmodellen
+  // desse CVE-ane gjeld -- IKKJE eit teoretisk scenario. cdn.sheetjs.com sin
+  // 0.20.3 er stadfesta (kildesjekka, sjå data.jsdelivr.com/npm-oppslaget
+  // over for tesseract.js, og cdn.sheetjs.com/xlsx-0.20.3/package/package.json
+  // for denne) den siste utgjevne versjonen, rettar begge CVE-ane. Malen si
+  // eiga skriving (writeFile()) var ALDRI sårbar (begge CVE-ane krev å LESE
+  // eit ondsinna ark -- "Workflows that do not read arbitrary files ... are
+  // unaffected", offisiell rådgjeving), men parsing-sida (XLSX.read() i
+  // bindEiendelerImportModal) var det.
+  var EI_XLSX_URL      = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+  var EI_TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
+  var EI_IMPORT_MAX_ROWS = 200;
+  var EI_IMPORT_HEADERS = [
+    "Navn *", "Kategori *", "Merke / modell", "Eierskap *", "Status",
+    "Kjøpsdato", "Kjøpspris (kr)", "Estimert verdi (kr)", "Plassering",
+    "Leverandør / eier", "Avtalenummer", "Leie per måned (kr)",
+    "Avtalestart", "Avtaleslutt / returfrist", "Ansvarlig", "Notat"
+  ];
+
+  var _eiXlsxPromise      = null;
+  var _eiTesseractPromise = null;
+
+  // cb er alltid Promise-forma sjølve -- éin gong lasta (eller alt til stades
+  // frå før, t.d. via eit anna surface som alt bruker same CDN-pakke) vert
+  // resultatet cacha, aldri injisert på nytt ved fleire klikk.
+  function eiLoadScriptOnce(url, alreadyLoaded) {
+    if (alreadyLoaded()) return Promise.resolve();
+    var existing = document.querySelector('script[data-ei-lazy="' + url + '"]');
+    if (existing) {
+      return new Promise(function (resolve, reject) {
+        existing.addEventListener("load", function () { resolve(); });
+        existing.addEventListener("error", function () { reject(new Error("Kunne ikke laste inn " + url)); });
+      });
+    }
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = url;
+      s.setAttribute("data-ei-lazy", url);
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error("Kunne ikke laste inn " + url)); };
+      document.head.appendChild(s);
+    });
+  }
+  function eiLoadXlsx() {
+    if (!_eiXlsxPromise) _eiXlsxPromise = eiLoadScriptOnce(EI_XLSX_URL, function () { return !!window.XLSX; });
+    return _eiXlsxPromise;
+  }
+  function eiLoadTesseract() {
+    if (!_eiTesseractPromise) _eiTesseractPromise = eiLoadScriptOnce(EI_TESSERACT_URL, function () { return !!window.Tesseract; });
+    return _eiTesseractPromise;
+  }
+
+  var _eiAssets     = null;  // null = ikkje henta enno (skil frå ei ekte tom liste)
+  var _eiCategories = [];
+  // Historikk vert henta saman med assets/categories (same runde, Fase 2) --
+  // difor ikkje sitt eige null-sentinel: han er alltid klar samstundes med
+  // _eiAssets, sidan detaljvisinga (den einaste som treng han) berre er
+  // nåbar etter at _eiAssets alt har gått frå null til ei liste.
+  var _eiHistory    = [];
+  // Verdiberegningshistorikk (Fase 4) -- same "henta saman med resten"-mønster
+  // som _eiHistory over.
+  var _eiValuations = [];
+  var _eiLoadError  = null;
+  var _eiLoading    = false;
+
+  function eiKr(n) {
+    return new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(Number(n) || 0);
+  }
+
+  function eiendelerDateNo(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleDateString("nb-NO");
+  }
+
+  function fetchEiendelerData(cb) {
+    if (!_sb) {
+      _eiCategories = App.store.get(EI_CATEGORIES_STORE_KEY, []) || [];
+      _eiAssets     = App.store.get(EI_STORE_KEY, []) || [];
+      _eiHistory    = App.store.get(EI_HISTORY_STORE_KEY, []) || [];
+      _eiValuations = App.store.get(EI_VALUATION_STORE_KEY, []) || [];
+      cb(null);
+      return;
+    }
+    // Sekvensielt, ikkje parallelt -- fire små spørringar, enklare å resonnere
+    // om enn ein pending-teljar for eit marginalt tidsgevinst.
+    _sb.from("asset_categories").select("*").order("name").then(function (catRes) {
+      if (catRes.error) { cb(catRes.error); return; }
+      _sb.from("assets").select("*").order("created_at", { ascending: false }).then(function (assetRes) {
+        if (assetRes.error) { cb(assetRes.error); return; }
+        _sb.from("asset_ownership_history").select("*").order("changed_on", { ascending: false }).then(function (histRes) {
+          if (histRes.error) { cb(histRes.error); return; }
+          _sb.from("asset_valuation_history").select("*").order("valued_on", { ascending: false }).then(function (valRes) {
+            if (valRes.error) { cb(valRes.error); return; }
+            _eiCategories = catRes.data || [];
+            _eiAssets     = assetRes.data || [];
+            _eiHistory    = histRes.data || [];
+            _eiValuations = valRes.data || [];
+            cb(null);
+          });
+        });
+      });
+    });
+  }
+
+  function loadEiendelerDataIfNeeded(root) {
+    if (_eiAssets !== null || _eiLoading) return;
+    _eiLoading = true;
+    fetchEiendelerData(function (err) {
+      _eiLoading = false;
+      _eiLoadError = err || null;
+      rerenderEiendelerContent(root);
+    });
+  }
+
+  function rerenderEiendelerContent(root) {
+    // Brukaren kan ha navigert vekk frå fana (eller heile Workspace) før
+    // Supabase-svaret kom attende -- same "sjekk DOM-tilstand"-vakt som
+    // fleire andre asynkrone rendrarar i kodebasen alt bruker.
+    if (!root || !root.ownerDocument || !root.ownerDocument.contains(root)) return;
+    var contentEl = root.querySelector("[data-od-content]");
+    if (!contentEl) return;
+    var search = root.querySelector("[data-od-search]");
+    contentEl.innerHTML = eiendelerContent(search ? search.value : "", getView());
+    bindEiendelerDynamic(root);
+  }
+
+  function eiendelerCategoryName(categoryId) {
+    var cat = _eiCategories.filter(function (c) { return c.id === categoryId; })[0];
+    return cat ? cat.name : "Uten kategori";
+  }
+
+  function eiendelerHistoryFor(assetId) {
+    return (_eiHistory || [])
+      .filter(function (h) { return h.asset_id === assetId; })
+      .sort(function (a, b) { return (b.changed_on || "").localeCompare(a.changed_on || ""); });
+  }
+
+  function eiendelerHistoryHtml(assetId) {
+    var hist = eiendelerHistoryFor(assetId);
+    if (!hist.length) return "";
+    return '<div class="ei-history"><h4>Eierskapshistorikk</h4><ul>' +
+      hist.map(function (h) {
+        return '<li>' + esc(eiendelerDateNo(h.changed_on)) + ': ' +
+          esc(EI_OWNERSHIP_LABELS[h.from_ownership] || h.from_ownership) + ' → ' +
+          esc(EI_OWNERSHIP_LABELS[h.to_ownership] || h.to_ownership) + '</li>';
+      }).join("") +
+    '</ul></div>';
+  }
+
+  function eiendelerFilter(list, q) {
+    q = String(q || "").trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(function (a) {
+      return [a.name, a.model, a.location, a.supplier].join(" ").toLowerCase().indexOf(q) >= 0;
+    });
+  }
+
+  function eiendelerSummary(assets) {
+    var owned    = assets.filter(function (a) { return a.ownership === "owned"; });
+    var leased   = assets.filter(function (a) { return a.ownership === "leased"; });
+    var borrowed = assets.filter(function (a) { return a.ownership === "borrowed"; });
+    var totalPrice  = owned.reduce(function (s, a) { return s + (Number(a.purchase_price) || 0); }, 0);
+    var totalValue  = owned.reduce(function (s, a) { return s + (a.estimated_value != null ? Number(a.estimated_value) : 0); }, 0);
+    var monthlyRent = assets.reduce(function (s, a) { return s + (Number(a.rent_per_month) || 0); }, 0);
+    var missing     = owned.filter(function (a) { return a.estimated_value === null || a.estimated_value === undefined; }).length;
+
+    return '<div class="od-stats">' +
+        '<div class="od-stat"><span>Registrerte eiendeler</span><strong>' + assets.length + '</strong></div>' +
+        '<div class="od-stat"><span>Eid · leid · lånt</span><strong style="font-size:1.05rem">' + owned.length + ' · ' + leased.length + ' · ' + borrowed.length + '</strong></div>' +
+        '<div class="od-stat"><span>Kjøpsverdi (eid)</span><strong>' + eiKr(totalPrice) + '</strong></div>' +
+        '<div class="od-stat"><span>Verdi i dag (eid)</span><strong>' + eiKr(totalValue) + '</strong></div>' +
+        '<div class="od-stat"><span>Leiekostnad/måned</span><strong>' + eiKr(monthlyRent) + '</strong></div>' +
+      '</div>' +
+      (missing ? '<p class="od-help">' + missing + ' eide eiendeler mangler verdivurdering.</p>' : '');
+  }
+
+  // opts.quickUpload: syn ein "Last opp bilde"-knapp direkte i kort-/
+  // detaljvisinga når biletet manglar (Fase 3) -- utan å måtte opne heile
+  // redigeringsskjemaet. App.media.resolve() sidan verdien anten er ein ekte
+  // Supabase-URL ELLER ein "media:"-lokal-referanse (App.supabase falsy,
+  // t.d. i testmiljøet) -- same tolking som resten av kodebasen sine
+  // biletfelt alt bruker (sjå core.js sin eigen Media.resolve()).
+  function eiendelerVisual(a, opts) {
+    opts = opts || {};
+    if (a.image_url) return '<div class="ei-visual"><img src="' + esc(App.media.resolve(a.image_url)) + '" alt="' + esc(a.name) + '"></div>';
+    var uploadBtn = (opts.quickUpload && isAdminRole())
+      ? '<button type="button" class="btn btn--ghost btn--sm ei-visual__upload" data-ei-quick-upload="' + esc(a.id) + '">Last opp bilde</button>'
+      : '';
+    return '<div class="ei-visual ei-visual--placeholder"><span class="ti ti-package"></span>' + uploadBtn + '</div>';
+  }
+
+  function eiendelerValueLine(a) {
+    if (a.ownership === "leased") return '<b>' + eiKr(a.rent_per_month) + '</b><br><small class="od-muted">per måned</small>';
+    if (a.ownership === "borrowed") return '<em class="od-muted">Ingen kostnad</em>';
+    if (a.estimated_value === null || a.estimated_value === undefined) return '<em class="od-muted">Ikke vurdert</em>';
+    return '<b>' + eiKr(a.estimated_value) + '</b>';
+  }
+
+  function eiendelerCard(a) {
+    return '<div class="od-card" data-ei-open="' + esc(a.id) + '" tabindex="0" role="button">' +
+      eiendelerVisual(a, { quickUpload: true }) +
+      '<h3>' + esc(a.name) + ' <span class="ei-ownership ei-ownership--' + esc(a.ownership) + '">' + esc(EI_OWNERSHIP_LABELS[a.ownership] || a.ownership) + '</span></h3>' +
+      '<p>' + esc(a.model || "") + '</p>' +
+      '<p class="od-muted">⌖ ' + esc(a.location || "Ingen plassering") + '</p>' +
+      '<p>' + eiendelerValueLine(a) + '</p>' +
+    '</div>';
+  }
+
+  function eiendelerCardView(list) {
+    return '<div class="od-grid">' + list.map(eiendelerCard).join("") + '</div>';
+  }
+
+  // UX-review-funn (HIGH, 2026-08-10): på smal skjerm skjuler @media-regelen
+  // .ei-list__head heilt -- utan ei etikett INNI kvar celle vart "28 000 kr"
+  // og "19 000 kr" stabla identisk, umogleg å skilje Kjøpspris frå Verdi.
+  // ei-list__mlabel er difor alltid i markupen, men CSS skjuler han over
+  // 650px (der kolonneoverskrifta over alt gjer jobben).
+  function eiendelerListView(list) {
+    return '<div class="ei-list">' +
+      '<div class="ei-list__head"><span>Eiendel</span><span>Kategori</span><span>Plassering</span><span>Kjøpspris</span><span>Verdi/kostnad</span></div>' +
+      list.map(function (a) {
+        return '<div class="ei-list__row" data-ei-open="' + esc(a.id) + '" tabindex="0" role="button">' +
+          '<span><b>' + esc(a.name) + '</b> <em class="ei-ownership ei-ownership--' + esc(a.ownership) + '">' + esc(EI_OWNERSHIP_LABELS[a.ownership] || a.ownership) + '</em><br><small class="od-muted">' + esc(a.model || "") + '</small></span>' +
+          '<span><small class="ei-list__mlabel">Kategori: </small><span class="od-muted">' + esc(eiendelerCategoryName(a.category_id)) + '</span></span>' +
+          '<span><small class="ei-list__mlabel">Plassering: </small><span class="od-muted">' + esc(a.location || "—") + '</span></span>' +
+          '<span><small class="ei-list__mlabel">Kjøpspris: </small>' + (a.ownership === "owned" && a.purchase_price != null ? eiKr(a.purchase_price) : "—") + '</span>' +
+          '<span><small class="ei-list__mlabel">Verdi/kostnad: </small>' + eiendelerValueLine(a) + '</span>' +
+        '</div>';
+      }).join("") +
+    '</div>';
+  }
+
+  function eiendelerContent(q, view) {
+    if (_eiLoadError) {
+      return '<div class="od-empty"><b>Kunne ikke laste eiendeler</b><p>' + esc(_eiLoadError.message || "Ukjent feil") + '. Prøv igjen, eller sjekk nettforbindelsen.</p>' +
+        '<button class="btn btn--ghost btn--sm" data-ei-retry type="button">Prøv igjen</button></div>';
+    }
+    if (_eiAssets === null) {
+      return '<div class="od-empty"><b>Laster eiendeler …</b></div>';
+    }
+    var filtered = eiendelerFilter(_eiAssets, q);
+    var body = filtered.length === 0
+      ? (_eiAssets.length === 0
+          ? '<div class="od-empty"><b>Ingen eiendeler registrert ennå</b><p>Legg til den første eiendelen med «Ny».</p></div>'
+          : '<div class="od-empty"><b>Ingen treff</b><p>Prøv et annet søk, eller nullstill det.</p></div>')
+      : (view === "list" ? eiendelerListView(filtered) : eiendelerCardView(filtered));
+    // Fase 3: mål for hurtig-opplasting-frå-kort sine feilmeldingar -- ei
+    // slik handling skjer utanfor både redigeringsmodalen og detaljmodalen,
+    // så det finst ingen [data-ei-status]/[data-ei-detail-status] å skrive
+    // til. Tom som standard, same is-err-klasse som dei andre statuslinjene.
+    return eiendelerSummary(_eiAssets) + '<p class="form__status" data-ei-quick-status></p>' + body;
+  }
+
+  function eiField(name, label, value, opts) {
+    opts = opts || {};
+    var type = opts.type || "text";
+    var attrs = 'name="' + esc(name) + '" type="' + esc(type) + '"';
+    if (value !== undefined && value !== null && value !== "") attrs += ' value="' + esc(value) + '"';
+    if (opts.required) attrs += " required";
+    if (type === "number") attrs += ' min="0" step="0.01"';
+    if (opts.placeholder) attrs += ' placeholder="' + esc(opts.placeholder) + '"';
+    return '<label>' + esc(label) + '<input ' + attrs + '></label>' + hintHtml(opts.hint);
+  }
+
+  function eiendelerOwnershipFields(ownership, asset) {
+    asset = asset || {};
+    if (ownership === "owned") {
+      return row(
+          eiField("acquisitionDate", "Kjøps-/overtakelsesdato", asset.acquisition_date, { type: "date" }),
+          eiField("purchasePrice", "Kjøpspris (kr)", asset.purchase_price, { type: "number" })
+        ) +
+        row(
+          eiField("estimatedValue", "Estimert verdi i dag", asset.estimated_value, { type: "number", placeholder: "Kan fylles inn senere", hint: "Valgfritt — kan beregnes senere ut fra kategori og alder." }),
+          input("location", "Plassering", asset.location)
+        );
+    }
+    return row(
+        input("supplier", ownership === "leased" ? "Leverandør/utleier" : "Eier/utlåner", asset.supplier),
+        input("agreementNumber", "Avtalenummer", asset.agreement_number)
+      ) +
+      (ownership === "leased" ? eiField("rentPerMonth", "Leie per måned (kr)", asset.rent_per_month, { type: "number" }) : "") +
+      row(
+        eiField("agreementStart", "Startdato", asset.agreement_start, { type: "date" }),
+        eiField("agreementEnd", "Sluttdato/returfrist", asset.agreement_end, { type: "date" })
+      ) +
+      (ownership === "leased" ? eiField("noticeDate", "Oppsigelsesfrist", asset.notice_date, { type: "date" }) : "") +
+      row(input("location", "Plassering", asset.location), input("responsibleName", "Ansvarlig", asset.responsible_name)) +
+      area("returnTerms", "Returvilkår", asset.return_terms) +
+      (ownership === "leased" ? input("purchaseOption", "Eventuell kjøpsopsjon", asset.purchase_option) : "");
+  }
+
+  // Fase 3: same vesle miniatyr som eiendelerVisual() sin "utan bilete"-gren
+  // brukar (utan quickUpload-knappen -- her har skjemaet sitt eige fil-input
+  // rett under, ein ekstra knapp inni miniatyren ville berre vore forvirrande).
+  function eiendelerImagePreviewHtml(imageUrl) {
+    if (!imageUrl) return '<div class="ei-visual ei-visual--placeholder"><span class="ti ti-package"></span></div>';
+    return '<div class="ei-visual"><img src="' + esc(App.media.resolve(imageUrl)) + '" alt=""></div>';
+  }
+
+  function eiendelerEditorHtml(asset) {
+    asset = asset || {};
+    var ownership = asset.ownership || "owned";
+    var rawCategoryName = eiendelerCategoryName(asset.category_id);
+    var categoryValue = rawCategoryName === "Uten kategori" ? "" : rawCategoryName;
+    var statusLabel = EI_STATUS_LABELS[asset.status] || "I bruk";
+
+    return '<form class="od-form" data-ei-form>' +
+      input("name", "Navn på eiendel", asset.name, true) +
+      '<label>Bilde' +
+        '<div class="ei-image-field" data-ei-image-field>' +
+          '<div data-ei-image-preview>' + eiendelerImagePreviewHtml(asset.image_url) + '</div>' +
+          '<div class="ei-image-field__actions">' +
+            '<input type="file" accept="image/*" data-ei-image-input>' +
+            (asset.image_url ? '<button type="button" class="btn btn--ghost btn--sm" data-ei-image-clear>Fjern bilde</button>' : '') +
+          '</div>' +
+        '</div>' +
+      '</label>' +
+      '<input type="hidden" name="imageUrl" value="' + esc(asset.image_url || "") + '" data-ei-image-hidden>' +
+      '<label>Eierskap' +
+        '<div class="ei-ownership-choice" data-ei-ownership-choice>' +
+          ["owned", "leased", "borrowed"].map(function (o) {
+            return '<button type="button" class="' + (o === ownership ? "is-active" : "") + '" data-ei-ownership="' + o + '">' + esc(EI_OWNERSHIP_LABELS[o]) + '</button>';
+          }).join("") +
+        '</div>' +
+      '</label>' +
+      '<input type="hidden" name="ownership" value="' + esc(ownership) + '">' +
+      combo("categoryName", "Kategori", categoryValue, _eiCategories.map(function (c) { return c.name; }), "Skriv navnet på en ny kategori for å opprette den.") +
+      input("model", "Merke/modell", asset.model) +
+      '<div data-ei-ownership-fields>' + eiendelerOwnershipFields(ownership, asset) + '</div>' +
+      select("status", "Status", statusLabel, [EI_STATUS_LABELS.in_use, EI_STATUS_LABELS.in_storage, EI_STATUS_LABELS.in_service]) +
+      // Fase 5: OCR legg ALDRI tekst rett i notatfeltet -- gjennomlest tekst
+      // hamnar i ei eiga tekstboks brukaren sjølv må godkjenne («Legg til i
+      // notat») før han faktisk hamnar i skjemaet (IMPLEMENTERINGSPROMPT.md
+      // sitt uttrykkelege krav: berre GJENNOMLEST tekst, aldri automatisk).
+      '<div class="ei-ocr" data-ei-ocr>' +
+        '<p class="od-help">Ta bilde av f.eks. en kvittering eller et merkeskilt for å hente ut teksten automatisk. Du får se og redigere teksten før den legges til i notatet.</p>' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-ei-ocr-btn>Hent tekst fra bilde (OCR)</button>' +
+        '<input type="file" accept="image/*" data-ei-ocr-input style="display:none">' +
+        '<p class="form__status" data-ei-ocr-status></p>' +
+        '<div data-ei-ocr-review style="display:none">' +
+          '<label>Gjennomgå teksten før du legger den til i notatet<textarea data-ei-ocr-text rows="4"></textarea></label>' +
+          '<div class="od-actions">' +
+            '<button type="button" class="btn btn--primary btn--sm" data-ei-ocr-add>Legg til i notat</button>' +
+            '<button type="button" class="btn btn--ghost btn--sm" data-ei-ocr-discard>Forkast</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      area("note", "Notat", asset.note) +
+    '</form>';
+  }
+
+  // Fase 5: Excel-mal/import. Kolonnenamna er identiske med kjeldeprototypen
+  // (docs/INTEGRASJON.md sitt forslag) -- brukarar som alt kjenner malen frå
+  // demoen skal kunne bruke same ark, ikkje måtte lære eit nytt sett namn.
+  function eiendelerDownloadTemplateFile() {
+    var headers = EI_IMPORT_HEADERS;
+    var example = ["MacBook Pro 14", "Datautstyr", "M3, 2024", "Eid", "I bruk", "2026-01-15", "28990", "24000", "Hovedkontor", "", "", "", "", "", "", ""];
+    var ws = window.XLSX.utils.aoa_to_sheet([headers, example]);
+    var wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Eiendeler");
+    window.XLSX.writeFile(wb, "eiendeler-mal.xlsx");
+  }
+
+  function eiendelerParseOwnershipLabel(v) {
+    var norm = String(v || "").trim().toLowerCase();
+    return EI_OWNERSHIP_VALUE_BY_LABEL[norm] || null;
+  }
+  // Returnerer null (ikkje ein feilverdi) for ukjent tekst -- kallar sjølv
+  // avgjer om det tyder valideringsfeil eller "stod tomt" (tom streng => "in_use").
+  function eiendelerParseStatusLabel(v) {
+    var norm = String(v || "").trim().toLowerCase();
+    if (!norm) return "in_use";
+    if (norm === "i bruk") return "in_use";
+    if (norm === "på lager" || norm === "pa lager") return "in_storage";
+    if (norm === "til service") return "in_service";
+    return null;
+  }
+  function eiendelerParseDateCell(v) {
+    if (v === null || v === undefined || v === "") return { ok: true, value: null };
+    if (v instanceof Date) return isNaN(v.getTime()) ? { ok: false } : { ok: true, value: v.toISOString().slice(0, 10) };
+    var d = new Date(String(v).trim());
+    return isNaN(d.getTime()) ? { ok: false } : { ok: true, value: d.toISOString().slice(0, 10) };
+  }
+  function eiendelerParseNumberCell(v) {
+    if (v === null || v === undefined || v === "") return { ok: true, value: null };
+    var n = Number(String(v).trim().replace(",", "."));
+    return (isNaN(n) || n < 0) ? { ok: false } : { ok: true, value: n };
+  }
+
+  // Éi rad = éin celle-array i same rekkefølgje som EI_IMPORT_HEADERS.
+  // Returnerer { row, errors, duplicate, rawName } -- `row` er null når
+  // `errors` ikkje er tom (aldri eit halvvegs utfylt objekt å ved eit uhell
+  // importere).
+  function eiendelerValidateImportRow(cells) {
+    var errors = [];
+    var name = String(cells[0] || "").trim();
+    if (!name) errors.push("Navn mangler");
+    var categoryName = String(cells[1] || "").trim();
+    if (!categoryName) errors.push("Kategori mangler");
+    var model = String(cells[2] || "").trim();
+    var ownership = eiendelerParseOwnershipLabel(cells[3]);
+    if (!ownership) errors.push("Eierskap må være Eid, Leid eller Lånt");
+    var status = eiendelerParseStatusLabel(cells[4]);
+    if (status === null) errors.push("Status må være I bruk, På lager eller Til service (kan stå tomt)");
+    var acqDate = eiendelerParseDateCell(cells[5]);
+    if (!acqDate.ok) errors.push("Kjøpsdato er ikke en gyldig dato");
+    var price = eiendelerParseNumberCell(cells[6]);
+    if (!price.ok) errors.push("Kjøpspris må være et positivt tall");
+    var estValue = eiendelerParseNumberCell(cells[7]);
+    if (!estValue.ok) errors.push("Estimert verdi må være et positivt tall");
+    var location = String(cells[8] || "").trim();
+    var supplier = String(cells[9] || "").trim();
+    var agreementNumber = String(cells[10] || "").trim();
+    var rent = eiendelerParseNumberCell(cells[11]);
+    if (!rent.ok) errors.push("Leie per måned må være et positivt tall");
+    var agreementStart = eiendelerParseDateCell(cells[12]);
+    if (!agreementStart.ok) errors.push("Avtalestart er ikke en gyldig dato");
+    var agreementEnd = eiendelerParseDateCell(cells[13]);
+    if (!agreementEnd.ok) errors.push("Avtaleslutt/returfrist er ikke en gyldig dato");
+    var responsibleName = String(cells[14] || "").trim();
+    var note = String(cells[15] || "").trim();
+
+    var duplicate = !!name && (_eiAssets || []).some(function (a) { return String(a.name || "").trim().toLowerCase() === name.toLowerCase(); });
+
+    var row = null;
+    if (!errors.length) {
+      row = {
+        name: name, categoryName: categoryName, model: model || null, ownership: ownership, status: status,
+        location: location || null, note: note || null, image_url: null
+      };
+      if (ownership === "owned") {
+        row.acquisition_date = acqDate.value;
+        row.purchase_price = price.value;
+        row.estimated_value = estValue.value;
+        row.supplier = row.agreement_number = row.rent_per_month = null;
+        row.agreement_start = row.agreement_end = row.notice_date = null;
+        row.responsible_name = row.return_terms = row.purchase_option = null;
+      } else {
+        row.supplier = supplier || null;
+        row.agreement_number = agreementNumber || null;
+        row.rent_per_month = ownership === "leased" ? rent.value : null;
+        row.agreement_start = agreementStart.value;
+        row.agreement_end = agreementEnd.value;
+        row.notice_date = null;
+        row.responsible_name = responsibleName || null;
+        row.return_terms = null;
+        row.purchase_option = null;
+        row.acquisition_date = row.purchase_price = row.estimated_value = null;
+      }
+    }
+    return { row: row, errors: errors, duplicate: duplicate, rawName: name || "(uten navn)" };
+  }
+
+  // Sekvensielt (ikkje Promise.all) -- fleire rader kan dele EIN NY kategori
+  // som ikkje finst frå før, og withCategory() sin eigen
+  // "finst-han-alt/opprett-han"-sjekk må sjå resultatet av FØRRE rad si
+  // eventuelle oppretting før neste rad spør, elles ville to rader med same
+  // nye kategorinamn oppretta to like kategoriar i staden for å dele éin.
+  // onProgress(doneCount, total) -- UX-review-funn (HIGH, 2026-08-10): opp
+  // til 200 rader vert importert SEKVENSIELT (naudsynt, sjå kommentaren over
+  // withCategoryId under) mot ein ekte Supabase-tilkopling, kvar med sitt
+  // eige nettverks-rundtur -- utan framdriftsvarsel var ein knapp som berre
+  // stod "disabled" i potensielt lang tid det einaste synlege teiknet på at
+  // noko i det heile skjedde.
+  function runEiendelerImport(rows, onProgress, cb) {
+    var results = [];
+    function next(i) {
+      if (i >= rows.length) { cb(results); return; }
+      onProgress(i, rows.length);
+      var row = Object.assign({}, rows[i].row);
+      var categoryName = row.categoryName;
+      delete row.categoryName;
+      var existingCat = _eiCategories.filter(function (c) { return c.name.toLowerCase() === categoryName.toLowerCase(); })[0];
+      function withCategoryId(categoryId) {
+        row.category_id = categoryId;
+        createAsset(row, function (err) {
+          results.push({ name: row.name, error: err ? (err.message || "ukjent feil") : null });
+          next(i + 1);
+        });
+      }
+      if (existingCat) { withCategoryId(existingCat.id); return; }
+      createAssetCategory(categoryName, function (err, cat) {
+        if (err) { results.push({ name: row.name, error: err.message || "kunne ikke opprette kategori" }); next(i + 1); return; }
+        withCategoryId(cat.id);
+      });
+    }
+    next(0);
+  }
+
+  function renderEiendelerImportPreview(previewEl, parsed, root) {
+    var okRows = parsed.filter(function (p) { return !p.errors.length; });
+    previewEl.innerHTML =
+      '<p class="od-help">' + okRows.length + ' av ' + parsed.length + ' rader er klare til import' +
+        (parsed.length - okRows.length ? ", " + (parsed.length - okRows.length) + " har feil og blir hoppet over" : "") + '.</p>' +
+      '<div class="ei-import-list">' +
+        parsed.map(function (p, i) {
+          var label = p.errors.length ? ("Feil: " + p.errors.join("; ")) : (p.duplicate ? "Advarsel: navn finnes fra før — importeres likevel" : "Klar til import");
+          var cls = p.errors.length ? "is-err" : (p.duplicate ? "is-warn" : "is-ok");
+          return '<div class="ei-import-row ' + cls + '"><b>Rad ' + (i + 2) + ': ' + esc(p.rawName) + '</b><span>' + esc(label) + '</span></div>';
+        }).join("") +
+      '</div>' +
+      (okRows.length ? '<div class="od-actions"><button class="btn btn--primary btn--sm" data-ei-import-run type="button">Importer ' + okRows.length + ' rader</button></div>' : '') +
+      '<p class="form__status" data-ei-import-run-status></p>';
+
+    var runBtn = previewEl.querySelector("[data-ei-import-run]");
+    if (!runBtn) return;
+    runBtn.addEventListener("click", function () {
+      runBtn.disabled = true;
+      var runStatusEl0 = previewEl.querySelector("[data-ei-import-run-status]");
+      runEiendelerImport(okRows, function (done, total) {
+        if (runStatusEl0) { runStatusEl0.textContent = "Importerer rad " + (done + 1) + " av " + total + " …"; runStatusEl0.className = "form__status"; }
+      }, function (results) {
+        var runStatusEl = previewEl.querySelector("[data-ei-import-run-status]");
+        var failed = results.filter(function (r) { return r.error; });
+        var successCount = results.length - failed.length;
+        if (runStatusEl) {
+          runStatusEl.textContent = "Importerte " + successCount + " av " + results.length + " rader." +
+            (failed.length ? " Feilet: " + failed.map(function (r) { return r.name + " (" + r.error + ")"; }).join(", ") + "." : "");
+          runStatusEl.className = failed.length ? "form__status is-err" : "form__status";
+        }
+        draw(root, "eiendeler", "");
+        if (!failed.length) closeModal();
+        if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Importerte " + successCount + " eiendeler fra Excel" });
+      });
+    });
+  }
+
+  function bindEiendelerImportModal(modal, root) {
+    var statusEl = modal.querySelector("[data-ei-import-status]");
+    var templateBtn = modal.querySelector("[data-ei-import-template]");
+    if (templateBtn) templateBtn.addEventListener("click", function () {
+      templateBtn.disabled = true;
+      eiLoadXlsx().then(function () {
+        eiendelerDownloadTemplateFile();
+        templateBtn.disabled = false;
+      }).catch(function () {
+        statusEl.textContent = "Kunne ikke laste inn Excel-verktøyet. Sjekk nettforbindelsen og prøv igjen.";
+        statusEl.className = "form__status is-err";
+        templateBtn.disabled = false;
+      });
+    });
+
+    var fileInput = modal.querySelector("[data-ei-import-file]");
+    var previewEl = modal.querySelector("[data-ei-import-preview]");
+    fileInput.addEventListener("change", function () {
+      var f = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      if (!f) return;
+      previewEl.innerHTML = "";
+      statusEl.textContent = "Laster inn fil …";
+      statusEl.className = "form__status";
+      eiLoadXlsx().then(function () {
+        return f.arrayBuffer();
+      }).then(function (buffer) {
+        var data;
+        try {
+          var wb = window.XLSX.read(buffer, { type: "array", cellDates: true });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          // raw:true -- hentar underliggande verdiar (tal/Date) direkte i staden
+          // for lokaltilpassa formatert visningstekst. Me tolkar uansett kvar
+          // celle sjølve (eiendelerParseNumberCell/-DateCell), så den formaterte
+          // teksten var aldri i bruk -- og raw:true unngår i tillegg heilt å
+          // køyre SSF-talformaterings-tolkinga (der ReDoS-sårbarheita, CVE-2024-
+          // 22363, retta i cdn.sheetjs.com sin 0.20.3, låg), som eit ekstra
+          // forsvarslag utover sjølve versjonsoppdateringa (Security Auditor-
+          // funn, 2026-08-10).
+          data = window.XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: true });
+        } catch (e) {
+          statusEl.textContent = "Kunne ikke lese Excel-filen. Sjekk at den er en gyldig .xlsx-fil.";
+          statusEl.className = "form__status is-err";
+          return;
+        }
+        // Fyrste rad er overskrifter -- hopp over henne. Filtrer vekk heilt
+        // tomme rader (t.d. formatert-men-tom celleområde Excel ofte legg med).
+        var rows = (data || []).slice(1).filter(function (r) { return (r || []).some(function (c) { return String(c == null ? "" : c).trim() !== ""; }); });
+        if (!rows.length) {
+          statusEl.textContent = "Fant ingen rader med data i filen.";
+          statusEl.className = "form__status is-err";
+          return;
+        }
+        if (rows.length > EI_IMPORT_MAX_ROWS) {
+          statusEl.textContent = "Filen har " + rows.length + " rader. Maks " + EI_IMPORT_MAX_ROWS + " rader per import — del filen opp og prøv igjen.";
+          statusEl.className = "form__status is-err";
+          return;
+        }
+        statusEl.textContent = "";
+        statusEl.className = "form__status";
+        renderEiendelerImportPreview(previewEl, rows.map(eiendelerValidateImportRow), root);
+      }).catch(function () {
+        statusEl.textContent = "Kunne ikke laste inn Excel-verktøyet. Sjekk nettforbindelsen og prøv igjen.";
+        statusEl.className = "form__status is-err";
+      });
+    });
+  }
+
+  function openEiendelerImportModal(root) {
+    if (!isAdminRole()) return;
+    var html =
+      '<p class="od-help">Last opp en Excel-fil (.xlsx) med samme kolonner som malen. Maks ' + EI_IMPORT_MAX_ROWS + ' rader per import.</p>' +
+      '<div class="od-actions">' +
+        '<button class="btn btn--ghost btn--sm" data-ei-import-template type="button">Last ned mal (.xlsx)</button>' +
+      '</div>' +
+      '<label>Velg Excel-fil<input type="file" accept=".xlsx" data-ei-import-file></label>' +
+      '<p class="form__status" data-ei-import-status></p>' +
+      '<div data-ei-import-preview></div>';
+    openModal("Importer eiendeler fra Excel", html, function (modal) {
+      bindEiendelerImportModal(modal, root);
+    });
+  }
+
+  function openEiendelerEditor(root, assetId) {
+    if (!isAdminRole()) return;
+    var asset = assetId ? (_eiAssets || []).filter(function (a) { return a.id === assetId; })[0] : null;
+    var html = eiendelerEditorHtml(asset) +
+      '<div class="od-actions"><button class="btn btn--primary btn--sm" data-ei-save type="button">Lagre</button><button class="btn btn--ghost btn--sm" data-ei-cancel type="button">Avbryt</button></div>' +
+      '<p class="form__status" data-ei-status></p>';
+    openModal(asset ? "Rediger eiendel" : "Ny eiendel", html, function (modal) {
+      bindEiendelerEditor(modal, root, asset);
+    });
+  }
+
+  function createAssetCategory(name, cb) {
+    if (!_sb) {
+      var cat = { id: uid("cat"), name: name, annual_depreciation_rate: 0.18 };
+      _eiCategories.push(cat);
+      App.store.set(EI_CATEGORIES_STORE_KEY, _eiCategories);
+      cb(null, cat);
+      return;
+    }
+    _sb.from("asset_categories").insert({ name: name }).select().single().then(function (r) {
+      if (r.error) { cb(r.error); return; }
+      _eiCategories.push(r.data);
+      cb(null, r.data);
+    });
+  }
+
+  function createAsset(row, cb) {
+    if (!_sb) {
+      var asset = Object.assign({ id: uid("asset"), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, row);
+      _eiAssets.unshift(asset);
+      App.store.set(EI_STORE_KEY, _eiAssets);
+      cb(null, asset);
+      return;
+    }
+    var ctx = Intranet.getContext();
+    _sb.from("assets").insert(Object.assign({}, row, { created_by: ctx && ctx.userId })).select().single().then(function (r) {
+      if (r.error) { cb(r.error); return; }
+      _eiAssets.unshift(r.data);
+      cb(null, r.data);
+    });
+  }
+
+  function updateAsset(id, changes, cb) {
+    var idx = (_eiAssets || []).findIndex(function (a) { return a.id === id; });
+    if (!_sb) {
+      if (idx >= 0) Object.assign(_eiAssets[idx], changes, { updated_at: new Date().toISOString() });
+      App.store.set(EI_STORE_KEY, _eiAssets);
+      cb(null);
+      return;
+    }
+    var ctx = Intranet.getContext();
+    _sb.from("assets").update(Object.assign({}, changes, { updated_by: ctx && ctx.userId })).eq("id", id).select().single().then(function (r) {
+      if (r.error) { cb(r.error); return; }
+      if (idx >= 0) _eiAssets[idx] = r.data;
+      cb(null);
+    });
+  }
+
+  function deleteAssetRow(id, cb) {
+    var idx = (_eiAssets || []).findIndex(function (a) { return a.id === id; });
+    if (idx < 0) { cb(null); return; }
+    var removed = _eiAssets[idx];
+    _eiAssets.splice(idx, 1);
+    // Fase 3: frigjer biletet (Supabase Storage-objekt eller lokal "media:"-
+    // referanse) samstundes -- elles hopar sletta eiendelar seg opp som
+    // foreldrelause filer i den delte "media"-bucketen, same disiplin som
+    // core.js sin eigen Media.free() alt handhevar ved erstatt/fjern.
+    if (removed.image_url) App.media.free(removed.image_url);
+    if (!_sb) {
+      // Utan Supabase finst det ingen ON DELETE CASCADE -- fjern historikken
+      // for hand, elles vert han verande att som foreldrelause rader i
+      // App.store (dei ekte asset_ownership_history-/asset_valuation_history-
+      // tabellane kaskaderer dette sjølv, sjå migrasjonane).
+      _eiHistory = (_eiHistory || []).filter(function (h) { return h.asset_id !== id; });
+      _eiValuations = (_eiValuations || []).filter(function (v) { return v.asset_id !== id; });
+      App.store.set(EI_HISTORY_STORE_KEY, _eiHistory);
+      App.store.set(EI_VALUATION_STORE_KEY, _eiValuations);
+      App.store.set(EI_STORE_KEY, _eiAssets);
+      cb(null);
+      return;
+    }
+    _sb.from("assets").delete().eq("id", id).then(function (r) {
+      if (r.error) { _eiAssets.splice(idx, 0, removed); cb(r.error); return; }
+      cb(null);
+    });
+  }
+
+  // Fase 2 (2026-08-10): skriv éin historikkrad for ei stadfesta eierskaps-
+  // overgang (Eid/Leid/Lånt -> ein annan verdi). "Snapshot" tek vare på dei
+  // ownership-spesifikke felta FØR overgangen (kjøpspris/verdi for eigde,
+  // avtaledetaljar for leigde/lånte) sidan saveEiendelerFromForm nullar dei
+  // ut ved sjølve eierskapsbyttet -- utan dette ville historikken vist kva
+  // som endra seg, men ikkje kva verdien FAKTISK var før.
+  //
+  // fromOwnership/snapshot MÅ hentast ut FØR saveEiendelerFromForm() køyrer,
+  // ikkje lesast av `asset` her -- i App.store-fallback-varianten muterer
+  // updateAsset() same objektreferanse i _eiAssets in-place (Object.assign),
+  // så `asset.ownership` ville alt vore den NYE verdien innan denne
+  // funksjonen vart kalla (fanga live 2026-08-10, sjå test n15b).
+  function recordOwnershipChange(assetId, fromOwnership, newOwnership, snapshot, cb) {
+    var row = {
+      asset_id:       assetId,
+      from_ownership: fromOwnership,
+      to_ownership:   newOwnership,
+      changed_on:     new Date().toISOString().slice(0, 10),
+      snapshot:       snapshot
+    };
+    if (!_sb) {
+      row.id = uid("eih");
+      row.created_at = new Date().toISOString();
+      _eiHistory.push(row);
+      App.store.set(EI_HISTORY_STORE_KEY, _eiHistory);
+      cb(null);
+      return;
+    }
+    var ctx = Intranet.getContext();
+    _sb.from("asset_ownership_history").insert(Object.assign({}, row, { changed_by: ctx && ctx.userId })).select().single().then(function (r) {
+      if (r.error) { cb(r.error); return; }
+      _eiHistory.push(r.data);
+      cb(null);
+    });
+  }
+
+  // Fase 4 (2026-08-10): enkel, tydeleg merkt kalkulasjon -- IKKJE AI,
+  // marknadspris eller rekneskapsmessig avskriving (same ansvarsfråskriving
+  // som kjeldeprototypen sjølv gjorde). Returnerer null når det manglar nok
+  // data til å rekne (ikkje Eid, eller kjøpsdato/kjøpspris/kategori manglar)
+  // -- kallar sjølve avgjer korleis dét skal visast.
+  var EI_MS_PER_YEAR = 365.25 * 24 * 3600 * 1000;
+  function eiendelerCalculateValue(asset, category) {
+    if (!asset || asset.ownership !== "owned" || asset.purchase_price == null || !asset.acquisition_date || !category) return null;
+    var rate = Number(category.annual_depreciation_rate);
+    if (!(rate >= 0 && rate <= 1)) return null;
+    var acquired = new Date(asset.acquisition_date);
+    if (isNaN(acquired.getTime())) return null;
+    var ageYears = Math.max(0, (Date.now() - acquired.getTime()) / EI_MS_PER_YEAR);
+    var raw = Number(asset.purchase_price) * Math.pow(1 - rate, ageYears);
+    var value = Math.max(0, Math.round(raw / 100) * 100);
+    return { value: value, ageYears: ageYears, rate: rate };
+  }
+
+  // Oppdaterer sjølve eiendelen OG skriv ei godkjend historikkrad -- kalla
+  // BÅDE frå enkelt-godkjenning ("Bruk denne verdien" i detaljvisinga) og
+  // frå samla rekalkulering (eitt kall per endra eiendel). `cb` er alltid
+  // (err) -- ingen suksessdata treng leverast attende her.
+  function applyEiendelerValuation(assetId, value, meta, cb) {
+    var valuedOn = new Date().toISOString().slice(0, 10);
+    updateAsset(assetId, { estimated_value: value, estimated_value_at: valuedOn }, function (err) {
+      if (err) { cb(err); return; }
+      var row = { asset_id: assetId, value: value, valued_on: valuedOn, method: meta.method, assumptions: meta.assumptions };
+      if (!_sb) {
+        row.id = uid("eiv");
+        row.created_at = new Date().toISOString();
+        _eiValuations.push(row);
+        App.store.set(EI_VALUATION_STORE_KEY, _eiValuations);
+        cb(null);
+        return;
+      }
+      var ctx = Intranet.getContext();
+      _sb.from("asset_valuation_history").insert(Object.assign({}, row, { approved_by: ctx && ctx.userId })).select().single().then(function (r) {
+        if (r.error) { cb(r.error); return; }
+        _eiValuations.push(r.data);
+        cb(null);
+      });
+    });
+  }
+
+  // Samla "Rekalkuler verdi i dag" -- éin confirm() for HEILE operasjonen
+  // (ikkje éin per eiendel), skriv historikk berre for eiendelar der verdien
+  // FAKTISK endrar seg (unngår støy i historikken for uendra verdiar).
+  function recalculateAllEiendelerValues(root) {
+    var candidates = (_eiAssets || [])
+      .map(function (a) {
+        var category = _eiCategories.filter(function (c) { return c.id === a.category_id; })[0];
+        var calc = eiendelerCalculateValue(a, category);
+        return calc ? { asset: a, calc: calc } : null;
+      })
+      .filter(Boolean);
+
+    var statusEl = root.querySelector("[data-ei-quick-status]");
+    if (!candidates.length) {
+      if (statusEl) { statusEl.textContent = "Ingen eide eiendeler har nok informasjon (kjøpsdato, kjøpspris og kategori med verdifallsats) til å beregne verdi."; statusEl.className = "form__status"; }
+      return;
+    }
+    if (!confirm("Rekalkulere verdi i dag for " + candidates.length + " eide eiendeler med kjøpsdato og kategori registrert? " +
+        "Dette oppdaterer estimert verdi og legges til i historikken for hver eiendel som endres. " +
+        "De forrige verdiene forblir synlige i historikken, men blir ikke gjenopprettet automatisk.")) return;
+
+    var changing = candidates.filter(function (x) {
+      return x.asset.estimated_value == null || Number(x.asset.estimated_value) !== x.calc.value;
+    });
+    if (!changing.length) {
+      if (statusEl) { statusEl.textContent = "Ingen av de " + candidates.length + " beregnede verdiene er endret siden sist."; statusEl.className = "form__status"; }
+      return;
+    }
+
+    var remaining = changing.length;
+    var failed = [];
+    changing.forEach(function (x) {
+      applyEiendelerValuation(x.asset.id, x.calc.value, {
+        method: "category_depreciation",
+        assumptions: { age_years: Number(x.calc.ageYears.toFixed(2)), rate: x.calc.rate, purchase_price: x.asset.purchase_price }
+      }, function (err) {
+        remaining--;
+        if (err) failed.push(x.asset.name);
+        if (remaining === 0) {
+          draw(root, "eiendeler", "");
+          var statusEl2 = root.querySelector("[data-ei-quick-status]");
+          if (statusEl2) {
+            if (failed.length) {
+              statusEl2.textContent = "Oppdaterte " + (changing.length - failed.length) + " av " + changing.length + " eiendeler. Feilet for: " + failed.join(", ") + ".";
+              statusEl2.className = "form__status is-err";
+            } else {
+              statusEl2.textContent = "Oppdaterte verdien for " + changing.length + " eiendeler.";
+              statusEl2.className = "form__status";
+            }
+          }
+          if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Rekalkulerte verdi for " + (changing.length - failed.length) + " eiendeler" });
+        }
+      });
+    });
+  }
+
+  function saveEiendelerFromForm(fd, existingAsset, cb) {
+    var ownership = String(fd.get("ownership") || "owned");
+    var statusLabel = String(fd.get("status") || "I bruk");
+    var categoryName = String(fd.get("categoryName") || "").trim();
+
+    function withCategory(next) {
+      if (!categoryName) { next(null); return; }
+      var existing = _eiCategories.filter(function (c) { return c.name.toLowerCase() === categoryName.toLowerCase(); })[0];
+      if (existing) { next(existing.id); return; }
+      createAssetCategory(categoryName, function (err, cat) {
+        if (err) { cb(err); return; }
+        next(cat.id);
+      });
+    }
+
+    withCategory(function (categoryId) {
+      var row = {
+        name:        String(fd.get("name") || "").trim(),
+        ownership:   ownership,
+        status:      EI_STATUS_VALUE_BY_LABEL[statusLabel] || "in_use",
+        category_id: categoryId,
+        model:       String(fd.get("model") || "").trim() || null,
+        note:        String(fd.get("note") || "").trim() || null,
+        image_url:   String(fd.get("imageUrl") || "").trim() || null,
+        location:    String(fd.get("location") || "").trim() || null
+      };
+      if (ownership === "owned") {
+        row.acquisition_date  = String(fd.get("acquisitionDate") || "") || null;
+        row.purchase_price    = fd.get("purchasePrice") !== "" ? Number(fd.get("purchasePrice")) : null;
+        row.estimated_value   = fd.get("estimatedValue") !== "" ? Number(fd.get("estimatedValue")) : null;
+        row.supplier = row.agreement_number = row.rent_per_month = null;
+        row.agreement_start = row.agreement_end = row.notice_date = null;
+        row.responsible_name = row.return_terms = row.purchase_option = null;
+      } else {
+        row.supplier         = String(fd.get("supplier") || "").trim() || null;
+        row.agreement_number = String(fd.get("agreementNumber") || "").trim() || null;
+        row.rent_per_month   = ownership === "leased" && fd.get("rentPerMonth") !== "" ? Number(fd.get("rentPerMonth")) : null;
+        row.agreement_start  = String(fd.get("agreementStart") || "") || null;
+        row.agreement_end    = String(fd.get("agreementEnd") || "") || null;
+        row.notice_date      = ownership === "leased" ? (String(fd.get("noticeDate") || "") || null) : null;
+        row.responsible_name = String(fd.get("responsibleName") || "").trim() || null;
+        row.return_terms     = String(fd.get("returnTerms") || "").trim() || null;
+        row.purchase_option  = ownership === "leased" ? (String(fd.get("purchaseOption") || "").trim() || null) : null;
+        row.acquisition_date = row.purchase_price = row.estimated_value = null;
+      }
+
+      if (existingAsset) updateAsset(existingAsset.id, row, cb);
+      else createAsset(row, cb);
+    });
+  }
+
+  // Fase 5: OCR-flyten er heilt fråkopla biletfeltet over -- brukaren vel
+  // eit VILKÅRLEG bilete (t.d. eit kvitteringsfoto eller eit merkeskilt),
+  // ikkje nødvendigvis eiendelens eige omslagsbilete. "nor" åleine (ikkje
+  // "nor+eng") for å halde nedlastinga av språkdata mindre -- Tesseract sin
+  // eigen teiknattkjenning handterer latinske bokstavar/tal uavhengig av
+  // språkpakke, språkpakken styrer først og fremst ordbok-basert korrigering.
+  function bindEiendelerOcr(scope) {
+    var ocrBtn      = scope.querySelector("[data-ei-ocr-btn]");
+    var ocrInput    = scope.querySelector("[data-ei-ocr-input]");
+    var ocrStatusEl = scope.querySelector("[data-ei-ocr-status]");
+    var ocrReviewEl = scope.querySelector("[data-ei-ocr-review]");
+    var ocrTextEl   = scope.querySelector("[data-ei-ocr-text]");
+    if (!ocrBtn || !ocrInput) return;
+
+    ocrBtn.addEventListener("click", function () { ocrInput.click(); });
+
+    ocrInput.addEventListener("change", function () {
+      var f = ocrInput.files && ocrInput.files[0];
+      ocrInput.value = "";
+      if (!f) return;
+      ocrReviewEl.style.display = "none";
+      ocrBtn.disabled = true;
+      ocrStatusEl.textContent = "Laster inn OCR og leser teksten i bildet …";
+      ocrStatusEl.className = "form__status";
+      eiLoadTesseract().then(function () {
+        return window.Tesseract.recognize(f, "nor");
+      }).then(function (result) {
+        ocrBtn.disabled = false;
+        var text = ((result && result.data && result.data.text) || "").trim();
+        if (!text) {
+          ocrStatusEl.textContent = "Fant ingen lesbar tekst i bildet.";
+          ocrStatusEl.className = "form__status";
+          return;
+        }
+        ocrStatusEl.textContent = "";
+        ocrTextEl.value = text;
+        ocrReviewEl.style.display = "";
+      }).catch(function (err) {
+        ocrBtn.disabled = false;
+        ocrStatusEl.textContent = "Kunne ikke lese tekst fra bildet: " + ((err && err.message) || "ukjent feil") + ".";
+        ocrStatusEl.className = "form__status is-err";
+      });
+    });
+
+    scope.querySelector("[data-ei-ocr-discard]").addEventListener("click", function () {
+      ocrTextEl.value = "";
+      ocrReviewEl.style.display = "none";
+    });
+    // Einaste stad gjennomlest OCR-tekst faktisk hamnar i skjemaet -- ALDRI
+    // automatisk frå .then() over, berre via dette eksplisitte brukarvalet.
+    scope.querySelector("[data-ei-ocr-add]").addEventListener("click", function () {
+      var reviewed = ocrTextEl.value.trim();
+      if (!reviewed) return;
+      var noteField = scope.querySelector('[name="note"]');
+      noteField.value = noteField.value.trim() ? (noteField.value.trim() + "\n\n" + reviewed) : reviewed;
+      ocrTextEl.value = "";
+      ocrReviewEl.style.display = "none";
+    });
+  }
+
+  function bindEiendelerEditor(scope, root, asset) {
+    var statusEl = scope.querySelector("[data-ei-status]");
+    var ownershipChoice = scope.querySelector("[data-ei-ownership-choice]");
+    var hiddenOwnership = scope.querySelector('[name="ownership"]');
+    var fieldsWrap = scope.querySelector("[data-ei-ownership-fields]");
+    if (ownershipChoice) {
+      ownershipChoice.querySelectorAll("[data-ei-ownership]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var val = btn.getAttribute("data-ei-ownership");
+          hiddenOwnership.value = val;
+          ownershipChoice.querySelectorAll("[data-ei-ownership]").forEach(function (b) { b.classList.toggle("is-active", b === btn); });
+          fieldsWrap.innerHTML = eiendelerOwnershipFields(val, asset || {});
+        });
+      });
+    }
+
+    // Fase 3: biletopplasting inni skjemaet. imageHidden held den faktiske
+    // verdien som vert lagra (URL/"media:"-ref) -- fil-input og "Fjern
+    // bilde" oppdaterer berre DENNE og re-rendrar miniatyren, sjølve
+    // lagringa skjer fyrst når heile skjemaet lagrast (data-ei-save under).
+    var imageField   = scope.querySelector("[data-ei-image-field]");
+    var imageInput   = scope.querySelector("[data-ei-image-input]");
+    var imageHidden  = scope.querySelector("[data-ei-image-hidden]");
+    var imagePreview = scope.querySelector("[data-ei-image-preview]");
+
+    function bindImageClearBtn() {
+      var btn = imageField.querySelector("[data-ei-image-clear]");
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        App.media.free(imageHidden.value);
+        imageHidden.value = "";
+        imagePreview.innerHTML = eiendelerImagePreviewHtml("");
+        syncImageClearBtn();
+      });
+    }
+    function syncImageClearBtn() {
+      var actions = imageField.querySelector(".ei-image-field__actions");
+      var existing = imageField.querySelector("[data-ei-image-clear]");
+      if (imageHidden.value && !existing) {
+        actions.insertAdjacentHTML("beforeend", '<button type="button" class="btn btn--ghost btn--sm" data-ei-image-clear>Fjern bilde</button>');
+        bindImageClearBtn();
+      } else if (!imageHidden.value && existing) {
+        existing.parentNode.removeChild(existing);
+      }
+    }
+    bindImageClearBtn();
+
+    if (imageInput) imageInput.addEventListener("change", function () {
+      var f = imageInput.files && imageInput.files[0];
+      imageInput.value = "";
+      if (!f) return;
+      var previousUrl = imageHidden.value;
+      App.media.put(f).then(function (url) {
+        if (previousUrl) App.media.free(previousUrl);
+        imageHidden.value = url;
+        imagePreview.innerHTML = eiendelerImagePreviewHtml(url);
+        syncImageClearBtn();
+      }).catch(function (err) {
+        if (statusEl) { statusEl.textContent = "Kunne ikke laste opp bildet: " + (err.message || "ukjent feil") + ". Prøv et mindre bilde."; statusEl.className = "form__status is-err"; }
+      });
+    });
+
+    bindEiendelerOcr(scope);
+
+    scope.querySelector("[data-ei-cancel]").addEventListener("click", closeModal);
+    scope.querySelector("[data-ei-save]").addEventListener("click", function () {
+      var formEl = scope.querySelector("[data-ei-form]");
+      if (!formEl.checkValidity()) { formEl.reportValidity(); return; }
+      var fd = new FormData(formEl);
+      var newOwnership = String(fd.get("ownership") || "owned");
+      var ownershipChanged = !!(asset && asset.ownership !== newOwnership);
+      // Fase 2: eierskapsbytte er ei reell driftsendring (påverkar oversikt
+      // og verdi) -- Tier B-stadfesting FØR lagring, ikkje ein stille lagra
+      // detalj blant alle dei andre felta.
+      if (ownershipChanged && !confirm('Endre eierskap for «' + asset.name + '» fra ' +
+          (EI_OWNERSHIP_LABELS[asset.ownership] || asset.ownership) + ' til ' +
+          (EI_OWNERSHIP_LABELS[newOwnership] || newOwnership) +
+          '? Dette påvirker oversikt og verdi, og blir lagt til i historikken. ' +
+          'Du kan endre eierskapet tilbake senere, men den forrige verdien blir ikke gjenopprettet automatisk.')) return;
+
+      // Fanga FØR lagring -- sjå kommentaren ved recordOwnershipChange() for
+      // kvifor: updateAsset() sin App.store-fallback muterer `asset` in-place.
+      var priorOwnership = ownershipChanged ? asset.ownership : null;
+      var priorSnapshot = ownershipChanged
+        ? (asset.ownership === "owned"
+            ? { purchase_price: asset.purchase_price, estimated_value: asset.estimated_value, acquisition_date: asset.acquisition_date }
+            : { supplier: asset.supplier, agreement_number: asset.agreement_number, rent_per_month: asset.rent_per_month, agreement_start: asset.agreement_start, agreement_end: asset.agreement_end })
+        : null;
+
+      saveEiendelerFromForm(fd, asset, function (err) {
+        if (err) {
+          if (statusEl) { statusEl.textContent = "Kunne ikke lagre: " + (err.message || "ukjent feil") + ". Prøv igjen."; statusEl.className = "form__status is-err"; }
+          return;
+        }
+        if (!ownershipChanged) {
+          closeModal();
+          draw(root, "eiendeler", "");
+          if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: asset ? "Oppdatert eiendel" : "Ny eiendel registrert" });
+          return;
+        }
+        recordOwnershipChange(asset.id, priorOwnership, newOwnership, priorSnapshot, function (histErr) {
+          if (histErr) {
+            // Sjølve eiendelen er alt lagra -- berre historikkrada feila.
+            // Held modalen open og seier ifrå, i staden for å late som ingenting
+            // skjedde (men utan å late brukaren tru heile lagringa feila).
+            if (statusEl) { statusEl.textContent = "Eiendelen ble lagret, men historikken kunne ikke oppdateres: " + (histErr.message || "ukjent feil") + "."; statusEl.className = "form__status is-err"; }
+            return;
+          }
+          closeModal();
+          draw(root, "eiendeler", "");
+          if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Oppdatert eiendel (eierskap endret)" });
+        });
+      });
+    });
+  }
+
+  function openEiendelerDetail(root, assetId) {
+    var a = (_eiAssets || []).filter(function (x) { return x.id === assetId; })[0];
+    if (!a) return;
+    var isAdmin = isAdminRole();
+    var body = eiendelerVisual(a, { quickUpload: true }) +
+      '<div class="od-kv">' +
+        '<div><strong>Eierskap:</strong> ' + esc(EI_OWNERSHIP_LABELS[a.ownership] || a.ownership) + '</div>' +
+        '<div><strong>Kategori:</strong> ' + esc(eiendelerCategoryName(a.category_id)) + '</div>' +
+        '<div><strong>Status:</strong> ' + esc(EI_STATUS_LABELS[a.status] || a.status) + '</div>' +
+        '<div><strong>Plassering:</strong> ' + esc(a.location || "Ikke registrert") + '</div>' +
+        (a.ownership === "owned"
+          ? '<div><strong>Kjøpsdato:</strong> ' + esc(eiendelerDateNo(a.acquisition_date) || "Ikke registrert") + '</div>' +
+            '<div><strong>Kjøpspris:</strong> ' + (a.purchase_price != null ? eiKr(a.purchase_price) : "Ikke registrert") + '</div>' +
+            '<div><strong>Estimert verdi i dag:</strong> ' + (a.estimated_value != null ? eiKr(a.estimated_value) : "Ikke vurdert") +
+              (a.estimated_value != null && a.estimated_value_at ? ' <span class="od-muted">(beregnet ' + esc(eiendelerDateNo(a.estimated_value_at)) + ')</span>' : '') + '</div>'
+          : '<div><strong>' + (a.ownership === "leased" ? "Leverandør/utleier" : "Eier/utlåner") + ':</strong> ' + esc(a.supplier || "Ikke registrert") + '</div>' +
+            (a.agreement_number ? '<div><strong>Avtalenummer:</strong> ' + esc(a.agreement_number) + '</div>' : "") +
+            (a.ownership === "leased" ? '<div><strong>Leie per måned:</strong> ' + eiKr(a.rent_per_month) + '</div>' : "") +
+            '<div><strong>Avtaleperiode:</strong> ' + esc(eiendelerDateNo(a.agreement_start) || "Ikke satt") + ' – ' + esc(eiendelerDateNo(a.agreement_end) || "Ikke satt") + '</div>' +
+            (a.notice_date ? '<div><strong>Oppsigelsesfrist:</strong> ' + esc(eiendelerDateNo(a.notice_date)) + '</div>' : "") +
+            '<div><strong>Ansvarlig:</strong> ' + esc(a.responsible_name || "Ikke registrert") + '</div>' +
+            '<div><strong>Returvilkår:</strong> ' + esc(a.return_terms || "Ikke registrert") + '</div>' +
+            (a.purchase_option ? '<div><strong>Kjøpsopsjon:</strong> ' + esc(a.purchase_option) + '</div>' : "")) +
+        '<div><strong>Notat:</strong> ' + richValue(a.note) + '</div>' +
+      '</div>' +
+      eiendelerHistoryHtml(a.id) +
+      (isAdmin && a.ownership === "owned" ? '<div data-ei-valuation-proposal></div>' : '') +
+      '<div class="od-actions">' +
+        (isAdmin ? '<button class="btn btn--primary btn--sm" data-ei-modal-edit="' + esc(a.id) + '" type="button">Rediger</button>' : "") +
+        (isAdmin && a.ownership === "owned" ? '<button class="btn btn--ghost btn--sm" data-ei-recalc-one="' + esc(a.id) + '" type="button">Beregn verdi på nytt</button>' : "") +
+        (isAdmin ? '<button class="btn btn--danger btn--sm" data-ei-modal-del="' + esc(a.id) + '" type="button">Slett</button>' : "") +
+        '<button class="btn btn--ghost btn--sm" data-od-modal-close type="button">Lukk</button>' +
+      '</div>' +
+      '<p class="form__status" data-ei-detail-status></p>';
+
+    openModal(a.name + " · " + (EI_OWNERSHIP_LABELS[a.ownership] || a.ownership), '<span class="od-pill">' + esc(eiendelerCategoryName(a.category_id)) + '</span>' + body, function (modal) {
+      modal.querySelector("[data-od-modal-close]").addEventListener("click", closeModal);
+      var quickUploadBtn = modal.querySelector("[data-ei-quick-upload]");
+      if (quickUploadBtn) quickUploadBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        // Knappen er alt berre rendra for admin (eiendelerVisual() sin
+        // opts.quickUpload-sjekk), men same defense-in-depth-vane som
+        // rediger/slett-handsamarane elles i denne fila (Security Auditor-
+        // funn, LOW, 2026-08-10 -- konsistens, ikkje ein reell utnytting).
+        if (!isAdminRole()) return;
+        triggerEiQuickUpload(a.id, function (err) {
+          if (err) {
+            var statusEl = modal.querySelector("[data-ei-detail-status]");
+            if (statusEl) { statusEl.textContent = "Kunne ikke laste opp bildet: " + (err.message || "ukjent feil") + ". Prøv igjen, eller bruk et mindre bilde."; statusEl.className = "form__status is-err"; }
+            return;
+          }
+          // Enklaste måte å syne det nye biletet med det same: lat att og opne
+          // detaljvisinga på nytt (same "lukk + tegn på nytt"-mønster som
+          // rediger/slett-handsamarane over) -- unngår å måtte duplisere
+          // eiendelerVisual()-oppdateringslogikken inni ein alt open modal.
+          closeModal();
+          draw(root, "eiendeler", "");
+          openEiendelerDetail(root, a.id);
+        });
+      });
+      var editBtn = modal.querySelector("[data-ei-modal-edit]");
+      if (editBtn) editBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        closeModal();
+        openEiendelerEditor(root, a.id);
+      });
+      var recalcOneBtn = modal.querySelector("[data-ei-recalc-one]");
+      if (recalcOneBtn) recalcOneBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        var proposalEl = modal.querySelector("[data-ei-valuation-proposal]");
+        var category = _eiCategories.filter(function (c) { return c.id === a.category_id; })[0];
+        var calc = eiendelerCalculateValue(a, category);
+        if (!calc) {
+          proposalEl.innerHTML = '<p class="od-help">Kan ikke beregne verdi: krever kjøpsdato, kjøpspris og en kategori med verdifallsats registrert.</p>';
+          return;
+        }
+        // Krev eksplisitt godkjenning FØR lagring (brukarvedtak/plan) --
+        // forslaget vert vist, ingenting lagra før "Bruk denne verdien".
+        proposalEl.innerHTML =
+          '<div class="ei-valuation-proposal">' +
+            '<p><strong>Foreslått verdi: ' + eiKr(calc.value) + '</strong></p>' +
+            '<p class="od-help">Enkel kalkulasjon: kjøpspris × (1 − ' + Math.round(calc.rate * 100) + ' % årlig verdifall) opphøyd i eiendelens alder (' + calc.ageYears.toFixed(1) + ' år). Dette er ikke en AI-vurdering, markedspris eller regnskapsmessig avskrivning.</p>' +
+            '<div class="od-actions">' +
+              '<button class="btn btn--primary btn--sm" data-ei-valuation-approve type="button">Bruk denne verdien</button>' +
+              '<button class="btn btn--ghost btn--sm" data-ei-valuation-dismiss type="button">Avbryt</button>' +
+            '</div>' +
+          '</div>';
+        proposalEl.querySelector("[data-ei-valuation-dismiss]").addEventListener("click", function () { proposalEl.innerHTML = ""; });
+        proposalEl.querySelector("[data-ei-valuation-approve]").addEventListener("click", function () {
+          applyEiendelerValuation(a.id, calc.value, {
+            method: "category_depreciation",
+            assumptions: { age_years: Number(calc.ageYears.toFixed(2)), rate: calc.rate, purchase_price: a.purchase_price }
+          }, function (err) {
+            if (err) {
+              var statusEl = modal.querySelector("[data-ei-detail-status]");
+              if (statusEl) { statusEl.textContent = "Kunne ikke lagre ny verdi: " + (err.message || "ukjent feil") + ". Prøv igjen."; statusEl.className = "form__status is-err"; }
+              return;
+            }
+            closeModal();
+            draw(root, "eiendeler", "");
+            openEiendelerDetail(root, a.id);
+            if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Beregnet ny verdi for: " + a.name });
+          });
+        });
+      });
+      var delBtn = modal.querySelector("[data-ei-modal-del]");
+      if (delBtn) delBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        if (!confirm('Slette «' + a.name + '»? Handlingen kan ikke angres.')) return;
+        deleteAssetRow(a.id, function (err) {
+          // UX-review-funn (HIGH, 2026-08-10): alert() var ein blokkerande,
+          // ustila dialog for ein rutinemessig lagringsfeil -- module-tasks.js
+          // sitt eige "same idiom"-førebilete bruker ei inline .form__status-
+          // melding, ikkje alert(). Retta her og i editor-lagringa under.
+          if (err) {
+            var statusEl = modal.querySelector("[data-ei-detail-status]");
+            if (statusEl) { statusEl.textContent = "Kunne ikke slette: " + (err.message || "ukjent feil") + ". Prøv igjen."; statusEl.className = "form__status is-err"; }
+            return;
+          }
+          closeModal();
+          draw(root, "eiendeler", "");
+          if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Slettet eiendel: " + a.name });
+        });
+      });
+    });
+  }
+
+  // Fase 3: hurtig-opplasting utanfor både redigerings- og detaljmodalen --
+  // ein mellombels, usynleg fil-input som fjernar seg sjølv etter bruk (same
+  // "trigger eit skjult input"-triks som mange skjermlesar-venlege opplastings-
+  // knappar i heile nettet bruker, ingen eigen komponent finst i kodebasen
+  // frå før å gjenbruke her).
+  function triggerEiQuickUpload(assetId, cb) {
+    var input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      if (input.parentNode) input.parentNode.removeChild(input);
+      if (!f) return;
+      App.media.put(f).then(function (url) {
+        updateAsset(assetId, { image_url: url }, function (err) { cb(err || null); });
+      }).catch(function (err) { cb(err || new Error("upload")); });
+    });
+    input.click();
+  }
+
+  function bindEiendelerDynamic(root) {
+    root.querySelectorAll("[data-ei-quick-upload]").forEach(function (btn) {
+      // UX-review-funn (BLOCKER, 2026-08-10): knappen ligg NESTA inni
+      // .od-card sitt eige tabindex="0" role="button"-element (sjå
+      // eiendelerCard()/eiendelerVisual()) -- utan stopPropagation() her
+      // bobla ein Enter/Space-keydown vidare opp til kortet sin EIGEN
+      // keydown-handsamar under, som kallar e.preventDefault() og OPNAR
+      // DETALJVISINGA i staden for å utløyse knappen sin eigen native
+      // klikk-åtferd. Mus/touch var alt trygt (click sin eigen
+      // stopPropagation), berre tastatur/skjermlesar var råka.
+      btn.addEventListener("keydown", function (e) { e.stopPropagation(); });
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        // Sjå same kommentar ved detaljvisinga sin eigen quickUploadBtn-
+        // handsamar -- defense-in-depth, knappen er alt berre rendra for admin.
+        if (!isAdminRole()) return;
+        triggerEiQuickUpload(btn.getAttribute("data-ei-quick-upload"), function (err) {
+          var statusEl = root.querySelector("[data-ei-quick-status]");
+          if (err) {
+            if (statusEl) { statusEl.textContent = "Kunne ikke laste opp bildet: " + (err.message || "ukjent feil") + ". Prøv igjen, eller bruk et mindre bilde."; statusEl.className = "form__status is-err"; }
+            return;
+          }
+          rerenderEiendelerContent(root);
+        });
+      });
+    });
+    root.querySelectorAll("[data-ei-open]").forEach(function (el) {
+      el.addEventListener("click", function () { openEiendelerDetail(root, el.getAttribute("data-ei-open")); });
+      el.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEiendelerDetail(root, el.getAttribute("data-ei-open")); }
+      });
+    });
+    var retryBtn = root.querySelector("[data-ei-retry]");
+    if (retryBtn) retryBtn.addEventListener("click", function () {
+      _eiAssets = null;
+      _eiLoadError = null;
+      rerenderEiendelerContent(root);
+      loadEiendelerDataIfNeeded(root);
     });
   }
 
