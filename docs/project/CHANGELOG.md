@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.122.0 — 2026-08-10
+
+**Delt Workspace-modal, Fase 4 av 5: fem modular migrert samla.** `module-contact.js`/`module-quote.js`/`module-booking.js` (nesten identiske kopiar av same `openLeadDetail`-mønster), pluss `module-notes.js` og `module-announcements.js` -- migrert i éin batch sidan ingen av dei er sjølvstendige design, berre liknande skjema/lesevisingar limt inn fem stader.
+
+- Kontakt/Tilbod/Booking sine `openLeadDetail()`-funksjonar: `rootId:"lead-detail-backdrop"`, `size:"md"`. Ulikt Fase 1-3 hadde INGEN av desse tre nokon `test-workspace.js`-dekning i det heile -- lågare migreringsrisiko, men også mindre automatisk stadfesting.
+- `module-notes.js`: tittelen var opphavleg eit REDIGERBART felt inni sjølve modal-hovudet (ikkje ei statisk overskrift) -- flytta til fyrste felt i skjemaet, sidan den delte modalen sitt hovud berre støttar statisk tekst. `_activeEscHandler`-bokhaldet (heile modulens eigen manuelle Escape-lyttar-sporing) er fjerna heilt -- unødvendig no som den delte modalen handterer Escape sentralt. Slett-knappen kalla opphavleg ein ANNAN render-funksjon (`renderPage`, ikkje `renderGrid`) enn lagre/lukk -- løyst med eit lite, medvite akseptert dobbelt-render heller enn å utvide den delte funksjonen sin API for eitt særtilfelle. `size:"lg"` + `fullscreenToggle:true` (rikteksteditor + fleire felt, samme storleiksklasse som Eiendeler).
+- `module-announcements.js`: "Viktig"-merket + publiseringsdato var del av ei friare-forma overskrift -- flytta til toppen av sjølve innhaldet av same grunn som notes.js.
+- `node test-workspace.js`: 296/0 (uendra -- `#ann-reader-bd` var den einaste av dei fem med eksisterande dekning, `rootId` heldt han i live). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-contact.js?v=10`, `module-quote.js?v=13`, `module-booking.js?v=13`, `module-notes.js?v=6`, `module-announcements.js?v=14`.
+- **Attståande (Fase 5, siste)**: `module-oversikt.js` og `module-smart-aarshjul.js` -- dei to modulane med best eksisterande modal-kvalitet (ekte fokus-felle+retur alt på plass), migrert sist med vilje slik at `drawer`-storleiksvarianten (arva frå `module-oversikt.js` sitt eige mønster) fyrst har fire andre migreringar sin praktiske bruk bak seg.
+
+---
+
 ## 0.121.0 — 2026-08-10
 
 **Delt Workspace-modal, Fase 3 av 5: `module-tasks.js` migrert.** Einaste av dei ni modulane med RUTE-KOPLA lukking (går alltid attende til `#/tasks` ved lukk) -- valt no for å prove ut `onClose`-designet på ein liten, godt isolert modul før dei fleire, litt tyngre migreringane i Fase 4/5.
