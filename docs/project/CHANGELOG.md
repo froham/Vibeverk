@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.131.0 — 2026-08-10
+
+**Kundeanalyse: operatøren kan nå velge AI-modell (Haiku eller Sonnet) per kjøring.** Brukerønske etter å ha bekreftet at Haiku var standardmodellen -- Sonnet ble spesifikt etterspurt som kandidat for en grundigere vurdering.
+
+- Nytt `resolveRequestedModel()` i `api/_lib/customer-analysis-ai.js`: eksplisitt allowlist (`claude-haiku-4-5-20251001`, `claude-sonnet-5` -- sistnevnte allerede i produksjonsbruk i `oversikt-ai.js`, ikke gjettet). En forespurt modell utenfor lista faller stille tilbake til standardmodellen i stedet for å sendes videre til Anthropic eller feile -- ingen fri streng fra klienten når fram uvalidert.
+- `console-core.js` fikk en delt `kaModelSelect()`-nedtrekksmeny, plassert i detaljvisningens verktøylinje (ved siden av «Start analyse»/«Kjør på nytt») og i Møtegrunnlag-fanen (ved siden av «Lag nytt møtegrunnlag») -- samme valgte modell brukes for begge til operatøren endrer det. Sendes som `aiModel` i `run`/`generate_brief`-handlingene.
+- Faktisk brukt modell er nå med i `run_completed`-hendelsesloggen (`metrics.aiModel` fantes allerede; `customer_analysis_events.detail` fikk `;model=...` lagt til) -- ingen skjemaendring nødvendig.
+- Nye tester: allowlist-validering (avviser ukjente modellnavn og ikke-strenger, inkludert et injeksjonsforsøk via en overstyrt `toString()`), at valgt modell faktisk sendes til Anthropic, at et avvist valg faller tilbake til standardmodellen, og en Console-UI-test som bekrefter nedtrekksmenyen finnes og at «Sonnet»-valget faktisk når fram til API-kallet.
+- `test.js` 733/733, `test-workspace.js` 296/296, `test-api.js` 109/109, `test-customer-analysis.js` 19/19 (+1 ny), `test-customer-analysis-console.js` 5/5 (+1 ny).
+- Cache-bust: `console-core.js?v=239`.
+- Verifisert mot et ekte Vercel Preview-bygg (`vercel logs` + et faktisk kall) før merge til `main`, samme rutine som forrige runde sin produksjonsfiks.
+
+---
+
 ## 0.130.0 — 2026-08-10
 
 **Kundeanalyse: fikset reelt produksjonskrasj (brukerfunn, første ekte test).** Kundeanalyse-fanen viste "[object Object]" og et 500-svar i konsollen så snart siden lastet -- den kraftigste testen (en ekte forespørsel gjennom det ekte Vercel-bygget) var noe verken lokale tester eller de tre uavhengige gjennomgangene kunne fange, siden alle kjørte mot ESM-kildekoden direkte via `node --test`, ikke gjennom Vercels egen ESM→CommonJS-kompilering.

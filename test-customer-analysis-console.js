@@ -102,8 +102,39 @@ test("API-feil vises som feiltilstand med en ekte prøv-igjen-knapp", async func
   assert(dom.window.document.querySelector("#ka-retry"));
 });
 
+test("operatøren kan velge Sonnet i stedet for standardmodellen Haiku før en kjøring", async function (t) {
+  var runBody = null;
+  var analysis = { id:"22222222-2222-4222-8222-222222222222", company_name:"Test AS", website_url:"https://example.no", industry:"", status:"draft", overall_score:null, last_run_at:null };
+  var dom = await mount(function () { return Promise.resolve(new Response(JSON.stringify({ analyses:[analysis] }), { status:200, headers:{ "Content-Type":"application/json" } })); });
+  t.after(function () { dom.window.close(); });
+  dom.window.fetch = function (url, options) {
+    url = String(url);
+    if (url.indexOf("view=detail") !== -1) {
+      return Promise.resolve(new Response(JSON.stringify({ analysis:analysis, runs:[], latestRun:null, pages:[], findings:[], findingServices:[], catalog:[], briefs:[] }), { status:200, headers:{ "Content-Type":"application/json" } }));
+    }
+    if (options && options.method === "POST") {
+      runBody = JSON.parse(options.body);
+      return Promise.resolve(new Response(JSON.stringify({ error:"Analysen kan ikke startes fra denne statusen." }), { status:409, headers:{ "Content-Type":"application/json" } }));
+    }
+    return Promise.resolve(new Response(JSON.stringify({ analyses:[analysis] }), { status:200, headers:{ "Content-Type":"application/json" } }));
+  };
+  dom.window.VwConsole.navigate("kundeanalyse");
+  await new Promise(function (resolve) { setTimeout(resolve, 15); });
+  dom.window.document.querySelector('[data-ka-open="' + analysis.id + '"]').click();
+  await new Promise(function (resolve) { setTimeout(resolve, 15); });
+  var select = dom.window.document.querySelector("#ka-detail-model");
+  assert(select, "modellvelgeren skal finnes i detaljvisinga sin verktøylinje");
+  assert.match(select.textContent, /Haiku/);
+  assert.match(select.textContent, /Sonnet/);
+  select.value = "claude-sonnet-5";
+  select.dispatchEvent(new dom.window.Event("change", { bubbles:true }));
+  dom.window.document.querySelector("#ka-detail-run").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 15); });
+  assert.equal(runBody.aiModel, "claude-sonnet-5");
+});
+
 test("Console-CSS har en eksplisitt mobiltilpasning for Kundeanalyse", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
   assert.match(html, /@media\(max-width:700px\).*\.ka-form__row/s);
-  assert.match(html, /console-core\.js\?v=238/);
+  assert.match(html, /console-core\.js\?v=239/);
 });

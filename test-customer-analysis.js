@@ -223,6 +223,39 @@ test("AI er valgfri, og provider-feil eller ugyldig tool-output håndteres tydel
   }, /Uventet svarformat/);
 });
 
+test("operatøren kan velge modell, men bare fra ei eksplisitt allowlist", async function () {
+  var ai = await import("./api/_lib/customer-analysis-ai.js");
+  assert.equal(ai.resolveRequestedModel("claude-sonnet-5"), "claude-sonnet-5");
+  assert.equal(ai.resolveRequestedModel("claude-haiku-4-5-20251001"), "claude-haiku-4-5-20251001");
+  assert.equal(ai.resolveRequestedModel("gpt-4"), undefined);
+  assert.equal(ai.resolveRequestedModel("claude-opus-4-8; DROP TABLE"), undefined);
+  assert.equal(ai.resolveRequestedModel(undefined), undefined);
+  assert.equal(ai.resolveRequestedModel({ toString: function () { return "claude-sonnet-5"; } }), undefined);
+
+  var input = [{ finalUrl:"https://example.no/", title:"Test", textExcerpt:"Dokumentert tekst" }];
+  var catalog = [{ code:"faq", title:"FAQ", description:"Spørsmål", delivery_status:"available", active:true }];
+  var sentModel;
+  await ai.generateCustomerAnalysis({ companyName:"Test", websiteUrl:"https://example.no", industry:"" }, input, [], catalog, {
+    apiKey:"key", model: ai.resolveRequestedModel("claude-sonnet-5"),
+    fetch: async function (url, init) {
+      sentModel = JSON.parse(init.body).model;
+      return new Response(JSON.stringify({ content:[{ type:"tool_use", name:"return_customer_analysis", input:{ businessSummary:"x", findings:[], meetingQuestions:[] } }] }), { status:200 });
+    }
+  });
+  assert.equal(sentModel, "claude-sonnet-5");
+
+  // Eit avvist val (ikkje på allowlista) skal falle attende til standardmodellen, ikkje senda ein vilkårleg streng vidare til Anthropic.
+  var fallbackModel;
+  await ai.generateCustomerAnalysis({ companyName:"Test", websiteUrl:"https://example.no", industry:"" }, input, [], catalog, {
+    apiKey:"key", model: ai.resolveRequestedModel("gpt-4"),
+    fetch: async function (url, init) {
+      fallbackModel = JSON.parse(init.body).model;
+      return new Response(JSON.stringify({ content:[{ type:"tool_use", name:"return_customer_analysis", input:{ businessSummary:"x", findings:[], meetingQuestions:[] } }] }), { status:200 });
+    }
+  });
+  assert.equal(fallbackModel, "claude-haiku-4-5-20251001");
+});
+
 test("AI-møteutkast kan bare referere til uttrykkelig godkjente funn", async function () {
   var ai = await import("./api/_lib/customer-analysis-ai.js");
   var approved = [

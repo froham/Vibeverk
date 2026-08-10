@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.130.0";
+  var VIBEVERK_VERSION = "0.131.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -5103,6 +5103,20 @@ window.VwConsole = (function () {
   var KA_PRIORITY = { low:"Lav", medium:"Middels", high:"Høy" };
   var KA_REVIEW = { unreviewed:"Ikke vurdert", approved:"Godkjent", edited:"Redigert", removed:"Fjernet" };
   var KA_TYPE = { automatic:"Automatisk kontroll", ai:"AI-vurdering", manual:"Manuelt funn" };
+  // Må holdes i sync med ALLOWED_AI_MODELS i api/_lib/customer-analysis-ai.js
+  // -- serveren validerer uansett mot si eiga liste, denne styrer berre kva
+  // som vert vist/sendt herfrå.
+  var KA_MODELS = [
+    { id:"claude-haiku-4-5-20251001", label:"Haiku – rask og rimelig" },
+    { id:"claude-sonnet-5", label:"Sonnet – grundigere vurdering, høyere kostnad" }
+  ];
+  var _kaSelectedModel = KA_MODELS[0].id;
+
+  function kaModelSelect(id) {
+    return '<select id="' + id + '" title="AI-modell for neste kjøring">' +
+      KA_MODELS.map(function (m) { return '<option value="' + C.esc(m.id) + '"' + (m.id === _kaSelectedModel ? " selected" : "") + '>' + C.esc(m.label) + '</option>'; }).join("") +
+      '</select>';
+  }
 
   function kaDate(value) {
     if (!value) return "—";
@@ -5268,6 +5282,7 @@ window.VwConsole = (function () {
     var approved = data.findings.filter(function (item) { return item.review_status === "approved"; }).length;
     _kaWrap.innerHTML =
       '<div class="ka-toolbar"><button type="button" class="btn btn--ghost" id="ka-detail-back">← Til analyseoversikten</button><div class="ka-actions">' +
+        (analysis.status !== "analyzing" && analysis.status !== "archived" ? kaModelSelect("ka-detail-model") : '') +
         (analysis.status !== "analyzing" && analysis.status !== "archived" ? '<button type="button" class="btn btn--primary" id="ka-detail-run">' + (analysis.last_run_at ? "Kjør på nytt" : "Start analyse") + '</button>' : '') +
         (analysis.status !== "analyzing" && analysis.status !== "archived" ? '<button type="button" class="btn btn--ghost" id="ka-detail-archive">Arkiver</button>' : '') +
         (analysis.status !== "analyzing" ? '<button type="button" class="btn btn--ghost" id="ka-detail-delete">Slett permanent</button>' : '') + '</div></div>' +
@@ -5278,6 +5293,8 @@ window.VwConsole = (function () {
       '<nav class="ka-tabs" aria-label="Analyseområder">' + kaTabButton("summary", "Oppsummering") + kaTabButton("technical", "Teknisk", counts.technical || 0) + kaTabButton("seo", "SEO", counts.seo || 0) + kaTabButton("accessibility", "Universell utforming", counts.accessibility || 0) + kaTabButton("privacy", "Personvern og tillit", counts.privacy || 0) + kaTabButton("content", "Innhold og brukerreise", counts.content || 0) + kaTabButton("opportunities", "Muligheter for Vibeverk") + kaTabButton("meeting", "Møtegrunnlag") + '</nav>' +
       '<div id="ka-tab-panel"></div>';
     _kaWrap.querySelector("#ka-detail-back").addEventListener("click", function () { _kaMode = "list"; kaLoadList(); });
+    var modelSelect = _kaWrap.querySelector("#ka-detail-model");
+    if (modelSelect) modelSelect.addEventListener("change", function () { _kaSelectedModel = modelSelect.value; });
     var run = _kaWrap.querySelector("#ka-detail-run"); if (run) run.addEventListener("click", function () {
       // UX-review-funn (BLOCKER, 2026-08-10): ei ny køyring hentar godkjente/
       // redigerte funn frå FØRRE køyring usynlege (dei er framleis i databasen,
@@ -5402,11 +5419,13 @@ window.VwConsole = (function () {
   function kaRenderMeeting(panel, data) {
     var latest = data.briefs[0];
     var content = latest && latest.content;
-    panel.innerHTML = '<div class="ka-notice">Møtegrunnlaget bruker bare funn som er uttrykkelig godkjent. Redigerte funn må godkjennes etter redigering. Det sendes ikke automatisk til kunden.</div><button type="button" class="btn btn--primary" id="ka-generate-brief">Lag nytt møtegrunnlag</button><p id="ka-brief-status" class="form__status" role="status"></p>' +
+    panel.innerHTML = '<div class="ka-notice">Møtegrunnlaget bruker bare funn som er uttrykkelig godkjent. Redigerte funn må godkjennes etter redigering. Det sendes ikke automatisk til kunden.</div><div class="ka-actions">' + kaModelSelect("ka-brief-model") + '<button type="button" class="btn btn--primary" id="ka-generate-brief">Lag nytt møtegrunnlag</button></div><p id="ka-brief-status" class="form__status" role="status"></p>' +
       (content ? '<article class="ka-card ka-brief" style="margin-top:1rem"><h2>' + C.esc(content.title) + '</h2>' + (content.aiStatus === "not_configured" ? '<p class="ka-notice">Møtegrunnlaget er satt sammen uten AI fordi Anthropic ikke er konfigurert.</p>' : content.aiStatus === "failed" ? '<p class="ka-notice ka-error">AI-formuleringen feilet. Et regelbasert møtegrunnlag fra de godkjente funnene ble lagret i stedet.</p>' : '') + '<p>' + C.esc(content.companyDescription) + '</p><h3>Sterke sider</h3>' + kaStringList(content.strengths) + '<h3>Viktigste forbedringsmuligheter</h3>' + kaObjectList(content.opportunities) + '<h3>Spørsmål til møtet</h3>' + kaStringList(content.questions) + '<h3>Mulige Vibeverk-leveranser</h3>' + kaDeliveryList(content.possibleDeliveries) + '<h3>Anbefalt neste steg</h3><p>' + C.esc(content.recommendedNextStep) + '</p><h3>Interne notater</h3><p>' + C.esc(content.internalNotes || "Ingen interne notater.") + '</p><p class="field__hint">' + C.esc(content.disclaimer) + '</p></article>' : '<div class="ka-empty" style="margin-top:1rem">Det finnes ikke noe møtegrunnlag ennå.</div>');
+    var briefModelSelect = panel.querySelector("#ka-brief-model");
+    if (briefModelSelect) briefModelSelect.addEventListener("change", function () { _kaSelectedModel = briefModelSelect.value; });
     panel.querySelector("#ka-generate-brief").addEventListener("click", function (event) {
       var button = event.currentTarget; var status = panel.querySelector("#ka-brief-status"); button.disabled = true; status.textContent = "Lager møtegrunnlag …";
-      kaApi("", { method:"POST", body:{ action:"generate_brief", id:_kaDetailId } }).then(function () { kaLoadDetail(_kaDetailId); }).catch(function (err) { button.disabled = false; status.textContent = err.message; status.className = "form__status is-error"; });
+      kaApi("", { method:"POST", body:{ action:"generate_brief", id:_kaDetailId, aiModel:_kaSelectedModel } }).then(function () { kaLoadDetail(_kaDetailId); }).catch(function (err) { button.disabled = false; status.textContent = err.message; status.className = "form__status is-error"; });
     });
   }
 
@@ -5432,7 +5451,7 @@ window.VwConsole = (function () {
         if (statusEl) statusEl.textContent = KA_RUN_STEPS[stepIndex] + " Dette kan ta et par minutter.";
       }
     }, 12000);
-    kaApi("", { method:"POST", body:{ action:"run", id:id } }).then(function (data) {
+    kaApi("", { method:"POST", body:{ action:"run", id:id, aiModel:_kaSelectedModel } }).then(function (data) {
       clearInterval(stepTimer);
       _kaBusy = false;
       // UX-review-funn (BLOCKER, 2026-08-10): utan denne sjekken kan ei
