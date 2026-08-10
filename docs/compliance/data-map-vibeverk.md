@@ -123,7 +123,7 @@ Same struktur som malen (uendra frå malen sin generelle skildring) — verifise
 | API-nøkkel | Delt `ANTHROPIC_API_KEY` på Vercel-nivå (ADR-0007), ikkje per-kunde. |
 | Rettsleg grunnlag | **[ÅPENT — krev juridisk vurdering]** — Anthropic må vurderast som eigen underdatabehandlar (DPA, underdatabehandlarliste, overføringsgrunnlag USA→EØS ikkje henta i dette passet), og brukarane må informerast om at fritekst dei skriv kan sendast til ein US-basert AI-leverandør. |
 
-### Kundeanalyse i Console — kodeklar 2026-08-10, ikkje deployert
+### Kundeanalyse i Console — kodeklar 2026-08-10 (utvida same dag med reell sletting), ikkje deployert
 
 | Felt | Detalj |
 |---|---|
@@ -132,7 +132,7 @@ Same struktur som malen (uendra frå malen sin generelle skildring) — verifise
 | Hvor lagret | Planlagt i `vibeverk-control`-tabeller med prefiks `customer_analysis_`, ikke i kundens data-plane. Hele HTML-sider lagres ikke. Migrasjonen er foreløpig ikke kjørt. |
 | Hvem kan lese/skrive | Bare aktive Console-operatører. RLS gir autentiserte aktive operatører lesing; alle mutasjoner går via autentisert Vercel API og server-side service role. |
 | Tredjepart | Ved konfigurert `ANTHROPIC_API_KEY` sendes inntil fem korte, rensede tekstutdrag, automatiske funn og tjenestekatalog til Anthropic. Uten AI-konfigurasjon fungerer tekniske kontroller fortsatt. Eksterne nettsteder mottar Vibeverks identifiserbare crawler-User-Agent og vanlig nettverksmetadata som server-IP. |
-| Retensjon/sletting | **[ÅPENT — lanseringsport]** — ingen automatisk retensjon eller sletteflyt er implementert i MVP-en. Arkivering er ikke sletting. Retensjonsperiode, slettingsrutine og håndtering av innsyn/sletting må avklares før lansering. |
+| Retensjon/sletting | **Delvis løst — manuell sletting finnes, automatisk retensjon er fortsatt [ÅPENT — lanseringsport]**. `action:"delete"` i `api/customer-analysis.js` sletter analyse-raden permanent; databasens `on delete cascade` fjerner alle kjøringer, sider, tekstutdrag, funn og møtegrunnlag i samme operasjon (verifisert mot faktiske FK-constraints i migrasjonen). Samme mønster som CRM sin `deleteAllForEmail()` over: en reell, kodeverifisert sletteflyt, men **admin-utløst per analyse, ikke tidsstyrt**. `customer_analysis_events` (hendelsesloggen) er med vilje append-only og inneholder aldri virksomhetsnavn/URL/tekstutdrag, så den overlever slettingen uten å måtte renses. Gjenstår før lansering: en faktisk retensjonsperiode (automatisk sletting etter X tid) er fortsatt ikke bygget — sletting krever i dag et bevisst operatørklikk. |
 | Behandlingsgrunnlag og informasjon | **[ÅPENT — krever Privacy and Compliance Advisor og eventuelt kvalifisert juridisk vurdering før lansering]**. Offentlig tilgjengelig informasjon er ikke automatisk utenfor GDPR. Formål, dataminimering, berettiget interesse/interesseavveining, Anthropic-overføring og intern tilgang må vurderes. |
 
 ### Tidio

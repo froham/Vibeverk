@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.128.0 — 2026-08-10
+
+**Kundeanalyse: reell permanent sletting, ikke bare arkivering.** Brukerønske før første ekte (ikke-mocket) test mot et reelt nettsted: en operatør må ha en faktisk vei til å fjerne ALT data knyttet til en analyse, ikke bare skjule den.
+
+- Ny handling `delete` i `api/customer-analysis.js`: sletter `customer_analyses`-raden direkte (`service_role` har allerede `DELETE`-grant fra migrasjonens per-tabell-løkke, ingen ny migrasjon trengs). Kaskaden i `20260810190000_add_customer_analysis.sql` (`on delete cascade`) fjerner automatisk kjøringer, sider, funn, tjenestekoblinger og møtegrunnlag. Blokkert mens analysen har status `analyzing`. `customer_analysis_events` er med vilje append-only (UPDATE/DELETE revokert fra `service_role` i migrasjonen) og inneholder aldri virksomhetsnavn/URL/tekstutdrag — den overlever slettingen med `analysis_id`/`run_id` satt til null, som en innholdsløs hendelsesrest for sporbarhet.
+- Console fikk «Slett permanent» både i analyseoversiktens handlingskolonne og i detaljvisningens verktøylinje. Nivå B-bekreftelse per `copy-style-guide.md`: eksplisitt omfang (virksomhetsnavn, nettadresse, sider, funn, møtegrunnlag), hva som IKKE påvirkes (den anonyme hendelsesloggen), og at det ikke kan angres.
+- Verifisert visuelt med en Playwright-drevet gjennomgang av faktisk kode/CSS mot mocket data (samme teknikk som review-rundens skjermbilder): bekreftelsesteksten, at sletting faktisk kalles, og at analysen forsvinner fra oversikten etterpå.
+- `test.js` 733/733, `test-workspace.js` 296/296, `test-api.js` 109/109, `test-customer-analysis.js` 18/18, `test-customer-analysis-console.js` 4/4 — alle uendret.
+- Cache-bust: `console-core.js?v=237` (uendret — samme fil/versjon som review-runden).
+
+---
+
 ## 0.127.0 — 2026-08-10
 
 **Kundeanalyse: kodeklar, intern Console-MVP for dokumenterbar analyse av offentlige nettsteder.** Bygd av Codex, deretter gått gjennom en uavhengig Claude-styrt runde (Security Auditor, Privacy and Compliance Advisor, UX/Mobile Reviewer) før den regnes som klar for staging-vurdering. Ny control-plane-datamodell, autentisert Node.js-API, sikker begrenset crawl, deterministiske kontroller, valgfri strukturert Anthropic-vurdering, menneskelig funnreview, redigerbar Vibeverk-tjenestekatalog og møtegrunnlag bare fra uttrykkelig godkjente funn. Ingenting sendes til en potensiell kunde automatisk.

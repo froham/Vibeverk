@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.127.0";
+  var VIBEVERK_VERSION = "0.128.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -5180,7 +5180,8 @@ window.VwConsole = (function () {
         '<td>' + C.esc(item.approved_findings || 0) + '</td><td>' + C.esc(kaDate(item.last_run_at || item.updated_at)) + '</td>' +
         '<td><div class="ka-actions"><button type="button" class="btn btn--ghost btn--sm" data-ka-open="' + C.esc(item.id) + '">Åpne</button>' +
         (item.status !== "analyzing" && item.status !== "archived" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-run="' + C.esc(item.id) + '">Kjør' + (item.last_run_at ? " på nytt" : "") + '</button>' : '') +
-        (item.status !== "analyzing" && item.status !== "archived" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-archive="' + C.esc(item.id) + '">Arkiver</button>' : '') + '</div></td></tr>';
+        (item.status !== "analyzing" && item.status !== "archived" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-archive="' + C.esc(item.id) + '">Arkiver</button>' : '') +
+        (item.status !== "analyzing" ? '<button type="button" class="btn btn--ghost btn--sm" data-ka-delete="' + C.esc(item.id) + '">Slett permanent</button>' : '') + '</div></td></tr>';
     }).join("");
     _kaWrap.innerHTML =
       '<div class="ka-notice"><strong>Internt verktøy.</strong> Kundeanalyse undersøker bare offentlig tilgjengelige sider og lager utkast til menneskelig gjennomgang. Ingenting sendes til virksomheten automatisk.</div>' +
@@ -5196,6 +5197,7 @@ window.VwConsole = (function () {
     _kaWrap.querySelectorAll("[data-ka-open]").forEach(function (button) { button.addEventListener("click", function () { kaOpenDetail(button.getAttribute("data-ka-open")); }); });
     _kaWrap.querySelectorAll("[data-ka-run]").forEach(function (button) { button.addEventListener("click", function () { kaRun(button.getAttribute("data-ka-run")); }); });
     _kaWrap.querySelectorAll("[data-ka-archive]").forEach(function (button) { button.addEventListener("click", function () { kaArchive(button.getAttribute("data-ka-archive"), function () { kaLoadList(search, status); }); }); });
+    _kaWrap.querySelectorAll("[data-ka-delete]").forEach(function (button) { button.addEventListener("click", function () { kaDeletePermanently(button.getAttribute("data-ka-delete"), function () { kaLoadList(search, status); }); }); });
   }
 
   function kaRenderCreate() {
@@ -5259,7 +5261,8 @@ window.VwConsole = (function () {
     _kaWrap.innerHTML =
       '<div class="ka-toolbar"><button type="button" class="btn btn--ghost" id="ka-detail-back">← Til analyseoversikten</button><div class="ka-actions">' +
         (analysis.status !== "analyzing" && analysis.status !== "archived" ? '<button type="button" class="btn btn--primary" id="ka-detail-run">' + (analysis.last_run_at ? "Kjør på nytt" : "Start analyse") + '</button>' : '') +
-        (analysis.status !== "analyzing" && analysis.status !== "archived" ? '<button type="button" class="btn btn--ghost" id="ka-detail-archive">Arkiver</button>' : '') + '</div></div>' +
+        (analysis.status !== "analyzing" && analysis.status !== "archived" ? '<button type="button" class="btn btn--ghost" id="ka-detail-archive">Arkiver</button>' : '') +
+        (analysis.status !== "analyzing" ? '<button type="button" class="btn btn--ghost" id="ka-detail-delete">Slett permanent</button>' : '') + '</div></div>' +
       '<section class="ka-hero"><div><div class="ka-card__meta"><span class="ka-status ka-status--' + C.esc(analysis.status) + '">' + C.esc(KA_STATUS[analysis.status] || analysis.status) + '</span><span class="ka-badge">' + approved + ' godkjent</span></div>' +
         '<h2>' + C.esc(analysis.company_name) + '</h2><p>' + C.esc(analysis.website_url) + '</p><p>' + C.esc(analysis.industry || "Bransje ikke oppgitt") + ' · Sist kjørt ' + C.esc(kaDate(analysis.last_run_at)) + '</p></div>' +
         '<div class="ka-score" title="Automatisk, veiledende vurdering">' + (analysis.overall_score === null ? "—" : C.esc(analysis.overall_score)) + '</div></section>' +
@@ -5276,6 +5279,7 @@ window.VwConsole = (function () {
       kaRun(analysis.id);
     });
     var archive = _kaWrap.querySelector("#ka-detail-archive"); if (archive) archive.addEventListener("click", function () { kaArchive(analysis.id, function () { kaLoadDetail(analysis.id); }); });
+    var del = _kaWrap.querySelector("#ka-detail-delete"); if (del) del.addEventListener("click", function () { kaDeletePermanently(analysis.id, function () { _kaMode = "list"; kaLoadList(); }); });
     _kaWrap.querySelectorAll("[data-ka-tab]").forEach(function (button) { button.addEventListener("click", function () { _kaTab = button.getAttribute("data-ka-tab"); _kaEditingFindingId = null; kaRenderDetail(); }); });
     kaRenderTab();
   }
@@ -5440,6 +5444,15 @@ window.VwConsole = (function () {
   function kaArchive(id, done) {
     if (!confirm("Arkivere denne analysen? Den blir skjult fra den vanlige arbeidslisten. Historikken slettes ikke, men det finnes ingen måte å gjenåpne analysen fra Console i dag.")) return;
     kaApi("", { method:"POST", body:{ action:"archive", id:id } }).then(done).catch(function (err) { alert(err.message); });
+  }
+
+  // Brukarønske (2026-08-10): ein reell sletteveg, ikkje berre arkivering,
+  // før ekte (ikkje-mocka) bruk mot eit reelt nettstad -- nivå B-stadfesting
+  // per copy-style-guide.md: eksakt omfang, kva som IKKJE påverkast, og at
+  // det ikkje kan angrast.
+  function kaDeletePermanently(id, done) {
+    if (!confirm("Slette denne analysen permanent? Dette fjerner virksomhetsnavn, nettadresse, alle undersøkte sider, funn og møtegrunnlag knyttet til denne analysen for godt. Den anonyme hendelsesloggen (uten virksomhetsnavn eller URL) beholdes for sporbarhet. Dette kan IKKE angres.")) return;
+    kaApi("", { method:"POST", body:{ action:"delete", id:id } }).then(done).catch(function (err) { alert(err.message); });
   }
 
   function kaLoadCatalog() {

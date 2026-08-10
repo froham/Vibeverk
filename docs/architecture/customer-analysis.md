@@ -2,7 +2,7 @@
 
 Kundeanalyse er et internt arbeidsverktøy i Vibeverk Console for avgrenset analyse av offentlig tilgjengelige nettsteder til mulige kunder. Det ligger ikke i kundens Workspace, gjør ingen automatisk utsending og produserer bare internt materiale som må gjennom menneskelig kontroll.
 
-Status per 2026-08-10: kode og migrasjon er implementert lokalt i v0.126.0, men migrasjonen er ikke kjørt og funksjonen er ikke deployet. Denne teksten beskriver kodekontrakten; live status må bekreftes separat etter en godkjent stagingutrulling.
+Status per 2026-08-10: kode og migrasjon er implementert lokalt i v0.128.0, gjennomgått av en uavhengig Security Auditor/Privacy Advisor/UX Reviewer-runde, men migrasjonen er ikke kjørt og funksjonen er ikke deployet. Denne teksten beskriver kodekontrakten; live status må bekreftes separat etter en godkjent stagingutrulling.
 
 ## Dataflyt og tilgang
 
@@ -97,7 +97,7 @@ node test-api.js
 - HTML analyseres som servermottatt markup; JavaScript-renderte elementer kjøres ikke.
 - Kontrast og dynamisk tastaturnavigasjon testes ikke automatisk. Disse krever et egnet nettleserverktøy og manuell kontroll.
 - Sitemap kontrolleres bare på `/sitemap.xml`; alternative plasseringer må undersøkes manuelt.
-- Det finnes ingen automatisk retensjon eller sletting ennå. Retensjonsregel og personvern-/compliance-godkjenning er lanseringsporter.
+- Manuell, permanent sletting av en enkelt analyse (og alt tilhørende data: sider, funn, møtegrunnlag) finnes via `action:"delete"` og «Slett permanent» i Console. Det finnes fortsatt ingen automatisk, tidsstyrt retensjon/sletting. Retensjonsregel (hvor lenge data skal ligge FØR noen sletter) og personvern-/compliance-godkjenning er fortsatt lanseringsporter.
 - Ingen offentlig gratisanalyse, masseanalyse, kontaktpersoninnhenting, prisforslag, sikkerhetsskanning eller automatisk utsending er implementert.
 
 ## Før staging og produksjon

@@ -284,6 +284,28 @@ async function archiveAnalysis(id, operatorId) {
   return { success: true };
 }
 
+// Brukarønske (2026-08-10): arkivering endrar berre status, sletter ingenting
+// -- før ekte, ikkje-mocka bruk mot eit reelt nettstad krev brukaren ein
+// faktisk sletteveg for ALT data knytt til søket, ikkje berre å skjule det.
+// service_role har alt DELETE på customer_analyses frå migrasjonen sin
+// per-tabell-løkke; kaskaden (on delete cascade) fjernar runs/pages/findings/
+// finding_services/meeting_briefs. customer_analysis_events er med vilje
+// append-only (UPDATE/DELETE er revoka frå service_role i migrasjonen) og
+// inneheld ikkje verksemdsnamn/URL/tekstutdrag -- den overlever med
+// analysis_id/run_id sett til null, som ein innhaldslaus hendelsesrest.
+async function deleteAnalysisPermanently(id, operatorId) {
+  var analysis = await getAnalysis(id);
+  if (!analysis) throw Object.assign(new Error("Analysen finnes ikke."), { publicStatus: 404 });
+  if (analysis.status === "analyzing") throw Object.assign(new Error("En analyse som kjører kan ikke slettes. Vent til kjøringen er ferdig eller feilet."), { publicStatus: 409, publicCode: "analysis_running" });
+  await requireAudit({ analysisId:id, operatorId:operatorId, action:"analysis_delete_attempt", result:"success" });
+  await rest("/rest/v1/customer_analyses?id=eq." + id, { method: "DELETE", prefer: "return=minimal" });
+  // analysisId er med vilje null her -- rada finst ikkje lenger, og ein ny
+  // hendelse som viser til ein sletta id ville brote framandnøkkelen.
+  // Den sletta id-en er sjølv ikkje sensitiv og tas vare på i detail for sporbarheit.
+  await auditEvent({ analysisId: null, operatorId: operatorId, action: "analysis_deleted", result: "success", detail: id });
+  return { success: true };
+}
+
 async function generateBrief(id, operatorId) {
   var data = await detail(id);
   if (!data) throw Object.assign(new Error("Analysen finnes ikke."), { publicStatus: 404 });
@@ -377,6 +399,7 @@ async function handler(request) {
     if (action === "update_finding") return json(await updateFinding(body, caller.userId));
     if (action === "add_finding") return json({ finding: await addManualFinding(body, caller.userId) }, 201);
     if (action === "archive" && isUuid(body.id)) return json(await archiveAnalysis(body.id, caller.userId));
+    if (action === "delete" && isUuid(body.id)) return json(await deleteAnalysisPermanently(body.id, caller.userId));
     if (action === "generate_brief" && isUuid(body.id)) {
       if (rateLimited(caller.userId)) return error(429, "For mange AI-kall på kort tid. Prøv igjen senere.", "rate_limited");
       return json({ brief: await generateBrief(body.id, caller.userId) }, 201);
