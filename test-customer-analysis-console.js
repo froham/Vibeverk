@@ -105,5 +105,5 @@ test("API-feil vises som feiltilstand med en ekte prøv-igjen-knapp", async func
 test("Console-CSS har en eksplisitt mobiltilpasning for Kundeanalyse", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
   assert.match(html, /@media\(max-width:700px\).*\.ka-form__row/s);
-  assert.match(html, /console-core\.js\?v=237/);
+  assert.match(html, /console-core\.js\?v=238/);
 });

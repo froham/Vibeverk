@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.129.0";
+  var VIBEVERK_VERSION = "0.130.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -5131,9 +5131,17 @@ window.VwConsole = (function () {
     return fetch("/api/customer-analysis" + (query || ""), opts).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (body) {
         if (!response.ok) {
-          var err = new Error(body.error || "Kundeanalyse svarte med en feil.");
+          // Produksjonsfunn (2026-08-10): body.error er normalt ein streng
+          // frå vårt eige API, men ein rå plattformfeil (t.d. funksjonen
+          // krasja før handler() nokon gong køyrde) kan gje eit heilt anna
+          // JSON-skap der "error" sjølv er eit objekt. new Error(objekt)
+          // gjer message til "[object Object]" i staden for lesbar tekst --
+          // avvis alt som ikkje faktisk er ein streng, i staden for å stole
+          // blindt på skapet til svaret.
+          var text = typeof body.error === "string" && body.error ? body.error : "Kundeanalyse svarte med en feil.";
+          var err = new Error(text);
           err.status = response.status;
-          err.code = body.code;
+          err.code = typeof body.code === "string" ? body.code : undefined;
           throw err;
         }
         return body;
