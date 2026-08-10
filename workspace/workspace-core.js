@@ -577,6 +577,11 @@ window.Intranet = (function () {
     if (typeof opts.onMount === "function") opts.onMount(modalEl, bd.querySelector(".i-modal__body"));
 
     requestAnimationFrame(function () {
+      // Ikkje overstyr eit fokus onMount() alt sette medvite (t.d.
+      // module-tasks.js fokuserer eit SPESIFIKT felt, ikkje nødvendigvis det
+      // fyrste generiske fokuserbare elementet) -- berre ei automatisk
+      // fallback-fokusering når ingenting inni modalen alt har fokus.
+      if (bd.contains(document.activeElement)) return;
       var el = bd.querySelector("input,button,select,textarea");
       if (el) el.focus();
     });

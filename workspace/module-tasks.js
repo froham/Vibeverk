@@ -387,16 +387,6 @@
     // migration.sql handhevar det same server-side.
     var restrictedMember = isMemberRole() && !isNew && !canEditTask(task, uid(), true);
 
-    var existing = document.getElementById("task-modal-bd");
-    if (existing) existing.remove();
-
-    var bd = document.createElement("div");
-    bd.id = "task-modal-bd";
-    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem";
-
-    var modal = document.createElement("div");
-    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(500px,100%);box-shadow:0 30px 80px rgba(0,0,0,.3)";
-
     var statusOpts = Object.keys(STATUS_LABELS).map(function (s) {
       return '<option value="' + s + '"' + ((task ? task.status : "todo") === s ? " selected" : "") + '>' +
         STATUS_LABELS[s] + '</option>';
@@ -429,98 +419,96 @@
         'style="font:inherit;font-size:.9rem;padding:.55rem .8rem;border-radius:8px;border:1.5px solid var(--color-border);background:var(--color-alt);color:var(--color-muted);width:100%">'
       : '<input id="tm-title" type="text" value="' + C.esc(task ? task.title : "") + '" placeholder="Hva skal gjøres?" autocomplete="off">';
 
-    modal.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border)">' +
-        '<strong>' + (isNew ? "Ny oppgave" : "Rediger oppgave") + '</strong>' +
-        '<button id="tm-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
+    var bodyHtml =
+      (restrictedMember ? '<p style="font-size:.78rem;color:var(--color-muted);margin:0"><i class="ti ti-lock"></i> Denne oppgaven er tildelt deg av noen andre — du kan endre beskrivelse og status, men ikke tittel eller tildeling.</p>' : '') +
+      '<div class="i-field">' +
+        '<label for="tm-title">Tittel *</label>' +
+        titleField +
       '</div>' +
-      '<div style="padding:1.2rem;display:grid;gap:.9rem">' +
-        (restrictedMember ? '<p style="font-size:.78rem;color:var(--color-muted);margin:0"><i class="ti ti-lock"></i> Denne oppgaven er tildelt deg av noen andre — du kan endre beskrivelse og status, men ikke tittel eller tildeling.</p>' : '') +
+      '<div class="i-field">' +
+        '<label for="tm-body">Beskriving</label>' +
+        '<textarea id="tm-body" rows="3" placeholder="Utfyllande info (valgfritt)…" style="resize:vertical">' + C.esc(task ? task.description || "" : "") + '</textarea>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">' +
         '<div class="i-field">' +
-          '<label for="tm-title">Tittel *</label>' +
-          titleField +
+          '<label for="tm-status">Status</label>' +
+          '<select id="tm-status">' + statusOpts + '</select>' +
         '</div>' +
         '<div class="i-field">' +
-          '<label for="tm-body">Beskriving</label>' +
-          '<textarea id="tm-body" rows="3" placeholder="Utfyllande info (valgfritt)…" style="resize:vertical">' + C.esc(task ? task.description || "" : "") + '</textarea>' +
+          '<label for="tm-assignee">Tildelt</label>' +
+          assigneeField +
         '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">' +
-          '<div class="i-field">' +
-            '<label for="tm-status">Status</label>' +
-            '<select id="tm-status">' + statusOpts + '</select>' +
-          '</div>' +
-          '<div class="i-field">' +
-            '<label for="tm-assignee">Tildelt</label>' +
-            assigneeField +
-          '</div>' +
-        '</div>' +
-        '<p class="form__status" id="tm-status-msg"></p>' +
-        '<div style="display:flex;gap:.5rem;padding-top:.2rem">' +
-          '<button class="btn btn--primary btn--sm" id="tm-save">Lagre</button>' +
-          '<button class="btn btn--ghost btn--sm" id="tm-cancel">Avbryt</button>' +
-          (!isNew && !restrictedMember ? '<button class="btn btn--ghost btn--sm" id="tm-delete" style="margin-left:auto;color:#c0392b;border-color:#c0392b">Slett</button>' : '') +
-        '</div>' +
+      '</div>' +
+      '<p class="form__status" id="tm-status-msg"></p>' +
+      '<div style="display:flex;gap:.5rem;padding-top:.2rem">' +
+        '<button class="btn btn--primary btn--sm" id="tm-save">Lagre</button>' +
+        '<button class="btn btn--ghost btn--sm" id="tm-cancel">Avbryt</button>' +
+        (!isNew && !restrictedMember ? '<button class="btn btn--ghost btn--sm" id="tm-delete" style="margin-left:auto;color:#c0392b;border-color:#c0392b">Slett</button>' : '') +
       '</div>';
 
-    bd.appendChild(modal);
-    document.body.appendChild(bd);
-    Intranet.wrapDimmedOverlay(bd);
+    // Migrert 2026-08-10 til det delte Intranet.openModal() (Fase 3, sjå
+    // docs/project/CHANGELOG.md) -- einaste modulen med RUTE-KOPLA lukking
+    // (attende til #/tasks ved lukk uansett veg), difor onClose i staden for
+    // å byggje routing inn i den delte funksjonen sjølv. rootId held
+    // #task-modal-bd i live for eksisterande test-selektorar. size:"sm"
+    // sidan dette skjemaet er lite (4 felt), ingen fullskjerm-vits.
+    Intranet.openModal({
+      title: isNew ? "Ny oppgave" : "Rediger oppgave",
+      bodyHtml: bodyHtml,
+      size: "sm",
+      rootId: "task-modal-bd",
+      onClose: function () { Intranet.navigate("tasks"); },
+      onMount: function (modal) {
+        modal.querySelector("#tm-cancel").addEventListener("click", Intranet.closeModal);
 
-    function closeModal() { bd.remove(); Intranet.navigate("tasks"); }
+        modal.querySelector("#tm-save").addEventListener("click", function () {
+          // restrictedMember: tittel-feltet er disabled i DOM-et, men send likevel
+          // uttrykkeleg den opphavlege tittelen i staden for å stole på at eit
+          // disabled input sitt .value framleis er korrekt — held save-kallet
+          // trygt uavhengig av nettlesar-kvirker med disabled-felt.
+          var title       = restrictedMember ? (task ? task.title : "") : modal.querySelector("#tm-title").value.trim();
+          var body        = modal.querySelector("#tm-body").value.trim();
+          var status      = modal.querySelector("#tm-status").value;
+          var assigneeEl  = modal.querySelector("#tm-assignee");
+          var assigned_to = canAssign
+            ? (assigneeEl && !assigneeEl.disabled ? (assigneeEl.value || null) : null)
+            : (task ? task.assigned_to : null);
+          var msg         = modal.querySelector("#tm-status-msg");
 
-    modal.querySelector("#tm-close").addEventListener("click", closeModal);
-    modal.querySelector("#tm-cancel").addEventListener("click", closeModal);
-    bd.addEventListener("click", function (e) { if (e.target === bd) closeModal(); });
-    document.addEventListener("keydown", function escH(e) {
-      if (e.key === "Escape") { closeModal(); document.removeEventListener("keydown", escH); }
-    });
+          if (!title) { msg.textContent = "Tittel er påkrevd."; msg.className = "form__status is-err"; return; }
 
-    modal.querySelector("#tm-save").addEventListener("click", function () {
-      // restrictedMember: tittel-feltet er disabled i DOM-et, men send likevel
-      // uttrykkeleg den opphavlege tittelen i staden for å stole på at eit
-      // disabled input sitt .value framleis er korrekt — held save-kallet
-      // trygt uavhengig av nettlesar-kvirker med disabled-felt.
-      var title       = restrictedMember ? (task ? task.title : "") : modal.querySelector("#tm-title").value.trim();
-      var body        = modal.querySelector("#tm-body").value.trim();
-      var status      = modal.querySelector("#tm-status").value;
-      var assigneeEl  = modal.querySelector("#tm-assignee");
-      var assigned_to = canAssign
-        ? (assigneeEl && !assigneeEl.disabled ? (assigneeEl.value || null) : null)
-        : (task ? task.assigned_to : null);
-      var msg         = modal.querySelector("#tm-status-msg");
-
-      if (!title) { msg.textContent = "Tittel er påkrevd."; msg.className = "form__status is-err"; return; }
-
-      msg.textContent = "Lagrar…";
-      if (isNew) {
-        createTask({ title: title, body: body, status: status, assigned_to: assigned_to }, function () {
-          closeModal();
-          if (root) renderList(root);
+          msg.textContent = "Lagrar…";
+          if (isNew) {
+            createTask({ title: title, body: body, status: status, assigned_to: assigned_to }, function () {
+              Intranet.closeModal();
+              if (root) renderList(root);
+            });
+          } else {
+            updateTask(id, { title: title, body: body, status: status, assigned_to: assigned_to }, function (err) {
+              if (err) { msg.textContent = "Kunne ikke lagre: " + (err.message || "ukjent feil") + ". Prøv igjen."; msg.className = "form__status is-err"; return; }
+              Intranet.logActivity({ type: "task_updated", label: "Oppdatert: " + title });
+              Intranet.closeModal();
+              if (root) renderList(root);
+            });
+          }
         });
-      } else {
-        updateTask(id, { title: title, body: body, status: status, assigned_to: assigned_to }, function (err) {
-          if (err) { msg.textContent = "Kunne ikke lagre: " + (err.message || "ukjent feil") + ". Prøv igjen."; msg.className = "form__status is-err"; return; }
-          Intranet.logActivity({ type: "task_updated", label: "Oppdatert: " + title });
-          closeModal();
-          if (root) renderList(root);
-        });
+
+        var delBtn = modal.querySelector("#tm-delete");
+        if (delBtn) {
+          delBtn.addEventListener("click", function () {
+            if (!confirm('Slette oppgaven "' + (task ? task.title : "") + '"? Kan ikke angres.')) return;
+            var msg = modal.querySelector("#tm-status-msg");
+            deleteTask(id, function (err) {
+              if (err) { msg.textContent = "Kunne ikke slette: " + (err.message || "ukjent feil") + ". Prøv igjen."; msg.className = "form__status is-err"; return; }
+              Intranet.closeModal();
+              if (root) renderList(root);
+            });
+          });
+        }
+
+        modal.querySelector(restrictedMember ? "#tm-body" : "#tm-title").focus();
       }
     });
-
-    var delBtn = modal.querySelector("#tm-delete");
-    if (delBtn) {
-      delBtn.addEventListener("click", function () {
-        if (!confirm('Slette oppgaven "' + (task ? task.title : "") + '"? Kan ikke angres.')) return;
-        var msg = modal.querySelector("#tm-status-msg");
-        deleteTask(id, function (err) {
-          if (err) { msg.textContent = "Kunne ikke slette: " + (err.message || "ukjent feil") + ". Prøv igjen."; msg.className = "form__status is-err"; return; }
-          closeModal();
-          if (root) renderList(root);
-        });
-      });
-    }
-
-    modal.querySelector(restrictedMember ? "#tm-body" : "#tm-title").focus();
   }
 
   window._tasksOpenModal = function (root) {

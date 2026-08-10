@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.121.0 — 2026-08-10
+
+**Delt Workspace-modal, Fase 3 av 5: `module-tasks.js` migrert.** Einaste av dei ni modulane med RUTE-KOPLA lukking (går alltid attende til `#/tasks` ved lukk) -- valt no for å prove ut `onClose`-designet på ein liten, godt isolert modul før dei fleire, litt tyngre migreringane i Fase 4/5.
+
+- `onClose: function () { Intranet.navigate("tasks"); }` -- routing-kunnskapen lever i kallaren, ikkje i den delte `Intranet.openModal()`. Alle interne `closeModal()`-kall (lagra/slett/avbryt/×/bakgrunnsklikk/Escape) er no `Intranet.closeModal()`, som utløyser `onClose` automatisk éin gong, uansett kva veg brukaren lukka via.
+- `rootId:"task-modal-bd"` heldt testselektoren i live -- ingen `test-workspace.js`-endringar trengst i det heile denne fasen (296/0 uendra).
+- Den lokale, handrulla ×-knappen (`#tm-close`) er fjerna -- reint duplikat av den delte modalen sin eigen no.
+- **Reell feil oppdaga og retta i sjølve det delte systemet under denne migreringa**: `Intranet.openModal()` sin automatiske "fokuser fyrste felt"-fallback (`requestAnimationFrame`) overstyrde stille eit `onMount()` sitt eige, meir spesifikke fokus-val (`module-tasks.js` fokuserer skildringsfeltet, ikkje tittelfeltet, for ei oppgåve tildelt av nokon annan). Retta i `workspace-core.js`: fallback-fokuseringa hoppar no over dersom fokus alt ligg inni modalen når han køyrer.
+- `node test-workspace.js`: 296/0 (0 nye/endra assertions -- stadfestar kompatibilitetsdesignet endå ein gong). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-tasks.js?v=14`, `workspace-core.js?v=27` (den siste for fokus-fiksen over -- Fase 1 sin eigen commit hadde alt v=26).
+
+---
+
 ## 0.120.0 — 2026-08-10
 
 **Delt Workspace-modal, Fase 2 av 5: `module-orgdrift.js` migrert.** Fyrste ekte migrering -- valt fyrst nettopp fordi denne modulen hadde dårlegast utgangspunkt av dei ni (inga Escape-handtering, ingen `wrapDimmedOverlay()`), så migreringa er ei eintydig, synleg forbetring.
