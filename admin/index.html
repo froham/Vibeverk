@@ -285,8 +285,16 @@
     .an-pane { display: none; }
     .an-pane.is-active { display: block; }
     .an-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; margin-bottom: 1.6rem; }
-    .an-list-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .9rem; margin-bottom: 1.6rem; }
+    /* UX-review-funn (HIGH, 2026-08-07): korta talet på .an-list-grid-kort er
+       no variabelt (2-4, sidan UTM-kampanjekort berre vises når data finst) --
+       den gamle auto-fit/minmax-varianten kunne difor la eit 4. kort hamne
+       åleine på ei eiga rad med tomt rom attmed, akkurat ved 1024px-breidda.
+       Fast 2-kolonnar + "sidste-og-åleine"-regelen under er breiddeuavhengig
+       og fungerer likt for 2/3/4 kort, uansett faktisk skjermbreidde.*/
+    .an-list-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .9rem; margin-bottom: 1.6rem; }
+    .an-list-grid > :last-child:nth-child(2n+1) { grid-column: 1 / -1; }
     @media(max-width:720px) { .an-chart-row { grid-template-columns: 1fr; } }
+    @media(max-width:560px) { .an-list-grid { grid-template-columns: 1fr; } }
     .an-cta-chips { display: flex; flex-wrap: wrap; gap: .6rem; }
     .an-cta-chip { border: 1px solid var(--color-border); border-radius: 999px; padding: .4rem .8rem; font-size: .82rem; background: var(--color-surface); display: inline-flex; gap: .4rem; align-items: baseline; }
     .an-cta-chip strong { color: var(--color-primary); }
@@ -477,7 +485,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8/dist/umd/supabase.js"></script>
   <script src="../config.js?v=14"></script>
   <script src="../components.js?v=21"></script>
-  <script src="../core.js?v=90"></script>
+  <script src="../core.js?v=91"></script>
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
@@ -493,7 +501,7 @@
   <script src="../module-mediabank.js?v=6"></script>
   <script src="../module-chat.js?v=22"></script>
   <script src="../module-users.js?v=15"></script>
-  <script src="../module-sidetelling.js?v=10"></script>
+  <script src="../module-sidetelling.js?v=11"></script>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {

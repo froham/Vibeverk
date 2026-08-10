@@ -31,6 +31,13 @@
    periodevalg (7/30/90 dager) som overordnet filter, og sub-faner
    (Oversikt/Sider/Kilder & enheter) i stedet for én lang scroll. Se
    docs/architecture/sidetelling.md for full historie/design-runde.
+
+   UTM-sporing (2026-08-07): fanger utm_source/utm_medium/utm_campaign fra
+   pageview-URLen når kunden selv har merket en utgående lenke -- ikke et
+   nytt datainnsamlingsprinsipp, bare et nytt felt på samme hendelse (ingen
+   API-kall, ingen ny nettleserlagring). Geolokasjon er fortsatt bevisst
+   IKKE bygget (krever enten et eksternt API-kall eller lagring av IP-
+   adresse -- bryter prinsipp 2/3, se docs/architecture/sidetelling.md).
    ========================================================================== */
 (function () {
   "use strict";
@@ -53,6 +60,27 @@
     var r = document.referrer;
     if (!r) return null;
     try { return new URL(r).hostname || null; } catch (e) { return null; }
+  }
+
+  // UTM-sporing: fanger kampanjemerking KUNDEN SJØLV har lagt i sine egne
+  // utgående lenker (annonseplattform, e-postkampanje, QR-kode) -- ikke noe
+  // om den besøkende. Rein lesing av location.search, ingen ny nettleser-
+  // lagring, ingen eksternt API-kall (prinsipp 2/3 uendra). Kun på pageview,
+  // aldri på cta -- same landingsside-eigenskap-logikk som strippedReferrer()
+  // over, sidan intern mjuk-scroll-navigasjon aldri endrar location.search.
+  var UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign"];
+  function currentUtmParams() {
+    var out = {};
+    try {
+      var params = new URLSearchParams(location.search);
+      UTM_KEYS.forEach(function (k) {
+        var v = params.get(k);
+        out[k] = v ? v.trim().slice(0, 100) : null;
+      });
+    } catch (e) {
+      UTM_KEYS.forEach(function (k) { out[k] = null; });
+    }
+    return out;
   }
 
   // Fase 2 (steg 1) -- einingskategori + bot-filtrering. Begge avleia av
@@ -117,14 +145,20 @@
         "authorization": "Bearer " + anonKey,
         "content-type": "application/json"
       },
-      body: JSON.stringify({
-        type: type,
-        path: path,
-        referrer: type === "pageview" ? strippedReferrer() : null,
-        cta_id: ctaId || null,
-        device_type: detectDeviceType(),
-        is_bot: detectIsBot()
-      })
+      body: JSON.stringify((function () {
+        var utm = type === "pageview" ? currentUtmParams() : {};
+        return {
+          type: type,
+          path: path,
+          referrer: type === "pageview" ? strippedReferrer() : null,
+          cta_id: ctaId || null,
+          device_type: detectDeviceType(),
+          is_bot: detectIsBot(),
+          utm_source: utm.utm_source || null,
+          utm_medium: utm.utm_medium || null,
+          utm_campaign: utm.utm_campaign || null
+        };
+      })())
     }).then(function (r) {
       // Stille -- sidetelling skal aldri forstyrre besøkende med feilmeldinger.
       if (r && !r.ok && window.console) console.warn("Sidetelling: kunne ikke lagre hendelse");
@@ -223,7 +257,7 @@
 
   function fetchStats(cb) {
     var since = new Date(Date.now() - MAX_LOOKBACK_DAYS * 86400000).toISOString();
-    var q = _sb.from("analytics_events").select("type,path,referrer,cta_id,session_id,device_type,created_at");
+    var q = _sb.from("analytics_events").select("type,path,referrer,cta_id,session_id,device_type,utm_source,utm_medium,utm_campaign,created_at");
     // is_test-rader filtreres bort for ekte kunder, men MÅ vises på staging --
     // ellers viser ikke "Generer testdata"-knappen noensinne noe (den setter
     // is_test=true på alt den lager, se seed_test_pageviews.sql).
@@ -554,6 +588,28 @@
     pageviews.forEach(function (r) { var k = r.referrer || "Direkte"; byRef[k] = (byRef[k] || 0) + 1; });
     var topRefs = topN(byRef, 10);
 
+    // Kampanjekilder (UTM): berre besøk frå ei lenke kunden sjølv har merka.
+    // Bevisst eigne kort, ikkje slått saman med Henvisningar over -- dei
+    // svarer på ulike spørsmål (sjå helpIcon-teksten under) og eit besøk kan
+    // ha begge, ingen av dei, eller berre det eine.
+    var byUtmSource = {}, byUtmCampaign = {};
+    pageviews.forEach(function (r) {
+      if (r.utm_source) byUtmSource[r.utm_source] = (byUtmSource[r.utm_source] || 0) + 1;
+      if (r.utm_campaign) byUtmCampaign[r.utm_campaign] = (byUtmCampaign[r.utm_campaign] || 0) + 1;
+    });
+    var topUtmSources = topN(byUtmSource, 10);
+    var topUtmCampaigns = topN(byUtmCampaign, 10);
+    // UX-review-funn (MEDIUM, 2026-08-07): dei to korta hadde tidlegare
+    // identisk hjelpetekst, som forklarte UTM generelt men aldri kva som
+    // faktisk skil dei to listene frå kvarandre. Éin delt setning (kva UTM
+    // er, skilnaden frå Henvisningar) pluss éi eiga, kort avsluttande setning
+    // per kort (kva ordet sjølv betyr).
+    var utmHintShared = "Vises bare for besøk som kom fra en lenke du selv har merket med en kampanjekode (ofte kalt UTM). Dette er noe annet enn «Henvisninger», som viser hvilken nettside besøkende faktisk kom fra -- noen besøk har begge, de fleste har bare det ene. ";
+    var utmHtml = (topUtmSources.length || topUtmCampaigns.length)
+      ? toplistHtml("Kampanjekilder", topUtmSources, function (i) { return i.key; }, utmHintShared + "Kilden er ofte plattformen lenken kom fra, som «google» eller «facebook».") +
+        toplistHtml("Kampanjer", topUtmCampaigns, function (i) { return i.key; }, utmHintShared + "Kampanjenavnet er det du selv valgte da du laget lenken.")
+      : "";
+
     // "Ukjent" dekkjer rader frå før device_type-kolonnen fanst (nullable).
     var DEVICE_LABELS = { mobil: "Mobil", nettbrett: "Nettbrett", pc: "PC" };
     var byDevice = {};
@@ -576,6 +632,7 @@
       '<div class="an-list-grid">' +
         toplistHtml("Henvisninger", topRefs, function (i) { return i.key; }, "«Direkte» = besøkende skrev inn adressen selv, brukte et bokmerke, eller kom fra en app.") +
         '<div class="an-card"><h5>Enheter</h5>' + deviceBarHtml + '</div>' +
+        utmHtml +
       '</div>';
   }
 

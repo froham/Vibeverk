@@ -2377,6 +2377,8 @@ const __asyncTests = (async () => {
     assert(/ingen separat analyseleverandør/i.test(textSide) && /Supabase-database hos driftsleverandøren/i.test(textSide) &&
       !/deler ikke sidetellingsdata med tredjeparter|ingen tredjepart involvert/i.test(textSide),
       "standardtekst skil analyseleverandør frå den faktiske Supabase-databehandlaren: " + textSide.slice(0, 520));
+    assert(/hvilken kampanje en lenke er merket med/i.test(textSide) && /ofte kalt UTM/i.test(textSide),
+      "standardtekst nevner UTM-kampanjemerking som eit av dei faktisk lagra felta (2026-08-07): " + textSide.slice(0, 520));
 
     window.App.store.set("superconfig", { features: { sidetelling: false } });
     window.App.reloadConfig();
@@ -2814,7 +2816,7 @@ const __asyncTests = (async () => {
   function daysAgoIso(n) { return new Date(Date.now() - n * DAY_MS).toISOString(); }
   var FAKE_ROWS = [
     { type: "pageview", path: "#hjem",      referrer: null,         cta_id: null, session_id: "s1", device_type: "pc",    created_at: daysAgoIso(2) },
-    { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "s1", device_type: "mobil", created_at: daysAgoIso(2) },
+    { type: "pageview", path: "#tjenester", referrer: "google.com", cta_id: null, session_id: "s1", device_type: "mobil", created_at: daysAgoIso(2), utm_source: "google", utm_medium: "cpc", utm_campaign: "sommersalg" },
     { type: "pageview", path: "#tjenester", referrer: null,         cta_id: null, session_id: "s2", device_type: "pc",    created_at: daysAgoIso(1) },
     { type: "cta",      path: "#kontakt",   referrer: null,         cta_id: "tel", session_id: "s2", device_type: "pc",   created_at: daysAgoIso(1) }
   ];
@@ -2916,6 +2918,8 @@ const __asyncTests = (async () => {
     }), "pageview sender heller ikkje IP, UA eller domene som klientparametrar: " + JSON.stringify(pageviewPayload4));
     assert(["mobil", "nettbrett", "pc"].indexOf(pageviewPayload4.device_type) > -1 && pageviewPayload4.is_bot === false,
       "sidevisning sender med device_type og is_bot=false (jsdom er ikke en bot): " + JSON.stringify(pageviewPayload4));
+    assert(pageviewPayload4.utm_source === null && pageviewPayload4.utm_medium === null && pageviewPayload4.utm_campaign === null,
+      "sidevisning uten kampanjeparametre i URL-en sender utm_* som null, ikke undefined/tomstreng: " + JSON.stringify(pageviewPayload4));
 
     var telLink = doc4.createElement("a");
     telLink.setAttribute("href", "tel:12345678");
@@ -2930,6 +2934,8 @@ const __asyncTests = (async () => {
     assert(!Object.prototype.hasOwnProperty.call(ctaPayload4, "p_session_id") &&
       !Object.prototype.hasOwnProperty.call(ctaPayload4, "session_id"),
       "CTA sender ingen klientgenerert session-ID -- Edge-funksjonen grupperer hendinga: " + JSON.stringify(ctaPayload4));
+    assert(ctaPayload4.utm_source === null && ctaPayload4.utm_medium === null && ctaPayload4.utm_campaign === null,
+      "CTA-hendingar sender aldri utm_*-felt, same landingsside-berre-logikk som referrer: " + JSON.stringify(ctaPayload4));
     assert(storageOps4.length === 0,
       "CTA-kall gjer ingen lesing/skriving/fjerning i sessionStorage eller localStorage: " + JSON.stringify(storageOps4));
     assert(originalStorageGet4.call(window4.sessionStorage, "vw-sidetelling-session") === "legacy-client-id",
@@ -2973,6 +2979,8 @@ const __asyncTests = (async () => {
       "is_bot-rader filtreres alltid bort i spørringen, uavhengig av staging/produksjon: " + JSON.stringify(eqCalls4));
     assert(/Enheter[\s\S]*Mobil/.test(panel.innerHTML) && /Enheter[\s\S]*PC/.test(panel.innerHTML),
       "adminpanel: enhetsfordeling (Mobil/PC) vises i topplisten");
+    assert(/Kampanjekilder[\s\S]*google/.test(panel.innerHTML) && /Kampanjer[\s\S]*sommersalg/.test(panel.innerHTML),
+      "adminpanel: kampanjekilde (utm_source) og kampanje (utm_campaign) vises i egne topplister, atskilt fra Henvisninger");
     storageProto4.getItem = originalStorageGet4;
     storageProto4.setItem = originalStorageSet4;
     storageProto4.removeItem = originalStorageRemove4;
@@ -2980,6 +2988,64 @@ const __asyncTests = (async () => {
     // sjekk under (FAKE_ROWS er nå relativt daterte for å overleve reelt
     // periodevalg -- se daysAgoIso() -- så den gamle absolutt-daterte
     // antakelsen her passer ikke lenger for DENNE fixturen).
+  })();
+
+  // Egen, isolert fixture med kampanjeparametre faktisk i URL-en (dom4 over
+  // er bevisst uten spørrestreng) -- verifiserer den faktiske
+  // currentUtmParams()-utlesinga, ikke bare payload-formen.
+  console.log("\n— Sidetelling: UTM-parametre fanges fra URL, ikke fra en ny nettleserlagring —");
+  (function () {
+    var html10 = fs.readFileSync("index.html", "utf8");
+    var dom10 = new JSDOM(html10, {
+      runScripts: "outside-only", pretendToBeVisual: true,
+      url: "https://example.test/?utm_source=" + encodeURIComponent("Google  ") + "&utm_medium=cpc&utm_campaign=" + encodeURIComponent("<script>x</script>".repeat(10))
+    });
+    var window10 = dom10.window;
+    window10.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+      unobserve() {} disconnect() {}
+    };
+    window10.matchMedia = function () { return { matches: false, addEventListener(){}, removeEventListener(){} }; };
+    window10.scrollTo = () => {};
+    window10.HTMLElement.prototype.scrollIntoView = () => {};
+
+    // Same fixture inkluderer bevisst ei rad med skadeleg utm_source, brukt
+    // seinare av adminpanel-escaping-sjekken -- _sb vert fanga ÉIN gong ved
+    // App.ready()-kallet under, så rada må vere med i fixturen FRÅ START, ei
+    // seinare "App.supabase = ..."-ombytting hadde ikkje nådd fram.
+    var rowsWithXss = FAKE_ROWS.concat([{ type: "pageview", path: "#hjem", referrer: null, cta_id: null, session_id: "s3", device_type: "pc", created_at: new Date().toISOString(), utm_source: "<img src=x onerror=alert(1)>" }]);
+    var edgeCalls10 = [];
+    var fakeSb10 = makeFakeSb([], rowsWithXss, {});
+    window10.fetch = function (url, init) {
+      edgeCalls10.push({ url: String(url), init: init });
+      return Promise.resolve({ ok: true, status: 202 });
+    };
+    window10.supabase = { createClient: function () { return fakeSb10; } };
+    ["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js"].forEach(function (f) {
+      var src = fs.readFileSync(f, "utf8");
+      if (f === "config.js") src = src.replace(/sidetelling:\s*false/, "sidetelling: true");
+      window10.eval(src);
+    });
+    window10.App.supabase = fakeSb10;
+    window10.eval(fs.readFileSync("module-sidetelling.js", "utf8"));
+    window10.document.dispatchEvent(new window10.Event("DOMContentLoaded", { bubbles: true }));
+
+    var payload10 = edgeCalls10[0] ? JSON.parse(edgeCalls10[0].init.body) : {};
+    assert(payload10.utm_source === "Google" && payload10.utm_medium === "cpc",
+      "utm_source/utm_medium leses fra location.search og trimmes: " + JSON.stringify(payload10));
+    assert(typeof payload10.utm_campaign === "string" && payload10.utm_campaign.length === 100,
+      "en uvanlig lang utm_campaign-verdi kappes til 100 tegn før den sendes, aldri hele strengen: lengde=" + (payload10.utm_campaign && payload10.utm_campaign.length));
+
+    // renderKilderPane() rendrer utm-verdien via samme esc()-mønster som
+    // referrer/path -- stadfest direkte, ikke bare anta det holder fordi
+    // toplistHtml() brukes. En regresjon her ville vore ein lagra XSS-veg via
+    // ei sjølvvald kampanjelenke.
+    var panel10 = window10.document.createElement("div");
+    window10.document.body.appendChild(panel10);
+    window10.VwSidetelling.renderAdminPanel(panel10);
+    assert(!/<img\s/i.test(panel10.innerHTML) && /&lt;img/.test(panel10.innerHTML),
+      "eit skadeleg utm_source-innhald vert HTML-escapa i adminpanelet, ikkje rendra som eit ekte <img>-tag: " + (panel10.innerHTML.match(/Kampanjekilder[\s\S]{0,400}/) || [""])[0]);
   })();
 
   // Server-side grupperingskontrakt. Edge-handteraren får eigne åtferdstestar
@@ -3040,6 +3106,40 @@ const __asyncTests = (async () => {
     assert(/\[functions\.sidetelling-event\][\s\S]*?verify_jwt\s*=\s*true/.test(supabaseConfig) &&
       /NOTIFY\s+pgrst\s*,\s*'reload schema'/i.test(migrationCode),
       "Edge-endepunktet krev JWT og PostgREST-skjemaet vert lasta på nytt");
+  })();
+
+  console.log("\n— Sidetelling: UTM-migrasjon (nytt overlasta signatur, kolonner, ACL) —");
+  (function () {
+    var utmMigrationPath = "supabase/migrations/20260807062325_add_analytics_utm_tracking.sql";
+    var utmMigrationSql = fs.readFileSync(utmMigrationPath, "utf8");
+    var utmMigrationCode = utmMigrationSql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    var utmServiceDef = (utmMigrationCode.match(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+insert_analytics_event_service\s*\([\s\S]*?\$\$;/i) || [""])[0];
+
+    assert(/ADD\s+COLUMN\s+utm_source\s+text\s+CHECK[\s\S]*?length\(utm_source\)\s*<=\s*100/i.test(utmMigrationCode) &&
+      /ADD\s+COLUMN\s+utm_medium\s+text\s+CHECK[\s\S]*?length\(utm_medium\)\s*<=\s*100/i.test(utmMigrationCode) &&
+      /ADD\s+COLUMN\s+utm_campaign\s+text\s+CHECK[\s\S]*?length\(utm_campaign\)\s*<=\s*100/i.test(utmMigrationCode),
+      "dei tre nye UTM-kolonnene er nullbare text-felt med same lengde-CHECK-mønster som resten av tabellen");
+    assert(/DROP\s+FUNCTION\s+IF\s+EXISTS\s+insert_analytics_event_service\s*\(\s*text\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*text\s*,\s*boolean\s*\)/i.test(utmMigrationCode),
+      "den gamle 7-argument-signaturen vert eksplisitt droppa før den nye vert oppretta (unngår ein usynleg overlasta funksjon ved sida av)");
+    assert(/p_utm_source\s+text\s+DEFAULT\s+NULL[\s\S]*?p_utm_medium\s+text\s+DEFAULT\s+NULL[\s\S]*?p_utm_campaign\s+text\s+DEFAULT\s+NULL/i.test(utmServiceDef),
+      "den nye service-helperen har tre nye, valfrie utm-parametrar");
+    assert(/auth\.role\(\)\s+IS\s+DISTINCT\s+FROM\s+'service_role'/i.test(utmServiceDef) &&
+      /pg_advisory_xact_lock/i.test(utmServiceDef) && /v_group_count\s*>=\s*200/i.test(utmServiceDef) &&
+      /event_count\s*<\s*60/i.test(utmServiceDef) && /event_count\s*<\s*10000/i.test(utmServiceDef),
+      "rollesjekk, gruppe-, minutt- og dagskvote frå 20260806170936 er uendra vidareført i den nye signaturen");
+    assert(/INSERT\s+INTO\s+analytics_events\s*\([\s\S]*?utm_source[\s\S]*?utm_medium[\s\S]*?utm_campaign[\s\S]*?\)[\s\S]*?VALUES/i.test(utmServiceDef),
+      "dei nye feltene vert faktisk skrivne til analytics_events, ikkje berre validerte og forkasta");
+    assert(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+insert_analytics_event_service\s*\([^)]*text\s*,\s*text\s*,\s*text\s*\)[\s\S]*?FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role/i.test(utmMigrationCode) &&
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+insert_analytics_event_service\s*\([^)]*text\s*,\s*text\s*,\s*text\s*\)[\s\S]*?TO\s+service_role/i.test(utmMigrationCode) &&
+      !/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+insert_analytics_event_service\s*\([^)]*text\s*,\s*text\s*,\s*text\s*\)[\s\S]*?TO\s+(?:anon|authenticated)/i.test(utmMigrationCode),
+      "den nye 10-argument-signaturen får same eksplisitte REVOKE/GRANT-disiplin som den gamle -- berre service_role");
+    assert(/NOTIFY\s+pgrst\s*,\s*'reload schema'/i.test(utmMigrationCode),
+      "PostgREST-skjemaet vert lasta på nytt etter denne migrasjonen òg");
+
+    var utmHandlerCode = fs.readFileSync("supabase/functions/sidetelling-event/handler.js", "utf8");
+    assert(/function\s+validUtmValue/.test(utmHandlerCode) && /p_utm_source:\s*utmSource/.test(utmHandlerCode) &&
+      /p_utm_medium:\s*utmMedium/.test(utmHandlerCode) && /p_utm_campaign:\s*utmCampaign/.test(utmHandlerCode),
+      "Edge-handteraren validerer og sender dei tre nye felta vidare til service-RPC-en");
   })();
 
   // --- module-sidetelling.js: Trender vises IKKE når inneværende halvdel

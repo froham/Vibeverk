@@ -34,6 +34,16 @@ function firstHeaderPart(value) {
   return (value || "").split(",")[0].trim();
 }
 
+// Security Auditor-funn (2026-08-07, LOW): reint ASCII-kontrollteikn-filter
+// stoppa ikkje Unicode bidi-/format-overstyringsteikn (t.d. RTLO U+202E).
+// Dei bryt ikkje HTML-strukturen (esc() nøytraliserer likevel < > & " '), men
+// kan visuelt forvrengje/forfalske korleis ein admin les verdien i topplista
+// -- retta med same regex utvida til bidi-overstyring/isolasjon/merke.
+var UTM_FORBIDDEN_CHARS_RE = /[\x00-\x1F\x7F\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
+function validUtmValue(v) {
+  return v === null || (typeof v === "string" && v.length <= 100 && !UTM_FORBIDDEN_CHARS_RE.test(v));
+}
+
 function normalizeIp(value) {
   var candidate = (value || "").trim();
   if (!candidate || candidate.indexOf("%") !== -1) return null;
@@ -142,6 +152,9 @@ export async function handleSidetellingEvent(req, options) {
   var ctaId = body.cta_id === null || body.cta_id === undefined ? null : body.cta_id;
   var deviceType = body.device_type === null || body.device_type === undefined ? null : body.device_type;
   var isBot = body.is_bot === true;
+  var utmSource = body.utm_source === null || body.utm_source === undefined ? null : body.utm_source;
+  var utmMedium = body.utm_medium === null || body.utm_medium === undefined ? null : body.utm_medium;
+  var utmCampaign = body.utm_campaign === null || body.utm_campaign === undefined ? null : body.utm_campaign;
 
   if ((type !== "pageview" && type !== "cta") || !path.trim() || path.length > 300) {
     return json({ error: "Ugyldig hendelse" }, 400);
@@ -156,6 +169,14 @@ export async function handleSidetellingEvent(req, options) {
     return json({ error: "Ugyldig hendelse" }, 400);
   }
   if (body.is_bot !== undefined && typeof body.is_bot !== "boolean") {
+    return json({ error: "Ugyldig hendelse" }, 400);
+  }
+  // Kampanjemerking kunden sjølv har lagt i ei utgåande lenke -- lengde-
+  // avgrensa og fri for kontrollteikn (loggforureining/skrivefeil-vern),
+  // ikkje eit strengt allow-list-teikensett: RPC-kallet under er alltid
+  // parameterisert (ingen SQL-injeksjon-vektor), og admin-panelet rendrar
+  // verdien via esc() same som referrer/path -- sjå handler-testane/PR-notat.
+  if (!validUtmValue(utmSource) || !validUtmValue(utmMedium) || !validUtmValue(utmCampaign)) {
     return json({ error: "Ugyldig hendelse" }, 400);
   }
 
@@ -200,6 +221,9 @@ export async function handleSidetellingEvent(req, options) {
         p_cta_id: ctaId,
         p_device_type: deviceType,
         p_is_bot: isBot,
+        p_utm_source: utmSource,
+        p_utm_medium: utmMedium,
+        p_utm_campaign: utmCampaign,
       }),
     });
   } catch (_err) {
