@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.110.0 — 2026-08-10
+
+**Eiendeler — ny fane i Workspace sin "Organisasjon & drift" (Fase 1 av 5: kjerne-CRUD).** Ekstern overleveringspakke (fungerande React/Next.js-prototype + eit uttrykkeleg "ikkje ein blind fasit"-forslag til Postgres-skjema) tilpassa til faktisk Vibeverk-arkitektur -- ingen kode porta direkte (Vibeverk har ingen bundler/framework), skjemaet endra vesentleg. Arkitekt-konsultert plan før koding.
+
+- **Fane i eksisterande modul, ikkje ny modul** (brukarvedtak): prototypen sin eigen "Organisasjon og drift"-kategoriplassering vart teken bokstaveleg -- Eiendeler er ei sjette fane i `module-orgdrift.js`, ikkje ei eiga `Intranet.registerModule()`-oppføring med eige navigasjonspunkt.
+- **Ekte Supabase-tabellar, ikkje JSON-blobben dei andre fem fanene brukar**: `assets`/`asset_categories` (ny migrasjon), med ekte per-rad RLS -- naudsynt sidan blob-mønsteret (`App.store("wsp-orgdrift")`) ikkje kan skilje lese-/skriverettar finare enn heile nøkkelen, og fordi blobben sin eigen `defaults()` sår synleg testdata ("Kari Nordmann") som ville brote "ingen dummydata"-kravet for denne fana.
+- **Admin-only skriv, konsekvent med resten av modulen** (brukarvedtak, korrigert frå eit fyrsteutkast som ubegrunna følgde `tasks`/`kb_articles` sitt admin+editor-mønster): `is_admin_or_owner()` i RLS, `isAdminRole()` i UI -- éin regel for heile "Organisasjon & drift", ikkje ulikt tilgangsnivå per fane.
+- Kategoriar har depreciation-rate PÅ seg sjølve (`annual_depreciation_rate`, standard 18 %) -- ingen eigen config-tabell, ingen sådd rad. Skjema for oppretting/redigering er identisk (eitt skjema, ikkje to). `image_path`→`image_url`, `responsible_person_id`→`responsible_user_id` (ekte `users`-FK, pluss `responsible_name`-fritekstfallback) -- begge medvitne avvik frå kjeldeforslaget.
+- Nytt flagg `intranettFeatures.eiendeler` (standard av), sjølvstendig frå `orgdrift`-flagget -- fana krev begge på.
+- **Uavhengig Claude Security Auditor-pass, ingen BLOCKER/HIGH, fire LOW retta før merge**: idempotent `CREATE TYPE` (DO-blokk med exception-fangst -- Postgres manglar `IF NOT EXISTS` for enum-typar), eksplisitt `REVOKE ... FROM anon` (forsvar i djupna, RLS nekta alt implisitt), `NOTIFY pgrst, 'reload schema'` lagt til, og eit reelt funn: direkte lenke til `#/orgdrift/eiendeler` synte fana sjølv når flagget var av (`mount()` tok imot URL-en sin `sub` urørt) -- retta med ein eksplisitt fallback til "Personer" når flagget er av.
+- **Uavhengig UX/Mobile-pass, ingen BLOCKER, to HIGH + fleire MEDIUM retta**: mobil listevisning stabla kjøpspris/verdi-i-dag utan skilje når kolonneoverskrifta vart skjult under 650px (retta med inline mikro-etikettar som berre vises der); lagrings-/slettefeil brukte ein blokkerande `alert()` i staden for inline `.form__status`-melding som koden sjølv hevda å spegle frå `module-tasks.js` (retta). Mindre funn: eigarskap-vel-knappar målt til 36px høgd (heva til min-height:44px), "Eid"-merkelappen brukte ein fast blåfarge i staden for `--color-tint`, slett-knappen dupliserte `.btn--danger` sin fargekode i staden for å bruke klassen, Slett/Rediger-rekkjefølgja i detaljvisinga var omvendt av resten av modulen sin konvensjon, og den delte modal-overskrifta fekk `position:sticky` sidan dei lengre eigarskaps-skjemaa (14 felt) elles kunne skrolle ×-knappen ut av syne (kjem alle seks faner til gode, ikkje berre Eiendeler).
+- `node test-workspace.js`: 229/0 (15 nye assertions for sjølve fana + CRUD-flyten via `App.store`-fallback sidan testmiljøet ikkje har ein reell Supabase-tilkopling, pluss 4 nye for av-som-standard/direkte-lenke-fallback). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-orgdrift.js?v=5`. `VIBEVERK_VERSION` i `console/console-core.js` er IKKJE del av denne commiten (same grunn som 0.109.0-oppføringa sin eigen fotnote -- den filen inneheld samtidig, ikkje-relatert AI Lab-arbeid som ikkje er mitt å committe).
+- **Ikkje deployert.** Migrasjonen er ikkje køyrd mot staging eller produksjon. Neste steg (Fase 2): eigarskapshistorikk ved overgang Eid/Leid/Lånt.
+
+---
+
 ## 0.109.0 — 2026-08-10
 
 **Personvern-Standardforslag: kritisk krasjfiks + overskriv-oppførsel + kapitteloverskrifter + skjematekst-generator.** Brukar fann (via reell testing på Vibeverk sin eigen tenant) at "Standardforslag"-knappen ikkje gjorde noko, og at Dokument-fana vart tom ved fanebyte tilbake til henne -- begge spora til éin felles rotårsak.

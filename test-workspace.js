@@ -73,7 +73,7 @@ window.confirm = () => true;
     src = src.replace(/intranettFeatures:\s*\{[^}]*\}/s, `intranettFeatures: {
     announcements: true, notes: true, orgdrift: true, links: true,
     crm: true, booking: true, quote: true, contact: true,
-    kb: true, mediaInternal: true
+    kb: true, mediaInternal: true, eiendeler: true
   }`);
   }
   window.eval(src);
@@ -285,6 +285,68 @@ assert(!!doc.querySelector("#orgdrift-root"), "n1: orgdrift-root");
 assert(!!doc.querySelector(".od-tabs"),       "n2: fane-navigasjon");
 const orgData = App.store.get("wsp-orgdrift",{});
 assert(Array.isArray(orgData.people)&&orgData.people.length>0, "n3: people-data");
+
+/* --- N2) EIENDELER (fane i Organisasjon & drift, Fase 1, 2026-08-10) ------
+   App.supabase er ikkje konfigurert i dette testmiljøet (ingen window.supabase-
+   CDN-stub), så _sb i module-orgdrift.js er falsy -- dette øver difor den ekte
+   App.store-fallback-koden, ikkje ein mocka Supabase-klient. */
+nav("#/notes");
+nav("#/orgdrift/eiendeler");
+assert(!!doc.querySelector('[data-od-tab="eiendeler"]'), "n4: Eiendeler-fana finst i fane-navigasjonen");
+assert(doc.querySelector('[data-od-tab="eiendeler"]').classList.contains("is-active"), "n5: Eiendeler-fana er aktiv etter direkte lenke (#/orgdrift/eiendeler)");
+assert(/Ingen eiendeler registrert/.test(doc.querySelector("[data-od-content]").textContent),
+  "n6: tom tilstand vises, ingen dummydata (ulikt dei andre fem fanene sin defaults())");
+
+doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiModal = doc.querySelector("[data-od-modal]");
+assert(!!eiModal, "n7: «Ny eiendel»-dialog opnar seg");
+eiModal.querySelector('[name="name"]').value = "MacBook Pro 14";
+eiModal.querySelector('[name="categoryName"]').value = "Datautstyr";
+eiModal.querySelector('[name="acquisitionDate"]').value = "2026-01-15";
+eiModal.querySelector('[name="purchasePrice"]').value = "28990";
+eiModal.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!doc.querySelector("[data-od-modal]"), "n8: dialogen lukkes etter lagring");
+var eiAfterCreate = App.store.get("wsp-eiendeler-assets", []);
+assert(eiAfterCreate.length === 1 && eiAfterCreate[0].name === "MacBook Pro 14" && eiAfterCreate[0].ownership === "owned",
+  "n9: eiendelen er lagret: " + JSON.stringify(eiAfterCreate));
+assert(App.store.get("wsp-eiendeler-categories", []).some(function (c) { return c.name === "Datautstyr"; }),
+  "n10: ny kategori («Datautstyr») ble opprettet automatisk siden den ikke fantes fra før");
+assert(/MacBook Pro 14/.test(doc.querySelector("[data-od-content]").textContent), "n11: den nye eiendelen vises i listen");
+
+var eiCard = doc.querySelector("[data-ei-open]");
+eiCard.dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiDetail = doc.querySelector("[data-od-modal]");
+assert(!!eiDetail, "n12: detaljvisning åpnes ved klikk på kort");
+eiDetail.querySelector("[data-ei-modal-edit]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiEditModal = doc.querySelector("[data-od-modal]");
+eiEditModal.querySelector('[data-ei-ownership="leased"]').dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(!!eiEditModal.querySelector('[name="rentPerMonth"]'), "n13: skjemaet bytter til leie-felt når eierskap velges til Leid, uten å lukke/åpne dialogen på nytt");
+eiEditModal.querySelector('[name="rentPerMonth"]').value = "500";
+eiEditModal.querySelector('[name="supplier"]').value = "Leverandør AS";
+eiEditModal.querySelector("[data-ei-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+var eiAfterEdit = App.store.get("wsp-eiendeler-assets", []);
+assert(eiAfterEdit[0].ownership === "leased" && Number(eiAfterEdit[0].rent_per_month) === 500,
+  "n14: eierskap og felt oppdateres korrekt ved redigering: " + JSON.stringify(eiAfterEdit[0]));
+assert(eiAfterEdit[0].purchase_price === null, "n15: eid-spesifikke felt nulles ut når eierskap endres bort fra Eid");
+
+doc.querySelector("[data-ei-open]").dispatchEvent(new window.Event("click", { bubbles: true }));
+doc.querySelector("[data-ei-modal-del]").dispatchEvent(new window.Event("click", { bubbles: true }));
+assert(App.store.get("wsp-eiendeler-assets", []).length === 0, "n16: eiendelen er slettet");
+
+window.sessionStorage.setItem(_NS + ":admin", "editor");
+nav("#/notes"); nav("#/orgdrift/eiendeler"); nav("#/notes"); nav("#/orgdrift/eiendeler");
+assert(!doc.querySelector("[data-od-new]"), "n17: editor-rolle ser ikke «Ny»-knappen i Eiendeler (samme admin-only-regel som resten av «Organisasjon & drift», brukarvedtak 2026-08-10)");
+window.sessionStorage.setItem(_NS + ":admin", "admin");
+nav("#/notes"); nav("#/orgdrift/eiendeler"); nav("#/notes"); nav("#/orgdrift/eiendeler");
+
+// EIENDELER_ENABLED (module-orgdrift.js) vert lest ÉIN gong ved modul-lasting
+// (same load-time-only mønster som CFG.intranettFeatures.orgdrift si eiga
+// gate, linje ~41 i same fil) -- ikkje reaktivt for ei seinare runtime-
+// mutering av window.SITE_CONFIG. Difor: stadfest den ekte standarden
+// (false) direkte i kjeldeteksten til config.js, i staden for å mutere og
+// forvente ein synleg UI-endring som arkitekturen aldri var meint å gje.
+assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
+  "n18: config.js sin ekte, upatcha standard for intranettFeatures.eiendeler er false (av) — testmiljøet over overstyrer dette eksplisitt til true for resten av denne fila sine testar");
 
 /* --- O) WORKSPACESHIP ----------------------------------------------------- */
 assert(!doc.querySelector('[data-inav="workspaceship"]'), "o1: workspaceship skjult");
@@ -1067,6 +1129,60 @@ nav("#/notes"); nav("#/dashboard");
   assert(!navThrew6, "ae3: direkte navigering til #/oversikt krasjar ikkje sjølv om modulen aldri registrerte seg");
   assert(doc6.getElementById("intranet-main").textContent.indexOf("Modul ikke funnet") > -1,
     "ae4: #/oversikt fell trygt tilbake til «Modul ikke funnet» i staden for eit tomt/knust skjerm");
+})();
+
+/* --- AF) EIENDELER AV: intranettFeatures.eiendeler = false (dagens faktiske
+   standard) skal skjule fana heilt -- OG (Security Auditor-funn LOW,
+   2026-08-10) direkte navigering til #/orgdrift/eiendeler skal falle attende
+   til "people"-fana i staden for å vise Eiendeler-innhaldet likevel. Eigen
+   DOM av same grunn som Z/AC/AE over: EIENDELER_ENABLED vert lest éin gong
+   ved skriptlasting. ------------------------------------------------------ */
+(function () {
+  const dom7 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window7 = dom7.window;
+  window7.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window7.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window7.scrollTo = () => {};
+  window7.HTMLElement.prototype.scrollIntoView = () => {};
+  window7.URL.createObjectURL = window7.URL.createObjectURL || (() => "blob:mock");
+  window7.URL.revokeObjectURL = window7.URL.revokeObjectURL || (() => {});
+  window7.confirm = () => true;
+
+  // Ingen intranettFeatures-patching -- ekte, upatcha standard (eiendeler: false).
+  [
+    "config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-orgdrift.js"
+  ].forEach(f => window7.eval(fs.readFileSync(f, "utf8")));
+
+  const _NS7 = window7.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window7.eval(`sessionStorage.setItem("${_NS7}:admin","admin")`);
+  window7.document.dispatchEvent(new window7.Event("DOMContentLoaded", { bubbles: true }));
+  const doc7 = window7.document;
+
+  function nav7(hash) {
+    window7.location.hash = hash;
+    window7.dispatchEvent(new window7.Event("hashchange"));
+  }
+
+  assert(window7.SITE_CONFIG.intranettFeatures.eiendeler === false,
+    "af1: føresetnad for denne seksjonen -- config.js sin ekte standard har eiendeler: false");
+  nav7("#/notes"); nav7("#/orgdrift");
+  assert(!doc7.querySelector('[data-od-tab="eiendeler"]'),
+    "af2: Eiendeler-fana finst ikkje i fane-navigasjonen når funksjonen er av");
+
+  nav7("#/notes"); nav7("#/orgdrift/eiendeler");
+  assert(!/Ingen eiendeler registrert/.test(doc7.getElementById("intranet-main").textContent),
+    "af3: direkte lenke til #/orgdrift/eiendeler viser IKKJE Eiendeler-innhaldet når funksjonen er av (mount() sin fallback til «people»)");
+  assert(doc7.getElementById("intranet-main").textContent.indexOf("Kontakt- og rollekart") > -1,
+    "af4: direkte lenke til #/orgdrift/eiendeler fell i staden attende til «Personer»-fana");
 })();
 
 /* --- RESULTAT ------------------------------------------------------------- */
