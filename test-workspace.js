@@ -443,6 +443,14 @@ assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
   var quickBtn = doc.querySelector("[data-ei-quick-upload]");
   assert(!!quickBtn, "n28: kort uten bilde viser «Last opp bilde»-knappen direkte (quick-upload, uten å åpne redigeringsskjemaet)");
 
+  // UX-review-funn (BLOCKER, 2026-08-10): knappen ligger NESTET inni kortet
+  // sitt eget tabindex="0" role="button"-element -- uten stopPropagation()
+  // på keydown ville et Enter/Space-tastetrykk boblet opp til KORTETS egen
+  // keydown-handler og åpnet detaljvisningen i stedet for opplastingsknappens
+  // egen aktivering (mus/touch var alt trygt via click sin stopPropagation).
+  quickBtn.dispatchEvent(new window.Event("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  assert(!doc.querySelector("[data-od-modal]"), "n28b: Enter-tastetrykk på quick-upload-knappen bobler ikke opp og åpner detaljvisningen ved et uhell");
+
   App.media.put = function () { return fakePutOk("https://cdn.example.test/eiendel-2.jpg"); };
   quickBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
   var pendingInput = Array.prototype.slice.call(doc.body.querySelectorAll('input[type="file"]')).pop();

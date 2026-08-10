@@ -221,7 +221,11 @@
       ".od-kv{display:grid;gap:.26rem;margin-top:.55rem}",
       ".od-kv div{font-size:.84rem;color:var(--color-muted);line-height:1.4}",
       ".od-kv strong{color:var(--color-text)}",
-      ".od-actions{display:flex;justify-content:flex-end;gap:.4rem;margin-top:.75rem}",
+      // UX-review-funn (HIGH, 2026-08-10): utan flex-wrap kunne handlingsrada
+      // i detaljvisinga (Rediger/Beregn verdi på nytt/Slett/Lukk -- fire
+      // knappar for eigde eiendelar sidan Fase 4, mot tre i Fase 1) skyte
+      // over den smale modal-bredda på 375px.
+      ".od-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.4rem;margin-top:.75rem}",
       ".od-empty{border:1px dashed var(--color-border);border-radius:var(--radius);padding:1rem;color:var(--color-muted);font-size:.9rem}",
       ".od-table-wrap{border:1px solid var(--color-border);border-radius:var(--radius);overflow:auto;background:var(--color-surface)}",
       ".od-table{width:100%;border-collapse:collapse;font-size:.88rem}",
@@ -252,7 +256,12 @@
       // lånt) ved liggjande mobilvising -- gjeld alle seks faner sine skjema,
       // ikkje berre Eiendeler, difor retta her på den delte regelen.
       ".od-modal-head{position:sticky;top:0;background:var(--color-surface);z-index:1}",
-      "@media(max-width:650px){.od-head{display:block}.od-tools{display:block}.od-search{width:100%;box-sizing:border-box;margin-bottom:.6rem}.od-row{grid-template-columns:1fr}.od-view-toggle{margin-bottom:.6rem}}",
+      // UX-review-funn (HIGH, 2026-08-10): .od-tools sin flex-gap forsvinn
+      // heilt når layouten fell attende til display:block her -- usynleg så
+      // lenge "Ny" var den einaste knappen i rada, men Fase 4/5 sine to nye
+      // Eiendeler-only-knappar (deler .od-view-toggle-btn-klassen) ville elles
+      // stå heilt inntil kvarandre utan mellomrom på smal skjerm.
+      "@media(max-width:650px){.od-head{display:block}.od-tools{display:block}.od-search{width:100%;box-sizing:border-box;margin-bottom:.6rem}.od-row{grid-template-columns:1fr}.od-view-toggle{margin-bottom:.6rem}.od-view-toggle-btn{margin:0 .4rem .4rem 0}}",
       /* --- Eiendeler (2026-08-10) ------------------------------------------- */
       ".ei-visual{position:relative;width:100%;aspect-ratio:16/9;border-radius:.7rem;background:var(--color-alt,rgba(148,163,184,.12));display:flex;align-items:center;justify-content:center;margin-bottom:.6rem;overflow:hidden}",
       ".ei-visual img{width:100%;height:100%;object-fit:cover}",
@@ -1337,8 +1346,25 @@
   // workspace/index.html sin faste skriptliste (dei fleste kundar importerer
   // aldri eit Excel-ark eller køyrer OCR) -- lasta først når brukaren faktisk
   // opnar import- eller OCR-flyten, via éin delt loadScriptOnce()-hjelpar.
-  // Begge versjonane er sjekka mot data.jsdelivr.com FØR pinning (CLAUDE.md).
-  var EI_XLSX_URL      = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+  //
+  // xlsx: IKKJE frå cdn.jsdelivr.net/npm (Security Auditor-funn, HIGH,
+  // 2026-08-10) -- npm sin siste publiserte versjon av "xlsx" er 0.18.5,
+  // som har to kjende, aldri npm-retta sårbarheiter: CVE-2023-30533
+  // (prototype pollution ved lesing av eit ondsinna .xlsx-ark, retta i
+  // 0.19.3) og CVE-2024-22363 (ReDoS, retta i 0.20.2). SheetJS slutta å
+  // publisere retta versjonar til npm og distribuerer dei berre via sin
+  // eigen CDN. Sidan "Importer fra Excel" nettopp LES eit brukar-/admin-
+  // opplasta ark (kan i praksis stamme frå ein ekstern part, t.d. ein
+  // leverandør eller rekneskapsførar) er dette den nøyaktige trusselmodellen
+  // desse CVE-ane gjeld -- IKKJE eit teoretisk scenario. cdn.sheetjs.com sin
+  // 0.20.3 er stadfesta (kildesjekka, sjå data.jsdelivr.com/npm-oppslaget
+  // over for tesseract.js, og cdn.sheetjs.com/xlsx-0.20.3/package/package.json
+  // for denne) den siste utgjevne versjonen, rettar begge CVE-ane. Malen si
+  // eiga skriving (writeFile()) var ALDRI sårbar (begge CVE-ane krev å LESE
+  // eit ondsinna ark -- "Workflows that do not read arbitrary files ... are
+  // unaffected", offisiell rådgjeving), men parsing-sida (XLSX.read() i
+  // bindEiendelerImportModal) var det.
+  var EI_XLSX_URL      = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
   var EI_TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
   var EI_IMPORT_MAX_ROWS = 200;
   var EI_IMPORT_HEADERS = [
@@ -1665,6 +1691,7 @@
       // notat») før han faktisk hamnar i skjemaet (IMPLEMENTERINGSPROMPT.md
       // sitt uttrykkelege krav: berre GJENNOMLEST tekst, aldri automatisk).
       '<div class="ei-ocr" data-ei-ocr>' +
+        '<p class="od-help">Ta bilde av f.eks. en kvittering eller et merkeskilt for å hente ut teksten automatisk. Du får se og redigere teksten før den legges til i notatet.</p>' +
         '<button type="button" class="btn btn--ghost btn--sm" data-ei-ocr-btn>Hent tekst fra bilde (OCR)</button>' +
         '<input type="file" accept="image/*" data-ei-ocr-input style="display:none">' +
         '<p class="form__status" data-ei-ocr-status></p>' +
@@ -1787,10 +1814,17 @@
   // "finst-han-alt/opprett-han"-sjekk må sjå resultatet av FØRRE rad si
   // eventuelle oppretting før neste rad spør, elles ville to rader med same
   // nye kategorinamn oppretta to like kategoriar i staden for å dele éin.
-  function runEiendelerImport(rows, cb) {
+  // onProgress(doneCount, total) -- UX-review-funn (HIGH, 2026-08-10): opp
+  // til 200 rader vert importert SEKVENSIELT (naudsynt, sjå kommentaren over
+  // withCategoryId under) mot ein ekte Supabase-tilkopling, kvar med sitt
+  // eige nettverks-rundtur -- utan framdriftsvarsel var ein knapp som berre
+  // stod "disabled" i potensielt lang tid det einaste synlege teiknet på at
+  // noko i det heile skjedde.
+  function runEiendelerImport(rows, onProgress, cb) {
     var results = [];
     function next(i) {
       if (i >= rows.length) { cb(results); return; }
+      onProgress(i, rows.length);
       var row = Object.assign({}, rows[i].row);
       var categoryName = row.categoryName;
       delete row.categoryName;
@@ -1830,7 +1864,10 @@
     if (!runBtn) return;
     runBtn.addEventListener("click", function () {
       runBtn.disabled = true;
-      runEiendelerImport(okRows, function (results) {
+      var runStatusEl0 = previewEl.querySelector("[data-ei-import-run-status]");
+      runEiendelerImport(okRows, function (done, total) {
+        if (runStatusEl0) { runStatusEl0.textContent = "Importerer rad " + (done + 1) + " av " + total + " …"; runStatusEl0.className = "form__status"; }
+      }, function (results) {
         var runStatusEl = previewEl.querySelector("[data-ei-import-run-status]");
         var failed = results.filter(function (r) { return r.error; });
         var successCount = results.length - failed.length;
@@ -1877,7 +1914,15 @@
         try {
           var wb = window.XLSX.read(buffer, { type: "array", cellDates: true });
           var ws = wb.Sheets[wb.SheetNames[0]];
-          data = window.XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+          // raw:true -- hentar underliggande verdiar (tal/Date) direkte i staden
+          // for lokaltilpassa formatert visningstekst. Me tolkar uansett kvar
+          // celle sjølve (eiendelerParseNumberCell/-DateCell), så den formaterte
+          // teksten var aldri i bruk -- og raw:true unngår i tillegg heilt å
+          // køyre SSF-talformaterings-tolkinga (der ReDoS-sårbarheita, CVE-2024-
+          // 22363, retta i cdn.sheetjs.com sin 0.20.3, låg), som eit ekstra
+          // forsvarslag utover sjølve versjonsoppdateringa (Security Auditor-
+          // funn, 2026-08-10).
+          data = window.XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: true });
         } catch (e) {
           statusEl.textContent = "Kunne ikke lese Excel-filen. Sjekk at den er en gyldig .xlsx-fil.";
           statusEl.className = "form__status is-err";
@@ -2106,7 +2151,8 @@
       return;
     }
     if (!confirm("Rekalkulere verdi i dag for " + candidates.length + " eide eiendeler med kjøpsdato og kategori registrert? " +
-        "Dette oppdaterer estimert verdi og legges til i historikken for hver eiendel som endres.")) return;
+        "Dette oppdaterer estimert verdi og legges til i historikken for hver eiendel som endres. " +
+        "De forrige verdiene forblir synlige i historikken, men blir ikke gjenopprettet automatisk.")) return;
 
     var changing = candidates.filter(function (x) {
       return x.asset.estimated_value == null || Number(x.asset.estimated_value) !== x.calc.value;
@@ -2331,7 +2377,8 @@
       if (ownershipChanged && !confirm('Endre eierskap for «' + asset.name + '» fra ' +
           (EI_OWNERSHIP_LABELS[asset.ownership] || asset.ownership) + ' til ' +
           (EI_OWNERSHIP_LABELS[newOwnership] || newOwnership) +
-          '? Dette påvirker oversikt og verdi, og blir lagt til i historikken.')) return;
+          '? Dette påvirker oversikt og verdi, og blir lagt til i historikken. ' +
+          'Du kan endre eierskapet tilbake senere, men den forrige verdien blir ikke gjenopprettet automatisk.')) return;
 
       // Fanga FØR lagring -- sjå kommentaren ved recordOwnershipChange() for
       // kvifor: updateAsset() sin App.store-fallback muterer `asset` in-place.
@@ -2409,6 +2456,11 @@
       var quickUploadBtn = modal.querySelector("[data-ei-quick-upload]");
       if (quickUploadBtn) quickUploadBtn.addEventListener("click", function (e) {
         e.stopPropagation();
+        // Knappen er alt berre rendra for admin (eiendelerVisual() sin
+        // opts.quickUpload-sjekk), men same defense-in-depth-vane som
+        // rediger/slett-handsamarane elles i denne fila (Security Auditor-
+        // funn, LOW, 2026-08-10 -- konsistens, ikkje ein reell utnytting).
+        if (!isAdminRole()) return;
         triggerEiQuickUpload(a.id, function (err) {
           if (err) {
             var statusEl = modal.querySelector("[data-ei-detail-status]");
@@ -2515,8 +2567,20 @@
 
   function bindEiendelerDynamic(root) {
     root.querySelectorAll("[data-ei-quick-upload]").forEach(function (btn) {
+      // UX-review-funn (BLOCKER, 2026-08-10): knappen ligg NESTA inni
+      // .od-card sitt eige tabindex="0" role="button"-element (sjå
+      // eiendelerCard()/eiendelerVisual()) -- utan stopPropagation() her
+      // bobla ein Enter/Space-keydown vidare opp til kortet sin EIGEN
+      // keydown-handsamar under, som kallar e.preventDefault() og OPNAR
+      // DETALJVISINGA i staden for å utløyse knappen sin eigen native
+      // klikk-åtferd. Mus/touch var alt trygt (click sin eigen
+      // stopPropagation), berre tastatur/skjermlesar var råka.
+      btn.addEventListener("keydown", function (e) { e.stopPropagation(); });
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
+        // Sjå same kommentar ved detaljvisinga sin eigen quickUploadBtn-
+        // handsamar -- defense-in-depth, knappen er alt berre rendra for admin.
+        if (!isAdminRole()) return;
         triggerEiQuickUpload(btn.getAttribute("data-ei-quick-upload"), function (err) {
           var statusEl = root.querySelector("[data-ei-quick-status]");
           if (err) {

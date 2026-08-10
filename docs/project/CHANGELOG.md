@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.115.0 — 2026-08-10
+
+**Eiendeler: uavhengig Security Auditor- og UX/Mobile Reviewer-pass over Fase 2-5, funn retta.** Kjørt etter at alle 5 faser var bygget, per planen sitt eige punkt om ein samla gjennomgang før PR/deploy (ikkje éin separat runde per fase for Fase 2-4, sidan ingenting vart pusha/merga undervegs).
+
+- **Security Auditor, HIGH, retta**: `xlsx`s siste npm-publiserte versjon (0.18.5, brukt sidan Fase 5) har to kjende, aldri npm-retta CVE-ar -- CVE-2023-30533 (prototype pollution) og CVE-2024-22363 (ReDoS) -- begge utløyst ved å LESE eit ondsinna `.xlsx`-ark, nøyaktig det "Importer fra Excel" gjer med eit admin-opplasta ark (kan i praksis stamme frå ein ekstern leverandør/rekneskapsførar). SheetJS distribuerer berre dei retta versjonane via sin eigen CDN (npm/jsDelivr sin siste er permanent 0.18.5). Bytta til `https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js` (retta versjon, kjeldesjekka via bibliotekets eiga `package.json`), la til `https://cdn.sheetjs.com` i CSP sin `script-src`, og la til `raw:true` på `sheet_to_json()`-kallet som eit ekstra forsvarslag (unngår heilt å køyre SSF-talformaterings-tolkinga der ReDoS-regexen låg, uavhengig av versjon).
+- **Security Auditor, LOW, retta**: dei to quick-upload-knappane (kort-/detaljvisning) mangla ein eksplisitt `isAdminRole()`-sjekk i klikk-handsamaren, ulikt alle andre admin-gata handlingar i same fil (rediger/slett/rekalkuler/importer sjekkar alle eksplisitt). Ikkje ein reell utnytting (knappen vert berre rendra for admin i utgangspunktet), men lagt til for konsistens.
+- **UX/Mobile Reviewer, BLOCKER, retta**: quick-upload-knappen ligg nesta inni kortet sitt eige `tabindex="0" role="button"`-element -- eit Enter/Space-tastetrykk bobla opp til KORTET sin eigen `keydown`-handsamar, som kalla `preventDefault()` og opna detaljvisinga i staden for å utløyse knappen sin eigen aktivering. Mus/touch var alt trygt (klikk sin eigen `stopPropagation()`), berre tastatur/skjermlesar var råka. Retta med same `stopPropagation()` på knappen sin `keydown`. Ny regresjonstest (n28b).
+- **UX/Mobile Reviewer, HIGH, retta**: detaljvisinga sin handlingsrad (`.od-actions`) kunne skyte over 375px-breidda no som Fase 4 la til ein fjerde knapp ("Beregn verdi på nytt") -- lagt til `flex-wrap`. Verktøylinja sine to nye Eiendeler-only-knappar ("Rekalkuler verdi i dag", "Importer fra Excel") mista mellomrommet seg imellom på smal skjerm sidan `gap` ikkje verkar når `@media`-regelen fell tilbake til `display:block` -- lagt til ein `margin`-reserve for `.od-view-toggle-btn`. Excel-import av opptil 200 rader mot ein ekte Supabase-tilkopling kunne stå lenge med berre ein deaktivert knapp som einaste teikn på aktivitet -- lagt til «Importerer rad X av Y …»-framdrift.
+- **UX/Mobile Reviewer, MEDIUM, retta**: begge nye `confirm()`-dialogane (eierskapsbytte, samla rekalkulering) fekk ei eksplisitt setning om at føregåande verdi IKKJE vert automatisk gjenoppretta (copy-style-guide.md sitt Tier B-krav om reversibilitet). OCR-knappen mangla ein `od-help`-forklaring (Excel-importen fekk ein tilsvarande i Fase 5, OCR gjorde det ikkje) -- lagt til.
+- **UX/Mobile Reviewer, HIGH, medvite IKKJE retta**: manglande 44px-touch-mål på dei nye knappane. Alle nye Fase 2-5-knappar bruker den DELTE `.btn`/`.btn--sm`-klassen (definert i `workspace/index.html`, ingen `min-height`) -- akkurat same klasse Fase 1 sine eigne Rediger/Slett/Lukk-knappar alt bruker. Dette er difor IKKJE ein ny regresjon frå Fase 2-5, men eit eksisterande, kodebase-breitt gap som gjeld `.btn--sm` over heile Workspace (og truleg Console/nettsida), langt utanfor Eiendeler sitt omfang -- ein skalert fiks her ville anten vore inkonsekvent (nye knappar 44px, gamle søsken-knappar under) eller kravd ei separat, eigen-vurdert kodebase-brei tilgjengelegheitsrunde. Same vurdering for valideringshistorikk-vising (finst i data, ikkje i UI enno) og nokre POLISH-funn -- notert, ikkje del av dette omfanget.
+- `node test-workspace.js`: 276/0 (1 ny regresjonstest for tastatur-boblinga). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-orgdrift.js?v=10`.
+- **Framleis ikkje deployert eller pusha.** Alle 5 faser + denne gjennomgangsrunden er no klare for PR, når brukaren gir eksplisitt godkjenning.
+
+---
+
 ## 0.114.0 — 2026-08-10
 
 **Eiendeler (Fase 5 av 5, siste: OCR + Excel-import).** Modulen er nå funksjonelt komplett per den opprinnelige overleveringspakken sine 13 krav.

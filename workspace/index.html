@@ -14,14 +14,19 @@
        tesseract.js køyrer i ein Worker (blob:-instansiert som standard, sjå
        spawnWorker() i biblioteket sjølv) som lastar WebAssembly via
        importScripts() -- utan desse to feilar OCR heilt tagt, med berre eit
-       generisk CSP-avvisings-varsel i konsollen. xlsx treng ingen av dei
-       (rein JS, ingen Worker/WASM), berre den eksisterande cdn.jsdelivr.net-
-       tilgangen i script-src. -->
+       generisk CSP-avvisings-varsel i konsollen.
+       cdn.sheetjs.com (Security Auditor-funn, HIGH, 2026-08-10): xlsx sin
+       siste npm-publiserte versjon (0.18.5, via cdn.jsdelivr.net) har to
+       kjende, aldri npm-retta CVE-ar (prototype pollution + ReDoS ved lesing
+       av eit ondsinna .xlsx-ark) -- SheetJS distribuerer berre dei retta
+       versjonane via sin eigen CDN, sjå kommentaren ved EI_XLSX_URL i
+       module-orgdrift.js. -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     script-src  'self' 'unsafe-inline' 'wasm-unsafe-eval'
                 https://plausible.io
-                https://cdn.jsdelivr.net;
+                https://cdn.jsdelivr.net
+                https://cdn.sheetjs.com;
     worker-src  'self' blob:
                 https://cdn.jsdelivr.net;
     connect-src 'self'
@@ -681,7 +686,7 @@
   <script src="module-mediabank-internal.js?v=5"></script>
   <script src="module-kb.js?v=8"></script>
   <script src="module-links.js?v=6"></script>
-  <script src="module-orgdrift.js?v=9"></script>
+  <script src="module-orgdrift.js?v=10"></script>
   <script src="module-contact.js?v=9"></script>
   <script src="../module-chat.js?v=22"></script>
   <script src="../module-crm.js?v=33"></script>
