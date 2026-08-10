@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.124.0 — 2026-08-10
+
+**Eiendeler: lukk det siste kjende gapet — Sunnvask-demo og staging har no dei same tabellane/RLS/grants som produksjon.** Følgjer opp 0.118.0 sitt katalogiserte gap: kontrollplanet sitt `enabled_modules.intranettFeatures.eiendeler` var alt sett til `true` for alle tre tenant-hostnamn, men Sunnvask og staging sine EIGNE Supabase-prosjekt (ADR-0008 — kvar tenant har sitt eige data-plane-prosjekt) hadde aldri fått sjølve migrasjonane, sidan tilkoplingsstrengane ikkje var delte då 0.117.0/0.118.0 vart gjort.
+
+- Brukaren delte begge sine Session pooler-tilkoplingsstrengar direkte. `npx supabase db push --db-url ... --yes` mot kvart prosjekt (aldri `npx supabase link`, jf. CLAUDE.md sin regel om at `supabase/` sin lokale koplinga skal halde fram med å peike på produksjon).
+- **Staging** (`syqnyfeponexmkdvnsga`) mangla berre dei fire Eiendeler-migrasjonane (skjema + eigarskapshistorikk + verdihistorikk + GRANT-fiksen) — eit reint tilfelle, alt anna var alt oppdatert.
+- **Sunnvask** (`nzgibflxodcwuhtaprrs`) mangla 13 migrasjonar, ikkje berre dei fire Eiendeler-relaterte — eit generelt skjema-etterslep tilbake til 2026-07-19 (e-post-tråd-fiks, karusell-bøtte, kunngjeringar-lest-status, fire analyse-/samtykke-migrasjonar). Alle var reine tilleggsendringar (nye tabellar/kolonnar/funksjonar) — brukaren valde eksplisitt å ta heile etterslepet i éin `db push` i staden for å prøve å plukke ut berre Eiendeler-delen (uråd med `db push`, som alltid køyrer i rekkefølgje).
+- Verifisert på begge prosjekt ETTER køyringa, ikkje berre stolt på CLI sin "Finished"-tekst (same standing-regel som 0.116.0/0.117.0): `npx supabase migration list` syner alle lokale migrasjonar som `remote`-matcha, alle fire Eiendeler-tabellane finst med RLS på, alle åtte forventa `*_read`/`*_write`-policyar finst, `authenticated` har `SELECT, INSERT, UPDATE, DELETE` og `anon` har null grants — identisk med produksjon sin verifiserte tilstand.
+- **Eiendeler-modulen fungerer no identisk på alle tre kjende tenant-prosjekt** (produksjon, staging, Sunnvask-demo) — både kontrollplan-flagget og det underliggande skjemaet stemmer overeins på alle tre, det kjende gapet frå 0.118.0 er lukka.
+
+---
+
 ## 0.123.1 — 2026-08-10
 
 **Delt Workspace-modal: fiks reell UX-regresjon avdekka av UX/Mobile Reviewer-passet etter Fase 5.** Ruteren (`handleRoute()` i `workspace-core.js`) og utloggingsknappen kalla aldri `closeModal()` -- ein modal ståande open frå sida brukaren nettopp forlét kunne dermed liggje att over den nye sida (eller innloggingsskjermen etter utlogging). Om brukaren då trykte Escape/klikka bakgrunnen på det som såg ut som eit att-hengande overlay, utløyste det den GAMLE modalen sin `onClose` -- som for `module-tasks.js`/`module-notes.js` navigerer (`Intranet.navigate("tasks"/"notes")`), og dermed stille reverserte navigeringa brukaren alt hadde gjort.
