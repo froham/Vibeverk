@@ -54,17 +54,13 @@
   /* =========================================================================
      POPUP — vis full henvendingsdetalj
      ====================================================================== */
+  // Migrert 2026-08-10 til det delte Intranet.openModal() (Fase 4, sjå
+  // docs/project/CHANGELOG.md) -- nesten identisk kopi av same funksjon i
+  // module-contact.js/module-booking.js, migrert samla same fase.
   function openLeadDetail(lead, type, onStatusChange) {
-    var existing = document.getElementById("lead-detail-backdrop");
-    if (existing) existing.remove();
     var statusOptions = STATUS_ORDER.map(function (s) {
       return '<option value="' + C.esc(s) + '"' + ((lead.status || "ny") === s ? " selected" : "") + '>' + C.esc(STATUS_LABELS[s] || s) + '</option>';
     }).join("");
-    var bd = document.createElement("div");
-    bd.id = "lead-detail-backdrop";
-    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem";
-    var modal = document.createElement("div");
-    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(580px,100%);max-height:88vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3);display:flex;flex-direction:column";
     var fields = [
       infoRow("Namn",    lead.name  || "—"),
       infoRow("E-post",  lead.email || "—"),
@@ -72,48 +68,45 @@
       infoRow("Tid",     formatDate(lead.time || lead.createdAt))
     ];
     if (lead.referenceNumber) fields.push(infoRow("Referanse", "#" + lead.referenceNumber));
-    modal.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg)">' +
-        '<strong style="font-size:1rem">' + C.esc(type) + ' — ' + C.esc(lead.name || lead.email || "") + '</strong>' +
-        '<button id="lead-detail-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
-      '</div>' +
-      '<div style="padding:1.2rem;display:grid;gap:1rem">' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">' + fields.join("") + '</div>' +
-        (lead.message ? '<div style="background:var(--color-alt);border-radius:8px;padding:.9rem"><p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-muted);margin:0 0 .5rem">Melding</p><div style="font-size:.92rem;line-height:1.7;white-space:pre-wrap">' + C.esc((lead.message||"").replace(/<[^>]+>/g,"")) + '</div></div>' : "") +
-        '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">' +
-          '<label style="font-size:.85rem;font-weight:600">Status:</label>' +
-          '<select id="lead-detail-status" style="font-size:.88rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)">' + statusOptions + '</select>' +
-          (lead.email ? '<button id="lead-detail-svar-btn" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</button>' : '') +
-        '</div>' +
+    var bodyHtml =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">' + fields.join("") + '</div>' +
+      (lead.message ? '<div style="background:var(--color-alt);border-radius:8px;padding:.9rem"><p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-muted);margin:0 0 .5rem">Melding</p><div style="font-size:.92rem;line-height:1.7;white-space:pre-wrap">' + C.esc((lead.message||"").replace(/<[^>]+>/g,"")) + '</div></div>' : "") +
+      '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">' +
+        '<label style="font-size:.85rem;font-weight:600">Status:</label>' +
+        '<select id="lead-detail-status" style="font-size:.88rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:7px;background:var(--color-bg);color:var(--color-text)">' + statusOptions + '</select>' +
+        (lead.email ? '<button id="lead-detail-svar-btn" class="btn btn--primary btn--sm"><i class="ti ti-mail-forward"></i> Svar</button>' : '') +
       '</div>';
-    bd.appendChild(modal);
-    document.body.appendChild(bd);
-    Intranet.wrapDimmedOverlay(bd);
-    modal.querySelector("#lead-detail-close").addEventListener("click", function () { bd.remove(); });
-    bd.addEventListener("click", function (e) { if (e.target === bd) bd.remove(); });
-    document.addEventListener("keydown", function escH(e) { if (e.key === "Escape") { bd.remove(); document.removeEventListener("keydown", escH); } });
-    modal.querySelector("#lead-detail-status").addEventListener("change", function () {
-      if (typeof onStatusChange === "function") onStatusChange(modal.querySelector("#lead-detail-status").value);
-    });
-    var svarBtn = modal.querySelector("#lead-detail-svar-btn");
-    if (svarBtn) svarBtn.addEventListener("click", function () {
-      bd.remove();
-      if (!App.openReplyModal) { window.location.href = "mailto:" + lead.email; return; }
-      setLeadStatus(lead.id, "løst");
-      App.openReplyModal({
-        name: lead.name, email: lead.email,
-        subject: "Re: Tilbudsforespørsel fra " + (lead.name || ""),
-        templateKey: "tilbud",
-        defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
-        templateOptions: App.buildTemplateOptions([{ key: "tilbud", label: "Standardmal for tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
-        signatureOptions: App.buildSignatureOptions(),
-        vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDate(lead.time), melding: lead.message || "", referanse: lead.referenceNumber || "" },
-        onSent: function (info) {
-          if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
-            window.CrmAdmin.logEmailSent({ email: lead.email, name: lead.name, subject: info.subject, plain: info.plain });
-          }
-        }
-      });
+
+    Intranet.openModal({
+      title: type + " — " + (lead.name || lead.email || ""),
+      bodyHtml: bodyHtml,
+      size: "md",
+      rootId: "lead-detail-backdrop",
+      onMount: function (modal) {
+        modal.querySelector("#lead-detail-status").addEventListener("change", function () {
+          if (typeof onStatusChange === "function") onStatusChange(modal.querySelector("#lead-detail-status").value);
+        });
+        var svarBtn = modal.querySelector("#lead-detail-svar-btn");
+        if (svarBtn) svarBtn.addEventListener("click", function () {
+          Intranet.closeModal();
+          if (!App.openReplyModal) { window.location.href = "mailto:" + lead.email; return; }
+          setLeadStatus(lead.id, "løst");
+          App.openReplyModal({
+            name: lead.name, email: lead.email,
+            subject: "Re: Tilbudsforespørsel fra " + (lead.name || ""),
+            templateKey: "tilbud",
+            defaultTemplate: App.DEFAULT_REPLY_TEMPLATE,
+            templateOptions: App.buildTemplateOptions([{ key: "tilbud", label: "Standardmal for tilbud", defaultTemplate: App.DEFAULT_REPLY_TEMPLATE }]),
+            signatureOptions: App.buildSignatureOptions(),
+            vars: { navn: lead.name || "", epost: lead.email || "", dato: formatDate(lead.time), melding: lead.message || "", referanse: lead.referenceNumber || "" },
+            onSent: function (info) {
+              if (window.CrmAdmin && window.CrmAdmin.logEmailSent) {
+                window.CrmAdmin.logEmailSent({ email: lead.email, name: lead.name, subject: info.subject, plain: info.plain });
+              }
+            }
+          });
+        });
+      }
     });
   }
   function infoRow(label, value) {

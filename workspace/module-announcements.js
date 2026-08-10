@@ -313,18 +313,12 @@
   /* =========================================================================
      LESE-POPUP
      ====================================================================== */
+  // Migrert 2026-08-10 til det delte Intranet.openModal() (Fase 4, sjå
+  // docs/project/CHANGELOG.md). "Viktig"-merket + dato var opphavleg del av
+  // ei friare-forma overskrift enn den delte modalen sitt hovud støttar
+  // (berre statisk escapa tekst) -- flytta til toppen av bodyHtml i staden.
   function openReaderModal(item) {
-    var existing = document.getElementById("ann-reader-bd");
-    if (existing) existing.remove();
-
     var img = item.image ? App.media.resolveImage(item.image) : null;
-
-    var bd = document.createElement("div");
-    bd.id  = "ann-reader-bd";
-    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto";
-
-    var modal = document.createElement("div");
-    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(680px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3)";
 
     var attachHtml = "";
     if (item.attachments && item.attachments.length) {
@@ -341,36 +335,27 @@
       '</div>';
     }
 
-    modal.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
-        '<div>' +
-          (item.important
-            ? '<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary)"><i class="ti ti-speakerphone"></i> Viktig · </span>'
-            : '') +
-          '<strong style="font-size:1rem">' + C.esc(item.title) + '</strong>' +
-          '<span style="font-size:.78rem;color:var(--color-muted);margin-left:.6rem">' + formatDate(item.created_at || item.published_at) + '</span>' +
-        '</div>' +
-        '<button id="ann-reader-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center">&times;</button>' +
+    var bodyHtml =
+      '<div style="margin-top:-.4rem">' +
+        (item.important
+          ? '<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-primary)"><i class="ti ti-speakerphone"></i> Viktig · </span>'
+          : '') +
+        '<span style="font-size:.78rem;color:var(--color-muted)">' + formatDate(item.created_at || item.published_at) + '</span>' +
       '</div>' +
-      '<div style="padding:1.2rem 1.4rem">' +
-        (img && img.src
-          ? '<img src="' + C.esc(img.src) + '" alt="' + C.esc(img.alt || "") + '" style="width:100%;aspect-ratio:16/9;max-height:320px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;margin-bottom:1.1rem;display:block">'
-          : '') +
-        (item.content
-          ? '<div style="font-size:.95rem;line-height:1.75;color:var(--color-text)">' + C.sanitizeRichHtml(item.content) + '</div>'
-          : '') +
-        attachHtml +
-      '</div>';
+      (img && img.src
+        ? '<img src="' + C.esc(img.src) + '" alt="' + C.esc(img.alt || "") + '" style="width:100%;aspect-ratio:16/9;max-height:320px;object-fit:cover;object-position:' + C.esc(img.pos || "50% 50%") + ';border-radius:8px;display:block">'
+        : '') +
+      (item.content
+        ? '<div style="font-size:.95rem;line-height:1.75;color:var(--color-text)">' + C.sanitizeRichHtml(item.content) + '</div>'
+        : '') +
+      attachHtml;
 
-    bd.appendChild(modal);
-    document.body.appendChild(bd);
-    Intranet.wrapDimmedOverlay(bd);
-
-    function close() { bd.remove(); document.removeEventListener("keydown", escH); }
-    function escH(e) { if (e.key === "Escape") close(); }
-    document.addEventListener("keydown", escH);
-    modal.querySelector("#ann-reader-close").addEventListener("click", close);
-    bd.addEventListener("click", function (e) { if (e.target === bd) close(); });
+    Intranet.openModal({
+      title: item.title,
+      bodyHtml: bodyHtml,
+      size: "lg",
+      rootId: "ann-reader-bd"
+    });
   }
 
   /* =========================================================================

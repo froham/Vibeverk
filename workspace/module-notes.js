@@ -416,26 +416,29 @@
   /* =========================================================================
      POPUP-MODAL
      ====================================================================== */
-  var _activeEscHandler = null;
-
+  // Migrert 2026-08-10 til det delte Intranet.openModal() (Fase 4, sjå
+  // docs/project/CHANGELOG.md). _activeEscHandler-bokhaldet er heilt fjerna
+  // -- den delte modalen handterer Escape sentralt no, ingen eigen listener
+  // å spore/fjerne her lenger.
+  //
+  // Tittelen var opphavleg eit REDIGERBART felt inni modal-hovudet sjølv
+  // (ikkje ein statisk overskrift) -- den delte modalen sitt hovud støttar
+  // berre statisk tekst, så #nm-title er flytta til FYRSTE felt i
+  // bodyHtml i staden, med same visuelle vekt (stor, feit, kantlaus) som før.
+  //
+  // ×/Escape/bakgrunnsklikk (den delte modalen sine eigne, innebygde
+  // lukkevegar) tilsvarer alltid den opphavlege closeModal(false) (forkast,
+  // ikkje lagra) -- difor onClose under. "Lagre og lukk"-knappen lagrar
+  // FØRST, og kallar so Intranet.closeModal() sjølv, som utløyser SAME
+  // onClose -- nøyaktig same hale (navigate + renderGrid) som closeModal(true)
+  // hadde før. Slett-knappen kalla opphavleg ein ANNAN render-funksjon
+  // (renderPage, ikkje renderGrid) -- kallar difor renderPage() eksplisitt
+  // ETTER Intranet.closeModal(), i tillegg til (ikkje i staden for) onClose
+  // sin eigen renderGrid -- ein liten, ufarleg dobbelt-render heller enn å
+  // utvide den delte funksjonen sin API for eitt særtilfelle.
   function openNoteModal(id, root) {
     var note  = id ? _notes.find(function (n) { return n.id === id; }) : null;
     var isNew = !note;
-
-    if (_activeEscHandler) {
-      document.removeEventListener("keydown", _activeEscHandler);
-      _activeEscHandler = null;
-    }
-
-    var existing = document.getElementById("note-modal-bd");
-    if (existing) existing.remove();
-
-    var bd = document.createElement("div");
-    bd.id  = "note-modal-bd";
-    bd.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto";
-
-    var modal = document.createElement("div");
-    modal.style.cssText = "background:var(--color-bg);border-radius:var(--radius);width:min(680px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.3);display:flex;flex-direction:column";
 
     var cats        = getCategories();
     var activeColor = note ? (note.color || "none") : "none";
@@ -447,133 +450,109 @@
         'onclick="event.preventDefault()"></button>';
     }).join("");
 
-    modal.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-bg);z-index:1">' +
-        '<div style="display:flex;align-items:center;gap:.7rem;flex:1;min-width:0">' +
-          '<input id="nm-title" type="text" value="' + C.esc(note ? note.title || "" : "") + '" ' +
-            'placeholder="Tittelaus…" ' +
-            'style="flex:1;font:inherit;font-family:var(--font-display);font-size:1.05rem;font-weight:700;border:0;background:transparent;color:var(--color-text);outline:none;min-width:0">' +
-        '</div>' +
-        '<button id="nm-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:var(--color-muted);line-height:1;margin-left:.5rem;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center" title="Lukk">&times;</button>' +
+    var bodyHtml =
+      '<input id="nm-title" type="text" value="' + C.esc(note ? note.title || "" : "") + '" ' +
+        'placeholder="Tittelaus…" ' +
+        'style="font:inherit;font-family:var(--font-display);font-size:1.05rem;font-weight:700;border:0;border-bottom:1px solid var(--color-border);background:transparent;color:var(--color-text);outline:none;padding:0 0 .5rem">' +
+
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+        '<input id="nm-category" type="text" list="nm-cat-list" value="' + C.esc(note ? note.category || "" : "") + '" ' +
+          'placeholder="Kategori…" ' +
+          'style="flex:1;min-width:120px;font:inherit;font-size:.85rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text)">' +
+        '<datalist id="nm-cat-list">' + cats.map(function(c){ return '<option value="' + C.esc(c) + '">'; }).join("") + '</datalist>' +
+        '<input id="nm-tags" type="text" value="' + C.esc(note ? (note.tags || []).join(", ") : "") + '" ' +
+          'placeholder="Tags (kommaseparert)…" ' +
+          'style="flex:2;min-width:160px;font:inherit;font-size:.85rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text)">' +
       '</div>' +
 
-      '<div style="padding:1rem 1.2rem;display:grid;gap:.7rem;flex:1">' +
-        '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
-          '<input id="nm-category" type="text" list="nm-cat-list" value="' + C.esc(note ? note.category || "" : "") + '" ' +
-            'placeholder="Kategori…" ' +
-            'style="flex:1;min-width:120px;font:inherit;font-size:.85rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text)">' +
-          '<datalist id="nm-cat-list">' + cats.map(function(c){ return '<option value="' + C.esc(c) + '">'; }).join("") + '</datalist>' +
-          '<input id="nm-tags" type="text" value="' + C.esc(note ? (note.tags || []).join(", ") : "") + '" ' +
-            'placeholder="Tags (kommaseparert)…" ' +
-            'style="flex:2;min-width:160px;font:inherit;font-size:.85rem;padding:.4rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text)">' +
-        '</div>' +
+      '<div>' +
+        '<p style="font-size:.78rem;font-weight:600;color:var(--color-muted);margin:0 0 .4rem">Farge</p>' +
+        '<div class="note-color-picker">' + colorSwatches + '</div>' +
+      '</div>' +
 
-        '<div>' +
-          '<p style="font-size:.78rem;font-weight:600;color:var(--color-muted);margin:0 0 .4rem">Farge</p>' +
-          '<div class="note-color-picker">' + colorSwatches + '</div>' +
-        '</div>' +
+      C.richTextField({ id: "nm-body", label: "", value: note ? note.content || "" : "" }) +
 
-        C.richTextField({ id: "nm-body", label: "", value: note ? note.content || "" : "" }) +
+      '<input id="nm-summary" type="text" value="' + C.esc(note ? note.summary || "" : "") + '" ' +
+        'placeholder="Kort samandrag (valgfritt)…" ' +
+        'style="font:inherit;font-size:.78rem;padding:.35rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-muted)">' +
 
-        '<input id="nm-summary" type="text" value="' + C.esc(note ? note.summary || "" : "") + '" ' +
-          'placeholder="Kort samandrag (valgfritt)…" ' +
-          'style="font:inherit;font-size:.78rem;padding:.35rem .7rem;border:1.5px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-muted)">' +
-
-        '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:.3rem;border-top:1px solid var(--color-border)">' +
-          (!isNew
-            ? '<button id="nm-delete" style="background:none;border:0;cursor:pointer;font-size:.82rem;color:#c0392b;font:inherit;padding:0">Slett notat</button>'
-            : '<span></span>') +
-          '<button id="nm-save-close" class="btn btn--primary btn--sm">Lagre og lukk</button>' +
-        '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:.3rem;border-top:1px solid var(--color-border)">' +
+        (!isNew
+          ? '<button id="nm-delete" style="background:none;border:0;cursor:pointer;font-size:.82rem;color:#c0392b;font:inherit;padding:0">Slett notat</button>'
+          : '<span></span>') +
+        '<button id="nm-save-close" class="btn btn--primary btn--sm">Lagre og lukk</button>' +
       '</div>';
 
-    bd.appendChild(modal);
-    document.body.appendChild(bd);
-    Intranet.wrapDimmedOverlay(bd);
-    App.ui.bindRichTextFields(modal);
+    Intranet.openModal({
+      title: isNew ? "Nytt notat" : (note.title || "Notat"),
+      bodyHtml: bodyHtml,
+      size: "lg",
+      fullscreenToggle: true,
+      rootId: "note-modal-bd",
+      onClose: function () { Intranet.navigate("notes"); if (root) renderGrid(root); },
+      onMount: function (modal) {
+        App.ui.bindRichTextFields(modal);
 
-    var selectedColor = activeColor;
-    modal.querySelectorAll("[data-color-id]").forEach(function (sw) {
-      sw.addEventListener("click", function (e) {
-        e.preventDefault();
-        selectedColor = sw.getAttribute("data-color-id");
-        modal.querySelectorAll("[data-color-id]").forEach(function (s) { s.classList.remove("is-active"); });
-        sw.classList.add("is-active");
-      });
-    });
-
-    var titleInp   = modal.querySelector("#nm-title");
-    var catInp     = modal.querySelector("#nm-category");
-    var tagsInp    = modal.querySelector("#nm-tags");
-    var summaryInp = modal.querySelector("#nm-summary");
-
-    if (isNew) { titleInp.focus(); }
-    else {
-      var rtEd = modal.querySelector(".rtfield__editor");
-      if (rtEd) rtEd.focus();
-    }
-
-    var currentId = note ? note.id : null;
-
-    function readData() {
-      return {
-        title:    titleInp.value.trim() || "Uten tittel",
-        body:     App.ui.readRichTextField(modal, "nm-body"),
-        category: catInp     ? catInp.value.trim()      : "",
-        tags:     tagsInp    ? parseTags(tagsInp.value) : [],
-        summary:  summaryInp ? summaryInp.value.trim()  : "",
-        color:    selectedColor
-      };
-    }
-
-    function closeModal(save, cb) {
-      if (_activeEscHandler) {
-        document.removeEventListener("keydown", _activeEscHandler);
-        _activeEscHandler = null;
-      }
-      if (!save) { bd.remove(); Intranet.navigate("notes"); if (root) renderGrid(root); cb && cb(); return; }
-      var data = readData();
-      if (!currentId) {
-        createNote(data, function (created) {
-          if (created) currentId = created.id;
-          bd.remove();
-          Intranet.navigate("notes");
-          if (root) renderGrid(root);
-          cb && cb();
+        var selectedColor = activeColor;
+        modal.querySelectorAll("[data-color-id]").forEach(function (sw) {
+          sw.addEventListener("click", function (e) {
+            e.preventDefault();
+            selectedColor = sw.getAttribute("data-color-id");
+            modal.querySelectorAll("[data-color-id]").forEach(function (s) { s.classList.remove("is-active"); });
+            sw.classList.add("is-active");
+          });
         });
-      } else {
-        updateNote(currentId, data, function () {
-          bd.remove();
-          Intranet.navigate("notes");
-          if (root) renderGrid(root);
-          cb && cb();
+
+        var titleInp   = modal.querySelector("#nm-title");
+        var catInp     = modal.querySelector("#nm-category");
+        var tagsInp    = modal.querySelector("#nm-tags");
+        var summaryInp = modal.querySelector("#nm-summary");
+
+        if (isNew) { titleInp.focus(); }
+        else {
+          var rtEd = modal.querySelector(".rtfield__editor");
+          if (rtEd) rtEd.focus();
+        }
+
+        var currentId = note ? note.id : null;
+
+        function readData() {
+          return {
+            title:    titleInp.value.trim() || "Uten tittel",
+            body:     App.ui.readRichTextField(modal, "nm-body"),
+            category: catInp     ? catInp.value.trim()      : "",
+            tags:     tagsInp    ? parseTags(tagsInp.value) : [],
+            summary:  summaryInp ? summaryInp.value.trim()  : "",
+            color:    selectedColor
+          };
+        }
+
+        modal.querySelector("#nm-save-close").addEventListener("click", function () {
+          var data = readData();
+          if (!currentId) {
+            createNote(data, function (created) {
+              if (created) currentId = created.id;
+              Intranet.closeModal();
+            });
+          } else {
+            updateNote(currentId, data, function () { Intranet.closeModal(); });
+          }
         });
-      }
-    }
 
-    modal.querySelector("#nm-save-close").addEventListener("click", function () { closeModal(true); });
-    modal.querySelector("#nm-close").addEventListener("click", function () { closeModal(false); });
-
-    _activeEscHandler = function (e) { if (e.key === "Escape") { closeModal(false); } };
-    document.addEventListener("keydown", _activeEscHandler);
-
-    var delBtn = modal.querySelector("#nm-delete");
-    if (delBtn) {
-      delBtn.addEventListener("click", function () {
-        if (!confirm('Slette notatet "' + (note ? note.title : "notat") + '"? Kan ikkje angrast.')) return;
-        if (currentId) {
-          deleteNote(currentId, function () {
-            if (_activeEscHandler) {
-              document.removeEventListener("keydown", _activeEscHandler);
-              _activeEscHandler = null;
+        var delBtn = modal.querySelector("#nm-delete");
+        if (delBtn) {
+          delBtn.addEventListener("click", function () {
+            if (!confirm('Slette notatet "' + (note ? note.title : "notat") + '"? Kan ikkje angrast.')) return;
+            if (currentId) {
+              deleteNote(currentId, function () {
+                Intranet.closeModal();
+                if (root) renderPage(root);
+              });
             }
-            bd.remove();
-            Intranet.navigate("notes");
-            if (root) renderPage(root);
           });
         }
-      });
-    }
+      }
+    });
   }
 
   window._notesOpenModal = function (root) {
