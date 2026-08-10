@@ -217,7 +217,11 @@
       ".od-card:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(15,23,42,.08);border-color:var(--color-primary)}",
       ".od-card h3{font-size:1rem;margin:0 0 .35rem}",
       ".od-card p{margin:.25rem 0;color:var(--color-muted);font-size:.86rem;line-height:1.45}",
-      ".od-pill{display:inline-flex;border:1px solid var(--color-border);border-radius:999px;padding:.18rem .5rem;color:var(--color-muted);font-size:.72rem;margin-bottom:.5rem}",
+      // justify-self:start -- utan dette strekker den delte modalen sitt
+      // .i-modal__body (display:grid) denne til å fylle heile radbreidda,
+      // som gjer ein liten kategori-merkelapp om til ein digital oval
+      // (verst i fullskjerm, brukarfunn 2026-08-10).
+      ".od-pill{display:inline-flex;justify-self:start;width:fit-content;border:1px solid var(--color-border);border-radius:999px;padding:.18rem .5rem;color:var(--color-muted);font-size:.72rem;margin-bottom:.5rem}",
       ".od-kv{display:grid;gap:.26rem;margin-top:.55rem}",
       ".od-kv div{font-size:.84rem;color:var(--color-muted);line-height:1.4}",
       ".od-kv strong{color:var(--color-text)}",

@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.126.0 — 2026-08-10
+
+**Delt Workspace-modal: fiks reell fullskjerm-regresjon (`.i-modal__body` strekte alt innhald).** Brukarfunn same dag: fullskjerm-modusen (innført i den store 5-fase-migreringa 0.119.0-0.123.1) "bare strekker alle funksjoner". Root cause var `.i-modal__body { display: grid; gap: .9rem }` sin standard stretch-åtferd på begge aksar -- umerkbart innanfor `.i-modal--lg` sin 760px-grense, men absurd i fullskjerm sin 100vw/100vh.
+
+- Iterativt diagnostisert og retta i to rundar med visuell stadfesting (statisk Playwright-repro av den faktiske modal-markupen og CSS-en, ikkje berre jsdom -- denne klassen bug har ingen synleg jsdom-dekning):
+  1. Fyrste runde: avgrensa og senterte `.i-modal__body`/`.i-modal__foot` sitt INNHALD til ei komfortabel ~900px lesebreidde i fullskjerm, i staden for å la det fylle heile skjermbreidda.
+  2. Andre runde (etter meir konkret brukarfunn frå Orgdrift/Eiendeler sin "Innkjøp"-detaljvisning): fann at avgrensinga åleine ikkje var nok -- ei lita kategori-merkelapp (`.od-pill` i `module-orgdrift.js`) vart likevel strekt til å fylle heile den no 900px-breie rada (ein digital oval), OG handlingsknappane (Rediger/Slett/Lukk, bygd med `display:flex`) vart strekte LODDRETT til lange kapslar -- fordi `.i-modal__body` sin grid som standard fordeler all ledig høgd (frå `flex:1` i ein fullskjerm-høg boks) ut i radene sine eigne auto-høgder, som så arva vidare inn i knapperada sin eigen `align-items:stretch`-standard.
+  3. Retta med `align-content:start; align-items:start` på `.i-modal__body` (globalt, trygt for alle modulars modalar -- stoppar all utilsikta høgdefordeling, også ein bonus-fiks for unødvendige tomrom mellom felt i vanleg (ikkje-fullskjerm) storleik) + `justify-self:start; width:fit-content` på `.od-pill` spesifikt.
+  4. Gjekk gjennom kvar `openModal()`/`Intranet.openModal()`-kallstad i alle ni migrerte modular (Kontakt, Tilbod, Booking, Kunngjeringar, Notat, Oppgåver, Smart årshjul, Oversikt, Orgdrift) for å stadfeste om fleire stader hadde same sårbare mønster (eit bart `<span>` limt direkte inn som fyrste del av `bodyHtml`, utan omsluttande `<div>`) -- kun `.od-pill` (brukt to stader: generell "Innkjøp"-detalj og Eiendeler sin aktivadetalj, same klasse) hadde dette. Alle andre modular sine status-merkelappar ligg trygt inni ein `<div>` i listevisingar, aldri direkte i eit modal-body.
+- `node test-workspace.js`: 296/0, `node test.js`: 733/0, `node test-api.js`: 109/0 -- alle uendra (rein CSS/layout-fiks, ingen logikk rørt).
+- Cache-bust: `module-orgdrift.js?v=12`. `workspace/index.html` sin eigen CSS treng ikkje eigen versjonstagg (ikkje ei ekstern scriptfil).
+
+---
+
 ## 0.125.0 — 2026-08-10
 
 **AI Lab: lokalt, localhost-only utviklingsverktøy i Console ferdigstilt og landa på ein eigen feature-branch.** Eit tidlegare uncommitta arbeid vart henta ut i ein isolert git worktree (`feature/local-ai-lab`) for å unngå at det kolliderte med samtidig Kundeanalyse-arbeid i den vanlege arbeidskatalogen -- begge jobbane rører delvis dei same filene (`console-core.js`, `console/index.html`, CHANGELOG, CURRENT_STATE). AI Lab lèt Vibeverk-tilsette samanlikne strukturerte opplæringsutkast frå ein lokal Ollama-modell mot Anthropic/Haiku for Læringsmodulen; sjå `docs/architecture/ai-lab.md` for full arkitektur.

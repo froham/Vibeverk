@@ -455,7 +455,14 @@
       display: inline-flex; align-items: center; justify-content: center;
     }
     .i-modal__close:hover, .i-modal__fullscreen-toggle:hover { color: var(--color-text); }
-    .i-modal__body { padding: 1.2rem; overflow-y: auto; flex: 1; display: grid; gap: .9rem; }
+    /* align-content/align-items:start -- utan dette fordeler grid all ledig
+       høgd i .i-modal__body (flex:1, kan bli svært høg i fullskjerm) UTOVER
+       radene sine eigne auto-høgder i staden for å la dei halde seg til
+       innhaldet sitt. Verste utslaget: ei knapperad bygd med display:flex
+       (t.d. .od-actions i module-orgdrift.js) arvar den no kunstig store
+       radhøgda via sin eigen align-items:stretch-standard, og kvar knapp
+       blir strekt til ein lang loddrett kapsel (brukarfunn 2026-08-10). */
+    .i-modal__body { padding: 1.2rem; overflow-y: auto; flex: 1; display: grid; gap: .9rem; align-content: start; align-items: start; }
     .i-modal__foot {
       padding: .9rem 1.2rem; border-top: 1px solid var(--color-border);
       display: flex; gap: .6rem; position: sticky; bottom: 0; background: var(--color-bg);
@@ -478,6 +485,16 @@
     .i-modal.is-fullscreen {
       max-width: 100vw; width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0;
     }
+    /* .i-modal__body sin display:grid strekker elles kvar direkte barn
+       (felt, knappar, tekst) til å fylle heile breidda -- umerkbart innanfor
+       .i-modal--lg sin 760px-grense, men absurd i fullskjerm sin 100vw
+       (brukarfunn 2026-08-10). Held sjølve modalen skjermbred, men avgrensar
+       og senterer INNHALDET til ei komfortabel lesebreidde i staden. */
+    .i-modal.is-fullscreen .i-modal__body { max-width: 900px; width: 100%; margin: 0 auto; }
+    /* .i-modal__foot sine knappar er venstrejusterte i ein 100vw-brei rad
+       elles -- dei må avgrensast/senterast likt med __body, elles hamnar
+       Lagre/Avbryt-raden synleg ute av linje med skjemaet han høyrer til. */
+    .i-modal.is-fullscreen .i-modal__foot { max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; }
 
     /* --- Grid/seksjonsoverskrift ------------------------------------------ */
     .i-page-head {
@@ -721,7 +738,7 @@
   <script src="module-mediabank-internal.js?v=5"></script>
   <script src="module-kb.js?v=8"></script>
   <script src="module-links.js?v=6"></script>
-  <script src="module-orgdrift.js?v=11"></script>
+  <script src="module-orgdrift.js?v=12"></script>
   <script src="module-contact.js?v=10"></script>
   <script src="../module-chat.js?v=22"></script>
   <script src="../module-crm.js?v=33"></script>
