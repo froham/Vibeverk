@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.118.0 — 2026-08-10
+
+**Eiendeler: standard PÅ for alle nye tenants; katalogisert oppfølging for eksisterande tenants utover produksjon.** Brukarvedtak: Eiendeler skal fungere for ALLE eksisterande og framtidige tenants -- eit medvite unntak frå resten av `intranettFeatures` sin "aktiverast per kunde"-modell.
+
+- Ny migrasjon i kontrollplanet (`supabase-control/supabase/migrations/20260810134012_eiendeler_default_enabled_for_new_tenants.sql`): `ALTER TABLE tenants ALTER COLUMN enabled_modules SET DEFAULT '{"intranettFeatures": {"eiendeler": true}}'::jsonb`. Rører berre FRAMTIDIGE tenant-rader (skjema-standard, ikkje ei datakorrigering) -- eksisterande tenants sine rader er uendra av dette og handterte separat (sjå under).
+- `docs/architecture/tenant-onboarding-runbook.md`: ny seksjon som dokumenterer at `enabled_modules` (`intranettFeatures`/`features`) ikkje har noka Console-brukargrensesnitt enno -- kvart anna flagg enn `eiendeler` må framleis setjast med direkte SQL mot `vibeverk-control`, med eit ferdig malspørjing og standing-regelen om å verifisere med ein oppfølgings-`SELECT`, ikkje stole på `UPDATE` sin eigen radteljar.
+- **Kjend, oppdaga gap**: dei tre opphavlege Eiendeler-migrasjonane vart berre køyrde mot produksjon (`clzczbyklgdtdhgjphup`) via lokal `--linked`-kopling -- Sunnvask-demo og staging-tenanten har KVAR SITT EIGE Supabase-prosjekt (ADR-0008) og har ikkje fått migrasjonane. Kontrollplanet sin `enabled_modules.intranettFeatures.eiendeler` vart sett til `true` for alle tre sine hostnamn i ein tidlegare, direkte UPDATE (utan migrasjonsfil, sidan det var ei datakorrigering på eksisterande rader, ikkje ei skjemaendring) -- dette gjer at fana VISER SEG for Sunnvask/staging sjølv om dei underliggande tabellane manglar, noko som ville feile med "relation does not exist" ved fyrste faktiske bruk. Brukaren køyrer sjølv migrasjonane mot desse to prosjekta via Console sin eksisterande tilkoplingsstreng-til-kommando-generator (same flyt som onboarding-runboken sitt Steg 4) -- ikkje gjort av denne økta, sidan tilkoplingsstrengane ikkje vart delte.
+- **Prosess-lærdom, andre gong denne fasen**: same type gap som GRANT-fiksen over (0.117.0) -- verifiser alltid mot KVART tenant-prosjekt individuelt før ein reknar ei flagg-aktivering som ferdig, ikkje berre kontrollplanet sin flagg-status. Flagget og skjemaet er to uavhengige ting som begge må stemme.
+
+---
+
 ## 0.117.0 — 2026-08-10
 
 **Eiendeler: fiks reell produksjonsfeil — manglande GRANT til `authenticated`.** Oppdaga av brukaren ved fyrste faktiske bruk i produksjon: "permission denied for table asset_categories".
