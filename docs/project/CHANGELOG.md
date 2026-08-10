@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.129.0 — 2026-08-10
+
+**Kundeanalyse-migrasjonen kjørt mot `vibeverk-control` (etter eksplisitt brukergodkjenning). Ingen kodeendring.** `npx supabase db push --db-url ... --yes` fra `supabase-control/`.
+
+- `20260804120000_add_pricing_config.sql` var alt anvendt via Dashboard (stadfesta direkte mot databasen: `pricing_config`-tabellen finst), men var ikkje markert i migrasjonshistorikken — reparert med `npx supabase migration repair 20260804120000 --status applied` FØR push, elles ville push prøvd å køyre `CREATE TABLE` på nytt og feila.
+- **Reelt funn undervegs**: `20260810134012_eiendeler_default_enabled_for_new_tenants.sql` sin eigen filkommentar hevda at han alt var køyrd via Dashboard same dag -- direkte stadfesting mot databasen viste at `tenants.enabled_modules` sin kolonne-standardverdi framleis var `'{}'::jsonb`, ikkje den venta `{"intranettFeatures":{"eiendeler":true}}`. Migrasjonen hadde altså ALDRI faktisk teke effekt, trass i kommentarens påstand -- nøyaktig den typen gap CLAUDE.md sin eigen "Dashboard 'Success' provar ingenting"-regel åtvarar mot. Retta ved at denne migrasjonen no faktisk vart køyrd (via same `db push`), ikkje berre reparert.
+- Etter push: `20260810190000_add_customer_analysis.sql` køyrde reint (dei "NOTICE ... does not exist, skipping"-linjene frå `drop policy if exists` er venta og ufarlege på nye tabellar). CLI-et sin eigen `Warning: failed to cache migrations catalog` (manglande sertifikatfil i eit internt temp-katalog for CLI-et sin diff-cache) er ei ufarleg, ikkje-blokkerande diagnostikkfeil i sjølve verktøyet -- stadfesta separat og eksplisitt at han ikkje påverka den faktiske SQL-utføringa.
+- **Full verifikasjon mot den faktiske databasen (ikkje berre stolt på "Finished")**: alle 8 `customer_analysis_*`-tabellar finst med `rowsecurity=true`; alle 8 `_operator_read`-policyar finst, avgrensa til `authenticated`; `authenticated` har berre `SELECT` på alle 8; `service_role` har full CRUD på 6 av 8, men berre `INSERT,SELECT` (ikkje `UPDATE`/`DELETE`) på dei to append-only-tabellane `customer_analysis_events` og `customer_analysis_meeting_briefs`, nøyaktig som migrasjonen sin eigen `revoke`-linje krev; `anon`/`public` har ingen grants i det heile; `claim_customer_analysis_run()` er `EXECUTE`-bar berre for `service_role`, ikkje `authenticated`/`anon`; `tenants.enabled_modules` sin standardverdi er no korrekt `{"intranettFeatures":{"eiendeler":true}}`.
+- **Framleis ikkje funksjonelt i produksjon**: `VIBEVERK_CONTROL_SERVICE_ROLE_KEY` er ikkje sett i Vercel-miljøet ennå -- API-et vil feile reint med "manglar miljøvariabel" til den er konfigurert. Retensjons-/sletterutine (utover den manuelle sletteflyten frå 0.128.0) og juridisk/DPA-avklaring står framleis opne før ekte stagingtest.
+
+---
+
 ## 0.128.0 — 2026-08-10
 
 **Kundeanalyse: reell permanent sletting, ikke bare arkivering.** Brukerønske før første ekte (ikke-mocket) test mot et reelt nettsted: en operatør må ha en faktisk vei til å fjerne ALT data knyttet til en analyse, ikke bare skjule den.
