@@ -243,6 +243,12 @@ window.Intranet = (function () {
     var key = r.id + (r.sub ? "/" + r.sub : "");
     if (key === currentRouteKey) return;
     currentRouteKey = key;
+    // Lukk ein ope modal FØR ny modul monterast, utan å la modalen sin eigen
+    // onClose køyre -- elles kan ein seinare Escape/bakgrunnsklikk på ein
+    // modal som "heng igjen" frå sida ein nettopp forlét, utløyse t.d.
+    // module-tasks.js sin onClose (Intranet.navigate("tasks")) og stille
+    // reversere navigeringa brukaren nettopp gjorde.
+    closeModal({ skipOnClose: true });
     mountModule(r);
     updateActiveNav(r.id);
     updateTopbar(r);
@@ -349,6 +355,7 @@ window.Intranet = (function () {
     // Logg ut
     var logoutBtn = document.getElementById("intranet-logout");
     if (logoutBtn) logoutBtn.addEventListener("click", function() {
+      closeModal({ skipOnClose: true });
       try { sessionStorage.removeItem(NS + ":admin"); localStorage.removeItem(NS + ":admin-persist"); } catch(e) {}
       started = false;
       context.role = "guest";
@@ -587,7 +594,7 @@ window.Intranet = (function () {
     });
   }
 
-  function closeModal() {
+  function closeModal(opts) {
     var bd = document.querySelector("[data-i-modal-root]");
     if (!bd) return;
     document.removeEventListener("keydown", _modalKeydown);
@@ -596,7 +603,11 @@ window.Intranet = (function () {
     _modalLastFocus = null;
     var cb = _modalOnClose;
     _modalOnClose = null;
-    if (cb) cb();
+    // skipOnClose: brukt av handleRoute()/logout -- ein modal som heng igjen
+    // frå sida ein forlét skal berre forsvinne, ikkje utløyse sin eigen
+    // onClose (som ofte navigerer, t.d. module-tasks.js/module-notes.js),
+    // sidan det ville reversert navigeringa/utlogginga som alt er i gang.
+    if (cb && !(opts && opts.skipOnClose)) cb();
   }
 
   // Henta frå module-oversikt.js sin eigen implementasjon (den beste av dei

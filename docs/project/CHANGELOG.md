@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.123.1 — 2026-08-10
+
+**Delt Workspace-modal: fiks reell UX-regresjon avdekka av UX/Mobile Reviewer-passet etter Fase 5.** Ruteren (`handleRoute()` i `workspace-core.js`) og utloggingsknappen kalla aldri `closeModal()` -- ein modal ståande open frå sida brukaren nettopp forlét kunne dermed liggje att over den nye sida (eller innloggingsskjermen etter utlogging). Om brukaren då trykte Escape/klikka bakgrunnen på det som såg ut som eit att-hengande overlay, utløyste det den GAMLE modalen sin `onClose` -- som for `module-tasks.js`/`module-notes.js` navigerer (`Intranet.navigate("tasks"/"notes")`), og dermed stille reverserte navigeringa brukaren alt hadde gjort.
+
+- `closeModal(opts)` tek no ein valfri `{ skipOnClose: true }` -- brukt av `handleRoute()` (før `mountModule(r)`) og utloggingshandteraren (før `renderLogin()`), slik at eit att-hengande modal berre forsvinn stille i desse to tilfella, utan å utløyse sin eigen (no ugyldige) `onClose`. Alle andre kallstader (×, Escape, bakgrunnsklikk, lagre/avbryt-knappar) er uendra og utløyser framleis `onClose` som før.
+- `node test-workspace.js`: 296/0, `node test.js`: 733/0, `node test-api.js`: 109/0 -- alle uendra.
+- Cache-bust: `workspace-core.js?v=28`.
+
+---
+
 ## 0.123.0 — 2026-08-10
 
 **Delt Workspace-modal, Fase 5 av 5 (siste): `module-oversikt.js` og `module-smart-aarshjul.js` migrert -- heile migreringa er no fullført.** Desse to modulane vart migrert sist med vilje, sidan dei hadde det klart beste eksisterande modal-oppsettet av dei ni (ekte fokus-felle + fokus-retur alt på plass), og `drawer`-storleiksklassen (arva frå `module-oversikt.js` sitt eige mønster) fyrst fekk dra nytte av fire andre migreringar sin praktiske bruk.
