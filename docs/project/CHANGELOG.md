@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.123.0 — 2026-08-10
+
+**Delt Workspace-modal, Fase 5 av 5 (siste): `module-oversikt.js` og `module-smart-aarshjul.js` migrert -- heile migreringa er no fullført.** Desse to modulane vart migrert sist med vilje, sidan dei hadde det klart beste eksisterande modal-oppsettet av dei ni (ekte fokus-felle + fokus-retur alt på plass), og `drawer`-storleiksklassen (arva frå `module-oversikt.js` sitt eige mønster) fyrst fekk dra nytte av fire andre migreringar sin praktiske bruk.
+
+- `module-oversikt.js`: alle fire modal-kallarar (`openDetails`, `openEdit`/`openAdd` via `editFormHTML`, `openFlowModal`, `openRelationModal`) migrert til `size:"drawer"`. Skjemaa sine eigne `<form>`-element pakka opphavleg inn BÅDE hovud og fot -- den delte modalen sine `bodyHtml`/`footHtml` er derimot søsken-element, ikkje nøsta. Løyst med HTML5 sin `form="id"`-attributt på fot-elementet sin lagre-knapp, som koplar han til skjemaet sjølv om han ligg utanfor skjemaet sin eigen DOM-undertre -- stadfesta i eit fristtåande jsdom-testoppsett før dette vart teke i bruk i sjølve migreringa.
+- `module-smart-aarshjul.js`: den vesentleg vanskelegare av dei to. `bindEvents(root)` batt opphavleg alle click/change/submit-lyttarane sine PÅ `#saa-root` -- eit element modal-innhaldet FØR migreringa alltid var ein descendant av (via ein no fjerna `#saa-modal`-plasshaldar). Den delte modalen legg backdropen sin rett i `document.body`, heilt UTANFOR `#saa-root` -- desse lyttarane ville elles slutta å fange modal-hendingar i det heile. Løyst ved å trekkje ut dei originale handsamarkroppane til NAMNGJEVE funksjonar (`handleRootClick`/`handleRootChange`/`handleRootSubmit`), bunde til BÅDE `#saa-root` (uendra) OG kvar opna modal sitt eige rotelement (via `onMount`) -- ingen duplisert forretningslogikk, sidan alle tre uansett sjekkar `e.target`/`closest()`/`.id` sjølve for å avgjere relevans.
+- `.saa-modalfoot` (framleis brukt som eit reint innhaldsklassenamn inne i skjema-`bodyHtml`, ikkje sjølve modal-chromet) måtte miste sin gamle `#saa-root`-CSS-prefiks -- ho render no inn i den delte modalen sitt body-element i `document.body`, ikkje lenger ein descendant av `#saa-root`, så det gamle scopa selectoren ville aldri ha trefft.
+- `node test-workspace.js`: 296/0 (uendra -- ingen av dei to modulane hadde noka modal-intern testdekning frå før, så dette stadfestar «ingen krasj», ikkje fullstendig åtferdslikskap -- verifisert i tillegg med `node --check` og manuell koderevisjon av kvart kallstad). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-smart-aarshjul.js?v=6` (`module-oversikt.js?v=6` vart alt bumpa i denne fasen sitt tidlegare steg).
+- **Heile den 5-delte migreringa er no fullført**: alle ni opphavlege, uavhengige modal-implementasjonar i Workspace (`orgdrift`/`tasks`/`notes`/`announcements`/`contact`/`quote`/`booking`/`oversikt`/`smart-aarshjul`) deler no éin einaste `Intranet.openModal()`/`closeModal()` i `workspace-core.js`, med fullskjerm som ein innebygd, storleiksklasse-avhengig funksjon (`size:"lg"` + `fullscreenToggle:true`) -- akkurat den varige, ikkje-mellombelse løysinga som vart etterspurt.
+
+---
+
 ## 0.122.0 — 2026-08-10
 
 **Delt Workspace-modal, Fase 4 av 5: fem modular migrert samla.** `module-contact.js`/`module-quote.js`/`module-booking.js` (nesten identiske kopiar av same `openLeadDetail`-mønster), pluss `module-notes.js` og `module-announcements.js` -- migrert i éin batch sidan ingen av dei er sjølvstendige design, berre liknande skjema/lesevisingar limt inn fem stader.

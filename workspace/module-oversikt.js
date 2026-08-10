@@ -851,43 +851,42 @@
 
   /* =========================================================================
      MODAL
+     -----------------------------------------------------------------------
+     Migrert 2026-08-10 til det delte Intranet.openModal() (Fase 5, siste --
+     sjå docs/project/CHANGELOG.md). Denne fila sin eigen versjon var alt den
+     BESTE av dei ni opphavlege (ekte fokus-felle+retur) -- den delte
+     funksjonen sin eigen fokus-felle er faktisk henta derifrå. size:"drawer"
+     matchar det opphavlege høgreside-ark-oppsettet; skilnaden mellom
+     .ov-modal (520px) og .ov-modal-sm (430px, berre "Legg til samanheng")
+     er medvite ikkje vidareført -- den delte "drawer"-storleiken (440px)
+     er nær nok begge at ein tredje breidde-variant ikkje er verdt å leggje
+     til i det delte systemet for éin einaste kallstad.
+
+     openModal(title, kicker, bodyHtml, footHtml, binder) -- utvida signatur
+     (dei fire første som separate strengar, ikkje éin ferdigbygd HTML-blokk)
+     sidan den delte modalen sitt eige hovud berre tek imot statisk,
+     escapa tittel-tekst, ikkje fritt handrulla markup. Skjema som treng at
+     ein send-knapp i footHtml skal senda felt frå bodyHtml bruker HTML5 sin
+     eigen form="<id>"-attributt (body og fot er søskenelement i den delte
+     modalen, ikkje nesta -- ingen JS-lim naudsynt for dette).
      ====================================================================== */
-  var modalEl = null, lastFocus = null;
-  function openModal(html, binder) {
-    if (!modalEl) return;
-    lastFocus = document.activeElement;
-    modalEl.innerHTML = '<div class="ov-modal-backdrop" role="presentation">' + html + "</div>";
-    var modal = modalEl.querySelector(".ov-modal");
-    modal.setAttribute("role", "dialog"); modal.setAttribute("aria-modal", "true");
-    modalEl.querySelector(".ov-modal-backdrop").addEventListener("mousedown", function (e) { if (e.target === e.currentTarget) closeModal(); });
-    document.addEventListener("keydown", modalKeydown);
-    if (binder) binder(modalEl);
-    requestAnimationFrame(function () { var el = modalEl.querySelector("input,button,select,textarea"); if (el) el.focus(); });
+  function openModal(title, kicker, bodyHtml, footHtml, binder) {
+    Intranet.openModal({
+      title: title,
+      bodyHtml: (kicker ? '<div class="ov-kicker">' + esc(kicker) + '</div>' : "") + bodyHtml,
+      footHtml: footHtml,
+      size: "drawer",
+      onMount: function (modalEl) { if (binder) binder(modalEl); }
+    });
   }
-  function closeModal() {
-    if (!modalEl || !modalEl.innerHTML) return;
-    modalEl.innerHTML = "";
-    document.removeEventListener("keydown", modalKeydown);
-    if (lastFocus && lastFocus.focus) lastFocus.focus();
-    lastFocus = null;
-  }
-  function modalKeydown(e) {
-    if (!modalEl || !modalEl.innerHTML) return;
-    if (e.key === "Escape") { closeModal(); return; }
-    if (e.key !== "Tab") return;
-    var focusable = $$("button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])", modalEl);
-    if (!focusable.length) return;
-    var first = focusable[0], last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  }
+  function closeModal() { Intranet.closeModal(); }
 
   function openDetails(id) {
     var found = findItem(id);
     if (!found) return;
     var item = found.item, section = found.section, related = relatedItems(item);
-    openModal('<div class="ov-modal"><div class="ov-modal-head"><div><div class="ov-kicker">' + SECTION_LABELS[section] + "</div><h2>" + esc(item.title) + '</h2></div><button class="btn btn--ghost btn--sm" data-modal-close aria-label="Lukk">×</button></div>' +
-      '<div class="ov-modal-body"><div><span class="ov-chip">' + esc(CATEGORIES[item.category]) + '</span> <span class="ov-chip ov-chip-' + (item.approvalStatus || "suggested") + '">' + inclusionLabel(item) + "</span>" + (section === "dependencies" ? ' <span class="ov-chip ov-chip-' + item.status + '">' + STATUSES[item.status] + "</span>" : "") + "</div>" +
+    var bodyHtml =
+      '<div><span class="ov-chip">' + esc(CATEGORIES[item.category]) + '</span> <span class="ov-chip ov-chip-' + (item.approvalStatus || "suggested") + '">' + inclusionLabel(item) + "</span>" + (section === "dependencies" ? ' <span class="ov-chip ov-chip-' + item.status + '">' + STATUSES[item.status] + "</span>" : "") + "</div>" +
       "<div><strong>Forklaring</strong><p>" + esc(item.description) + '</p></div><div class="ov-note"><strong>Hvorfor dette kan være relevant</strong><br>' + esc(item.reason) + "</div>" +
       (section === "impacts" ? '<div><strong>Mulige følger</strong><div class="ov-consequence-list">' + item.consequences.map(function (x) { return '<div class="ov-consequence">' + esc(x) + "</div>"; }).join("") + "</div></div>" : "") +
       '<div><h3>Sammenhenger</h3><p>Dette punktet henger sammen med ' + related.length + ' andre deler av oversikten.</p><div class="ov-related-list">' +
@@ -896,9 +895,11 @@
       (section === "blindSpots" ? '<button class="btn btn--ghost btn--sm" data-convert="needs" data-id="' + item.id + '">Legg til som behov</button><button class="btn btn--ghost btn--sm" data-convert="dependencies" data-id="' + item.id + '">Legg til som steg</button><button class="btn btn--ghost btn--sm" data-convert="impacts" data-id="' + item.id + '">Legg til som påvirkning</button>' : "") +
       (section === "needs" ? '<button class="btn btn--ghost btn--sm" data-convert="dependencies" data-id="' + item.id + '">Konverter til steg</button>' : "") +
       (section === "dependencies" ? '<button type="button" class="btn btn--ghost btn--sm" data-detail-move="flow" data-id="' + item.id + '">Endre flyt</button>' : "") +
-      '<button type="button" class="btn btn--danger btn--sm" data-detail-delete="' + item.id + '">Slett permanent</button></div></div>' +
-      '<div class="ov-modal-foot"><button type="button" class="btn btn--ghost btn--sm" data-modal-close>Lukk</button>' +
-      (item.approvalStatus === "approved" ? '<button type="button" class="btn btn--ghost btn--sm" data-detail-reject="' + item.id + '">Fjern fra oversikten</button>' : '<button type="button" class="btn btn--primary btn--sm" data-detail-approve="' + item.id + '">Ta med</button>') + "</div></div>", bindDetailModal);
+      '<button type="button" class="btn btn--danger btn--sm" data-detail-delete="' + item.id + '">Slett permanent</button></div>';
+    var footHtml =
+      '<button type="button" class="btn btn--ghost btn--sm" data-modal-close>Lukk</button>' +
+      (item.approvalStatus === "approved" ? '<button type="button" class="btn btn--ghost btn--sm" data-detail-reject="' + item.id + '">Fjern fra oversikten</button>' : '<button type="button" class="btn btn--primary btn--sm" data-detail-approve="' + item.id + '">Ta med</button>');
+    openModal(item.title, SECTION_LABELS[section], bodyHtml, footHtml, bindDetailModal);
   }
   function bindDetailModal(root) {
     root.addEventListener("click", function (e) {
@@ -932,7 +933,8 @@
   function openEdit(id) {
     var found = findItem(id);
     if (!found) return;
-    openModal(editFormHTML(found.item, found.section, "Rediger punkt"), function (root) { bindEditForm(root, found.item.id, found.section); });
+    var f = editFormHTML(found.item, found.section);
+    openModal("Rediger punkt", SECTION_LABELS[found.section], f.bodyHtml, f.footHtml, function (root) { bindEditForm(root, found.item.id, found.section); });
   }
   function openAdd() {
     var section = state.workshopSection, id = "custom-" + Date.now();
@@ -941,12 +943,17 @@
       status: section === "dependencies" ? "not-started" : "approved", source: "custom", selected: true, approvalStatus: "approved", locked: false,
       important: false, relatedIds: [], dependsOn: [], blocks: [], consequences: [],
     };
-    openModal(editFormHTML(item, section, "Legg til nytt punkt"), function (root) { bindEditForm(root, id, section, true, item); });
+    var f = editFormHTML(item, section);
+    openModal("Legg til nytt punkt", SECTION_LABELS[section], f.bodyHtml, f.footHtml, function (root) { bindEditForm(root, id, section, true, item); });
   }
-  function editFormHTML(item, section, title) {
+  // Returnerer { bodyHtml, footHtml } i staden for éin ferdigbygd HTML-blokk
+  // -- send-knappen i footHtml refererer skjemaet i bodyHtml via HTML5 sin
+  // eigen form="ov-edit-form"-attributt (dei er søskenelement i den delte
+  // modalen, ikkje nesta).
+  function editFormHTML(item, section) {
     var flowInfo = section === "dependencies" ? '<div class="ov-note"><strong>Fremdrift og avhengigheter</strong><br>Statusene Klar og Blokkert beregnes fra flyten. Bruk «Endre flyt» i detaljpanelet eller kartet for å endre hvilke steg som må skje først.</div>' : "";
-    return '<form class="ov-modal" id="ov-edit-form"><div class="ov-modal-head"><div><div class="ov-kicker">' + SECTION_LABELS[section] + "</div><h2>" + title + '</h2></div><button type="button" class="btn btn--ghost btn--sm" data-modal-close aria-label="Lukk">×</button></div>' +
-      '<div class="ov-modal-body"><div class="ov-field"><label for="ov-edit-title">Tittel</label><input id="ov-edit-title" name="title" value="' + escAttr(item.title) + '" required maxlength="100"></div>' +
+    var bodyHtml = '<form id="ov-edit-form">' +
+      '<div class="ov-field"><label for="ov-edit-title">Tittel</label><input id="ov-edit-title" name="title" value="' + escAttr(item.title) + '" required maxlength="100"></div>' +
       '<div class="ov-field"><label for="ov-edit-description">Kort forklaring</label><textarea id="ov-edit-description" name="description" required>' + esc(item.description) + "</textarea></div>" +
       '<div class="ov-field"><label for="ov-edit-reason">Hvorfor kan dette være relevant?</label><textarea id="ov-edit-reason" name="reason">' + esc(item.reason) + "</textarea></div>" +
       '<div class="ov-form-row"><div class="ov-field"><label for="ov-edit-category">Kategori</label><select id="ov-edit-category" name="category">' + categoryOptions(item.category) + "</select></div>" +
@@ -954,7 +961,9 @@
         ? '<div class="ov-field"><label for="ov-edit-impact">Påvirkningsgrad</label><select id="ov-edit-impact" name="impactLevel">' + Object.keys(IMPACT_LEVELS).map(function (k) { return '<option value="' + k + '" ' + (item.impactLevel === k ? "selected" : "") + ">" + IMPACT_LEVELS[k] + "</option>"; }).join("") + "</select></div>"
         : '<div class="ov-field"><label for="ov-edit-priority">Prioritet</label><select id="ov-edit-priority" name="priority">' + Object.keys(PRIORITIES).map(function (k) { return '<option value="' + k + '" ' + (item.priority === k ? "selected" : "") + ">" + PRIORITIES[k] + "</option>"; }).join("") + "</select></div>") +
       '</div><div class="ov-field"><label>Bevaring</label><label class="ov-check"><input type="checkbox" name="locked" ' + (item.locked ? "checked" : "") + "> Bevar punktet ved ny analyse</label><small>Bruk dette for egne endringer som ikke skal erstattes av nye forslag.</small></div>" + flowInfo +
-      '</div><div class="ov-modal-foot"><button type="button" class="btn btn--ghost btn--sm" data-modal-close>Avbryt</button><button class="btn btn--primary btn--sm" type="submit">Lagre punkt</button></div></form>';
+      '</form>';
+    var footHtml = '<button type="button" class="btn btn--ghost btn--sm" data-modal-close>Avbryt</button><button class="btn btn--primary btn--sm" type="submit" form="ov-edit-form">Lagre punkt</button>';
+    return { bodyHtml: bodyHtml, footHtml: footHtml };
   }
   function bindEditForm(root, id, section, isNew, newItem) {
     root.addEventListener("click", function (e) { if (e.target.closest("[data-modal-close]")) closeModal(); });
@@ -1023,13 +1032,13 @@
     var existing = focus
       ? '<div class="ov-field"><label>Eksisterende steg før dette</label><div class="ov-related-list">' + (incoming.length ? incoming.map(function (e) { var ff = findItem(e.from); return '<div class="ov-related"><span><strong>' + esc(ff ? ff.item.title : e.from) + "</strong><span>" + (e.type === "required-before" ? "Obligatorisk før" : "Anbefalt før") + '</span></span><button type="button" class="btn btn--ghost btn--sm" data-remove-flow-edge="' + e.id + '" data-focus-id="' + focus.id + '">Fjern</button></div>'; }).join("") : "<p>Ingen. Dette er et startpunkt.</p>") + "</div>" + (incoming.length ? '<button type="button" class="btn btn--ghost btn--sm" data-clear-flow-to="' + focus.id + '">Gjør til startpunkt</button>' : "") + "</div>"
       : "";
-    openModal('<form class="ov-modal" id="ov-flow-form"><div class="ov-modal-head"><div><div class="ov-kicker">Avhengighetskart</div><h2>' + (focus ? "Endre flyt for «" + esc(focus.title) + "»" : "Endre flyt") + '</h2></div><button type="button" class="btn btn--ghost btn--sm" data-modal-close aria-label="Lukk">×</button></div>' +
-      '<div class="ov-modal-body"><div class="ov-note"><strong>Kort forklart:</strong> En obligatorisk kobling gjør neste steg blokkert frem til det foregående steget er ferdig. En anbefalt kobling viser bare ønsket rekkefølge.</div>' + existing +
+    var bodyHtml = '<form id="ov-flow-form"><div class="ov-note"><strong>Kort forklart:</strong> En obligatorisk kobling gjør neste steg blokkert frem til det foregående steget er ferdig. En anbefalt kobling viser bare ønsket rekkefølge.</div>' + existing +
       (focus
         ? '<div class="ov-field"><label for="ov-flow-from">Legg til et steg som må skje før dette</label><select id="ov-flow-from" name="from"><option value="">Velg steg</option>' + nodes.filter(function (n) { return n.id !== focus.id && !incoming.some(function (e) { return e.from === n.id; }); }).map(function (n) { return '<option value="' + n.id + '">' + esc(n.title) + "</option>"; }).join("") + '</select></div><input type="hidden" name="to" value="' + focus.id + '">'
         : '<div class="ov-field"><label for="ov-flow-from">Foregående steg</label><select id="ov-flow-from" name="from"><option value="">Velg steg</option>' + nodes.map(function (n) { return '<option value="' + n.id + '">' + esc(n.title) + "</option>"; }).join("") + '</select></div><div class="ov-field"><label for="ov-flow-to">Neste steg</label><select id="ov-flow-to" name="to"><option value="">Velg steg</option>' + nodes.map(function (n) { return '<option value="' + n.id + '">' + esc(n.title) + "</option>"; }).join("") + "</select></div>") +
-      '<div class="ov-field"><label for="ov-flow-type">Koblingstype</label><select id="ov-flow-type" name="type"><option value="required-before">Obligatorisk før – kan blokkere neste steg</option><option value="recommended-before">Anbefalt før – viser bare ønsket rekkefølge</option></select></div></div>' +
-      '<div class="ov-modal-foot"><button type="button" class="btn btn--ghost btn--sm" data-modal-close>Avbryt</button><button type="submit" class="btn btn--primary btn--sm">' + (focus ? "Legg til kobling" : "Lagre flyt") + "</button></div></form>", function (root) {
+      '<div class="ov-field"><label for="ov-flow-type">Koblingstype</label><select id="ov-flow-type" name="type"><option value="required-before">Obligatorisk før – kan blokkere neste steg</option><option value="recommended-before">Anbefalt før – viser bare ønsket rekkefølge</option></select></div></form>';
+    var footHtml = '<button type="button" class="btn btn--ghost btn--sm" data-modal-close>Avbryt</button><button type="submit" class="btn btn--primary btn--sm" form="ov-flow-form">' + (focus ? "Legg til kobling" : "Lagre flyt") + "</button>";
+    openModal(focus ? "Endre flyt for «" + focus.title + "»" : "Endre flyt", "Avhengighetskart", bodyHtml, footHtml, function (root) {
       root.addEventListener("click", function (e) {
         if (e.target.closest("[data-modal-close]")) { closeModal(); return; }
         var remove = e.target.closest("[data-remove-flow-edge]");
@@ -1066,10 +1075,10 @@
   }
   function openRelationModal() {
     var items = allItems().filter(activeItem);
-    openModal('<form class="ov-modal ov-modal-sm" id="ov-relation-form"><div class="ov-modal-head"><h2>Legg til sammenheng</h2><button type="button" class="btn btn--ghost btn--sm" data-modal-close aria-label="Lukk">×</button></div>' +
-      '<div class="ov-modal-body"><div class="ov-field"><label for="ov-rel-from">Fra punkt</label><select id="ov-rel-from" name="from" required><option value="">Velg punkt</option>' + items.map(function (x) { return '<option value="' + x.id + '">' + SECTION_LABELS[x._section] + ": " + esc(x.title) + "</option>"; }).join("") + "</select></div>" +
-      '<div class="ov-field"><label for="ov-rel-to">Til punkt</label><select id="ov-rel-to" name="to" required><option value="">Velg punkt</option>' + items.map(function (x) { return '<option value="' + x.id + '">' + SECTION_LABELS[x._section] + ": " + esc(x.title) + "</option>"; }).join("") + '</select></div><div class="ov-note">Sammenhengen vises begge veier i detaljpanelet.</div></div>' +
-      '<div class="ov-modal-foot"><button type="button" class="btn btn--ghost btn--sm" data-modal-close>Avbryt</button><button type="submit" class="btn btn--primary btn--sm">Legg til</button></div></form>', function (root) {
+    var bodyHtml = '<form id="ov-relation-form"><div class="ov-field"><label for="ov-rel-from">Fra punkt</label><select id="ov-rel-from" name="from" required><option value="">Velg punkt</option>' + items.map(function (x) { return '<option value="' + x.id + '">' + SECTION_LABELS[x._section] + ": " + esc(x.title) + "</option>"; }).join("") + "</select></div>" +
+      '<div class="ov-field"><label for="ov-rel-to">Til punkt</label><select id="ov-rel-to" name="to" required><option value="">Velg punkt</option>' + items.map(function (x) { return '<option value="' + x.id + '">' + SECTION_LABELS[x._section] + ": " + esc(x.title) + "</option>"; }).join("") + '</select></div><div class="ov-note">Sammenhengen vises begge veier i detaljpanelet.</div></form>';
+    var footHtml = '<button type="button" class="btn btn--ghost btn--sm" data-modal-close>Avbryt</button><button type="submit" class="btn btn--primary btn--sm" form="ov-relation-form">Legg til</button>';
+    openModal("Legg til sammenheng", null, bodyHtml, footHtml, function (root) {
       root.addEventListener("click", function (e) { if (e.target.closest("[data-modal-close]")) closeModal(); });
       $("#ov-relation-form", root).addEventListener("submit", function (e) {
         e.preventDefault();
@@ -1273,11 +1282,9 @@
       "#ov-root .ov-summary-document p,#ov-root .ov-summary-document li{color:var(--color-text)}#ov-root .ov-summary-actions{display:flex;gap:.4rem;justify-content:flex-end;margin-bottom:.8rem;flex-wrap:wrap}",
       "#ov-root .ov-note{border-left:4px solid var(--color-primary);background:var(--ov-blue-soft);padding:.6rem .7rem;border-radius:0 9px 9px 0;color:var(--color-text);font-size:.78rem}",
       "#ov-root .ov-warning-note{border-left-color:var(--ov-warning);background:var(--ov-warning-soft)}",
-      "#ov-root .ov-modal-backdrop{position:fixed;inset:0;background:rgba(7,19,31,.5);z-index:2000;display:flex;justify-content:flex-end}",
-      "#ov-root .ov-modal{height:100%;max-height:100vh;width:min(520px,100%);background:var(--color-surface);box-shadow:-18px 0 50px rgba(5,18,30,.2);display:flex;flex-direction:column;min-height:0}",
-      "#ov-root .ov-modal-sm{width:min(430px,100%)}#ov-root .ov-modal-head{flex:0 0 auto;padding:1.1rem 1.2rem;border-bottom:1px solid var(--color-border);display:flex;justify-content:space-between;align-items:center;gap:.8rem}",
-      "#ov-root .ov-modal-head h2{font-size:1.1rem;margin:0}#ov-root .ov-modal-body{padding:1.1rem 1.2rem;overflow:auto;display:grid;gap:.9rem;flex:1 1 auto;min-height:0}",
-      "#ov-root .ov-modal-foot{flex:0 0 auto;padding:.8rem 1.2rem;border-top:1px solid var(--color-border);display:flex;justify-content:flex-end;gap:.4rem;flex-wrap:wrap}",
+      // .ov-modal-backdrop/.ov-modal/-sm/-head/-body/-foot fjerna 2026-08-10 --
+      // openModal()/closeModal() delegerer no til det delte Intranet.openModal()
+      // (size:"drawer"), som har sin eigen .i-modal*-styling i workspace/index.html.
       "#ov-root .ov-related-list{display:grid;gap:.4rem}#ov-root .ov-related{padding:.6rem;border:1px solid var(--color-border);border-radius:9px;display:flex;justify-content:space-between;gap:.5rem;align-items:center;background:var(--color-bg)}",
       "#ov-root .ov-related strong{display:block;font-size:.78rem}#ov-root .ov-related span{font-size:.7rem;color:var(--color-muted)}",
       "#ov-root .ov-form-row{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}#ov-root .ov-inline-actions{display:flex;gap:.4rem;flex-wrap:wrap}",
@@ -1290,7 +1297,10 @@
       "#ov-root .ov-mobile-dot{width:26px;height:26px;border-radius:50%;background:var(--color-primary);color:#fff;display:grid;place-items:center;font-size:.7rem;z-index:1}#ov-root .ov-mobile-card{margin-bottom:.8rem;padding:.6rem;border:1px solid var(--color-border);border-radius:9px;background:var(--color-surface)}",
       "#ov-root .ov-impact-stage{display:grid;grid-template-columns:1fr;grid-template-rows:auto;gap:.6rem;min-width:0;min-height:0;padding:.6rem}#ov-root .ov-impact-stage>svg{display:none}#ov-root .ov-impact-center,#ov-root .ov-impact-node{position:relative;grid-column:1!important;grid-row:auto!important;width:100%;min-height:0}#ov-root .ov-impact-center{border-radius:12px;order:-1}",
       "#ov-root .ov-form-grid,#ov-root .ov-form-row{grid-template-columns:1fr}#ov-root .ov-check-grid{grid-template-columns:1fr}#ov-root .ov-stat-grid{grid-template-columns:1fr 1fr}#ov-root .ov-next-grid{grid-template-columns:1fr}}",
-      "@media(max-width:480px){#ov-root .ov-list-row{grid-template-columns:1fr}#ov-root .ov-stat-grid{grid-template-columns:1fr}#ov-root .ov-modal{width:100%}#ov-root .ov-form-footer{display:grid}#ov-root .ov-form-footer .btn{width:100%}}",
+      // .ov-modal{width:100%} fjerna 2026-08-10 -- den delte .i-modal--drawer
+      // (min(440px,100vw)) handterer smal skjerm sjølv no, ingen eigen
+      // overstyring naudsynt her lenger.
+      "@media(max-width:480px){#ov-root .ov-list-row{grid-template-columns:1fr}#ov-root .ov-stat-grid{grid-template-columns:1fr}#ov-root .ov-form-footer{display:grid}#ov-root .ov-form-footer .btn{width:100%}}",
       "@media(prefers-reduced-motion:reduce){#ov-root *,#ov-root *:before,#ov-root *:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}",
       "@media print{#ov-root .ov-top-actions,#ov-root .ov-viewnav,#ov-root .ov-shell-head,#ov-root .ov-summary-actions,#ov-root .ov-toasts,#ov-root .ov-toolbar,#ov-root .ov-map-toolbar{display:none!important}#ov-root .ov-view:not([data-view=\"summary\"]){display:none!important}#ov-root .ov-summary-document{box-shadow:none;border:0;max-width:none;padding:0}}",
     ].join("");
@@ -1301,14 +1311,15 @@
      REGISTRERING
      ====================================================================== */
   var contentEl = null;
-  function render() { return '<div id="ov-root"><div id="ov-content"></div><div class="ov-toasts" id="ov-toasts" aria-live="polite"></div><div id="ov-modal"></div></div>'; }
+  // #ov-modal-plasshaldaren er fjerna 2026-08-10 -- den delte Intranet.openModal()
+  // legg no backdropen sin rett i document.body, treng ikkje eit eige mountpunkt her.
+  function render() { return '<div id="ov-root"><div id="ov-content"></div><div class="ov-toasts" id="ov-toasts" aria-live="polite"></div></div>'; }
   function mount(outlet) {
     var root = outlet.querySelector("#ov-root");
     if (!root) return;
     injectStyles();
     contentEl = root.querySelector("#ov-content");
     toastsEl = root.querySelector("#ov-toasts");
-    modalEl = root.querySelector("#ov-modal");
     generating = false;
     if (!_loadedThisSession) { load(); _loadedThisSession = true; }
     renderApp();

@@ -387,14 +387,16 @@
       "#saa-root .saa-fill.is-heavy{background:#967958}",
       "#saa-root .saa-insight{margin-top:.9rem;background:var(--color-bg);border:1px solid var(--color-border);border-radius:10px;padding:.75rem;color:var(--color-text);font-size:.8rem}",
       "#saa-root .saa-insight strong{display:block;margin-bottom:.2rem}",
-      "#saa-root .saa-backdrop{position:fixed;inset:0;background:rgba(9,18,31,.55);z-index:2000;display:grid;place-items:center;padding:1rem}",
-      "#saa-root .saa-modal{width:min(600px,100%);max-height:calc(100vh - 2.4rem);overflow:hidden;display:flex;flex-direction:column;background:var(--color-surface);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.3)}",
-      "#saa-root .saa-modal>form{display:flex;flex-direction:column;min-height:0;flex:1 1 auto}",
-      "#saa-root .saa-modalhead{flex:0 0 auto;padding:1.1rem 1.2rem .8rem;border-bottom:1px solid var(--color-border);display:flex;justify-content:space-between;gap:.7rem}",
-      "#saa-root .saa-modalhead h2{margin:0;font-size:1.05rem}",
-      "#saa-root .saa-modalhead p{margin:.2rem 0 0;color:var(--color-muted);font-size:.75rem}",
-      "#saa-root .saa-modalbody{flex:1 1 auto;overflow-y:auto;min-height:0;padding:1.1rem 1.2rem}",
-      "#saa-root .saa-modalfoot{flex:0 0 auto;padding:.8rem 1.2rem 1.1rem;display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap}",
+      // .saa-backdrop/.saa-modal/.saa-modal>form/.saa-modalhead*/.saa-modalbody
+      // fjerna 2026-08-10 -- den delte Intranet.openModal() (sjå openModal()
+      // lenger nede) tek over heile modal-chromet (backdrop, chrome, tittel,
+      // lukkeknapp, fokus-felle). .saa-modalfoot lever vidare (framleis
+      // brukt inne i skjema-bodyHtml, sjå editor()/readBackupFile()), men
+      // UTAN #saa-root-prefiks -- ho blir no rendra inn i den delte modalen
+      // sitt eige body-element i document.body, ikkje lenger ein descendant
+      // av #saa-root, så eit #saa-root-scopa selector ville aldri treffe.
+      ".saa-modalfoot{padding:.8rem 0 0;display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap}",
+      ".saa-modal-subtitle{margin:-.4rem 0 .9rem;color:var(--color-muted);font-size:.75rem}",
       "#saa-root .saa-checkline{display:flex;gap:.5rem;align-items:flex-start;font-size:.82rem}",
       "#saa-root .saa-toasts{position:fixed;right:1rem;bottom:1rem;z-index:2100;display:grid;gap:.5rem;width:min(360px,calc(100% - 2rem))}",
       "#saa-root .saa-toast{background:#172840;color:#fff;border-radius:10px;padding:.65rem .8rem;box-shadow:0 12px 30px rgba(0,0,0,.2);display:flex;justify-content:space-between;gap:.6rem;font-size:.82rem}",
@@ -694,36 +696,43 @@
   /* =========================================================================
      MODAL
      ====================================================================== */
-  var modalEl = null, returnFocus = null;
-
-  function openModal(html, focusSel) {
-    if (!modalEl) return;
-    returnFocus = document.activeElement;
-    modalEl.innerHTML = '<div class="saa-backdrop" data-a="backdrop"><div class="saa-modal" role="dialog" aria-modal="true">' + html + '</div></div>';
-    document.addEventListener("keydown", modalKeydown);
-    requestAnimationFrame(function () {
-      var el = modalEl.querySelector(focusSel || "button,input,select,textarea");
-      if (el) el.focus();
+  // Migrert 2026-08-10 til det delte Intranet.openModal() (Fase 5, siste --
+  // sjå docs/project/CHANGELOG.md). Denne fila sin eigen versjon hadde alt
+  // ekte fokus-felle+retur (som den delte funksjonen no handterer sentralt).
+  //
+  // Den STØRSTE praktiske utfordringa her var ikkje sjølve modal-chromet,
+  // men at bindEvents() (kalla nedanfor, éin gong per mount()) batt click/
+  // change/submit-lyttarane sine PÅ #saa-root -- eit element modal-innhaldet
+  // FØR migreringa alltid var ein DESCENDANT av (via ein no fjerna #saa-modal-
+  // plasshaldar). Den delte modalen legg derimot backdropen sin rett i
+  // document.body, UTANFOR #saa-root heilt -- click/change/submit på
+  // modal-innhald ville elles slutta å nå desse handsamarane i det heile.
+  //
+  // Løysinga er IKKJE å kopiere handsamarlogikken til ein ny, parallell
+  // stad (feilutsett, lett å la drifte frå originalen over tid) -- i staden
+  // er sjølve handsamarfunksjonane definerte NAMNGJEVE (handleRootClick m.fl.,
+  // sjå bindEvents() under) og bunde til BÅDE #saa-root OG kvar modal sitt
+  // eige element. Alle handsamarane sjekkar uansett e.target/closest() sjølve
+  // for å avgjere relevans, så det er heilt trygt (og gratis) å dele dei --
+  // eit event frå eit anna, urelatert element vil aldri nå ein handsamar
+  // bunden til modalen i det heile, sidan dei berre lever i modalen sitt
+  // eige subtre.
+  function openModal(title, subtitleHtml, bodyHtml, focusSel, binder) {
+    Intranet.openModal({
+      title: title,
+      bodyHtml: (subtitleHtml ? '<p class="saa-modal-subtitle">' + subtitleHtml + '</p>' : "") + bodyHtml,
+      size: "md",
+      onMount: function (modalEl) {
+        modalEl.addEventListener("click", handleRootClick);
+        modalEl.addEventListener("change", handleRootChange);
+        modalEl.addEventListener("submit", handleRootSubmit);
+        if (binder) binder(modalEl);
+        var el = modalEl.querySelector(focusSel || "button,input,select,textarea");
+        if (el) el.focus();
+      }
     });
   }
-  function closeModal() {
-    if (!modalEl) return;
-    modalEl.innerHTML = "";
-    document.removeEventListener("keydown", modalKeydown);
-    if (returnFocus && returnFocus.focus) returnFocus.focus();
-    returnFocus = null;
-  }
-  function modalKeydown(e) {
-    if (!modalEl || !modalEl.innerHTML) return;
-    if (e.key === "Escape") { closeModal(); return; }
-    if (e.key === "Tab") {
-      var focusable = modalEl.querySelectorAll("button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])");
-      if (!focusable.length) return;
-      var first = focusable[0], last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    }
-  }
+  function closeModal() { Intranet.closeModal(); }
 
   function editor(kind, id, presetMonth) {
     var isSug = kind === "suggestion";
@@ -734,10 +743,9 @@
       category: "custom", source: "custom", status: "planned", locked: false, recurrence: "none", day: null
     };
     openModal(
-      '<div class="saa-modalhead"><div><h2>' + (old ? "Rediger" : "Legg til") + " " + (isSug ? "forslag" : "aktivitet") + '</h2>' +
-      '<p>' + (isSug ? "Tilpass før godkjenning." : "Oppdater månad, kategori, status og låsing.") + '</p></div>' +
-      '<button type="button" class="btn btn--ghost btn--sm" data-a="close" aria-label="Lukk"><i class="ti ti-x"></i></button></div>' +
-      '<form id="saa-editor-form" data-kind="' + kind + '" data-id="' + (id || "") + '"><div class="saa-modalbody"><div class="saa-grid2">' +
+      (old ? "Rediger" : "Legg til") + " " + (isSug ? "forslag" : "aktivitet"),
+      isSug ? "Tilpass før godkjenning." : "Oppdater månad, kategori, status og låsing.",
+      '<form id="saa-editor-form" data-kind="' + kind + '" data-id="' + (id || "") + '"><div class="saa-grid2">' +
       '<div class="saa-field saa-span2"><label for="saa-etitle">Tittel</label><input id="saa-etitle" name="title" maxlength="160" required value="' + esc(x.title) + '"></div>' +
       '<div class="saa-field saa-span2"><label for="saa-edesc">Beskriving</label><textarea id="saa-edesc" name="description" maxlength="900">' + esc(x.description) + '</textarea></div>' +
       (isSug ? '<div class="saa-field saa-span2"><label for="saa-ereason">Kvifor foreslått?</label><textarea id="saa-ereason" name="reason" maxlength="700">' + esc(x.reason) + '</textarea></div>' : "") +
@@ -748,7 +756,7 @@
       '<div class="saa-field saa-span2 saa-repeathelp" id="saa-repeatinfo">' + (x.recurrence === "monthly" ? "Aktiviteten blir vist i alle tolv månader og redigert som éin aktivitet." : "Vel ein månad for eingongsaktiviteten.") + '</div>' +
       (!isSug ? '<div class="saa-field"><label for="saa-estatus">Status</label><select id="saa-estatus" name="status">' + statOpts(x.status) + '</select></div>' +
         '<div class="saa-field saa-span2"><label class="saa-checkline"><input type="checkbox" name="locked"' + (x.locked ? " checked" : "") + '><span><b>Lås aktiviteten.</b><br><span class="saa-hint">Låste aktivitetar blir alltid bevarte ved ny generering.</span></span></label></div>' : "") +
-      '</div></div><div class="saa-modalfoot">' +
+      '</div><div class="saa-modalfoot">' +
       (old && !isSug ? '<button type="button" class="btn btn--danger" data-a="delAct" data-id="' + x.id + '">Slett</button><button type="button" class="btn btn--secondary" data-a="duplicate" data-id="' + x.id + '">Dupliser</button>' : "") +
       '<button type="button" class="btn btn--secondary" data-a="close">Avbryt</button><button type="submit" class="btn btn--primary">Lagre</button></div></form>',
       "#saa-etitle"
@@ -757,13 +765,13 @@
 
   function exportMenu() {
     openModal(
-      '<div class="saa-modalhead"><div><h2>Eksport, backup og import</h2><p>Alle filer blir handterte lokalt i nettlesaren din.</p></div><button type="button" class="btn btn--ghost btn--sm" data-a="close" aria-label="Lukk"><i class="ti ti-x"></i></button></div>' +
-      '<div class="saa-modalbody">' +
+      "Eksport, backup og import",
+      "Alle filer blir handterte lokalt i nettlesaren din.",
       '<div class="saa-chart"><h2>Sikkerheitskopi</h2><p>Last ned ei komplett fil med verksemdstekst, aktivitetar, forslag, statusar, låsing, datoar og gjentaking.</p><button type="button" class="btn btn--primary" data-a="backup">Last ned sikkerheitskopi</button></div>' +
       '<div class="saa-chart" style="margin-top:.7rem"><h2>Les inn sikkerheitskopi</h2><p>Vel ei tidlegare fil. Du får sjå ei oppsummering før dette erstattar noverande data.</p><input id="saa-backup-file" type="file" accept=".json,application/json" hidden><button type="button" class="btn btn--secondary" data-a="importBackup">Vel fil</button><div class="saa-hint" style="margin-top:.4rem">Ingenting blir endra før du stadfestar innlesinga.</div></div>' +
       '<div class="saa-chart" style="margin-top:.7rem"><h2>CSV</h2><p>Månad, dag, gjentaking, tittel, kategori, beskriving, status og opphav.</p><button type="button" class="btn btn--secondary" data-a="csv"' + (state.activities.length ? "" : " disabled") + '>Last ned CSV</button></div>' +
-      '<div class="saa-chart" style="margin-top:.7rem"><h2>Tekstoversikt</h2><p>Aktivitetar grupperte per månad.</p><button type="button" class="btn btn--secondary" data-a="txt"' + (state.activities.length ? "" : " disabled") + '>Last ned tekstfil</button></div>' +
-      '</div>', '[data-a="backup"]'
+      '<div class="saa-chart" style="margin-top:.7rem"><h2>Tekstoversikt</h2><p>Aktivitetar grupperte per månad.</p><button type="button" class="btn btn--secondary" data-a="txt"' + (state.activities.length ? "" : " disabled") + '>Last ned tekstfil</button></div>',
+      '[data-a="backup"]'
     );
   }
 
@@ -815,7 +823,11 @@
     toast("Tekstoversikta er klar.");
   }
   function chooseBackup() {
-    var input = modalEl.querySelector("#saa-backup-file");
+    // document.getElementById, ikkje eit modalEl-scoped søk -- den delte
+    // modalen har ikkje noka fast, refererbar rot-einingsvariabel her (sjå
+    // openModal() sin eigen kommentar), og berre éin modal kan vere open
+    // om gongen uansett (id-en er difor alltid eintydig i praksis).
+    var input = document.getElementById("saa-backup-file");
     if (input) { input.value = ""; input.click(); }
   }
   function readBackupFile(file) {
@@ -833,9 +845,10 @@
         // hamnar ingen stad når brukaren seinare stadfestar/avbryt importen.
         closeModal();
         openModal(
-          '<div class="saa-modalhead"><div><h2>Les inn sikkerheitskopi?</h2><p>Kontroller innhaldet før noverande data blir erstatta.</p></div><button type="button" class="btn btn--ghost btn--sm" data-a="close" aria-label="Lukk"><i class="ti ti-x"></i></button></div>' +
-          '<div class="saa-modalbody"><div class="saa-safebox"><b>' + esc(INDUSTRIES[imported.business.industry] || "Verksemd") + '</b><br>' + imported.activities.length + ' aktivitetar · ' + imported.suggestions.length + ' uferdige forslag</div>' +
-          '<p>Dette overskriv ALT noverande innhald i Smart årshjul med innhaldet i denne fila. Dette kan ikkje angrast. Ta gjerne ein sikkerheitskopi av det du har no først.</p></div>' +
+          "Les inn sikkerheitskopi?",
+          "Kontroller innhaldet før noverande data blir erstatta.",
+          '<div class="saa-safebox"><b>' + esc(INDUSTRIES[imported.business.industry] || "Verksemd") + '</b><br>' + imported.activities.length + ' aktivitetar · ' + imported.suggestions.length + ' uferdige forslag</div>' +
+          '<p>Dette overskriv ALT noverande innhald i Smart årshjul med innhaldet i denne fila. Dette kan ikkje angrast. Ta gjerne ein sikkerheitskopi av det du har no først.</p>' +
           '<div class="saa-modalfoot"><button type="button" class="btn btn--secondary" data-a="cancelImport">Avbryt</button><button type="button" class="btn btn--danger" data-a="confirmImport">Ja, erstatt med denne fila</button></div>',
           '[data-a="confirmImport"]'
         );
@@ -891,89 +904,158 @@
 
   /* =========================================================================
      HENDINGSBINDING (éin gong per mount(), sjå filhovudet)
+     -----------------------------------------------------------------------
+     handleRootClick/-Change/-Submit er MEDVITE namngjevne, sjølvstendige
+     funksjonar (ikkje anonyme inline-funksjonar slik dei var før) -- den
+     delte modalen (sjå openModal() over) bind DEI SAME funksjonane direkte
+     på modalen sitt eige element kvar gong han opnar, sidan modal-innhald
+     ikkje lenger er ein descendant av #saa-root. Alle tre sjekkar uansett
+     e.target/closest()/id sjølve for å avgjere relevans, så det er heilt
+     trygt å dele dei mellom #saa-root og modalen -- null duplisert
+     forretningslogikk, éin kjelde til sanning for kvar av dei.
      ====================================================================== */
+  function handleRootClick(e) {
+    var t = e.target.closest("[data-a]");
+    if (!t) return;
+    var a = t.dataset.a, id = t.dataset.id;
+
+    if (a === "exportMenu") return exportMenu();
+    if (a === "backup") return exportBackup();
+    if (a === "importBackup") return chooseBackup();
+    if (a === "confirmImport") return confirmImport();
+    if (a === "cancelImport") { pendingImport = null; return closeModal(); }
+    if (a === "csv") return exportCSV();
+    if (a === "txt") return exportText();
+    if (a === "close") { pendingImport = null; return closeModal(); }
+    // Berre byt til det enklaste, tryggaste steget -- IKKJE state = defaultState(),
+    // som ville sletta aktivitetane/forslaga stikk i strid med teksten på same
+    // skjerm ("Ingen data er sletta"). Sjølve krasjet er nesten alltid eit
+    // render-problem, ikkje eit datalagringsproblem, så aktivitetane er urørte.
+    if (a === "recover") { state.screen = "setup"; save(); return renderContent(); }
+
+    if (a === "stepNav") {
+      var target = +t.dataset.step;
+      if (target === 1) { state.screen = "setup"; state.mode = state.activities.length ? "more" : "new"; }
+      else if (target === 2 && state.suggestions.length) { state.screen = "workshop"; }
+      else if (target === 3 && state.activities.length) { state.screen = "wheel"; }
+      else { toast("Dette steget er ikkje klart enno.", "warning"); return; }
+      save();
+      return renderContent();
+    }
+
+    if (a === "newSug") return editor("suggestion");
+    if (a === "editSug") return editor("suggestion", id);
+    if (a === "delSug") { state.suggestions = state.suggestions.filter(function (x) { return x.id !== id; }); save(); return renderContent(); }
+
+    if (a === "selectVis" || a === "unselectVis") {
+      var yes = a === "selectVis", visIds = {};
+      filteredSuggestions().forEach(function (x) { visIds[x.id] = true; });
+      state.suggestions.forEach(function (x) { if (visIds[x.id]) x.selected = yes; });
+      save(); return renderContent();
+    }
+    if (a === "selectCat" || a === "unselectCat") {
+      if (state.filters.category === "all") return toast("Vel ein kategori i filteret først.", "warning");
+      var yesCat = a === "selectCat";
+      state.suggestions.forEach(function (x) { if (x.category === state.filters.category) x.selected = yesCat; });
+      save(); return renderContent();
+    }
+    if (a === "clearFilter") { state.filters = { search: "", category: "all", month: "all" }; save(); return renderContent(); }
+    if (a === "approve") return approve();
+
+    if (a === "view") { state.currentView = t.dataset.view; save(); return renderContent(); }
+    if (a === "month") { state.selectedMonth = month(t.dataset.month); save(); return renderContent(); }
+
+    if (a === "newAct") return editor("activity");
+    if (a === "newActMonth") return editor("activity", null, state.selectedMonth);
+    if (a === "editAct") return editor("activity", id);
+    if (a === "delAct") { state.activities = state.activities.filter(function (x) { return x.id !== id; }); closeModal(); save(); renderContent(); toast("Aktiviteten er sletta."); return; }
+    if (a === "duplicate") {
+      var src = state.activities.find(function (x) { return x.id === id; });
+      if (src) { state.activities.push(Object.assign({}, src, { id: uid("a"), title: src.title + " – kopi", locked: false, createdAt: new Date().toISOString() })); closeModal(); save(); renderContent(); toast("Aktiviteten er duplisert."); }
+      return;
+    }
+    if (a === "more") { state.screen = "setup"; state.mode = "more"; save(); return renderContent(); }
+  }
+
+  function handleRootChange(e) {
+    var t = e.target, a = t.dataset.a, id = t.dataset.id;
+    if (t.id === "saa-backup-file") { readBackupFile(t.files && t.files[0]); return; }
+    if (t.id === "saa-erepeat") {
+      // document.getElementById, ikkje eit modalEl-scoped søk -- sjå
+      // chooseBackup() sin eigen kommentar for kvifor.
+      var monthly = t.value === "monthly", mf = document.getElementById("saa-emonthfield"), info = document.getElementById("saa-repeatinfo");
+      if (mf) mf.hidden = monthly;
+      if (info) info.textContent = monthly ? "Aktiviteten blir vist i alle tolv månader og redigert som éin aktivitet." : "Vel ein månad for eingongsaktiviteten.";
+      return;
+    }
+    if (t.id === "saa-industry") { state.business.industry = t.value; save(); return; }
+    if (t.id === "saa-catfilter") { state.filters.category = t.value; save(); return renderContent(); }
+    if (t.id === "saa-monthfilter") { state.filters.month = t.value; save(); return renderContent(); }
+    if (a === "toggleSug") { var s1 = state.suggestions.find(function (x) { return x.id === id; }); if (s1) s1.selected = t.checked; save(); return renderContent(); }
+    if (a === "sugMonth") { var s2 = state.suggestions.find(function (x) { return x.id === id; }); if (s2) s2.month = month(t.value); save(); return renderContent(); }
+    if (a === "actMonth") { var s3 = state.activities.find(function (x) { return x.id === id; }); if (s3) s3.month = month(t.value); save(); return renderContent(); }
+    if (a === "actStatus") { var s4 = state.activities.find(function (x) { return x.id === id; }); if (s4 && STAT[t.value]) s4.status = t.value; save(); return renderContent(); }
+  }
+
+  function handleRootSubmit(e) {
+    if (e.target.id === "saa-setup-form") {
+      e.preventDefault();
+      var industryEl = contentEl.querySelector("#saa-industry");
+      var descEl = contentEl.querySelector("#saa-description");
+      var description = descEl.value.trim();
+      if (!description) { toast("Skriv ei kort skildring.", "error"); descEl.focus(); return; }
+      state.business = {
+        industry: industryEl.value, description: description,
+        seasons: contentEl.querySelector("#saa-seasons").value.trim(),
+        focus: contentEl.querySelector("#saa-focus").value.trim()
+      };
+      save();
+      startGenerate();
+      return;
+    }
+    if (e.target.id === "saa-editor-form") {
+      e.preventDefault();
+      var f = e.target, d = new FormData(f), kind = f.dataset.kind, editId = f.dataset.id || null;
+      var title = String(d.get("title") || "").trim();
+      if (!title) return toast("Skriv ein tittel.", "error");
+      if (kind === "suggestion") {
+        var oldSug = state.suggestions.find(function (x) { return x.id === editId; });
+        var xs = {
+          id: (oldSug && oldSug.id) || uid("s-custom"), title: title, description: String(d.get("description") || "").trim(),
+          reason: String(d.get("reason") || "").trim() || "Eigne aktivitetar gjer planen relevant for verksemda.",
+          month: month(d.get("month")), category: CATS[d.get("category")] ? d.get("category") : "custom",
+          source: (oldSug && oldSug.source) || "custom", selected: oldSug ? oldSug.selected : true, locked: false,
+          recurrence: d.get("recurrence") === "monthly" ? "monthly" : "none", day: day(d.get("day")),
+          verificationRequired: (oldSug && oldSug.verificationRequired) || false, duplicateOf: (oldSug && oldSug.duplicateOf) || null,
+          itemType: (oldSug && oldSug.itemType) || "", exactDate: (oldSug && oldSug.exactDate) || "", sourceName: (oldSug && oldSug.sourceName) || "",
+          sourceUrl: (oldSug && oldSug.sourceUrl) || "", sourceVerifiedAt: (oldSug && oldSug.sourceVerifiedAt) || "", applicability: (oldSug && oldSug.applicability) || ""
+        };
+        if (oldSug) Object.assign(oldSug, xs); else state.suggestions.unshift(xs);
+      } else {
+        var oldAct = state.activities.find(function (x) { return x.id === editId; });
+        var xa = {
+          id: (oldAct && oldAct.id) || uid("a"), title: title, description: String(d.get("description") || "").trim(),
+          reason: (oldAct && oldAct.reason) || "", month: month(d.get("month")), category: CATS[d.get("category")] ? d.get("category") : "custom",
+          source: (oldAct && oldAct.source) || "custom", status: STAT[d.get("status")] ? d.get("status") : "planned", locked: d.get("locked") === "on",
+          recurrence: d.get("recurrence") === "monthly" ? "monthly" : "none", day: day(d.get("day")),
+          verificationRequired: (oldAct && oldAct.verificationRequired) || false, itemType: (oldAct && oldAct.itemType) || "",
+          exactDate: (oldAct && oldAct.exactDate) || "", sourceName: (oldAct && oldAct.sourceName) || "", sourceUrl: (oldAct && oldAct.sourceUrl) || "",
+          sourceVerifiedAt: (oldAct && oldAct.sourceVerifiedAt) || "", applicability: (oldAct && oldAct.applicability) || "",
+          createdAt: (oldAct && oldAct.createdAt) || new Date().toISOString()
+        };
+        if (oldAct) Object.assign(oldAct, xa); else state.activities.push(xa);
+        state.selectedMonth = xa.month;
+      }
+      closeModal();
+      save();
+      renderContent();
+      toast("Endringa er lagra.");
+    }
+  }
+
   function bindEvents(root) {
-    root.addEventListener("click", function (e) {
-      var t = e.target.closest("[data-a]");
-      if (!t) return;
-      var a = t.dataset.a, id = t.dataset.id;
-
-      if (a === "exportMenu") return exportMenu();
-      if (a === "backup") return exportBackup();
-      if (a === "importBackup") return chooseBackup();
-      if (a === "confirmImport") return confirmImport();
-      if (a === "cancelImport") { pendingImport = null; return closeModal(); }
-      if (a === "csv") return exportCSV();
-      if (a === "txt") return exportText();
-      if (a === "close") { pendingImport = null; return closeModal(); }
-      if (a === "backdrop" && e.target === t) return closeModal();
-      // Berre byt til det enklaste, tryggaste steget -- IKKJE state = defaultState(),
-      // som ville sletta aktivitetane/forslaga stikk i strid med teksten på same
-      // skjerm ("Ingen data er sletta"). Sjølve krasjet er nesten alltid eit
-      // render-problem, ikkje eit datalagringsproblem, så aktivitetane er urørte.
-      if (a === "recover") { state.screen = "setup"; save(); return renderContent(); }
-
-      if (a === "stepNav") {
-        var target = +t.dataset.step;
-        if (target === 1) { state.screen = "setup"; state.mode = state.activities.length ? "more" : "new"; }
-        else if (target === 2 && state.suggestions.length) { state.screen = "workshop"; }
-        else if (target === 3 && state.activities.length) { state.screen = "wheel"; }
-        else { toast("Dette steget er ikkje klart enno.", "warning"); return; }
-        save();
-        return renderContent();
-      }
-
-      if (a === "newSug") return editor("suggestion");
-      if (a === "editSug") return editor("suggestion", id);
-      if (a === "delSug") { state.suggestions = state.suggestions.filter(function (x) { return x.id !== id; }); save(); return renderContent(); }
-
-      if (a === "selectVis" || a === "unselectVis") {
-        var yes = a === "selectVis", visIds = {};
-        filteredSuggestions().forEach(function (x) { visIds[x.id] = true; });
-        state.suggestions.forEach(function (x) { if (visIds[x.id]) x.selected = yes; });
-        save(); return renderContent();
-      }
-      if (a === "selectCat" || a === "unselectCat") {
-        if (state.filters.category === "all") return toast("Vel ein kategori i filteret først.", "warning");
-        var yesCat = a === "selectCat";
-        state.suggestions.forEach(function (x) { if (x.category === state.filters.category) x.selected = yesCat; });
-        save(); return renderContent();
-      }
-      if (a === "clearFilter") { state.filters = { search: "", category: "all", month: "all" }; save(); return renderContent(); }
-      if (a === "approve") return approve();
-
-      if (a === "view") { state.currentView = t.dataset.view; save(); return renderContent(); }
-      if (a === "month") { state.selectedMonth = month(t.dataset.month); save(); return renderContent(); }
-
-      if (a === "newAct") return editor("activity");
-      if (a === "newActMonth") return editor("activity", null, state.selectedMonth);
-      if (a === "editAct") return editor("activity", id);
-      if (a === "delAct") { state.activities = state.activities.filter(function (x) { return x.id !== id; }); closeModal(); save(); renderContent(); toast("Aktiviteten er sletta."); return; }
-      if (a === "duplicate") {
-        var src = state.activities.find(function (x) { return x.id === id; });
-        if (src) { state.activities.push(Object.assign({}, src, { id: uid("a"), title: src.title + " – kopi", locked: false, createdAt: new Date().toISOString() })); closeModal(); save(); renderContent(); toast("Aktiviteten er duplisert."); }
-        return;
-      }
-      if (a === "more") { state.screen = "setup"; state.mode = "more"; save(); return renderContent(); }
-    });
-
-    root.addEventListener("change", function (e) {
-      var t = e.target, a = t.dataset.a, id = t.dataset.id;
-      if (t.id === "saa-backup-file") { readBackupFile(t.files && t.files[0]); return; }
-      if (t.id === "saa-erepeat") {
-        var monthly = t.value === "monthly", mf = modalEl.querySelector("#saa-emonthfield"), info = modalEl.querySelector("#saa-repeatinfo");
-        if (mf) mf.hidden = monthly;
-        if (info) info.textContent = monthly ? "Aktiviteten blir vist i alle tolv månader og redigert som éin aktivitet." : "Vel ein månad for eingongsaktiviteten.";
-        return;
-      }
-      if (t.id === "saa-industry") { state.business.industry = t.value; save(); return; }
-      if (t.id === "saa-catfilter") { state.filters.category = t.value; save(); return renderContent(); }
-      if (t.id === "saa-monthfilter") { state.filters.month = t.value; save(); return renderContent(); }
-      if (a === "toggleSug") { var s1 = state.suggestions.find(function (x) { return x.id === id; }); if (s1) s1.selected = t.checked; save(); return renderContent(); }
-      if (a === "sugMonth") { var s2 = state.suggestions.find(function (x) { return x.id === id; }); if (s2) s2.month = month(t.value); save(); return renderContent(); }
-      if (a === "actMonth") { var s3 = state.activities.find(function (x) { return x.id === id; }); if (s3) s3.month = month(t.value); save(); return renderContent(); }
-      if (a === "actStatus") { var s4 = state.activities.find(function (x) { return x.id === id; }); if (s4 && STAT[t.value]) s4.status = t.value; save(); return renderContent(); }
-    });
+    root.addEventListener("click", handleRootClick);
+    root.addEventListener("change", handleRootChange);
 
     var searchTimer;
     root.addEventListener("input", function (e) {
@@ -997,68 +1079,14 @@
       }
     });
 
-    root.addEventListener("submit", function (e) {
-      if (e.target.id === "saa-setup-form") {
-        e.preventDefault();
-        var industryEl = contentEl.querySelector("#saa-industry");
-        var descEl = contentEl.querySelector("#saa-description");
-        var description = descEl.value.trim();
-        if (!description) { toast("Skriv ei kort skildring.", "error"); descEl.focus(); return; }
-        state.business = {
-          industry: industryEl.value, description: description,
-          seasons: contentEl.querySelector("#saa-seasons").value.trim(),
-          focus: contentEl.querySelector("#saa-focus").value.trim()
-        };
-        save();
-        startGenerate();
-        return;
-      }
-      if (e.target.id === "saa-editor-form") {
-        e.preventDefault();
-        var f = e.target, d = new FormData(f), kind = f.dataset.kind, editId = f.dataset.id || null;
-        var title = String(d.get("title") || "").trim();
-        if (!title) return toast("Skriv ein tittel.", "error");
-        if (kind === "suggestion") {
-          var oldSug = state.suggestions.find(function (x) { return x.id === editId; });
-          var xs = {
-            id: (oldSug && oldSug.id) || uid("s-custom"), title: title, description: String(d.get("description") || "").trim(),
-            reason: String(d.get("reason") || "").trim() || "Eigne aktivitetar gjer planen relevant for verksemda.",
-            month: month(d.get("month")), category: CATS[d.get("category")] ? d.get("category") : "custom",
-            source: (oldSug && oldSug.source) || "custom", selected: oldSug ? oldSug.selected : true, locked: false,
-            recurrence: d.get("recurrence") === "monthly" ? "monthly" : "none", day: day(d.get("day")),
-            verificationRequired: (oldSug && oldSug.verificationRequired) || false, duplicateOf: (oldSug && oldSug.duplicateOf) || null,
-            itemType: (oldSug && oldSug.itemType) || "", exactDate: (oldSug && oldSug.exactDate) || "", sourceName: (oldSug && oldSug.sourceName) || "",
-            sourceUrl: (oldSug && oldSug.sourceUrl) || "", sourceVerifiedAt: (oldSug && oldSug.sourceVerifiedAt) || "", applicability: (oldSug && oldSug.applicability) || ""
-          };
-          if (oldSug) Object.assign(oldSug, xs); else state.suggestions.unshift(xs);
-        } else {
-          var oldAct = state.activities.find(function (x) { return x.id === editId; });
-          var xa = {
-            id: (oldAct && oldAct.id) || uid("a"), title: title, description: String(d.get("description") || "").trim(),
-            reason: (oldAct && oldAct.reason) || "", month: month(d.get("month")), category: CATS[d.get("category")] ? d.get("category") : "custom",
-            source: (oldAct && oldAct.source) || "custom", status: STAT[d.get("status")] ? d.get("status") : "planned", locked: d.get("locked") === "on",
-            recurrence: d.get("recurrence") === "monthly" ? "monthly" : "none", day: day(d.get("day")),
-            verificationRequired: (oldAct && oldAct.verificationRequired) || false, itemType: (oldAct && oldAct.itemType) || "",
-            exactDate: (oldAct && oldAct.exactDate) || "", sourceName: (oldAct && oldAct.sourceName) || "", sourceUrl: (oldAct && oldAct.sourceUrl) || "",
-            sourceVerifiedAt: (oldAct && oldAct.sourceVerifiedAt) || "", applicability: (oldAct && oldAct.applicability) || "",
-            createdAt: (oldAct && oldAct.createdAt) || new Date().toISOString()
-          };
-          if (oldAct) Object.assign(oldAct, xa); else state.activities.push(xa);
-          state.selectedMonth = xa.month;
-        }
-        closeModal();
-        save();
-        renderContent();
-        toast("Endringa er lagra.");
-      }
-    });
+    root.addEventListener("submit", handleRootSubmit);
   }
 
   /* =========================================================================
      REGISTRERING
      ====================================================================== */
   function render() {
-    return '<div id="saa-root"><div id="saa-content"></div><div class="saa-toasts" id="saa-toasts" aria-live="polite"></div><div id="saa-modal"></div></div>';
+    return '<div id="saa-root"><div id="saa-content"></div><div class="saa-toasts" id="saa-toasts" aria-live="polite"></div></div>';
   }
 
   function mount(outlet) {
@@ -1067,7 +1095,6 @@
     injectStyles();
     contentEl = root.querySelector("#saa-content");
     toastsEl = root.querySelector("#saa-toasts");
-    modalEl = root.querySelector("#saa-modal");
     generating = false;
     if (!_loadedThisSession) { load(); _loadedThisSession = true; }
     renderContent();
