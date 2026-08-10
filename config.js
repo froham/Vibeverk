@@ -205,7 +205,7 @@ window.SITE_CONFIG = {
     contact:       true,  // ← Kontakthenvendingar (frå nettsida)
     kb:            false, // ← Kunnskapsbase
     mediaInternal: false, // ← Mediebank (intern)
-    eiendeler:     false  // ← Eiendeler-fane i Organisasjon & drift (krev orgdrift: true òg)
+    eiendeler:     true   // ← Eiendeler-fane i Organisasjon & drift (krev orgdrift: true òg)
     // NB: "Smart årshjul" (AI-baserte forslag til årsplan) er IKKJE ein
     // intranettFeatures-brytar -- det er ein skreddarsydd modul, sjå
     // customModules under (nøkkel "smartAarshjul"). Krev

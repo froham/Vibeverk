@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.116.0 — 2026-08-10
+
+**Eiendeler: utrulla til produksjon, flagg slått på.** Brukarvedtak: hoppa over `vibeverk-staging`-testinga planen elles føreset, for å teste direkte i den faktiske Workspace-økta.
+
+- Dei tre migrasjonane (Fase 1/2/4: `assets`, `asset_categories`, `asset_ownership_history`, `asset_valuation_history`) er køyrde mot produksjon (`clzczbyklgdtdhgjphup`) via `npx supabase db push --linked`. Verifisert med eksplisitte spørjingar ETTER køyringa (ikkje berre CLI sin "Finished"-tekst, jf. CLAUDE.md sin eigen regel om at Dashboard/CLI-suksessmeldingar ikkje beviser noko åleine): alle fire tabellane finst, RLS er på for alle fire, alle åtte forventa policyar finst (`*_read`/`*_write`), og `anon` har null grants på nokon av dei.
+- `config.js`: `intranettFeatures.eiendeler` sett frå `false` til `true` -- fana er no synleg i produksjon. Cache-bust: `config.js?v=15` (nettside/admin), `config.js?v=14` (Workspace/Console).
+- **Testkonsekvens**: `config.js` sin ekte standard er no `true`, ikkje `false` -- `n18`-testen oppdatert til å stadfeste dette. "AF"-testseksjonen (Security Auditor-funn LOW: direkte navigering til `#/orgdrift/eiendeler` skal falle attende til "Personer" når fana er av) testa tidlegare "av"-åtferda via config.js sin ekte, upatcha standard -- sidan den no er `true`, overstyrer denne seksjonen i staden eksplisitt til `false` rett etter config.js er lasta (same load-time-only-atterhald som før, berre patcha på eit anna tidspunkt). Framleis ekte regresjonsdekning for sjølve "av"-koden, ikkje berre ei semantisk endring av kva som blir stadfesta.
+- `node test-workspace.js`: 276/0 (ingen nye testar, to eksisterande justerte). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- **Ikkje ein del av denne endringa**: `VIBEVERK_VERSION`/cache-bust for `console/console-core.js` (same grunn som alle føregåande Eiendeler-oppføringar -- den filen inneheld samtidig, ikkje-relatert AI Lab-arbeid).
+
+---
+
 ## 0.115.0 — 2026-08-10
 
 **Eiendeler: uavhengig Security Auditor- og UX/Mobile Reviewer-pass over Fase 2-5, funn retta.** Kjørt etter at alle 5 faser var bygget, per planen sitt eige punkt om ein samla gjennomgang før PR/deploy (ikkje éin separat runde per fase for Fase 2-4, sidan ingenting vart pusha/merga undervegs).
