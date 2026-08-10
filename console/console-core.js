@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.124.0";
+  var VIBEVERK_VERSION = "0.125.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -515,6 +515,26 @@ window.VwConsole = (function () {
     { id: "system",     icon: "settings",    label: "System" }
   ];
 
+  // AI Lab er eit utviklingsverktøy, ikkje ein del av den vanlege Console-
+  // flata og ikkje det same som Læring. På ikkje-lokal origin returnerer
+  // denne sjekken før eit einaste AI Lab-nettverkskall kan skje.
+  var _aiLabConfig = null;
+  var _aiLabProbeFinished = false;
+
+  function isAiLabLocalEnvironment() {
+    var loc = window.location;
+    return !!loc && loc.protocol === "http:" &&
+      (loc.hostname === "127.0.0.1" || loc.hostname === "localhost");
+  }
+
+  function shellNavItems() {
+    var items = NAV_ITEMS.slice();
+    if (_aiLabConfig) {
+      items.splice(items.length - 1, 0, { id: "ai-lab", icon: "flask", label: "AI Lab" });
+    }
+    return items;
+  }
+
   /* =========================================================================
      NAVIGASJON
      ====================================================================== */
@@ -812,6 +832,25 @@ window.VwConsole = (function () {
      SHELL
      ====================================================================== */
   function buildShell() {
+    if (isAiLabLocalEnvironment() && !_aiLabProbeFinished) {
+      _aiLabProbeFinished = true;
+      var probeController = new AbortController();
+      var probeTimeout = setTimeout(function () { probeController.abort(); }, 1500);
+      fetch("/__ai-lab/v1/config", { method: "GET", cache: "no-store", credentials: "omit", signal: probeController.signal })
+        .then(function (response) {
+          if (!response.ok) throw new Error("AI Lab er ikkje tilgjengeleg");
+          return response.json();
+        })
+        .then(function (config) {
+          if (!config || config.apiVersion !== "v1" || !config.csrfToken || !Array.isArray(config.sources)) {
+            throw new Error("Ugyldig AI Lab-konfigurasjon");
+          }
+          _aiLabConfig = config;
+        })
+        .catch(function () { _aiLabConfig = null; })
+        .then(function () { clearTimeout(probeTimeout); buildShell(); });
+      return;
+    }
     var app = document.getElementById("console-app");
     app.innerHTML =
       '<div class="cs-wrap">' +
@@ -829,7 +868,7 @@ window.VwConsole = (function () {
             '</select>' +
           '</div>' +
           '<nav class="cs-nav">' +
-            NAV_ITEMS.map(function (n) {
+            shellNavItems().map(function (n) {
               return '<button type="button" class="cs-nav__item" data-cs-nav="' + n.id + '" title="' + C.esc(n.label) + '">' +
                 '<span class="ti ti-' + n.icon + '"></span> <span class="cs-nav__item-label">' + C.esc(n.label) + '</span></button>';
             }).join("") +
@@ -4623,6 +4662,420 @@ window.VwConsole = (function () {
     });
   }
 
+  /* =========================================================================
+     AI LAB — lokal utvikling og kvalitetssikring
+     -------------------------------------------------------------------------
+     Eige konsept frå Læring over. AI Lab produserer berre utkast og kan
+     aldri skrive til læringsdokument, Supabase, App.store eller localStorage.
+     Serveren held kjeldesnapshotet i minnet; klienten sender berre kjelde-ID-ar.
+     ====================================================================== */
+  var _aiLabSnapshot = null;
+  var _aiLabSnapshotKey = "";
+  var _aiLabInstruction = "Lag et kort, presist opplæringsutkast for Vibeverk-ansatte. Prioriter praktisk forståelse og skill tydelig mellom dokumenterte fakta og det kildene ikke dekker.";
+  var _aiLabSelectedSources = ["safe-changes"];
+  var _aiLabResults = { ollama: null, anthropic: null, review: null };
+  var _aiLabPreference = "";
+  var _aiLabComment = "";
+  var _aiLabAccessToken = "";
+  var _aiLabBusy = false;
+
+  function aiLabProviderConfig(id) {
+    var providers = (_aiLabConfig && _aiLabConfig.providers) || [];
+    return providers.filter(function (provider) { return provider.id === id; })[0] || null;
+  }
+
+  function aiLabInputKey() {
+    return JSON.stringify({
+      scenarioId: "learning-module",
+      sourceIds: _aiLabSelectedSources.slice().sort(),
+      instruction: _aiLabInstruction.trim()
+    });
+  }
+
+  function invalidateAiLabSnapshot() {
+    _aiLabSnapshot = null;
+    _aiLabSnapshotKey = "";
+    _aiLabResults = { ollama: null, anthropic: null, review: null };
+    _aiLabPreference = "";
+    renderAiLabResults();
+  }
+
+  function refreshAiLabSourceLimit() {
+    var boxes = Array.from(document.querySelectorAll("[data-ai-lab-source]"));
+    var selected = boxes.filter(function (box) { return box.checked; }).length;
+    var count = document.getElementById("cs-ai-lab-source-count");
+    if (count) count.textContent = selected + " av 6 valgt";
+    if (_aiLabBusy) return;
+    boxes.forEach(function (box) { box.disabled = selected >= 6 && !box.checked; });
+  }
+
+  function aiLabApi(path, body) {
+    var options = { method: body ? "POST" : "GET", cache: "no-store", credentials: "omit", headers: {} };
+    if (body) {
+      options.headers["Content-Type"] = "application/json";
+      options.headers["X-AI-Lab-Token"] = _aiLabConfig.csrfToken;
+      options.headers.Authorization = "Bearer " + _aiLabAccessToken;
+      options.body = JSON.stringify(body);
+    }
+    return fetch("/__ai-lab/v1/" + path, options).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (payload) {
+        if (!response.ok) {
+          var message = payload && payload.error && payload.error.message;
+          var error = new Error(message || "AI Lab-feil (HTTP " + response.status + ")");
+          error.statusCode = response.status;
+          error.code = payload && payload.error && payload.error.code;
+          throw error;
+        }
+        return payload;
+      });
+    });
+  }
+
+  function ensureAiLabSnapshot() {
+    var key = aiLabInputKey();
+    var expiresAt = _aiLabSnapshot && Date.parse(_aiLabSnapshot.expiresAt);
+    if (_aiLabSnapshot && _aiLabSnapshotKey === key && Number.isFinite(expiresAt) && expiresAt > Date.now() + 1000) {
+      return Promise.resolve(_aiLabSnapshot);
+    }
+    if (_aiLabSnapshot) invalidateAiLabSnapshot();
+    return aiLabApi("snapshots", {
+      scenarioId: "learning-module",
+      sourceIds: _aiLabSelectedSources.slice(),
+      instruction: _aiLabInstruction.trim()
+    }).then(function (snapshot) {
+      _aiLabSnapshot = snapshot;
+      _aiLabSnapshotKey = key;
+      return snapshot;
+    });
+  }
+
+  function handleAiLabRunError(error) {
+    if (error && (error.statusCode === 410 || error.code === "AI_LAB_SNAPSHOT_EXPIRED")) {
+      invalidateAiLabSnapshot();
+      setAiLabBusy(false, "Kildesnapshotet gikk ut. Tidligere svar er fjernet; kjør sammenligningen på nytt.");
+      return;
+    }
+    setAiLabBusy(false, error.message);
+  }
+
+  function setAiLabBusy(busy, message) {
+    _aiLabBusy = busy;
+    var status = document.getElementById("cs-ai-lab-status");
+    if (status) {
+      status.textContent = message || "";
+      status.style.color = busy ? "var(--color-muted)" : "#c0392b";
+    }
+    document.querySelectorAll("[data-ai-lab-run]").forEach(function (button) {
+      button.disabled = busy || button.getAttribute("data-provider-ready") === "false";
+    });
+    document.querySelectorAll("[data-ai-lab-source], #cs-ai-lab-instruction, #cs-ai-lab-access-token, #cs-ai-lab-scenario").forEach(function (field) {
+      field.disabled = busy;
+    });
+    if (!busy) refreshAiLabSourceLimit();
+  }
+
+  function runAiLabProvider(providerId) {
+    if (_aiLabBusy || !_aiLabConfig) return;
+    if (!_aiLabAccessToken.trim()) { setAiLabBusy(false, "Lim inn lokal tilgangstoken først."); return; }
+    if (!_aiLabSelectedSources.length) { setAiLabBusy(false, "Vel minst én kilde."); return; }
+    if (!_aiLabInstruction.trim()) { setAiLabBusy(false, "Instruksjonen kan ikke være tom."); return; }
+    var requestKey = aiLabInputKey();
+    setAiLabBusy(true, "Klargjør identisk kildesnapshot og kjører " + (providerId === "ollama" ? "Gemma" : "Haiku") + " …");
+    ensureAiLabSnapshot().then(function (snapshot) {
+      return aiLabApi("run", { snapshotId: snapshot.id, provider: providerId });
+    }).then(function (result) {
+      if (requestKey !== aiLabInputKey()) throw new Error("Input ble endret under kjøringen; svaret er forkastet.");
+      _aiLabResults[providerId] = result;
+      setAiLabBusy(false, "");
+      renderAiLabResults();
+    }).catch(function (error) {
+      handleAiLabRunError(error);
+    });
+  }
+
+  function runAiLabReview() {
+    if (_aiLabBusy || !_aiLabConfig) return;
+    if (!_aiLabAccessToken.trim()) { setAiLabBusy(false, "Lim inn lokal tilgangstoken først."); return; }
+    if (!_aiLabSelectedSources.length) { setAiLabBusy(false, "Vel minst én kilde."); return; }
+    if (!_aiLabInstruction.trim()) { setAiLabBusy(false, "Instruksjonen kan ikke være tom."); return; }
+    var requestKey = aiLabInputKey();
+    setAiLabBusy(true, "Gemma lager utkast, deretter reviewer Haiku mot samme snapshot …");
+    ensureAiLabSnapshot().then(function (snapshot) {
+      return aiLabApi("gemma-review", { snapshotId: snapshot.id });
+    }).then(function (result) {
+      if (requestKey !== aiLabInputKey()) throw new Error("Input ble endret under kjøringen; svaret er forkastet.");
+      _aiLabResults.review = result;
+      _aiLabResults.ollama = {
+        schemaVersion: "ai-lab-result-v1",
+        snapshot: result.snapshot,
+        provider: result.draftProvider,
+        draft: result.draft
+      };
+      setAiLabBusy(false, "");
+      renderAiLabResults();
+    }).catch(function (error) {
+      handleAiLabRunError(error);
+    });
+  }
+
+  function aiLabRefsText(refs) {
+    return (refs || []).map(function (ref) {
+      return ref.sourceId + " L" + ref.startLine + "–" + ref.endLine;
+    }).join(", ");
+  }
+
+  function appendAiLabText(parent, tagName, className, value) {
+    var element = document.createElement(tagName);
+    if (className) element.className = className;
+    element.textContent = value;
+    parent.appendChild(element);
+    return element;
+  }
+
+  function appendAiLabDocumented(parent, heading, section) {
+    appendAiLabText(parent, "h3", "ai-lab-result__heading", heading);
+    appendAiLabText(parent, "p", "ai-lab-result__text", section.text);
+    appendAiLabText(parent, "p", "ai-lab-result__refs", "Kilder: " + aiLabRefsText(section.sourceRefs));
+  }
+
+  function appendAiLabQuestions(parent, heading, questions, answerField) {
+    appendAiLabText(parent, "h3", "ai-lab-result__heading", heading);
+    var list = document.createElement("ol");
+    list.className = "ai-lab-result__questions";
+    questions.forEach(function (question) {
+      var item = document.createElement("li");
+      appendAiLabText(item, "strong", "", question.question);
+      appendAiLabText(item, "p", "", question[answerField]);
+      appendAiLabText(item, "p", "ai-lab-result__refs", "Kilder: " + aiLabRefsText(question.sourceRefs));
+      list.appendChild(item);
+    });
+    parent.appendChild(list);
+  }
+
+  function renderAiLabDraft(container, result, emptyText) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (!result) { appendAiLabText(container, "p", "ai-lab-empty", emptyText); return; }
+    var draft = result.draft;
+    appendAiLabText(container, "p", "ai-lab-result__meta", result.provider.id + " · " + result.provider.model + " · " + result.provider.durationMs + " ms");
+    appendAiLabText(container, "p", "ai-lab-draft-badge", draft.draftStatus + " · " + draft.suggestedLevel);
+    appendAiLabText(container, "h2", "ai-lab-result__title", draft.title);
+    appendAiLabDocumented(container, "Kort modulbeskrivelse", draft.moduleDescription);
+    appendAiLabDocumented(container, "Slik fungerer det", draft.howItWorks);
+    appendAiLabDocumented(container, "Onboarding-tekst", draft.onboardingText);
+    appendAiLabQuestions(container, "Quizspørsmål", draft.quizQuestions, "answer");
+    appendAiLabQuestions(container, "Kontrollspørsmål", draft.controlQuestions, "expectedAnswer");
+    if (draft.notDocumented.length) {
+      appendAiLabText(container, "h3", "ai-lab-result__heading", "IKKE DOKUMENTERT");
+      var missing = document.createElement("ul");
+      missing.className = "ai-lab-not-documented";
+      draft.notDocumented.forEach(function (item) {
+        var row = document.createElement("li");
+        appendAiLabText(row, "strong", "", item.status + ": " + item.claim);
+        appendAiLabText(row, "p", "", item.reason);
+        missing.appendChild(row);
+      });
+      container.appendChild(missing);
+    }
+    var details = document.createElement("details");
+    details.className = "ai-lab-raw";
+    appendAiLabText(details, "summary", "", "Rå JSON");
+    appendAiLabText(details, "pre", "", JSON.stringify(result, null, 2));
+    container.appendChild(details);
+  }
+
+  function appendAiLabVerdictBadge(parent, verdict) {
+    appendAiLabText(parent, "p", "ai-lab-review-decision ai-lab-review-decision--" + verdict.toLowerCase().replace(/\s+/g, "-"), verdict);
+  }
+
+  function appendAiLabVerdictFindings(parent, findings) {
+    if (!findings.length) return;
+    var list = document.createElement("ul");
+    list.className = "ai-lab-review-findings";
+    findings.forEach(function (finding) {
+      var item = document.createElement("li");
+      appendAiLabText(item, "strong", "", finding.status);
+      appendAiLabText(item, "p", "", finding.message);
+      if (finding.sourceRefs.length) appendAiLabText(item, "p", "ai-lab-result__refs", "Kilder: " + aiLabRefsText(finding.sourceRefs));
+      list.appendChild(item);
+    });
+    parent.appendChild(list);
+  }
+
+  function appendAiLabSectionVerdict(parent, heading, sectionVerdict) {
+    var wrap = document.createElement("div");
+    wrap.className = "ai-lab-review-section";
+    appendAiLabText(wrap, "h3", "ai-lab-result__heading", heading);
+    appendAiLabVerdictBadge(wrap, sectionVerdict.verdict);
+    appendAiLabVerdictFindings(wrap, sectionVerdict.findings);
+    parent.appendChild(wrap);
+  }
+
+  function appendAiLabIndexedVerdicts(parent, heading, verdicts, questions) {
+    var wrap = document.createElement("div");
+    wrap.className = "ai-lab-review-section";
+    appendAiLabText(wrap, "h3", "ai-lab-result__heading", heading);
+    var list = document.createElement("ol");
+    list.className = "ai-lab-result__questions";
+    verdicts.forEach(function (verdict) {
+      var item = document.createElement("li");
+      var question = questions[verdict.index];
+      appendAiLabText(item, "strong", "", question ? question.question : "Spørsmål " + (verdict.index + 1));
+      appendAiLabVerdictBadge(item, verdict.verdict);
+      appendAiLabVerdictFindings(item, verdict.findings);
+      list.appendChild(item);
+    });
+    wrap.appendChild(list);
+    parent.appendChild(wrap);
+  }
+
+  function renderAiLabReview(container, result) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (!result) { appendAiLabText(container, "p", "ai-lab-empty", "Kjør «Gemma + review» for en separat kvalitetsvurdering."); return; }
+    appendAiLabText(container, "p", "ai-lab-result__meta", result.reviewProvider.id + " · " + result.reviewProvider.model + " · " + result.reviewProvider.durationMs + " ms");
+    appendAiLabVerdictBadge(container, result.review.decision);
+    appendAiLabText(container, "p", "ai-lab-result__text", result.review.rationale);
+    var sectionVerdicts = result.review.sectionVerdicts;
+    appendAiLabSectionVerdict(container, "Kort modulbeskrivelse", sectionVerdicts.moduleDescription);
+    appendAiLabSectionVerdict(container, "Slik fungerer det", sectionVerdicts.howItWorks);
+    appendAiLabSectionVerdict(container, "Onboarding-tekst", sectionVerdicts.onboardingText);
+    appendAiLabIndexedVerdicts(container, "Quizspørsmål", result.review.quizQuestionVerdicts, result.draft.quizQuestions);
+    appendAiLabIndexedVerdicts(container, "Kontrollspørsmål", result.review.controlQuestionVerdicts, result.draft.controlQuestions);
+    appendAiLabSectionVerdict(container, "IKKE DOKUMENTERT", sectionVerdicts.notDocumented);
+    var details = document.createElement("details");
+    details.className = "ai-lab-raw";
+    appendAiLabText(details, "summary", "", "Rå JSON");
+    appendAiLabText(details, "pre", "", JSON.stringify(result.review, null, 2));
+    container.appendChild(details);
+  }
+
+  function renderAiLabResults() {
+    renderAiLabDraft(document.getElementById("cs-ai-lab-gemma-result"), _aiLabResults.ollama, "Gemma-resultatet vises her.");
+    renderAiLabDraft(document.getElementById("cs-ai-lab-haiku-result"), _aiLabResults.anthropic, "Haiku-resultatet vises her.");
+    renderAiLabReview(document.getElementById("cs-ai-lab-review-result"), _aiLabResults.review);
+    var exportButton = document.getElementById("cs-ai-lab-export");
+    if (exportButton) exportButton.disabled = !_aiLabResults.ollama && !_aiLabResults.anthropic && !_aiLabResults.review;
+    var preference = document.getElementById("cs-ai-lab-preference");
+    if (preference) {
+      var ollamaOption = preference.querySelector('option[value="ollama"]');
+      var anthropicOption = preference.querySelector('option[value="anthropic"]');
+      if (ollamaOption) ollamaOption.disabled = !_aiLabResults.ollama;
+      if (anthropicOption) anthropicOption.disabled = !_aiLabResults.anthropic;
+    }
+  }
+
+  function exportAiLabJson() {
+    if (!_aiLabResults.ollama && !_aiLabResults.anthropic && !_aiLabResults.review) return;
+    var payload = {
+      schemaVersion: "ai-lab-export-v1",
+      exportedAt: new Date().toISOString(),
+      status: "UTKAST_TIL_MENNESKELEG_GODKJENNING",
+      scenario: "learning-module",
+      instruction: _aiLabInstruction,
+      selectedSourceIds: _aiLabSelectedSources.slice(),
+      snapshot: _aiLabSnapshot ? {
+        snapshotHash: _aiLabSnapshot.snapshotHash,
+        promptVersion: _aiLabSnapshot.promptVersion,
+        schemaVersion: _aiLabSnapshot.schemaVersion,
+        sources: _aiLabSnapshot.sources
+      } : null,
+      preference: _aiLabPreference || null,
+      comment: _aiLabComment || "",
+      results: _aiLabResults
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = "vibeverk-ai-lab-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function renderAiLab(sc, wrap) {
+    if (!isAiLabLocalEnvironment() || !_aiLabConfig) {
+      wrap.innerHTML = '<p class="i-notice i-notice--warn">AI Lab er bare tilgjengelig fra den lokale utviklingsserveren.</p>';
+      return;
+    }
+    var anthropic = aiLabProviderConfig("anthropic");
+    var ollama = aiLabProviderConfig("ollama");
+    var sourceHtml = _aiLabConfig.sources.map(function (source) {
+      var checked = _aiLabSelectedSources.indexOf(source.id) !== -1 ? " checked" : "";
+      return '<label class="ai-lab-source">' +
+        '<input type="checkbox" value="' + C.esc(source.id) + '" data-ai-lab-source' + checked + '>' +
+        '<span><strong>' + C.esc(source.label) + '</strong><small>' + C.esc(source.path) +
+          (source.anthropicAllowed ? ' · kan sendes til Haiku' : ' · bare lokal') + '</small></span>' +
+      '</label>';
+    }).join("");
+    wrap.innerHTML =
+      '<div class="ai-lab-banner"><span class="ai-lab-banner__badge">INTERN TEST · KUN LOKALT</span>' +
+        '<h2>AI Lab</h2><p>Sammenlign og review AI-utkast. Ingenting lagres eller publiseres automatisk.</p>' +
+        '<p><strong>Separat fra Læring:</strong> Godkjent læringsinnhold vises uten AI Lab, Ollama eller Anthropic.</p></div>' +
+      '<div class="ai-lab-config">' +
+        '<div class="field"><label for="cs-ai-lab-scenario">Scenario</label><select id="cs-ai-lab-scenario"><option value="learning-module">Læringsmodulen</option></select></div>' +
+        '<div class="field"><label for="cs-ai-lab-access-token">Lokal tilgangstoken</label><input id="cs-ai-lab-access-token" type="password" autocomplete="off" spellcheck="false" placeholder="Samme verdi som AI_LAB_ACCESS_TOKEN">' +
+          '<p class="field__hint">Holdes bare i minnet i denne Console-fanen og blir ikke med i eksporten.</p></div>' +
+        '<fieldset class="admin-group"><legend>Kildemateriale</legend><p class="field__hint">Velg 1–6 eksplisitt godkjente prosjektfiler. Start med én liten kilde; velger du for mye på én gang kan modellen miste deler av innholdet eller svare dårligere. Kilder merket for Haiku sendes til Anthropic når du bruker Haiku eller review. <strong id="cs-ai-lab-source-count"></strong></p>' +
+          '<div class="ai-lab-sources">' + sourceHtml + '</div></fieldset>' +
+        '<div class="field"><label for="cs-ai-lab-instruction">Instruksjon</label><textarea id="cs-ai-lab-instruction" rows="5" maxlength="4000"></textarea>' +
+          '<p class="field__hint">Ikke skriv inn navn, kontaktopplysninger, kundeinnhold, API-nøkler, passord eller annet fortrolig innhold. Endring av instruksjon eller kilder oppretter et nytt snapshot og nullstiller sammenligningen.</p></div>' +
+        '<div class="ai-lab-actions">' +
+          '<button type="button" class="btn btn--primary" data-ai-lab-run="ollama" data-provider-ready="true">Kjør Gemma</button>' +
+          '<button type="button" class="btn btn--ghost" data-ai-lab-run="anthropic" data-provider-ready="' + (anthropic && anthropic.configured ? "true" : "false") + '"' + (anthropic && anthropic.configured ? "" : " disabled title=\"Mangler lokal ANTHROPIC_API_KEY\"") + '>Kjør Haiku</button>' +
+          '<button type="button" class="btn btn--ghost" data-ai-lab-run="review" data-provider-ready="' + (anthropic && anthropic.configured ? "true" : "false") + '"' + (anthropic && anthropic.configured ? "" : " disabled title=\"Mangler lokal ANTHROPIC_API_KEY\"") + '>Gemma + review</button>' +
+        '</div>' +
+        '<p class="i-notice i-notice--warn ai-lab-external-note"><strong>Ekstern behandling:</strong> Haiku-kall sender valgte kildefiler og instruksjonen til Anthropic. «Gemma + review» sender i tillegg det validerte Gemma-utkastet. Ikke bruk personopplysninger, kundeinnhold eller hemmeligheter.</p>' +
+        (anthropic && anthropic.configured ? '' : '<p class="field__hint ai-lab-provider-status">Haiku er ikke konfigurert lokalt. Sett ANTHROPIC_API_KEY og start AI Lab-serveren på nytt for å aktivere knappene.</p>') +
+        '<p class="field__hint">Modeller: Gemma ' + C.esc((ollama && ollama.model) || "—") + ' · Haiku ' + C.esc((anthropic && anthropic.model) || "—") + '</p>' +
+        '<p id="cs-ai-lab-status" class="form__status" role="status"></p>' +
+      '</div>' +
+      '<div class="ai-lab-compare"><section class="ai-lab-result" aria-labelledby="cs-ai-lab-gemma-title"><h2 id="cs-ai-lab-gemma-title">Gemma</h2><div id="cs-ai-lab-gemma-result"></div></section>' +
+        '<section class="ai-lab-result" aria-labelledby="cs-ai-lab-haiku-title"><h2 id="cs-ai-lab-haiku-title">Haiku</h2><div id="cs-ai-lab-haiku-result"></div></section></div>' +
+      '<section class="ai-lab-result ai-lab-review" aria-labelledby="cs-ai-lab-review-title"><h2 id="cs-ai-lab-review-title">Haiku-review av Gemma</h2><div id="cs-ai-lab-review-result"></div></section>' +
+      '<section class="ai-lab-evaluation"><h2>Testerens vurdering</h2>' +
+        '<div class="field"><label for="cs-ai-lab-preference">Foretrukket svar</label><select id="cs-ai-lab-preference"><option value="">Ikke valgt</option><option value="ollama">Gemma</option><option value="anthropic">Haiku</option></select></div>' +
+        '<div class="field"><label for="cs-ai-lab-comment">Kommentar</label><textarea id="cs-ai-lab-comment" rows="4" maxlength="4000" placeholder="Hva var bedre, svakere eller manglet?"></textarea></div>' +
+        '<button type="button" class="btn btn--ghost" id="cs-ai-lab-export" disabled>Eksporter som JSON</button>' +
+        '<p class="field__hint">Eksporten legger ikke ved kildefilene eller API-nøkler automatisk, men inneholder instruksjon, kommentar og modelloutput. Kontroller filen for sensitivt innhold før deling.</p></section>';
+
+    var instruction = wrap.querySelector("#cs-ai-lab-instruction");
+    instruction.value = _aiLabInstruction;
+    instruction.addEventListener("input", function () {
+      _aiLabInstruction = instruction.value;
+      invalidateAiLabSnapshot();
+    });
+    var accessToken = wrap.querySelector("#cs-ai-lab-access-token");
+    accessToken.value = _aiLabAccessToken;
+    accessToken.addEventListener("input", function () { _aiLabAccessToken = accessToken.value; });
+    wrap.querySelectorAll("[data-ai-lab-source]").forEach(function (checkbox) {
+      checkbox.addEventListener("change", function () {
+        _aiLabSelectedSources = Array.from(wrap.querySelectorAll("[data-ai-lab-source]:checked")).map(function (item) { return item.value; });
+        invalidateAiLabSnapshot();
+        refreshAiLabSourceLimit();
+      });
+    });
+    wrap.querySelectorAll("[data-ai-lab-run]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var action = button.getAttribute("data-ai-lab-run");
+        if (action === "review") runAiLabReview();
+        else runAiLabProvider(action);
+      });
+    });
+    var preference = wrap.querySelector("#cs-ai-lab-preference");
+    preference.value = _aiLabPreference;
+    preference.addEventListener("change", function () { _aiLabPreference = preference.value; });
+    var comment = wrap.querySelector("#cs-ai-lab-comment");
+    comment.value = _aiLabComment;
+    comment.addEventListener("input", function () { _aiLabComment = comment.value; });
+    wrap.querySelector("#cs-ai-lab-export").addEventListener("click", exportAiLabJson);
+    renderAiLabResults();
+    refreshAiLabSourceLimit();
+    if (_aiLabBusy) setAiLabBusy(true, "Et AI-kall pågår …");
+  }
+
   function renderSystem(sc, wrap) {
     var supaUrl     = (_activeTenant && _activeTenant.data_plane_url) || "—";
     var supaKey     = (_activeTenant && _activeTenant.data_plane_anon_key) || "";
@@ -5105,7 +5558,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   var TITLES = {
     kundar:"Kundar", produkt:"Produkt", web:"Web", workspace:"Workspace",
-    modular:"Modular", priser:"Priser", analyse:"Analyse", personvern:"Personvern", laring:"Læring", system:"System"
+    modular:"Modular", priser:"Priser", analyse:"Analyse", personvern:"Personvern", laring:"Læring", "ai-lab":"AI Lab", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
@@ -5117,6 +5570,7 @@ window.VwConsole = (function () {
     analyse:    renderAnalyse,
     personvern: renderPersonvern,
     laring:     renderLaring,
+    "ai-lab":  renderAiLab,
     system:     renderSystem
   };
 
@@ -5128,9 +5582,10 @@ window.VwConsole = (function () {
   function renderSection(id) {
     var content = document.getElementById("cs-content");
     if (!content) return;
-    // Berre Priser treng breiare enn lesebreidde -- sjå CSS-kommentaren ved
+    // Priser og den eksplisitte side-ved-side-visninga i AI Lab treng breiare
+    // enn lesebreidde -- sjå CSS-kommentaren ved
     // .cs-content--wide (console/index.html) for grunngjeving.
-    content.classList.toggle("cs-content--wide", id === "priser");
+    content.classList.toggle("cs-content--wide", id === "priser" || id === "ai-lab");
     var myGen = ++_renderGen;
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +
@@ -5138,6 +5593,12 @@ window.VwConsole = (function () {
     var fn = RENDERERS[id];
     if (!fn) return;
     var wrap = document.getElementById("cs-section-wrap"); // fanga no, før det asynkrone hoppet
+    // AI Lab er eit reint lokalt utviklingsverktøy utan tenant-data, database
+    // eller App.store. Det skal difor ikkje hentast eller koplast til SC-data.
+    if (id === "ai-lab") {
+      fn({}, wrap);
+      return;
+    }
     getSC(function (sc) {
       if (myGen !== _renderGen) return; // avløyst av ein seinare navigate()/tenant-byte
       fn(sc, wrap);
@@ -5166,5 +5627,5 @@ window.VwConsole = (function () {
     });
   });
 
-  return { navigate: navigate };
+  return { navigate: navigate, isAiLabLocalEnvironment: isAiLabLocalEnvironment };
 })();

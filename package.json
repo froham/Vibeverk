@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "ai-lab": "node scripts/ai-lab-server.js",
+    "test:ai-lab": "node test-ai-lab.js && node test-ai-lab-console.js"
+  },
   "dependencies": {
     "@vercel/functions": "^3.7.5"
   },
