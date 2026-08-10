@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.120.0 — 2026-08-10
+
+**Delt Workspace-modal, Fase 2 av 5: `module-orgdrift.js` migrert.** Fyrste ekte migrering -- valt fyrst nettopp fordi denne modulen hadde dårlegast utgangspunkt av dei ni (inga Escape-handtering, ingen `wrapDimmedOverlay()`), så migreringa er ei eintydig, synleg forbetring.
+
+- `openModal(title, bodyHtml, onMount)`/`closeModal()` sine SIGNATURAR er uendra -- berre kroppen deira delegerer no til `Intranet.openModal(...)`/`Intranet.closeModal()` (`size:"lg"`, `fullscreenToggle:true`). Ingen av dei ~15 kallstadene elles i fila trong endrast.
+- `rootAttr:{ "data-od-modal": "1" }` heldt `[data-od-modal]`-attributtet i live -- alle eksisterande `test-workspace.js`-selektorar som brukte det overlevde migreringa UENDRA. Éin selektor trong oppdatering: `[data-od-x]` (den gamle ×-knappen sitt eige attributt) -> `[data-i-modal-close]` (den delte modalen sin).
+- Dei no-daude `.od-modal-backdrop`/`.od-modal`/`.od-modal-head`/`.od-modal-body`/`.od-close`-CSS-reglane er fjerna, saman med den eigne sticky-modal-head-fiksen frå Fase 1-UX-runda (2026-08-10) -- den er no baka inn i den delte `.i-modal__head` i staden, ingen grunn til å halde ein duplikat lokal kopi.
+- **Ny funksjonalitet som følgjer gratis med migreringa**: Eiendeler sine store skjema/detaljvisingar (`size:"lg"`) har no ein fungerande fullskjerm-knapp, Escape lukkar modalen (fanst ikkje før), og status-linje-fargen (mobil) følgjer no korrekt med gjennom heile modulen (var eit reelt, ustadfesta hòl før).
+- `node test-workspace.js`: 296/0 (0 nye assertions -- éin eksisterande selektor oppdatert, resten uendra, stadfestar at kompatibilitetsdesignet frå Fase 1 fungerte som tenkt). `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendra.
+- Cache-bust: `module-orgdrift.js?v=11`.
+
+---
+
 ## 0.119.0 — 2026-08-10
 
 **Delt Workspace-modal, Fase 1 av 5: sjølve systemet, ingen modul migrert enno.** Brukarvedtak: fullskjerm-knappen Web-admin alt har skal bli ein ekte, varig standardfunksjon i Workspace også -- ikkje ei mellombels lapping. Arkitekt-konsultert plan før koding (kartla alle ni eksisterande, uavhengige modal-implementasjonar på tvers av `module-orgdrift/tasks/notes/announcements/contact/quote/booking/oversikt/smart-aarshjul`).
