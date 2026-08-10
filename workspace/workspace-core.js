@@ -468,40 +468,146 @@ window.Intranet = (function () {
   }
 
   /* =========================================================================
-     8) DRAWER-HJELPER (tilgjengelig for alle moduler)
+     8) MODAL-HJELPER (tilgjengeleg for alle modular)
+     -----------------------------------------------------------------------
+     Erstattar 2026-08-10 den tidlegare openDrawer()/closeDrawer() (ingen
+     modul kalla dei nokon gong -- eit halvbygd forsøk, ikkje eit fundament å
+     byggje vidare på: ingen Escape-handtering, ingen fokus-felle, ingen
+     wrapDimmedOverlay()). Kvar av dei ni Workspace-modulane som faktisk har
+     ein modal-dialog i dag (module-orgdrift/tasks/notes/announcements/
+     contact/quote/booking/oversikt/smart-aarshjul) implementerte sin eigen
+     openModal()/closeModal() heilt uavhengig -- ulike CSS-klassar, ulike
+     breidder (430-760px), varierande kvalitet (module-oversikt.js hadde
+     ekte fokus-felle+retur, module-orgdrift.js hadde inga Escape-handtering
+     i det heile). Denne funksjonen er den eine, delte erstatninga -- modular
+     migrerer til henne éin/nokre få om gongen (sjå docs/project/CHANGELOG.md),
+     ikkje alle på éin gong.
+
+     Berre éin modal om gongen (ikkje-stablande) -- matchar alle ni
+     eksisterande implementasjonane sin faktiske åtferd (dei kallar alle sin
+     eigen closeModal() ubetinga først i openModal()); ingenting i dag treng
+     stabling (stadfestingar før ei endring bruker native confirm(), ikkje
+     ein andre modal oppå).
+
+     opts:
+       title            - streng, vert escapa internt
+       bodyHtml         - streng
+       footHtml         - valfri streng, sticky fot
+       size             - "sm" | "md" | "lg" | "drawer", standard "md"
+       fullscreenToggle - berre meiningsfullt for size:"lg" (sjå CSS-notatet
+                          i workspace/index.html for kvifor "drawer" ikkje
+                          får dette -- semantisk forvirrande på eit ark som
+                          alt er i full høgd)
+       onMount(modalEl, bodyEl) - kalla etter DOM-innsetjing
+       onClose()        - valfri, kalla ETTER lukking (let t.d. ein
+                          rute-kopla modul gjere Intranet.navigate(...) utan
+                          at denne delte funksjonen treng kjenne til routing)
+       rootId / rootAttr - kompatibilitet: legg eit gamalt id/attributt på
+                          sjølve backdrop-elementet, slik at ein migrerande
+                          modul sine eksisterande test-workspace.js-selektorar
+                          (t.d. #task-modal-bd, data-od-modal) kan overleve
+                          migreringa uendra. Sjølve funksjonen finn ALLTID
+                          att sin eigen modal via [data-i-modal-root], uansett
+                          kva rootId/rootAttr måtte vere sett til.
      ====================================================================== */
-  function openDrawer(opts) {
-    // opts: { title, bodyHtml, onMount(drawerEl) }
-    closeDrawer();
+  var _modalLastFocus = null;
+  var _modalOnClose = null;
+
+  function _modalFullscreenKey(size) { return "wsp-modal-fullscreen-" + size; }
+
+  function openModal(opts) {
+    opts = opts || {};
+    closeModal();
+
+    var size = opts.size || "md";
+    var showFsToggle = size === "lg" && !!opts.fullscreenToggle;
+    var fsKey = _modalFullscreenKey(size);
+    var isFullscreen = showFsToggle && !!App.store.get(fsKey, false);
+
+    _modalLastFocus = document.activeElement;
+    _modalOnClose = typeof opts.onClose === "function" ? opts.onClose : null;
 
     var bd = document.createElement("div");
-    bd.className = "i-drawer-backdrop";
-    bd.id = "i-drawer-backdrop";
-    bd.addEventListener("click", closeDrawer);
+    bd.className = "i-modal-backdrop i-modal-backdrop--" + size + (isFullscreen ? " is-fullscreen" : "");
+    bd.setAttribute("data-i-modal-root", "1");
+    if (opts.rootId) bd.id = opts.rootId;
+    if (opts.rootAttr) {
+      Object.keys(opts.rootAttr).forEach(function (k) { bd.setAttribute(k, opts.rootAttr[k]); });
+    }
 
-    var dr = document.createElement("div");
-    dr.className = "i-drawer";
-    dr.id = "i-drawer";
-    dr.innerHTML =
-      '<div class="i-drawer__head">' +
-        '<span class="i-drawer__title">' + C.esc(opts.title || "") + '</span>' +
-        '<button class="i-drawer__close" id="i-drawer-close" aria-label="Lukk">&times;</button>' +
-      '</div>' +
-      '<div class="i-drawer__body">' + (opts.bodyHtml || "") + '</div>' +
-      (opts.footHtml ? '<div class="i-drawer__foot">' + opts.footHtml + '</div>' : "");
+    var fsLabel = isFullscreen ? "Gå ut av fullskjerm" : "Vis i fullskjerm";
+    var fsBtn = showFsToggle
+      ? '<button type="button" class="i-modal__fullscreen-toggle" data-i-modal-fullscreen aria-label="' + fsLabel + '" title="' + fsLabel + '"><i class="ti ti-' + (isFullscreen ? "arrows-minimize" : "arrows-maximize") + '" aria-hidden="true"></i></button>'
+      : "";
+
+    bd.innerHTML =
+      '<div class="i-modal i-modal--' + size + (isFullscreen ? ' is-fullscreen' : '') + '" role="dialog" aria-modal="true"' + (opts.title ? ' aria-label="' + C.esc(opts.title) + '"' : '') + '>' +
+        '<div class="i-modal__head">' +
+          '<h3 class="i-modal__title">' + C.esc(opts.title || "") + '</h3>' +
+          '<div class="i-modal__head-actions">' + fsBtn + '<button type="button" class="i-modal__close" data-i-modal-close aria-label="Lukk">&times;</button></div>' +
+        '</div>' +
+        '<div class="i-modal__body">' + (opts.bodyHtml || "") + '</div>' +
+        (opts.footHtml ? '<div class="i-modal__foot">' + opts.footHtml + '</div>' : "") +
+      '</div>';
 
     document.body.appendChild(bd);
-    document.body.appendChild(dr);
+    wrapDimmedOverlay(bd);
 
-    document.getElementById("i-drawer-close").addEventListener("click", closeDrawer);
-    if (typeof opts.onMount === "function") opts.onMount(dr);
+    var modalEl = bd.querySelector(".i-modal");
+
+    bd.addEventListener("mousedown", function (e) { if (e.target === bd) closeModal(); });
+    bd.querySelector("[data-i-modal-close]").addEventListener("click", closeModal);
+
+    if (showFsToggle) {
+      bd.querySelector("[data-i-modal-fullscreen]").addEventListener("click", function () {
+        var next = !bd.classList.contains("is-fullscreen");
+        App.store.set(fsKey, next);
+        bd.classList.toggle("is-fullscreen", next);
+        modalEl.classList.toggle("is-fullscreen", next);
+        var btn = bd.querySelector("[data-i-modal-fullscreen]");
+        var label = next ? "Gå ut av fullskjerm" : "Vis i fullskjerm";
+        btn.setAttribute("aria-label", label);
+        btn.setAttribute("title", label);
+        btn.innerHTML = '<i class="ti ti-' + (next ? "arrows-minimize" : "arrows-maximize") + '" aria-hidden="true"></i>';
+      });
+    }
+
+    document.addEventListener("keydown", _modalKeydown);
+
+    if (typeof opts.onMount === "function") opts.onMount(modalEl, bd.querySelector(".i-modal__body"));
+
+    requestAnimationFrame(function () {
+      var el = bd.querySelector("input,button,select,textarea");
+      if (el) el.focus();
+    });
   }
 
-  function closeDrawer() {
-    var bd = document.getElementById("i-drawer-backdrop");
-    var dr = document.getElementById("i-drawer");
-    if (bd) bd.remove();
-    if (dr) dr.remove();
+  function closeModal() {
+    var bd = document.querySelector("[data-i-modal-root]");
+    if (!bd) return;
+    document.removeEventListener("keydown", _modalKeydown);
+    bd.remove(); // wrapDimmedOverlay() har alt pakka inn denne -- hentar status-linja attende automatisk
+    if (_modalLastFocus && _modalLastFocus.focus) _modalLastFocus.focus();
+    _modalLastFocus = null;
+    var cb = _modalOnClose;
+    _modalOnClose = null;
+    if (cb) cb();
+  }
+
+  // Henta frå module-oversikt.js sin eigen implementasjon (den beste av dei
+  // ni tidlegare uavhengige modal-versjonane) -- ekte Tab/Shift-Tab-felle +
+  // Escape, baka inn her sentralt slik at ingen migrerande modul kan gløyme
+  // det (module-orgdrift.js hadde til dømes INGEN Escape-handtering før).
+  function _modalKeydown(e) {
+    var bd = document.querySelector("[data-i-modal-root]");
+    if (!bd) return;
+    if (e.key === "Escape") { closeModal(); return; }
+    if (e.key !== "Tab") return;
+    var focusable = Array.prototype.slice.call(bd.querySelectorAll("button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]"));
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
   /* =========================================================================
@@ -852,8 +958,8 @@ window.Intranet = (function () {
   return {
     registerModule: registerModule,
     navigate:       navigate,
-    openDrawer:     openDrawer,
-    closeDrawer:    closeDrawer,
+    openModal:      openModal,
+    closeModal:     closeModal,
     logActivity:    logActivity,
     getActivity:    getActivity,
     getContext:     getContext,

@@ -418,34 +418,65 @@
     .i-badge--progress  { background: color-mix(in srgb, var(--color-secondary) 15%, transparent); color: var(--color-secondary); }
     .i-badge--done      { background: color-mix(in srgb, #2a7a2a 12%, transparent); color: #2a7a2a; }
 
-    /* --- Drawer ----------------------------------------------------------- */
-    .i-drawer-backdrop {
-      position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 100;
+    /* --- Modal (delt for alle Workspace-modular, 2026-08-10) ---------------
+       Éin delt openModal()/closeModal() i workspace-core.js, sjå kommentaren
+       der for full grunngjeving -- erstattar ni tidlegare uavhengige per-
+       modul-implementasjonar (module-orgdrift/tasks/notes/announcements/
+       contact/quote/booking/oversikt/smart-aarshjul), migrert éin/nokre få
+       om gongen. z-index 2000 matchar det oversikt/smart-aarshjul sine eigne
+       modal-backdrops alt brukte før migrering (deira toast-system ligg på
+       2100, altså alt over dette laget -- ingen endring naudsynt der). ---- */
+    .i-modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 2000;
+      display: flex; align-items: center; justify-content: center; padding: 1rem;
     }
-    .i-drawer {
-      position: fixed; top: 0; right: 0; bottom: 0;
-      width: min(440px, 100vw);
-      background: var(--color-bg);
-      border-left: 1px solid var(--color-border);
-      z-index: 101; display: flex; flex-direction: column;
-      box-shadow: -8px 0 40px rgba(0,0,0,.12);
+    .i-modal {
+      background: var(--color-bg); border-radius: var(--radius);
+      max-height: 88vh; overflow-y: auto; box-shadow: 0 30px 80px rgba(0,0,0,.3);
+      display: flex; flex-direction: column; width: 100%;
     }
-    .i-drawer__head {
-      display: flex; align-items: center; justify-content: space-between;
+    .i-modal--sm { max-width: 460px; }
+    .i-modal--md { max-width: 600px; }
+    .i-modal--lg { max-width: 760px; }
+
+    .i-modal__head {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
       padding: 1rem 1.2rem; border-bottom: 1px solid var(--color-border);
-      position: sticky; top: 0; background: var(--color-bg);
+      position: sticky; top: 0; background: var(--color-bg); z-index: 1;
     }
-    .i-drawer__title { font-size: 1rem; font-weight: 700; }
-    .i-drawer__close {
+    .i-modal__title { font-size: 1.05rem; font-weight: 700; margin: 0; }
+    .i-modal__head-actions { display: flex; align-items: center; gap: .2rem; flex-shrink: 0; }
+    /* min-width/height:44px -- touch-mål-minimum (UX-review-funn, jf.
+       Eiendeler sin .ei-ownership-choice-fiks 2026-08-10 same regel). */
+    .i-modal__close, .i-modal__fullscreen-toggle {
       background: none; border: 0; cursor: pointer;
-      font-size: 1.3rem; color: var(--color-muted); line-height: 1;
-      min-width: 36px; min-height: 36px;
+      font-size: 1.2rem; color: var(--color-muted); line-height: 1;
+      min-width: 44px; min-height: 44px;
       display: inline-flex; align-items: center; justify-content: center;
     }
-    .i-drawer__body { padding: 1.2rem; overflow-y: auto; flex: 1; display: grid; gap: .9rem; }
-    .i-drawer__foot {
+    .i-modal__close:hover, .i-modal__fullscreen-toggle:hover { color: var(--color-text); }
+    .i-modal__body { padding: 1.2rem; overflow-y: auto; flex: 1; display: grid; gap: .9rem; }
+    .i-modal__foot {
       padding: .9rem 1.2rem; border-top: 1px solid var(--color-border);
-      display: flex; gap: .6rem;
+      display: flex; gap: .6rem; position: sticky; bottom: 0; background: var(--color-bg);
+    }
+
+    /* size:"drawer" -- same høgreside-ark-åtferd som den no-avvikla
+       .i-drawer. Ingen fullskjerm-brytar (openModal() tilbyr han berre for
+       size:"lg") -- semantisk forvirrande på noko som alt er i full høgd,
+       det finst ingen "vindaugemodus" å gå attende til. */
+    .i-modal-backdrop--drawer { justify-content: flex-end; padding: 0; }
+    .i-modal--drawer {
+      max-width: min(440px, 100vw); height: 100%; max-height: 100vh;
+      border-radius: 0; border-left: 1px solid var(--color-border);
+      box-shadow: -8px 0 40px rgba(0,0,0,.12);
+    }
+
+    /* Fullskjerm -- berre size:"lg" med fullscreenToggle:true tilbyr knappen
+       som set denne klassen (sjå openModal() sin klikk-handsamar). */
+    .i-modal-backdrop.is-fullscreen { padding: 0; }
+    .i-modal.is-fullscreen {
+      max-width: 100vw; width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0;
     }
 
     /* --- Grid/seksjonsoverskrift ------------------------------------------ */
@@ -535,9 +566,13 @@
     [data-theme="dark"] [style*="color: var(--color-text)"] { color: #dde1f0 !important; }
     [data-theme="dark"] [style*="color:var(--color-muted)"] { color: #8b91b0 !important; }
     /* Drawers og modals */
-    [data-theme="dark"] .i-drawer { background: #1e2130; border-color: rgba(255,255,255,.1); }
-    [data-theme="dark"] .i-drawer__head { border-color: rgba(255,255,255,.1); }
-    [data-theme="dark"] .i-drawer__foot { border-color: rgba(255,255,255,.1); }
+    /* .i-modal/-head/-foot bruker berre var(--color-bg)/var(--color-border) --
+       ingen eigen mørk-modus-overstyring naudsynt, dei fell alt inn under
+       :root[data-theme="dark"] sine omdefinerte variablar over (same
+       "ingen per-komponent-overstyring"-mønster resten av Workspace sine
+       CSS-klassar alt bruker, t.d. .od-card/.ei-visual). Den tidlegare
+       .i-drawer sin eigen eksplisitte overstyring var faktisk redundant --
+       same fargeverdi (#1e2130) som --color-bg alt løyste til i mørkt modus. */
     /* Nav seksjons-label */
     [data-theme="dark"] .i-nav__section-label { color: #8b91b0; }
     /* Rtfield editor */
@@ -678,7 +713,7 @@
   <script src="../template-scrollstory.js?v=1"></script>
 
   <!-- Workspace-motor og moduler -->
-  <script src="workspace-core.js?v=25"></script>
+  <script src="workspace-core.js?v=26"></script>
   <script src="module-announcements.js?v=13"></script>
   <script src="module-settings.js?v=14"></script>
   <script src="module-tasks.js?v=13"></script>
