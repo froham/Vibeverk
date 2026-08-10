@@ -4,7 +4,7 @@
 
 import { validateAnalysisUrl } from "./_lib/customer-analysis-secure-fetch.js";
 import { crawlWebsite } from "./_lib/customer-analysis-crawler.js";
-import { generateCustomerAnalysis, generateMeetingBriefDraft } from "./_lib/customer-analysis-ai.js";
+import { generateCustomerAnalysis, generateMeetingBriefDraft, resolveRequestedModel } from "./_lib/customer-analysis-ai.js";
 import { verifyConsoleOperator, rest, auditEvent, getAnalysis, getCatalog, claimRun } from "./_lib/customer-analysis-store.js";
 import { clampText } from "./_lib/customer-analysis-html.js";
 import { canTransition, buildMeetingBrief } from "./_lib/customer-analysis-domain.js";
@@ -141,7 +141,7 @@ async function createAnalysis(body, operatorId) {
   }
 }
 
-async function runAnalysis(id, operatorId) {
+async function runAnalysis(id, operatorId, requestedModel) {
   var analysis = await getAnalysis(id);
   if (!analysis) throw Object.assign(new Error("Analysen finnes ikke."), { publicStatus: 404, publicCode: "not_found" });
   if (!canTransition(analysis.status, "analyzing")) throw Object.assign(new Error("Analysen kan ikke startes fra denne statusen."), { publicStatus: 409, publicCode: "invalid_status" });
@@ -163,7 +163,7 @@ async function runAnalysis(id, operatorId) {
         companyName: analysis.company_name, websiteUrl: analysis.website_url, industry: analysis.industry
       }, readablePages.map(function (page) {
         return { finalUrl: page.finalUrl, title: page.title, textExcerpt: page.textExcerpt };
-      }), crawl.findings, catalog);
+      }), crawl.findings, catalog, { model: resolveRequestedModel(requestedModel) });
     } catch (aiError) {
       ai = { status: "failed", result: null };
       console.error("[customer-analysis] AI-vurdering feilet", { analysisId: id, runId: runId, error: String(aiError && aiError.message || aiError) });
@@ -198,7 +198,7 @@ async function runAnalysis(id, operatorId) {
         last_run_at: new Date().toISOString(), updated_by: operatorId, updated_at: new Date().toISOString()
       }
     });
-    await auditEvent({ analysisId: id, runId: runId, operatorId: operatorId, action: "run_completed", result: "success", detail: "pages=" + crawl.fetchedPages + ";ai=" + ai.status });
+    await auditEvent({ analysisId: id, runId: runId, operatorId: operatorId, action: "run_completed", result: "success", detail: "pages=" + crawl.fetchedPages + ";ai=" + ai.status + ";model=" + (ai.model || "-") });
     return await detail(id);
   } catch (runError) {
     var code = clampText(runError && runError.code || "analysis_failed", 80);
@@ -306,7 +306,7 @@ async function deleteAnalysisPermanently(id, operatorId) {
   return { success: true };
 }
 
-async function generateBrief(id, operatorId) {
+async function generateBrief(id, operatorId, requestedModel) {
   var data = await detail(id);
   if (!data) throw Object.assign(new Error("Analysen finnes ikke."), { publicStatus: 404 });
   if (!canTransition(data.analysis.status, "reviewed")) throw Object.assign(new Error("Møtegrunnlag kan ikke lages fra denne statusen."), { publicStatus: 409, publicCode: "invalid_status" });
@@ -316,7 +316,7 @@ async function generateBrief(id, operatorId) {
   var content = built.content;
   await requireAudit({ analysisId:id, runId:data.latestRun && data.latestRun.id, operatorId:operatorId, action:"brief_generate_attempt", result:"success" });
   var aiBrief = { status:"not_configured", result:null };
-  try { aiBrief = await generateMeetingBriefDraft(data.analysis, approved, content.possibleDeliveries); }
+  try { aiBrief = await generateMeetingBriefDraft(data.analysis, approved, content.possibleDeliveries, { model: resolveRequestedModel(requestedModel) }); }
   catch (aiError) {
     aiBrief = { status:"failed", result:null };
     console.error("[customer-analysis] AI-møteutkast feilet", { analysisId:id, error:String(aiError && aiError.message || aiError) });
@@ -394,7 +394,7 @@ async function handler(request) {
     }
     if (action === "run" && isUuid(body.id)) {
       if (rateLimited(caller.userId)) return error(429, "For mange analyser på kort tid. Prøv igjen senere.", "rate_limited");
-      return json(await runAnalysis(body.id, caller.userId));
+      return json(await runAnalysis(body.id, caller.userId, body.aiModel));
     }
     if (action === "update_finding") return json(await updateFinding(body, caller.userId));
     if (action === "add_finding") return json({ finding: await addManualFinding(body, caller.userId) }, 201);
@@ -402,7 +402,7 @@ async function handler(request) {
     if (action === "delete" && isUuid(body.id)) return json(await deleteAnalysisPermanently(body.id, caller.userId));
     if (action === "generate_brief" && isUuid(body.id)) {
       if (rateLimited(caller.userId)) return error(429, "For mange AI-kall på kort tid. Prøv igjen senere.", "rate_limited");
-      return json({ brief: await generateBrief(body.id, caller.userId) }, 201);
+      return json({ brief: await generateBrief(body.id, caller.userId, body.aiModel) }, 201);
     }
     if (action === "save_service") return json(await saveService(body, caller.userId));
     return error(400, "Ukjent handling.", "invalid_action");

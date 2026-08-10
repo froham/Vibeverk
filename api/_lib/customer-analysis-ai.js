@@ -1,6 +1,14 @@
 import { clampText } from "./customer-analysis-html.js";
 
 var DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+// Operatøren kan velje modell per kjøring (Console sin kaModelSelect()) --
+// avgrensa til ei eksplisitt allowlist, aldri ein fri streng frå klienten,
+// for å hindre at nokon sender inn ein vilkårleg/ukjend/dyr modell-ID.
+var ALLOWED_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-5"];
+
+export function resolveRequestedModel(requested) {
+  return typeof requested === "string" && ALLOWED_MODELS.indexOf(requested) !== -1 ? requested : undefined;
+}
 var TIMEOUT_MS = 90000;
 var CATEGORIES = ["content", "privacy", "seo", "accessibility", "strength"];
 var PRIORITIES = ["low", "medium", "high"];
