@@ -10,10 +10,19 @@
   <title>Arbeidsområde — laster…</title>
 
   <meta name="robots" content="noindex, nofollow">
+  <!-- 'wasm-unsafe-eval' + worker-src (Fase 5, Eiendeler-OCR, 2026-08-10):
+       tesseract.js køyrer i ein Worker (blob:-instansiert som standard, sjå
+       spawnWorker() i biblioteket sjølv) som lastar WebAssembly via
+       importScripts() -- utan desse to feilar OCR heilt tagt, med berre eit
+       generisk CSP-avvisings-varsel i konsollen. xlsx treng ingen av dei
+       (rein JS, ingen Worker/WASM), berre den eksisterande cdn.jsdelivr.net-
+       tilgangen i script-src. -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src  'self' 'unsafe-inline'
+    script-src  'self' 'unsafe-inline' 'wasm-unsafe-eval'
                 https://plausible.io
+                https://cdn.jsdelivr.net;
+    worker-src  'self' blob:
                 https://cdn.jsdelivr.net;
     connect-src 'self'
                 https://plausible.io
@@ -672,7 +681,7 @@
   <script src="module-mediabank-internal.js?v=5"></script>
   <script src="module-kb.js?v=8"></script>
   <script src="module-links.js?v=6"></script>
-  <script src="module-orgdrift.js?v=8"></script>
+  <script src="module-orgdrift.js?v=9"></script>
   <script src="module-contact.js?v=9"></script>
   <script src="../module-chat.js?v=22"></script>
   <script src="../module-crm.js?v=33"></script>

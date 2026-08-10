@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.114.0 — 2026-08-10
+
+**Eiendeler (Fase 5 av 5, siste: OCR + Excel-import).** Modulen er nå funksjonelt komplett per den opprinnelige overleveringspakken sine 13 krav.
+
+- `xlsx@0.18.5` og `tesseract.js@7.0.0` lastes lazy (kun når «Importer fra Excel» eller OCR-knappen faktisk brukes) via en injisert, versjonspinnet `<script>`-tag -- ikke i `workspace/index.html`s faste skriptliste, siden de fleste kunder aldri bruker disse to funksjonene. Versjoner sjekket mot `data.jsdelivr.com` før pinning (CLAUDE.md).
+- **Dokumentert avvik fra opprinnelig plan**: planen antok at `tesseract.js` sine `workerPath`/`corePath`/`langPath` måtte overstyres eksplisitt for å unngå "å ende stille opp på sin egen standard-CDN". Lest kildekoden til `tesseract.js@7.0.0` (ikke antatt) før implementering: alle tre standardverdiene er allerede deterministisk avledet fra enten den pinnede `tesseract.js`-versjonen selv, dens eksakte `tesseract.js-core`-avhengighet (lest fra bibliotekets egen `package.json`), eller en fast dataformat-versjon (`@tesseract.js-data/nor/4.0.0_best_int`) -- ingen av dem er en flytende "latest". Eksplisitt override droppet som unødvendig kompleksitet; standardene brukes som de er.
+- CSP (`workspace/index.html`) utvidet: `'wasm-unsafe-eval'` i `script-src` og en ny `worker-src 'self' blob: https://cdn.jsdelivr.net;`-linje -- uten disse feiler OCR helt tigjen, kun med et generisk CSP-avvisningsvarsel i konsollen. `xlsx` trenger ingen av delene (ren JS, ingen Worker/WASM).
+- Excel-mal (kolonnenavn identiske med kildeprototypen) + import med validering per rad (påkrevde felt, gyldig eierskap/status/dato/tall), duplikat-navn-advarsel (ikke blokkerende), og en øvre grense på 200 rader. Kun rader uten feil importeres; resultatet vises radvis før og etter import.
+- OCR legger **kun gjennomlest og eventuelt redigert** tekst til notatfeltet, aldri automatisk -- brukeren må eksplisitt godkjenne («Legg til i notat») etter å ha sett gjenkjenningsresultatet i en egen tekstboks. Bruker `nor` alene (ikke `nor+eng`) for å holde nedlastingen av språkdata mindre.
+- `node test-workspace.js`: 275/0 (14 nye assertions: mal-nedlasting med riktige kolonner, import skiller gyldige/ugyldige rader og oppretter manglende kategori, rad-grense håndheves, OCR viser tekst til gjennomgang og legger den ALDRI til automatisk, forkastet OCR-tekst havner aldri i notatfeltet). Testene stubber `window.XLSX`/`window.Tesseract` direkte (samme begrunnelse som Fase 3s `App.media.put()`-stubbing: ekte CDN-nettverkslasting er ikke meningsfullt testbart i jsdom, og dette er uansett ikke det som skal testes her). Denne seksjonen er filens første ekte async-testblokk (`__phase5Tests`, speiler `test.js` sitt eget `__asyncTests`-mønster) siden `Blob.arrayBuffer()` alltid returnerer en ekte native Promise -- RESULTAT-utskriften venter nå på at den er ferdig. `node test.js`: 733/0, `node test-api.js`: 109/0, begge uendret.
+- Cache-bust: `module-orgdrift.js?v=9`.
+- **Alle 5 faser er nå bygget, ingenting deployert.** Migrasjonene (Fase 1/2/4) er ikke kjørt mot staging eller produksjon; ingenting er pushet. Neste steg: uavhengig Security Auditor- og UX/Mobile Reviewer-pass over hele Eiendeler-diffen (Fase 1-5 samlet) før PR/deploy, per planen.
+
+---
+
 ## 0.113.0 — 2026-08-10
 
 **Eiendeler (Fase 4 av 5: verdiberegning).** Enkel, tydelig merket kalkulasjon -- ikke AI, markedspris eller regnskapsmessig avskrivning (samme ansvarsfraskrivelse som kildeprototypen selv brukte).

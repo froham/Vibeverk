@@ -475,10 +475,14 @@ assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
     "n32: mislykket quick-upload vises inline i stedet for en blokkerende alert()");
 
   App.media.put = realPut;
-  App.store.set("wsp-eiendeler-assets", []);
-  App.store.set("wsp-eiendeler-categories", []);
-  App.store.set("wsp-eiendeler-history", []);
-  App.store.set("wsp-eiendeler-valuations", []);
+  // Ingen reset-hook eksponert for _eiAssets/_eiCategories (modulens
+  // in-memory cache) -- eit direkte App.store.set(..., []) her ville berre
+  // vore kosmetisk: neste createAsset()/updateAsset() skriv uansett den
+  // FULLE (framleis populerte) in-memory-arrayen attende til App.store,
+  // og "nullstillinga" ville stille forsvinne att (fanga live 2026-08-10,
+  // sjå n49 sin fyrste, feilslåtte versjon). Seinare seksjonar sine
+  // assertions filtrerer difor på namn / måler før-/etter-differansen,
+  // i staden for å stole på absolutte lengder.
   nav("#/notes"); nav("#/orgdrift/eiendeler");
 })();
 
@@ -564,10 +568,14 @@ assert(/eiendeler:\s*false/.test(fs.readFileSync("config.js", "utf8")),
   assert(!!statusAfterBulk && /Oppdaterte verdien for 1 eiendel/.test(statusAfterBulk.textContent),
     "n43: samlet rekalkulering viser et sammendrag inline (ingen alert())");
 
-  App.store.set("wsp-eiendeler-assets", []);
-  App.store.set("wsp-eiendeler-categories", []);
-  App.store.set("wsp-eiendeler-history", []);
-  App.store.set("wsp-eiendeler-valuations", []);
+  // Ingen reset-hook eksponert for _eiAssets/_eiCategories (modulens
+  // in-memory cache) -- eit direkte App.store.set(..., []) her ville berre
+  // vore kosmetisk: neste createAsset()/updateAsset() skriv uansett den
+  // FULLE (framleis populerte) in-memory-arrayen attende til App.store,
+  // og "nullstillinga" ville stille forsvinne att (fanga live 2026-08-10,
+  // sjå n49 sin fyrste, feilslåtte versjon). Seinare seksjonar sine
+  // assertions filtrerer difor på namn / måler før-/etter-differansen,
+  // i staden for å stole på absolutte lengder.
   nav("#/notes"); nav("#/orgdrift/eiendeler");
 })();
 
@@ -1408,13 +1416,172 @@ nav("#/notes"); nav("#/dashboard");
     "af4: direkte lenke til #/orgdrift/eiendeler fell i staden attende til «Personer»-fana");
 })();
 
-/* --- RESULTAT ------------------------------------------------------------- */
-const ok  = globalThis.__ok  || 0;
-const err = globalThis.__err || 0;
-console.log(`\n${ok+err} tester — ${ok} OK, ${err} FEIL`);
+/* --- AG) EIENDELER: EXCEL-IMPORT + OCR (Fase 5, 2026-08-10) ---------------
+   xlsx og tesseract.js er lasta lazy via ein injisert <script>-tag (sjå
+   eiLoadScriptOnce() i module-orgdrift.js) -- jsdom (runScripts:
+   "outside-only", ingen resourceLoader) køyrer ALDRI eit slikt injisert
+   scriptelement sitt innhald eller fyrer load/error på det. Testane set difor
+   window.XLSX/window.Tesseract FØR kvar handling, slik at modulen sin eigen
+   alreadyLoaded()-snarveg trer i kraft og aldri prøver å injisere noko script
+   i det heile. Sjølve nettverks-/CDN-lastinga er ikkje noko denne fila kan
+   teste meiningsfullt uansett (ingen ekte nettverk i jsdom); det som testast
+   her er VÅR EIGEN skjema-/import-/OCR-koplingslogikk.
 
-// Appen startar setInterval-ar (t.d. admin-badge-refresh) som jsdom ikkje
-// eksponerer som ekte Node-timerar (ingen .unref()) — dei held elles Node-
-// prosessen open. Ventar på at stdout er flush først, elles kan siste
-// linje kuttast bort når output vert omdirigert/pipa.
-process.stdout.write("", () => process.exit(process.exitCode || 0));
+   Denne seksjonen er (i motsetnad til resten av fila) ein ekte async IIFE --
+   f.arrayBuffer() og dei påfølgjande XLSX-/Tesseract-kjedene er ekte native
+   Promise-ar (eiLoadXlsx()/eiLoadTesseract() returnerer alltid ein ekte
+   Promise.resolve(), ikkje eit stubbart syntetisk thenable slik Fase 3 sin
+   App.media.put()-stubbing kunne gjere), så det finst ingen fullstendig
+   synkron veg gjennom kjeda. Same mønster som test.js sin eigen
+   __asyncTests-IIFE (linje ~487 der) -- RESULTAT-utskrifta lengre ned ventar
+   no på at denne IIFE-en er ferdig FØR han køyrer, elles ville testane sine
+   assert()-kall ha kome EFTER at resultatet alt var skrive ut og prosessen
+   var i ferd med å avslutte. */
+const __phase5Tests = (async () => {
+  function fakeFile(name) {
+    return new window.File([new Uint8Array([1, 2, 3])], name || "ark.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+  async function tick() { await new Promise((r) => setTimeout(r, 20)); }
+  // Innhaldet i denne rada betyr ingenting for modulen -- den slicar alltid
+  // vekk fyrste rad (header) før validering, uansett kva som faktisk står i
+  // henne. Berre at ho ER TIL STADES som rad 0 er det som testast her.
+  var EI_IMPORT_HEADERS_FOR_TEST = ["Navn *", "Kategori *", "Merke / modell", "Eierskap *", "Status", "Kjøpsdato", "Kjøpspris (kr)", "Estimert verdi (kr)", "Plassering", "Leverandør / eier", "Avtalenummer", "Leie per måned (kr)", "Avtalestart", "Avtaleslutt / returfrist", "Ansvarlig", "Notat"];
+
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+
+  // --- Excel-mal ------------------------------------------------------------
+  var xlsxWriteCalls = [];
+  window.XLSX = {
+    utils: {
+      aoa_to_sheet: function (rows) { return { __rows: rows }; },
+      book_new: function () { return { __sheets: [] }; },
+      book_append_sheet: function (wb, ws, name) { wb.__sheets.push({ ws: ws, name: name }); },
+      sheet_to_json: function () { return []; } // overstyrt per test under
+    },
+    writeFile: function (wb, filename) { xlsxWriteCalls.push({ wb: wb, filename: filename }); },
+    read: function () { return { SheetNames: ["Ark1"], Sheets: { Ark1: {} } }; } // overstyrt per test under
+  };
+
+  doc.querySelector("[data-ei-import]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var importModal = doc.querySelector("[data-od-modal]");
+  assert(!!importModal, "n44: «Importer fra Excel»-knappen åpner en importdialog");
+  importModal.querySelector("[data-ei-import-template]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  await tick();
+  assert(xlsxWriteCalls.length === 1 && xlsxWriteCalls[0].filename === "eiendeler-mal.xlsx",
+    "n45: «Last ned mal» laster xlsx og trigger en nedlasting: " + JSON.stringify(xlsxWriteCalls.map(function (c) { return c.filename; })));
+  var templateHeaderRow = xlsxWriteCalls[0].wb.__sheets[0].ws.__rows[0];
+  assert(templateHeaderRow[0] === "Navn *" && templateHeaderRow[3] === "Eierskap *" && templateHeaderRow.length === 16,
+    "n46: malen bruker de forventede kolonneoverskriftene fra kildeprototypen: " + JSON.stringify(templateHeaderRow));
+
+  // --- Import: gyldig rad + rad med feil + for mange rader -------------------
+  var validRow = ["Kontorstol", "Møbler", "Ergonomisk", "Eid", "I bruk", "2024-05-01", "3000", "2500", "Kontor", "", "", "", "", "", "", "Kjøpt på tilbud"];
+  var invalidRow = ["", "Møbler", "", "Eid", "", "", "", "", "", "", "", "", "", "", "", ""];
+  window.XLSX.utils.sheet_to_json = function () {
+    return [EI_IMPORT_HEADERS_FOR_TEST, validRow, invalidRow];
+  };
+  var fileInput = importModal.querySelector("[data-ei-import-file]");
+  var file1 = fakeFile();
+  file1.arrayBuffer = function () { return Promise.resolve(new ArrayBuffer(0)); };
+  Object.defineProperty(fileInput, "files", { value: [file1], configurable: true });
+  fileInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+
+  var previewEl = importModal.querySelector("[data-ei-import-preview]");
+  assert(/1 av 2 rader er klare til import/.test(previewEl.textContent), "n47: forhåndsvisningen skiller riktig antall gyldige/ugyldige rader: " + previewEl.textContent);
+  assert(/Navn mangler/.test(previewEl.textContent), "n48: en ugyldig rad viser en forklarende feilmelding i stedet for å bli importert stille");
+
+  // Fila si eiga N2c/N2d-testseksjon set App.store direkte til [] ved
+  // "opprydding" utan å kunne tømme modulen sin in-memory _eiAssets-cache
+  // (ingen slik tilbakestillings-hook er eksponert -- éin gong lasta, held
+  // modulen fram med å byggje vidare på same array resten av prosessens
+  // levetid). Absolutte lengder er difor upålitelege her -- mål i staden
+  // FØR/ETTER-differansen for akkurat DENNE importen.
+  var countBeforeImport = App.store.get("wsp-eiendeler-assets", []).length;
+  previewEl.querySelector("[data-ei-import-run]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  await tick();
+  var assetsAfterImport = App.store.get("wsp-eiendeler-assets", []);
+  var importedRow = assetsAfterImport.filter(function (a) { return a.name === "Kontorstol"; })[0];
+  assert(assetsAfterImport.length === countBeforeImport + 1 && !!importedRow && Number(importedRow.purchase_price) === 3000,
+    "n49: kun den gyldige raden importeres, med riktige verdier: " + JSON.stringify(importedRow));
+  assert(App.store.get("wsp-eiendeler-categories", []).some(function (c) { return c.name === "Møbler"; }),
+    "n50: manglende kategori opprettes automatisk under import, samme som ved vanlig registrering");
+
+  // For mange rader -- avvist FØR noe importeres.
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+  doc.querySelector("[data-ei-import]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var importModal2 = doc.querySelector("[data-od-modal]");
+  var countBeforeTooMany = App.store.get("wsp-eiendeler-assets", []).length;
+  var tooManyRows = [EI_IMPORT_HEADERS_FOR_TEST];
+  for (var i = 0; i < 201; i++) tooManyRows.push(["Ting " + i, "Diverse", "", "Eid", "", "", "", "", "", "", "", "", "", "", "", ""]);
+  window.XLSX.utils.sheet_to_json = function () { return tooManyRows; };
+  var file2 = fakeFile();
+  file2.arrayBuffer = function () { return Promise.resolve(new ArrayBuffer(0)); };
+  var fileInput2 = importModal2.querySelector("[data-ei-import-file]");
+  Object.defineProperty(fileInput2, "files", { value: [file2], configurable: true });
+  fileInput2.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+  assert(/Maks 200 rader/.test(importModal2.querySelector("[data-ei-import-status]").textContent),
+    "n51: import med over 200 rader avvises med en forklarende melding, ingenting importeres");
+  assert(App.store.get("wsp-eiendeler-assets", []).length === countBeforeTooMany,
+    "n52: ingen rader importeres når raden-grensen overskrides");
+  doc.querySelector("[data-od-x]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  // --- OCR: gjennomlest tekst legges KUN til notatfeltet etter godkjenning ---
+  window.Tesseract = { recognize: function () { return Promise.resolve({ data: { text: "  Serienummer 12345  " } }); } };
+  doc.querySelector("[data-od-new]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  var ocrModal = doc.querySelector("[data-od-modal]");
+  ocrModal.querySelector('[name="note"]').value = "Eksisterende notat";
+  var ocrInput = ocrModal.querySelector("[data-ei-ocr-input]");
+  var ocrFile = fakeFile("kvittering.jpg");
+  Object.defineProperty(ocrInput, "files", { value: [ocrFile], configurable: true });
+  ocrInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+  var ocrReview = ocrModal.querySelector("[data-ei-ocr-review]");
+  assert(ocrReview.style.display !== "none" && ocrModal.querySelector("[data-ei-ocr-text]").value === "Serienummer 12345",
+    "n53: gjenkjent tekst vises til gjennomgang, ikke lagt rett i notatfeltet: " + ocrModal.querySelector("[data-ei-ocr-text]").value);
+  assert(ocrModal.querySelector('[name="note"]').value === "Eksisterende notat",
+    "n54: notatfeltet er uendret helt til brukeren eksplisitt godkjenner den gjennomleste teksten");
+
+  ocrModal.querySelector("[data-ei-ocr-text]").value = "Serienummer 12345 (rettet)";
+  ocrModal.querySelector("[data-ei-ocr-add]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(ocrModal.querySelector('[name="note"]').value === "Eksisterende notat\n\nSerienummer 12345 (rettet)",
+    "n55: godkjent (og eventuelt redigert) tekst legges til i notatfeltet, uten å overskrive det som stod der");
+  assert(ocrModal.querySelector("[data-ei-ocr-review]").style.display === "none", "n56: gjennomgangsboksen skjules igjen etter at teksten er lagt til");
+
+  // Forkast: teksten skal ALDRI havne i notatfeltet.
+  window.Tesseract = { recognize: function () { return Promise.resolve({ data: { text: "Skal forkastes" } }); } };
+  Object.defineProperty(ocrInput, "files", { value: [fakeFile("kvittering2.jpg")], configurable: true });
+  ocrInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+  ocrModal.querySelector("[data-ei-ocr-discard]").dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert(ocrModal.querySelector('[name="note"]').value.indexOf("Skal forkastes") === -1,
+    "n57: forkastet OCR-tekst havner aldri i notatfeltet");
+  doc.querySelector("[data-ei-cancel]").dispatchEvent(new window.Event("click", { bubbles: true }));
+
+  delete window.XLSX;
+  delete window.Tesseract;
+  // Ingen reset-hook eksponert for _eiAssets/_eiCategories (modulens
+  // in-memory cache) -- eit direkte App.store.set(..., []) her ville berre
+  // vore kosmetisk: neste createAsset()/updateAsset() skriv uansett den
+  // FULLE (framleis populerte) in-memory-arrayen attende til App.store,
+  // og "nullstillinga" ville stille forsvinne att (fanga live 2026-08-10,
+  // sjå n49 sin fyrste, feilslåtte versjon). Seinare seksjonar sine
+  // assertions filtrerer difor på namn / måler før-/etter-differansen,
+  // i staden for å stole på absolutte lengder.
+  nav("#/notes"); nav("#/orgdrift/eiendeler");
+})();
+
+/* --- RESULTAT ------------------------------------------------------------- */
+__phase5Tests
+  .catch((e) => { console.error("FEIL: async testblokk (Fase 5) kasta", e); process.exitCode = 1; })
+  .then(() => {
+    const ok  = globalThis.__ok  || 0;
+    const err = globalThis.__err || 0;
+    console.log(`\n${ok+err} tester — ${ok} OK, ${err} FEIL`);
+
+    // Appen startar setInterval-ar (t.d. admin-badge-refresh) som jsdom ikkje
+    // eksponerer som ekte Node-timerar (ingen .unref()) — dei held elles Node-
+    // prosessen open. Ventar på at stdout er flush først, elles kan siste
+    // linje kuttast bort når output vert omdirigert/pipa.
+    process.stdout.write("", () => process.exit(process.exitCode || 0));
+  });

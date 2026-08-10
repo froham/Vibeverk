@@ -299,7 +299,15 @@
       ".ei-visual__upload{position:absolute;bottom:.5rem;left:50%;transform:translateX(-50%)}",
       /* --- Eiendeler, Fase 4: verdiberegning ---------------------------------- */
       ".ei-valuation-proposal{margin-top:.8rem;padding:.7rem .8rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-alt,rgba(148,163,184,.08))}",
-      ".ei-valuation-proposal p{margin:0 0 .4rem}"
+      ".ei-valuation-proposal p{margin:0 0 .4rem}",
+      /* --- Eiendeler, Fase 5: OCR + Excel-import ------------------------------ */
+      ".ei-ocr{margin:.6rem 0;padding:.6rem .7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-alt,rgba(148,163,184,.06))}",
+      ".ei-ocr textarea{width:100%;box-sizing:border-box;font:inherit}",
+      ".ei-import-list{display:grid;gap:.4rem;margin:.6rem 0;max-height:280px;overflow:auto}",
+      ".ei-import-row{display:flex;justify-content:space-between;gap:.6rem;padding:.5rem .6rem;border:1px solid var(--color-border);border-radius:.6rem;font-size:.86rem}",
+      ".ei-import-row.is-ok{border-color:rgba(34,197,94,.4)}",
+      ".ei-import-row.is-warn{border-color:rgba(217,119,6,.4)}",
+      ".ei-import-row.is-err{border-color:rgba(192,57,43,.4);color:#c0392b}"
     ].join("");
     document.head.appendChild(s);
   }
@@ -364,6 +372,8 @@
       // til for denne eine fana (same idé som EIENDELER-seksjonen elles: eigne
       // funksjonar for denne fana, urørt delt kode for dei fem andre).
       (isAdmin && tab === "eiendeler" ? '<button data-ei-recalc-all class="od-view-toggle-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Rekalkuler verdi i dag</button>' : '') +
+      // Fase 5: same "berre denne fana"-idé som rekalkuler-knappen over.
+      (isAdmin && tab === "eiendeler" ? '<button data-ei-import class="od-view-toggle-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Importer fra Excel</button>' : '') +
       (isAdmin ? '<button data-od-new class="od-view-toggle-btn od-new-btn" style="border:1px solid var(--color-border);background:var(--color-surface);border-radius:999px;padding:.45rem .9rem;cursor:pointer;font:inherit;font-size:.82rem">Ny</button>' : '') +
     '</div>';
   }
@@ -804,6 +814,14 @@
       recalcAllBtn.addEventListener("click", function () {
         if (!isAdminRole()) return;
         recalculateAllEiendelerValues(root);
+      });
+    }
+
+    var importBtn = root.querySelector("[data-ei-import]");
+    if (importBtn) {
+      importBtn.addEventListener("click", function () {
+        if (!isAdminRole()) return;
+        openEiendelerImportModal(root);
       });
     }
 
@@ -1313,6 +1331,55 @@
   var EI_OWNERSHIP_LABELS = { owned: "Eid", leased: "Leid", borrowed: "Lånt" };
   var EI_STATUS_LABELS    = { in_use: "I bruk", in_storage: "På lager", in_service: "Til service" };
   var EI_STATUS_VALUE_BY_LABEL = { "I bruk": "in_use", "På lager": "in_storage", "Til service": "in_service" };
+  var EI_OWNERSHIP_VALUE_BY_LABEL = { eid: "owned", leid: "leased", "lånt": "borrowed", lant: "borrowed" };
+
+  // Fase 5 (2026-08-10): xlsx og tesseract.js er MEDVITE ikkje lasta i
+  // workspace/index.html sin faste skriptliste (dei fleste kundar importerer
+  // aldri eit Excel-ark eller køyrer OCR) -- lasta først når brukaren faktisk
+  // opnar import- eller OCR-flyten, via éin delt loadScriptOnce()-hjelpar.
+  // Begge versjonane er sjekka mot data.jsdelivr.com FØR pinning (CLAUDE.md).
+  var EI_XLSX_URL      = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+  var EI_TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
+  var EI_IMPORT_MAX_ROWS = 200;
+  var EI_IMPORT_HEADERS = [
+    "Navn *", "Kategori *", "Merke / modell", "Eierskap *", "Status",
+    "Kjøpsdato", "Kjøpspris (kr)", "Estimert verdi (kr)", "Plassering",
+    "Leverandør / eier", "Avtalenummer", "Leie per måned (kr)",
+    "Avtalestart", "Avtaleslutt / returfrist", "Ansvarlig", "Notat"
+  ];
+
+  var _eiXlsxPromise      = null;
+  var _eiTesseractPromise = null;
+
+  // cb er alltid Promise-forma sjølve -- éin gong lasta (eller alt til stades
+  // frå før, t.d. via eit anna surface som alt bruker same CDN-pakke) vert
+  // resultatet cacha, aldri injisert på nytt ved fleire klikk.
+  function eiLoadScriptOnce(url, alreadyLoaded) {
+    if (alreadyLoaded()) return Promise.resolve();
+    var existing = document.querySelector('script[data-ei-lazy="' + url + '"]');
+    if (existing) {
+      return new Promise(function (resolve, reject) {
+        existing.addEventListener("load", function () { resolve(); });
+        existing.addEventListener("error", function () { reject(new Error("Kunne ikke laste inn " + url)); });
+      });
+    }
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = url;
+      s.setAttribute("data-ei-lazy", url);
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error("Kunne ikke laste inn " + url)); };
+      document.head.appendChild(s);
+    });
+  }
+  function eiLoadXlsx() {
+    if (!_eiXlsxPromise) _eiXlsxPromise = eiLoadScriptOnce(EI_XLSX_URL, function () { return !!window.XLSX; });
+    return _eiXlsxPromise;
+  }
+  function eiLoadTesseract() {
+    if (!_eiTesseractPromise) _eiTesseractPromise = eiLoadScriptOnce(EI_TESSERACT_URL, function () { return !!window.Tesseract; });
+    return _eiTesseractPromise;
+  }
 
   var _eiAssets     = null;  // null = ikkje henta enno (skil frå ei ekte tom liste)
   var _eiCategories = [];
@@ -1593,8 +1660,265 @@
       input("model", "Merke/modell", asset.model) +
       '<div data-ei-ownership-fields>' + eiendelerOwnershipFields(ownership, asset) + '</div>' +
       select("status", "Status", statusLabel, [EI_STATUS_LABELS.in_use, EI_STATUS_LABELS.in_storage, EI_STATUS_LABELS.in_service]) +
+      // Fase 5: OCR legg ALDRI tekst rett i notatfeltet -- gjennomlest tekst
+      // hamnar i ei eiga tekstboks brukaren sjølv må godkjenne («Legg til i
+      // notat») før han faktisk hamnar i skjemaet (IMPLEMENTERINGSPROMPT.md
+      // sitt uttrykkelege krav: berre GJENNOMLEST tekst, aldri automatisk).
+      '<div class="ei-ocr" data-ei-ocr>' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-ei-ocr-btn>Hent tekst fra bilde (OCR)</button>' +
+        '<input type="file" accept="image/*" data-ei-ocr-input style="display:none">' +
+        '<p class="form__status" data-ei-ocr-status></p>' +
+        '<div data-ei-ocr-review style="display:none">' +
+          '<label>Gjennomgå teksten før du legger den til i notatet<textarea data-ei-ocr-text rows="4"></textarea></label>' +
+          '<div class="od-actions">' +
+            '<button type="button" class="btn btn--primary btn--sm" data-ei-ocr-add>Legg til i notat</button>' +
+            '<button type="button" class="btn btn--ghost btn--sm" data-ei-ocr-discard>Forkast</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
       area("note", "Notat", asset.note) +
     '</form>';
+  }
+
+  // Fase 5: Excel-mal/import. Kolonnenamna er identiske med kjeldeprototypen
+  // (docs/INTEGRASJON.md sitt forslag) -- brukarar som alt kjenner malen frå
+  // demoen skal kunne bruke same ark, ikkje måtte lære eit nytt sett namn.
+  function eiendelerDownloadTemplateFile() {
+    var headers = EI_IMPORT_HEADERS;
+    var example = ["MacBook Pro 14", "Datautstyr", "M3, 2024", "Eid", "I bruk", "2026-01-15", "28990", "24000", "Hovedkontor", "", "", "", "", "", "", ""];
+    var ws = window.XLSX.utils.aoa_to_sheet([headers, example]);
+    var wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Eiendeler");
+    window.XLSX.writeFile(wb, "eiendeler-mal.xlsx");
+  }
+
+  function eiendelerParseOwnershipLabel(v) {
+    var norm = String(v || "").trim().toLowerCase();
+    return EI_OWNERSHIP_VALUE_BY_LABEL[norm] || null;
+  }
+  // Returnerer null (ikkje ein feilverdi) for ukjent tekst -- kallar sjølv
+  // avgjer om det tyder valideringsfeil eller "stod tomt" (tom streng => "in_use").
+  function eiendelerParseStatusLabel(v) {
+    var norm = String(v || "").trim().toLowerCase();
+    if (!norm) return "in_use";
+    if (norm === "i bruk") return "in_use";
+    if (norm === "på lager" || norm === "pa lager") return "in_storage";
+    if (norm === "til service") return "in_service";
+    return null;
+  }
+  function eiendelerParseDateCell(v) {
+    if (v === null || v === undefined || v === "") return { ok: true, value: null };
+    if (v instanceof Date) return isNaN(v.getTime()) ? { ok: false } : { ok: true, value: v.toISOString().slice(0, 10) };
+    var d = new Date(String(v).trim());
+    return isNaN(d.getTime()) ? { ok: false } : { ok: true, value: d.toISOString().slice(0, 10) };
+  }
+  function eiendelerParseNumberCell(v) {
+    if (v === null || v === undefined || v === "") return { ok: true, value: null };
+    var n = Number(String(v).trim().replace(",", "."));
+    return (isNaN(n) || n < 0) ? { ok: false } : { ok: true, value: n };
+  }
+
+  // Éi rad = éin celle-array i same rekkefølgje som EI_IMPORT_HEADERS.
+  // Returnerer { row, errors, duplicate, rawName } -- `row` er null når
+  // `errors` ikkje er tom (aldri eit halvvegs utfylt objekt å ved eit uhell
+  // importere).
+  function eiendelerValidateImportRow(cells) {
+    var errors = [];
+    var name = String(cells[0] || "").trim();
+    if (!name) errors.push("Navn mangler");
+    var categoryName = String(cells[1] || "").trim();
+    if (!categoryName) errors.push("Kategori mangler");
+    var model = String(cells[2] || "").trim();
+    var ownership = eiendelerParseOwnershipLabel(cells[3]);
+    if (!ownership) errors.push("Eierskap må være Eid, Leid eller Lånt");
+    var status = eiendelerParseStatusLabel(cells[4]);
+    if (status === null) errors.push("Status må være I bruk, På lager eller Til service (kan stå tomt)");
+    var acqDate = eiendelerParseDateCell(cells[5]);
+    if (!acqDate.ok) errors.push("Kjøpsdato er ikke en gyldig dato");
+    var price = eiendelerParseNumberCell(cells[6]);
+    if (!price.ok) errors.push("Kjøpspris må være et positivt tall");
+    var estValue = eiendelerParseNumberCell(cells[7]);
+    if (!estValue.ok) errors.push("Estimert verdi må være et positivt tall");
+    var location = String(cells[8] || "").trim();
+    var supplier = String(cells[9] || "").trim();
+    var agreementNumber = String(cells[10] || "").trim();
+    var rent = eiendelerParseNumberCell(cells[11]);
+    if (!rent.ok) errors.push("Leie per måned må være et positivt tall");
+    var agreementStart = eiendelerParseDateCell(cells[12]);
+    if (!agreementStart.ok) errors.push("Avtalestart er ikke en gyldig dato");
+    var agreementEnd = eiendelerParseDateCell(cells[13]);
+    if (!agreementEnd.ok) errors.push("Avtaleslutt/returfrist er ikke en gyldig dato");
+    var responsibleName = String(cells[14] || "").trim();
+    var note = String(cells[15] || "").trim();
+
+    var duplicate = !!name && (_eiAssets || []).some(function (a) { return String(a.name || "").trim().toLowerCase() === name.toLowerCase(); });
+
+    var row = null;
+    if (!errors.length) {
+      row = {
+        name: name, categoryName: categoryName, model: model || null, ownership: ownership, status: status,
+        location: location || null, note: note || null, image_url: null
+      };
+      if (ownership === "owned") {
+        row.acquisition_date = acqDate.value;
+        row.purchase_price = price.value;
+        row.estimated_value = estValue.value;
+        row.supplier = row.agreement_number = row.rent_per_month = null;
+        row.agreement_start = row.agreement_end = row.notice_date = null;
+        row.responsible_name = row.return_terms = row.purchase_option = null;
+      } else {
+        row.supplier = supplier || null;
+        row.agreement_number = agreementNumber || null;
+        row.rent_per_month = ownership === "leased" ? rent.value : null;
+        row.agreement_start = agreementStart.value;
+        row.agreement_end = agreementEnd.value;
+        row.notice_date = null;
+        row.responsible_name = responsibleName || null;
+        row.return_terms = null;
+        row.purchase_option = null;
+        row.acquisition_date = row.purchase_price = row.estimated_value = null;
+      }
+    }
+    return { row: row, errors: errors, duplicate: duplicate, rawName: name || "(uten navn)" };
+  }
+
+  // Sekvensielt (ikkje Promise.all) -- fleire rader kan dele EIN NY kategori
+  // som ikkje finst frå før, og withCategory() sin eigen
+  // "finst-han-alt/opprett-han"-sjekk må sjå resultatet av FØRRE rad si
+  // eventuelle oppretting før neste rad spør, elles ville to rader med same
+  // nye kategorinamn oppretta to like kategoriar i staden for å dele éin.
+  function runEiendelerImport(rows, cb) {
+    var results = [];
+    function next(i) {
+      if (i >= rows.length) { cb(results); return; }
+      var row = Object.assign({}, rows[i].row);
+      var categoryName = row.categoryName;
+      delete row.categoryName;
+      var existingCat = _eiCategories.filter(function (c) { return c.name.toLowerCase() === categoryName.toLowerCase(); })[0];
+      function withCategoryId(categoryId) {
+        row.category_id = categoryId;
+        createAsset(row, function (err) {
+          results.push({ name: row.name, error: err ? (err.message || "ukjent feil") : null });
+          next(i + 1);
+        });
+      }
+      if (existingCat) { withCategoryId(existingCat.id); return; }
+      createAssetCategory(categoryName, function (err, cat) {
+        if (err) { results.push({ name: row.name, error: err.message || "kunne ikke opprette kategori" }); next(i + 1); return; }
+        withCategoryId(cat.id);
+      });
+    }
+    next(0);
+  }
+
+  function renderEiendelerImportPreview(previewEl, parsed, root) {
+    var okRows = parsed.filter(function (p) { return !p.errors.length; });
+    previewEl.innerHTML =
+      '<p class="od-help">' + okRows.length + ' av ' + parsed.length + ' rader er klare til import' +
+        (parsed.length - okRows.length ? ", " + (parsed.length - okRows.length) + " har feil og blir hoppet over" : "") + '.</p>' +
+      '<div class="ei-import-list">' +
+        parsed.map(function (p, i) {
+          var label = p.errors.length ? ("Feil: " + p.errors.join("; ")) : (p.duplicate ? "Advarsel: navn finnes fra før — importeres likevel" : "Klar til import");
+          var cls = p.errors.length ? "is-err" : (p.duplicate ? "is-warn" : "is-ok");
+          return '<div class="ei-import-row ' + cls + '"><b>Rad ' + (i + 2) + ': ' + esc(p.rawName) + '</b><span>' + esc(label) + '</span></div>';
+        }).join("") +
+      '</div>' +
+      (okRows.length ? '<div class="od-actions"><button class="btn btn--primary btn--sm" data-ei-import-run type="button">Importer ' + okRows.length + ' rader</button></div>' : '') +
+      '<p class="form__status" data-ei-import-run-status></p>';
+
+    var runBtn = previewEl.querySelector("[data-ei-import-run]");
+    if (!runBtn) return;
+    runBtn.addEventListener("click", function () {
+      runBtn.disabled = true;
+      runEiendelerImport(okRows, function (results) {
+        var runStatusEl = previewEl.querySelector("[data-ei-import-run-status]");
+        var failed = results.filter(function (r) { return r.error; });
+        var successCount = results.length - failed.length;
+        if (runStatusEl) {
+          runStatusEl.textContent = "Importerte " + successCount + " av " + results.length + " rader." +
+            (failed.length ? " Feilet: " + failed.map(function (r) { return r.name + " (" + r.error + ")"; }).join(", ") + "." : "");
+          runStatusEl.className = failed.length ? "form__status is-err" : "form__status";
+        }
+        draw(root, "eiendeler", "");
+        if (!failed.length) closeModal();
+        if (Intranet.logActivity) Intranet.logActivity({ type: "eiendeler_updated", label: "Importerte " + successCount + " eiendeler fra Excel" });
+      });
+    });
+  }
+
+  function bindEiendelerImportModal(modal, root) {
+    var statusEl = modal.querySelector("[data-ei-import-status]");
+    var templateBtn = modal.querySelector("[data-ei-import-template]");
+    if (templateBtn) templateBtn.addEventListener("click", function () {
+      templateBtn.disabled = true;
+      eiLoadXlsx().then(function () {
+        eiendelerDownloadTemplateFile();
+        templateBtn.disabled = false;
+      }).catch(function () {
+        statusEl.textContent = "Kunne ikke laste inn Excel-verktøyet. Sjekk nettforbindelsen og prøv igjen.";
+        statusEl.className = "form__status is-err";
+        templateBtn.disabled = false;
+      });
+    });
+
+    var fileInput = modal.querySelector("[data-ei-import-file]");
+    var previewEl = modal.querySelector("[data-ei-import-preview]");
+    fileInput.addEventListener("change", function () {
+      var f = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      if (!f) return;
+      previewEl.innerHTML = "";
+      statusEl.textContent = "Laster inn fil …";
+      statusEl.className = "form__status";
+      eiLoadXlsx().then(function () {
+        return f.arrayBuffer();
+      }).then(function (buffer) {
+        var data;
+        try {
+          var wb = window.XLSX.read(buffer, { type: "array", cellDates: true });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          data = window.XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+        } catch (e) {
+          statusEl.textContent = "Kunne ikke lese Excel-filen. Sjekk at den er en gyldig .xlsx-fil.";
+          statusEl.className = "form__status is-err";
+          return;
+        }
+        // Fyrste rad er overskrifter -- hopp over henne. Filtrer vekk heilt
+        // tomme rader (t.d. formatert-men-tom celleområde Excel ofte legg med).
+        var rows = (data || []).slice(1).filter(function (r) { return (r || []).some(function (c) { return String(c == null ? "" : c).trim() !== ""; }); });
+        if (!rows.length) {
+          statusEl.textContent = "Fant ingen rader med data i filen.";
+          statusEl.className = "form__status is-err";
+          return;
+        }
+        if (rows.length > EI_IMPORT_MAX_ROWS) {
+          statusEl.textContent = "Filen har " + rows.length + " rader. Maks " + EI_IMPORT_MAX_ROWS + " rader per import — del filen opp og prøv igjen.";
+          statusEl.className = "form__status is-err";
+          return;
+        }
+        statusEl.textContent = "";
+        statusEl.className = "form__status";
+        renderEiendelerImportPreview(previewEl, rows.map(eiendelerValidateImportRow), root);
+      }).catch(function () {
+        statusEl.textContent = "Kunne ikke laste inn Excel-verktøyet. Sjekk nettforbindelsen og prøv igjen.";
+        statusEl.className = "form__status is-err";
+      });
+    });
+  }
+
+  function openEiendelerImportModal(root) {
+    if (!isAdminRole()) return;
+    var html =
+      '<p class="od-help">Last opp en Excel-fil (.xlsx) med samme kolonner som malen. Maks ' + EI_IMPORT_MAX_ROWS + ' rader per import.</p>' +
+      '<div class="od-actions">' +
+        '<button class="btn btn--ghost btn--sm" data-ei-import-template type="button">Last ned mal (.xlsx)</button>' +
+      '</div>' +
+      '<label>Velg Excel-fil<input type="file" accept=".xlsx" data-ei-import-file></label>' +
+      '<p class="form__status" data-ei-import-status></p>' +
+      '<div data-ei-import-preview></div>';
+    openModal("Importer eiendeler fra Excel", html, function (modal) {
+      bindEiendelerImportModal(modal, root);
+    });
   }
 
   function openEiendelerEditor(root, assetId) {
@@ -1870,6 +2194,66 @@
     });
   }
 
+  // Fase 5: OCR-flyten er heilt fråkopla biletfeltet over -- brukaren vel
+  // eit VILKÅRLEG bilete (t.d. eit kvitteringsfoto eller eit merkeskilt),
+  // ikkje nødvendigvis eiendelens eige omslagsbilete. "nor" åleine (ikkje
+  // "nor+eng") for å halde nedlastinga av språkdata mindre -- Tesseract sin
+  // eigen teiknattkjenning handterer latinske bokstavar/tal uavhengig av
+  // språkpakke, språkpakken styrer først og fremst ordbok-basert korrigering.
+  function bindEiendelerOcr(scope) {
+    var ocrBtn      = scope.querySelector("[data-ei-ocr-btn]");
+    var ocrInput    = scope.querySelector("[data-ei-ocr-input]");
+    var ocrStatusEl = scope.querySelector("[data-ei-ocr-status]");
+    var ocrReviewEl = scope.querySelector("[data-ei-ocr-review]");
+    var ocrTextEl   = scope.querySelector("[data-ei-ocr-text]");
+    if (!ocrBtn || !ocrInput) return;
+
+    ocrBtn.addEventListener("click", function () { ocrInput.click(); });
+
+    ocrInput.addEventListener("change", function () {
+      var f = ocrInput.files && ocrInput.files[0];
+      ocrInput.value = "";
+      if (!f) return;
+      ocrReviewEl.style.display = "none";
+      ocrBtn.disabled = true;
+      ocrStatusEl.textContent = "Laster inn OCR og leser teksten i bildet …";
+      ocrStatusEl.className = "form__status";
+      eiLoadTesseract().then(function () {
+        return window.Tesseract.recognize(f, "nor");
+      }).then(function (result) {
+        ocrBtn.disabled = false;
+        var text = ((result && result.data && result.data.text) || "").trim();
+        if (!text) {
+          ocrStatusEl.textContent = "Fant ingen lesbar tekst i bildet.";
+          ocrStatusEl.className = "form__status";
+          return;
+        }
+        ocrStatusEl.textContent = "";
+        ocrTextEl.value = text;
+        ocrReviewEl.style.display = "";
+      }).catch(function (err) {
+        ocrBtn.disabled = false;
+        ocrStatusEl.textContent = "Kunne ikke lese tekst fra bildet: " + ((err && err.message) || "ukjent feil") + ".";
+        ocrStatusEl.className = "form__status is-err";
+      });
+    });
+
+    scope.querySelector("[data-ei-ocr-discard]").addEventListener("click", function () {
+      ocrTextEl.value = "";
+      ocrReviewEl.style.display = "none";
+    });
+    // Einaste stad gjennomlest OCR-tekst faktisk hamnar i skjemaet -- ALDRI
+    // automatisk frå .then() over, berre via dette eksplisitte brukarvalet.
+    scope.querySelector("[data-ei-ocr-add]").addEventListener("click", function () {
+      var reviewed = ocrTextEl.value.trim();
+      if (!reviewed) return;
+      var noteField = scope.querySelector('[name="note"]');
+      noteField.value = noteField.value.trim() ? (noteField.value.trim() + "\n\n" + reviewed) : reviewed;
+      ocrTextEl.value = "";
+      ocrReviewEl.style.display = "none";
+    });
+  }
+
   function bindEiendelerEditor(scope, root, asset) {
     var statusEl = scope.querySelector("[data-ei-status]");
     var ownershipChoice = scope.querySelector("[data-ei-ownership-choice]");
@@ -1931,6 +2315,8 @@
         if (statusEl) { statusEl.textContent = "Kunne ikke laste opp bildet: " + (err.message || "ukjent feil") + ". Prøv et mindre bilde."; statusEl.className = "form__status is-err"; }
       });
     });
+
+    bindEiendelerOcr(scope);
 
     scope.querySelector("[data-ei-cancel]").addEventListener("click", closeModal);
     scope.querySelector("[data-ei-save]").addEventListener("click", function () {
