@@ -82,6 +82,22 @@ Company name, colors/fonts, actual page text (hero/about/contact/news/services),
 
 There is no console warning to lean on here as a "did I fill this in" signal — a console.warn that used to fire for these fields was removed 2026-07-19 (it fired unconditionally for every Fase-6 tenant regardless of whether step 8 was actually completed, since it checked the base `api/tenant-config.js` skeleton, which structurally never carries these fields either way — see `docs/project/CHANGELOG.md`). Verify step 8 was done by checking the tenant's actual `store.content`/`store.superconfig` rows (or the live site itself), not a console message.
 
+**`enabled_modules` (`intranettFeatures`/`features`) has no Console UI yet** — a new tenant row's `enabled_modules` column defaults to `{}` at the schema level, **except** `intranettFeatures.eiendeler`, which defaults to `true` since 2026-08-10 (brukarvedtak: Eiendeler should work for every tenant, existing and new, unlike the rest of this repo's "aktiverast per kunde" flags). Every other module flag under `intranettFeatures`/`features` (Console's per-tenant equivalent of `config.js`'s `intranettFeatures`/`features` blocks) must still be set with a direct SQL update against `vibeverk-control`'s `tenants` table until a real admin UI exists for this column — e.g.:
+
+```sql
+UPDATE tenants
+SET enabled_modules = jsonb_set(
+  coalesce(enabled_modules, '{}'::jsonb),
+  '{intranettFeatures}',
+  coalesce(enabled_modules->'intranettFeatures', '{}'::jsonb) || '{"<flagg>": true}'::jsonb,
+  true
+)
+WHERE slug = '<tenant-slug>'
+RETURNING slug, enabled_modules;
+```
+
+Verify with a follow-up `SELECT`, not the `UPDATE`'s own row count — same standing rule as everywhere else in this codebase.
+
 ## Step 9 — Point a hostname at Vercel, then verify routing ("9. Peik hostname mot Vercel og verifiser ruting")
 
 Routing verification needs at least one of this tenant's hostnames to actually resolve to Vercel and answer for that Host header — the check makes a real HTTP call.
