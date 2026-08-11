@@ -60,7 +60,7 @@ window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([
         data: { layout: "2col-2-1", blocks: [
           { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Blokk-overskrift" } },
           { id: "b2", type: "richtext", slot: 0, data: { text: "<script>alert(1)</script><p>Blokk-tekst</p>" } },
-          { id: "b3", type: "image", slot: 0, data: { image: { src: "https://example.test/block.jpg" } } },
+          { id: "b3", type: "image", slot: 0, data: { image: { src: "https://example.test/block.jpg" }, frame: true } },
           // url er MEDVITE ein javascript:-nyttelast -- button-blokka MÅ gå
           // via components.js sin delte button(), som ALDRI skal rendre
           // dette som eit ekte href (same fareklasse som s7 sin CTA-test).
@@ -2739,6 +2739,8 @@ const __asyncTests = (async () => {
     assert(/Blokk-tekst/.test(pbBlocks.textContent), "sidebygger/blokker: rikttekst-blokk rendra");
     assert(pbBlocks.textContent.indexOf("alert(1)") === -1 && pbMain.innerHTML.indexOf("<script>alert(1)</script>") === -1, "sidebygger/blokker: rikttekst-blokka sin <script>-tag vert sanert (går via same sanitizeRichHtml())");
     assert(!!pbBlocks.querySelector(".pb-block-image__img"), "sidebygger/blokker: bilde-blokk rendra");
+    assert(!!pbBlocks.querySelector(".pb-block--framed .pb-block-image__img"), "sidebygger/blokker: bilde-blokka sitt frame:true gjev ein synleg ramme-innpakking (bakgrunn+kant, same handsaming som .pb-grid__item)");
+    assert(!pbBlocks.querySelector(".pb-block-heading").closest(".pb-block--framed"), "sidebygger/blokker: overskrift-blokka (frame ikkje sett) er IKKJE ramma inn -- ramme er opt-in per blokk, ikkje standard");
     assert(!pbBlocks.querySelector(".pb-block-button a[href*='javascript:']"), "sidebygger/blokker: ein javascript:-knapplenke i ei blokk vert ALDRI rendra som eit ekte href (button-blokka går via delte button())");
     assert(/Blokk-knapp/.test(pbBlocks.textContent), "sidebygger/blokker: knappeteksten vert framleis vist sjølv om lenka vart nekta");
     // Security Auditor-funn (BLOCKER, 2026-08-12): eit variant-attributtbrot-
