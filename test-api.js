@@ -51,7 +51,13 @@ async function main() {
   // injiserbar HTTP-klient (same mønster som funksjonane sjølv bruker global
   // fetch()). Endra mellom seksjonar under, aldri parallelt.
   let scenario = "full-success";
-  global.fetch = async (url) => {
+  let tenantSiteLockPassword = "kundepassord";
+  global.fetch = async (url, options) => {
+    if (String(url).includes("verify_tenant_site_lock_password")) {
+      if (scenario === "tenant-lock-rpc-error") return { ok: false, status: 500 };
+      const body = JSON.parse((options && options.body) || "{}");
+      return { ok: true, json: async () => body.p_password === tenantSiteLockPassword };
+    }
     if (String(url).includes("resolve_tenant_by_hostname")) {
       if (scenario === "no-tenant") return { ok: true, json: async () => [] };
       if (scenario === "hop1-http-error") return { ok: false, status: 500 };
@@ -63,6 +69,7 @@ async function main() {
           data_plane_storage_key: "nordpunkt",
           product_mode: "full",
           enabled_modules: { features: { crm: true }, intranettFeatures: { tasks: true } },
+          site_lock_enabled: scenario === "tenant-locked",
           // custom_modules_manifest.smartAarshjul.enabled: true her (og
           // IKKJE i "aw-not-entitled" pga eigen gren under) -- api/ai/
           // annual-wheel.js sin eigen entitlement-sjekk (lagt til etter
@@ -328,6 +335,32 @@ async function main() {
   scenario = "no-tenant";
   r = await middleware(fakeRequest("https://ukjend.no/", { host: "ukjend.no", authorization: basicAuthHeader("hemmelig") }));
   assert(r.status === 404, "d6: ukjend hostname på ei vanleg side gjev 404 «ikkje registrert som kunde» (etter site-lock, uendra åtferd)");
+
+  // d7-d11: per-tenant sidesperre (2026-08-10) -- erstattar det globale
+  // passordet ("hemmelig", framleis sett over) for akkurat denne tenanten,
+  // uavhengig av det globale.
+  scenario = "tenant-locked";
+  r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no" }));
+  assert(r.status === 401, "d7: tenant med site_lock_enabled krev Basic Auth sjølv utan nokon header");
+
+  r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader("hemmelig") }));
+  assert(r.status === 401, "d8: det GLOBALE passordet ('hemmelig') åleine sleppast IKKJE gjennom ein tenant-spesifikk sperre");
+
+  r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader(tenantSiteLockPassword) }));
+  assert(r.status !== 401, "d9: tenanten sitt eige passord sleppast gjennom den tenant-spesifikke sperra");
+
+  r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader("feil-tenant-passord") }));
+  assert(r.status === 401, "d10: feil tenant-passord vert avvist (ikkje berre manglande)");
+
+  scenario = "tenant-lock-rpc-error";
+  r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader(tenantSiteLockPassword) }));
+  assert(r.status === 401, "d11: feila verify-RPC failar CLOSED (avvist), ikkje open, ulikt den globale sperra sin med-vilje fail-open");
+
+  scenario = "no-tenant";
+  r = await middleware(fakeRequest("https://ukjend.no/workspace/", { host: "ukjend.no", authorization: basicAuthHeader("hemmelig") }));
+  assert(r.status === 404, "d12: ukjend hostname (tenant null) bruker den GLOBALE sperra for lock-avgjerda, ikkje ein krasj -- passerer med rett globalt passord, deretter 404 for ukjend domene");
+
+  scenario = "full-success";
 
   /* =========================================================================
      E) api/ai/annual-wheel.js -- Smart årshjul sitt server-endepunkt.
