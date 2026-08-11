@@ -228,7 +228,19 @@ function readImageDimensions(bytes: Uint8Array, ext: string): { width: number; h
   }
 }
 
-async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: number): Promise<Uint8Array | null> {
+// Skannar RGBA-bitmapet for minst éin piksel med alpha<255 -- brukt til å
+// avgjere om ein PNG faktisk NYTTAR gjennomsikt (t.d. ein logo på
+// transparent bakgrunn) før compressRasterImage() vurderer å JPEG-konvertere
+// han vidare (JPEG har ingen alfakanal og ville øydelagt ekte gjennomsikt).
+function hasTransparency(img: Image): boolean {
+  const bmp = img.bitmap;
+  for (let i = 3; i < bmp.length; i += 4) {
+    if (bmp[i] < 255) return true;
+  }
+  return false;
+}
+
+async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: number): Promise<{ bytes: Uint8Array; ext: string } | null> {
   // Avvis mistenkjeleg store pikseldimensjonar FØR dekoding -- sjølve OOM-
   // risikoen oppstår INNI Image.decode(), så ein sjekk ETTERPÅ er for seint.
   const MAX_PIXELS = 25_000_000; // ~25 megapiksel -- rikeleg for ein logo
@@ -246,15 +258,28 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
     return null;
   }
   const isJpeg = ext === "jpg";
-  const qualities = isJpeg ? [85, 70, 55, 40, 25] : [null];
+  // Brukarfunn 2026-08-12: PNG er tapsfritt og har ingen kvalitets-handtak i
+  // imagescript (encode() utan argument = same lossless PNG att) -- ei
+  // fotografisk PNG (skjermbilete, "lagre bilete som" frå nettlesaren) kunne
+  // difor ofte IKKJE komprimerast nok med berre omskalering, sjølv på 40%
+  // storleik, og feila med "kunne ikkje komprimerast nok" for heilt vanlege
+  // 2-3MB bilete. Fell trygt tilbake til JPEG-komprimering for PNG-ar UTAN
+  // FAKTISK BRUKT gjennomsikt (sjå hasTransparency over) -- PNG-ar som
+  // faktisk treng alfakanalen (t.d. ein logo på transparent bakgrunn) held
+  // fram med berre omskalering, akkurat som før, sidan JPEG ville øydelagt
+  // gjennomsikta deira.
+  const pngFallbackToJpeg = ext === "png" && !hasTransparency(img);
+  const useJpegEncoding = isJpeg || pngFallbackToJpeg;
+  const outExt = useJpegEncoding ? "jpg" : ext;
+  const qualities = useJpegEncoding ? [85, 70, 55, 40, 25] : [null];
   const scales = [1, 0.85, 0.7, 0.55, 0.4];
   for (const scale of scales) {
     const w = Math.max(64, Math.round(img.width * scale));
     const h = Math.max(64, Math.round(img.height * scale));
     const scaled = scale === 1 ? img : img.clone().resize(w, h);
     for (const q of qualities) {
-      const encoded = isJpeg ? await scaled.encodeJPEG(q as number) : await scaled.encode();
-      if (encoded.length <= targetBytes) return encoded;
+      const encoded = useJpegEncoding ? await scaled.encodeJPEG(q as number) : await scaled.encode();
+      if (encoded.length <= targetBytes) return { bytes: encoded, ext: outExt };
     }
   }
   return null;
@@ -447,7 +472,7 @@ serve(async (req: Request) => {
       "image/jpeg": "jpg",
       "image/webp": "webp",
     };
-    const ext = ALLOWED_EXT[content_type];
+    let ext = ALLOWED_EXT[content_type];
     if (!ext) {
       await audit(tenant.id, action, "error", "ikkje-tillaten filtype: " + content_type);
       return json({ error: "Berre SVG, PNG, JPEG eller WebP er tillate" }, 400);
@@ -516,8 +541,14 @@ serve(async (req: Request) => {
         await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under 300KB");
         return json({ error: "Biletet er for stort og kunne ikkje komprimerast nok automatisk. Prøv eit mindre bilete, eller last opp som JPEG." }, 400);
       }
-      uploadBytes = compressed;
-      // uploadContentType/ext uendra -- komprimering endrar berre storleik/kvalitet, ikkje filformat.
+      uploadBytes = compressed.bytes;
+      if (compressed.ext !== ext) {
+        // compressRasterImage() konverterte ein PNG utan verkeleg gjennomsikt
+        // til JPEG for å nå måltaket -- oppdater ext/contentType tilsvarande,
+        // elles vert JPEG-byte lagra med feil .png-etternamn/image/png-type.
+        ext = compressed.ext;
+        uploadContentType = "image/jpeg";
+      }
     }
     const path = "logos/" + tenant.id + "-" + Date.now() + "." + ext;
     const auditId = await auditStart(tenant.id, action);
@@ -564,7 +595,7 @@ serve(async (req: Request) => {
       "image/jpeg": "jpg",
       "image/webp": "webp",
     };
-    const ext = ALLOWED_EXT[content_type];
+    let ext = ALLOWED_EXT[content_type];
     if (!ext) {
       await audit(tenant.id, action, "error", "ikkje-tillaten filtype: " + content_type);
       return json({ error: "Berre SVG, PNG, JPEG eller WebP er tillate" }, 400);
@@ -618,7 +649,13 @@ serve(async (req: Request) => {
         await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under " + Math.round(MAX_BYTES / 1024) + "KB");
         return json({ error: "Biletet er for stort og kunne ikkje komprimerast nok automatisk. Prøv eit mindre bilete, eller last opp som JPEG." }, 400);
       }
-      uploadBytes = compressed;
+      uploadBytes = compressed.bytes;
+      if (compressed.ext !== ext) {
+        // Sjå tilsvarande kommentar i upload_logo -- PNG utan gjennomsikt
+        // vart JPEG-konvertert for å nå måltaket.
+        ext = compressed.ext;
+        uploadContentType = "image/jpeg";
+      }
     }
     const path = "sections/" + tenant.id + "-" + Date.now() + "." + ext;
     const auditId = await auditStart(tenant.id, action);
