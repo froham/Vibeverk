@@ -205,7 +205,7 @@ test("«Blokker»-seksjonen sin type-veljar tilbyr alle 6 blokktypane, og kvar t
   await wait();
   var ed = dom.window.document.querySelector(".pbc-section-editor");
   assert(ed && ed.querySelector("#pb-sec-blocks-layout"), "«Blokker»-seksjonen opnar seg automatisk med kolonneoppsett-veljaren synleg");
-  click(ed.querySelector("#pb-blocks-add-trigger"));
+  click(ed.querySelector('[data-pb-blocks-add-slot="0"]'));
   await wait();
   var blockTypeCards = ed.querySelectorAll("[data-pb-add-block-type]");
   assert.equal(blockTypeCards.length, 6, "alle 6 blokktypane er tilgjengelege i blokk-paletten");
@@ -234,7 +234,7 @@ test("redigere felt i ei blokk lagrar rett blocks[i].data i set_config-nyttelast
   click(dom.window.document.querySelector('[data-pb-add-type="blocks"]'));
   await wait();
   var ed = dom.window.document.querySelector(".pbc-section-editor");
-  click(ed.querySelector("#pb-blocks-add-trigger"));
+  click(ed.querySelector('[data-pb-blocks-add-slot="0"]'));
   await wait();
   click(ed.querySelector('[data-pb-add-block-type="heading"]'));
   await wait();
@@ -246,6 +246,130 @@ test("redigere felt i ei blokk lagrar rett blocks[i].data i set_config-nyttelast
   assert.equal(savedPages[0].sections[0].data.blocks.length, 1);
   assert.equal(savedPages[0].sections[0].data.blocks[0].type, "heading");
   assert.equal(savedPages[0].sections[0].data.blocks[0].data.text, "Ny blokk-overskrift");
+});
+
+test("EKTE BUG (2026-08-12, brukarrapport): «Legg til blokk» kan klikkast FLEIRE gonger på rad utan å måtte minimere/opne seksjonen på nytt mellom kvar -- tidlegare hopa klikklyttarar seg opp på den vedvarande triggerknappen kvar gong renderBlocksEditor() køyrde att, slik at andre klikk opna OG stengde pickeren i same synkrone handling", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  click(dom.window.document.querySelector("#pbc-add-trigger"));
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-add-type="blocks"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  // Legg til FØRSTE blokk.
+  click(ed.querySelector('[data-pb-blocks-add-slot="0"]'));
+  await wait();
+  click(ed.querySelector('[data-pb-add-block-type="heading"]'));
+  await wait();
+  // Legg til ANDRE blokk med DET SAME (no friskt gjenskapte) triggeren --
+  // utan noka minimering/opning av seksjonen mellom klikka. Med den gamle
+  // buggen synte pickeren seg ALDRI opp her (to lyttarar kansellerte
+  // kvarandre), så eit andre klikk på ein type-card ville feila (elementet
+  // fanst aldri i DOM-en).
+  var trigger2 = ed.querySelector('[data-pb-blocks-add-slot="0"]');
+  click(trigger2);
+  await wait();
+  var picker = trigger2.nextElementSibling;
+  assert.equal(picker.style.display, "grid", "pickeren opnar seg synleg ved andre klikk på triggeren, utan omveg om å minimere seksjonen");
+  var typeCards = ed.querySelectorAll("[data-pb-add-block-type]");
+  assert.equal(typeCards.length, 6, "alle 6 blokktypane er tilgjengelege andre gongen òg");
+  click(ed.querySelector('[data-pb-add-block-type="richtext"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var blocks = savedPages[0].sections[0].data.blocks;
+  assert.equal(blocks.length, 2, "nøyaktig 2 blokker lagt til -- IKKJE fleire pga. dobbelbundne klikklyttarar frå tidlegare rendringar: " + blocks.length);
+  assert.equal(blocks[0].type, "heading");
+  assert.equal(blocks[1].type, "richtext");
+});
+
+test("fleirkolonna «Blokker»-seksjon grupperer blokkene visuelt PER KOLONNE, og «Legg til blokk» i kolonne 2 sin boks legg den nye blokka DIREKTE i kolonne 2 (slot 1), ikkje kolonne 1", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "2col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Kolonne 1-innhald" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var colGroups = ed.querySelectorAll(".pbc-blocks-col");
+  assert.equal(colGroups.length, 2, "to tydeleg avgrensa kolonne-grupper vert vist for eit 2col-oppsett");
+  assert.match(colGroups[0].querySelector(".pbc-blocks-col__head").textContent, /Kolonne 1/);
+  assert.match(colGroups[1].querySelector(".pbc-blocks-col__head").textContent, /Kolonne 2/);
+  assert.match(colGroups[1].querySelector(".pbc-blocks-col__empty").textContent, /Ingen blokker/, "kolonne 2 (tom) viser ein tydeleg tom-tilstand, ikkje berre eit blankt felt");
+  var col2Trigger = colGroups[1].querySelector('[data-pb-blocks-add-slot="1"]');
+  assert(col2Trigger, "kolonne 2 sin eigen «Legg til blokk»-knapp finst");
+  click(col2Trigger);
+  await wait();
+  click(ed.querySelector('[data-pb-add-block-type="contact-item"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var blocks = savedPages[0].sections[0].data.blocks;
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[1].type, "contact-item");
+  assert.equal(blocks[1].slot, 1, "blokka lagt til via kolonne 2 sin knapp hamnar RETT i kolonne 2 (slot 1), ikkje standard kolonne 1 (slot 0)");
+});
+
+test("UX-funn: å endre ei EKSISTERANDE blokk sin «Kolonne»-veljar flyttar kortet visuelt til den nye kolonne-boksen med det same, ikkje berre i den lagra dataen", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "2col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Flytt meg" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var colGroups = ed.querySelectorAll(".pbc-blocks-col");
+  assert.equal(colGroups[0].querySelectorAll(".pbc-block-card").length, 1, "blokka ligg i kolonne 1 sin boks til å byrje med");
+  assert.equal(colGroups[1].querySelectorAll(".pbc-block-card").length, 0, "kolonne 2 sin boks er tom til å byrje med");
+  var slotSel = ed.querySelector("#pb-block-0-slot");
+  slotSel.value = "1";
+  slotSel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait();
+  var colGroupsAfter = ed.querySelectorAll(".pbc-blocks-col");
+  assert.equal(colGroupsAfter[0].querySelectorAll(".pbc-block-card").length, 0, "kortet er BORTE frå kolonne 1 sin boks med det same, utan å måtte leggje til/fjerne noko anna først");
+  assert.equal(colGroupsAfter[1].querySelectorAll(".pbc-block-card").length, 1, "og STÅR i kolonne 2 sin boks med det same");
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  assert.equal(savedPages[0].sections[0].data.blocks[0].slot, 1, "og den nye kolonneplasseringa er faktisk lagra");
+});
+
+test("«Ramme inn»-avkryssinga finst for kvar blokktype (utanom mellomrom) og lagrar frame:true i blokk-dataen", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  click(dom.window.document.querySelector("#pbc-add-trigger"));
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-add-type="blocks"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  click(ed.querySelector('[data-pb-blocks-add-slot="0"]'));
+  await wait();
+  click(ed.querySelector('[data-pb-add-block-type="heading"]'));
+  await wait();
+  var frameCheckbox = ed.querySelector("#pb-block-0-frame");
+  assert(frameCheckbox, "«Ramme inn»-avkryssinga finst for overskrift-blokka");
+  frameCheckbox.checked = true;
+  frameCheckbox.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  assert.equal(savedPages[0].sections[0].data.blocks[0].data.frame, true, "frame:true vert lagra når avkryssinga er huka av");
 });
 
 test("«Fjern blokk»-knappen fjernar berre den eine blokka, resten av blokk-lista står urørt", async function (t) {
@@ -610,6 +734,6 @@ test("mobil-/skrivebord-brytaren viser ei tydeleg breiddeetikett (ikkje berre ei
 
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
-  assert.match(html, /components\.js\?v=23/);
-  assert.match(html, /console-core\.js\?v=249/);
+  assert.match(html, /components\.js\?v=24/);
+  assert.match(html, /console-core\.js\?v=250/);
 });

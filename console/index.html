@@ -976,10 +976,19 @@
        .pbc-grid-item-fields over, med ein eigen kort-topp for type-namn +
        flytt/fjern-knappar (gjenbruker .pbc-icon-btn/.pbc-mini-actions,
        alt definert lenger opp for seksjon-nivå reorder). */
-    .pbc-blocks-items { display:flex; flex-direction:column; gap:.55rem; }
+    .pbc-blocks-items { display:flex; flex-direction:column; gap:.9rem; }
     .pbc-block-card { display:flex; flex-direction:column; gap:.5rem; padding:.6rem; border:1px solid var(--color-border); border-radius:9px; margin-bottom:.5rem; background:var(--color-surface); }
     .pbc-block-card__head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
     .pbc-block-card__type { font-size:.8rem; font-weight:700; display:flex; align-items:center; gap:.35rem; }
+    /* UX-tilbakemelding 2026-08-12: éi flat liste + éin generisk "Legg til
+       blokk"-knapp gjorde det uklårt korleis ein skulle fylle FLEIRE
+       kolonnar -- kvar kolonne får no sin eigen, tydeleg avgrensa boks med
+       overskrift og si eiga "Legg til blokk"-knapp. */
+    .pbc-blocks-col { border:1px dashed var(--color-border); border-radius:10px; padding:.7rem; }
+    .pbc-blocks-col__head { font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--color-muted); margin-bottom:.5rem; }
+    .pbc-blocks-col__list { display:flex; flex-direction:column; gap:.5rem; }
+    .pbc-blocks-col__empty { font-size:.82rem; color:var(--color-muted); font-style:italic; margin:0 0 .5rem; }
+    .pbc-blocks-add-trigger { margin-top:.5rem; width:100%; }
     .pbc-add-block { margin-top:.4rem; }
 
     .pbc-add-section { padding:.8rem 1rem 1rem; border-top:1px solid var(--color-border); }
@@ -1040,11 +1049,11 @@
        aldri ein major-berre-spesifikator. -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="../config.js?v=14"></script>
-  <script src="../components.js?v=23"></script>
+  <script src="../components.js?v=24"></script>
   <script src="../core.js?v=91"></script>
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=249"></script>
+  <script src="console-core.js?v=250"></script>
 </body>
 </html>

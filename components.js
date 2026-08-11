@@ -616,8 +616,13 @@ window.Components = (function () {
     for (let i = 0; i < layout.cols; i++) slots.push([]);
     (d.blocks || []).forEach(function (b) {
       if (!b || !b.type || !PB_BLOCK_RENDERERS[b.type]) return;
-      const html = PB_BLOCK_RENDERERS[b.type](b.data || {});
+      let html = PB_BLOCK_RENDERERS[b.type](b.data || {});
       if (!html) return;
+      // Brukarønske 2026-08-12: valfri ramme (bakgrunn+kant) rundt kvar
+      // blokk -- same visuelle handsaming som .pb-grid__item, sentralisert
+      // her (éin stad) i staden for at kvar einskild pbBlock*-funksjon må
+      // implementere ramme-innpakking sjølv.
+      if (b.data && b.data.frame) html = `<div class="pb-block--framed">${html}</div>`;
       const slotIdx = Math.min(Math.max(0, parseInt(b.slot, 10) || 0), layout.cols - 1);
       slots[slotIdx].push(html);
     });

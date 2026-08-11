@@ -131,6 +131,7 @@
       ".pb-block-contact{display:flex;align-items:center;gap:.6rem;font-size:.95rem}",
       ".pb-block-contact a{color:inherit}",
       ".pb-block-spacer{height:1px}",
+      ".pb-block--framed{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:1.2rem}",
       "@media(max-width:900px){.pb-blocks--3col,.pb-blocks--4col{grid-template-columns:1fr 1fr}}",
       "@media(max-width:600px){.pb-blocks{grid-template-columns:1fr!important}}"
     ].join("");

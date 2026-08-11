@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.134.0";
+  var VIBEVERK_VERSION = "0.134.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2442,12 +2442,11 @@ window.VwConsole = (function () {
       return '<p class="field__hint">Mellomrommet sin storleik styrast av «Luft»-valet over.</p>';
     }
     if (type === "blocks") {
+      // Kvar kolonne sitt "Legg til blokk"-triggar/-picker vert rendra INNI
+      // #pb-blocks-items av renderBlocksEditor() sjølv (gruppert per kolonne,
+      // sjå der) -- ikkje her som ein statisk, persistent søskenelement.
       return pbSelectField("pb-sec-blocks-layout", "Kolonneoppsett", PB_BLOCKS_LAYOUT_OPTIONS, d.layout || "1col") +
-        '<div class="pbc-blocks-items" id="pb-blocks-items"></div>' +
-        '<div class="pbc-add-block">' +
-          '<button type="button" class="btn btn--ghost btn--sm" id="pb-blocks-add-trigger"><i class="ti ti-plus"></i> Legg til blokk</button>' +
-          '<div class="pbc-type-picker" id="pbc-block-type-picker" style="display:none"></div>' +
-        '</div>';
+        '<div class="pbc-blocks-items" id="pb-blocks-items"></div>';
     }
     return "";
   }
@@ -2458,65 +2457,68 @@ window.VwConsole = (function () {
   // renderGridItems alt bruker: "pb-grid-heading-" + i).
   function pbBlockDataFieldsHtml(type, d, idp) {
     d = d || {};
+    var fields;
     if (type === "heading") {
-      return pbSelectField(idp + "-level", "Storleik", [["h2", "Stor"], ["h3", "Mindre"]], d.level || "h2") +
+      fields = pbSelectField(idp + "-level", "Storleik", [["h2", "Stor"], ["h3", "Mindre"]], d.level || "h2") +
         C.field({ id: idp + "-text", label: "Overskriftstekst", value: d.text || "" });
-    }
-    if (type === "richtext") {
-      return C.richTextField({ id: idp + "-text-rt", label: "Tekst", value: d.text || "" });
-    }
-    if (type === "image") {
-      return pbImageFieldHtml(idp + "-img", "Bilde", d.image);
-    }
-    if (type === "button") {
-      return '<div class="pbc-field-grid">' +
+    } else if (type === "richtext") {
+      fields = C.richTextField({ id: idp + "-text-rt", label: "Tekst", value: d.text || "" });
+    } else if (type === "image") {
+      fields = pbImageFieldHtml(idp + "-img", "Bilde", d.image);
+    } else if (type === "button") {
+      fields = '<div class="pbc-field-grid">' +
           C.field({ id: idp + "-label", label: "Knapptekst", value: d.label || "" }) +
           C.field({ id: idp + "-url", label: "Knapplenke", value: d.url || "" }) +
         '</div>' +
         pbSelectField(idp + "-variant", "Stil", [["primary", "Primær"], ["secondary", "Sekundær"], ["ghost", "Diskret"]], d.variant || "primary");
-    }
-    if (type === "contact-item") {
-      return pbSelectField(idp + "-kind", "Type", [["phone", "Telefon"], ["email", "E-post"], ["address", "Adresse"], ["custom", "Anna (fritekst)"]], d.kind || "phone") +
+    } else if (type === "contact-item") {
+      fields = pbSelectField(idp + "-kind", "Type", [["phone", "Telefon"], ["email", "E-post"], ["address", "Adresse"], ["custom", "Anna (fritekst)"]], d.kind || "phone") +
         C.field({ id: idp + "-label", label: "Etikett (valgfritt)", value: d.label || "", hint: "F.eks. «Ring oss» — vises foran verdien" }) +
         C.field({ id: idp + "-value", label: "Verdi", value: d.value || "", hint: "For telefon/e-post lages lenken automatisk ut fra verdien — du skriver aldri inn en egen lenke." });
-    }
-    if (type === "spacer") {
+    } else if (type === "spacer") {
       return '<p class="field__hint">Fast mellomrom mellom to blokker i same kolonne.</p>';
+    } else {
+      return "";
     }
-    return "";
+    // Brukarønske 2026-08-12: valfri ramme (bakgrunn+kant) rundt kvar blokk,
+    // same visuelle handsaming som .pb-grid__item -- av med vilje for
+    // "mellomrom" (ingen synleg innhald å ramme inn), på for resten.
+    fields += '<label><input type="checkbox" id="' + idp + '-frame"' + (d.frame ? " checked" : "") + '> Ramme inn (bakgrunn og kant)</label>';
+    return fields;
   }
   function pbReadBlockDataFields(root, type, idp) {
+    var out;
     if (type === "heading") {
-      return {
+      out = {
         level: root.querySelector("#" + idp + "-level").value,
         text: root.querySelector("#" + idp + "-text").value.trim()
       };
-    }
-    if (type === "richtext") {
-      return { text: App.ui.readRichTextField(root, idp + "-text-rt") };
-    }
-    if (type === "image") {
-      return { image: pbReadImageField(root, idp + "-img") };
-    }
-    if (type === "button") {
-      return {
+    } else if (type === "richtext") {
+      out = { text: App.ui.readRichTextField(root, idp + "-text-rt") };
+    } else if (type === "image") {
+      out = { image: pbReadImageField(root, idp + "-img") };
+    } else if (type === "button") {
+      out = {
         label: root.querySelector("#" + idp + "-label").value.trim(),
         url: root.querySelector("#" + idp + "-url").value.trim(),
         variant: root.querySelector("#" + idp + "-variant").value
       };
-    }
-    if (type === "contact-item") {
-      return {
+    } else if (type === "contact-item") {
+      out = {
         kind: root.querySelector("#" + idp + "-kind").value,
         label: root.querySelector("#" + idp + "-label").value.trim(),
         value: root.querySelector("#" + idp + "-value").value.trim()
       };
+    } else {
+      out = {};
     }
-    return {};
+    var frameEl = root.querySelector("#" + idp + "-frame");
+    if (frameEl) out.frame = frameEl.checked;
+    return out;
   }
   var PB_BLOCK_DEFAULTS = {
-    heading: { level: "h2", text: "" }, richtext: { text: "" }, image: { image: null },
-    button: { label: "", url: "", variant: "primary" }, "contact-item": { kind: "phone", label: "", value: "" }, spacer: {}
+    heading: { level: "h2", text: "", frame: false }, richtext: { text: "", frame: false }, image: { image: null, frame: false },
+    button: { label: "", url: "", variant: "primary", frame: false }, "contact-item": { kind: "phone", label: "", value: "", frame: false }, spacer: {}
   };
 
   function pbReadSectionDataFields(ed, type) {
@@ -2721,6 +2723,7 @@ window.VwConsole = (function () {
       ".pb-block-contact{display:flex;align-items:center;gap:.6rem;font-size:.95rem}",
       ".pb-block-contact a{color:inherit}",
       ".pb-block-spacer{height:1px}",
+      ".pb-block--framed{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:1.2rem}",
       "@media(max-width:900px){.pb-blocks--3col,.pb-blocks--4col{grid-template-columns:1fr 1fr}}",
       "@media(max-width:600px){.pb-blocks{grid-template-columns:1fr!important}}"
     ].join("");
@@ -2926,8 +2929,8 @@ window.VwConsole = (function () {
         blocks.forEach(function (b, i) { if ((b.slot || 0) === slot) out.push(i); });
         return out;
       }
-
-      box.innerHTML = blocks.map(function (b, i) {
+      function renderBlockCard(i) {
+        var b = blocks[i];
         var idp = "pb-block-" + i;
         var group = sameSlotIndices(b.slot || 0);
         var pos = group.indexOf(i);
@@ -2944,7 +2947,30 @@ window.VwConsole = (function () {
           (cols > 1 ? pbSelectField(idp + "-slot", "Kolonne", slotOptions, String(b.slot || 0)) : "") +
           pbBlockDataFieldsHtml(b.type, b.data || {}, idp) +
         '</div>';
-      }).join("");
+      }
+
+      // Grupper blokkene visuelt PER KOLONNE, kvar med si eiga "Legg til
+      // blokk"-knapp/type-picker -- UX-tilbakemelding 2026-08-12: eit
+      // fleirkolonna oppsett synte tidlegare som éi flat liste + éin
+      // generisk "Legg til blokk"-knapp som alltid la nye blokker i
+      // kolonne 1, med berre eit uklårt "Kolonne"-val for å flytte dei att
+      // -- operatøren kunne ikkje sjå/fylle alle N kolonnane direkte. No får
+      // kvar kolonne sin eigen, tydeleg avgrensa boks med si eiga "Legg til
+      // blokk"-knapp som legg den nye blokka RETT i den kolonnen.
+      // "Kolonne"-veljaren på kvart kort står att for å flytte ei
+      // EKSISTERANDE blokk til ein annan kolonne seinare.
+      var colsHtml = "";
+      for (var s = 0; s < cols; s++) {
+        var idxs = sameSlotIndices(s);
+        var cardsHtml = idxs.map(renderBlockCard).join("");
+        colsHtml += '<div class="pbc-blocks-col">' +
+          (cols > 1 ? '<div class="pbc-blocks-col__head">Kolonne ' + (s + 1) + '</div>' : "") +
+          '<div class="pbc-blocks-col__list">' + (cardsHtml || '<p class="pbc-blocks-col__empty">Ingen blokker i denne kolonnen enno.</p>') + '</div>' +
+          '<button type="button" class="btn btn--ghost btn--sm pbc-blocks-add-trigger" data-pb-blocks-add-slot="' + s + '"><i class="ti ti-plus"></i> Legg til blokk</button>' +
+          '<div class="pbc-type-picker" data-pb-blocks-picker-for="' + s + '" style="display:none"></div>' +
+        '</div>';
+      }
+      box.innerHTML = colsHtml;
 
       function readBlocksFromDom() {
         blocks.forEach(function (b, i) {
@@ -2955,9 +2981,28 @@ window.VwConsole = (function () {
         });
       }
       function onBlockChange() { readBlocksFromDom(); updateSummaryInPlace(section); refreshPreview(); scheduleSave(); }
+      // UX-funn: "Kolonne"-veljaren (idp+"-slot") flytta FAKTISK blokka i
+      // dataen/lagringa korrekt, men kortet vart ikkje visuelt flytta til
+      // den nye kolonne-boksen -- det stod urørt att under den GAMLE
+      // "Kolonne N"-overskrifta til noko anna (leggje til/fjerne ei blokk,
+      // eller opne seksjonen på nytt) tvinga fram ei full re-rendring.
+      // Sidan HEILE poenget med denne runda er at operatøren skal SJÅ kva
+      // som ligg kvar, må nettopp denne veljaren utløyse ei full
+      // renderBlocksEditor()-att-rendring, ikkje berre den generiske
+      // onBlockChange() (som aldri rørte DOM-strukturen).
+      function onSlotChange() { readBlocksFromDom(); renderBlocksEditor(section, ed); updateSummaryInPlace(section); refreshPreview(); scheduleSave(); }
 
       box.querySelectorAll("select, input[type=text], input[type=url], textarea").forEach(function (el) {
-        el.addEventListener(el.tagName === "SELECT" ? "change" : "input", onBlockChange);
+        var handler = /-slot$/.test(el.id) ? onSlotChange : onBlockChange;
+        el.addEventListener(el.tagName === "SELECT" ? "change" : "input", handler);
+      });
+      // "Ramme inn"-avkryssinga (input[type=checkbox]) er MEDVITE utanfor
+      // selektoren over -- ho treng "change", ikkje "input", og var ikkje
+      // dekt av det generiske utvalet (som berre fanga select/tekst/url/
+      // textarea, sidan ingen av dei 8 faste seksjonstypane har noka
+      // avkryssingsboks i sin eigen felt-editor i dag).
+      box.querySelectorAll("input[type=checkbox]").forEach(function (el) {
+        el.addEventListener("change", onBlockChange);
       });
       App.ui.bindRichTextFields(box);
       box.querySelectorAll(".rtfield__editor").forEach(function (rt) { rt.addEventListener("input", onBlockChange); });
@@ -2990,33 +3035,60 @@ window.VwConsole = (function () {
         btn.addEventListener("click", function () { moveWithinSlot(parseInt(btn.getAttribute("data-pb-block-down"), 10), 1); });
       });
 
-      var addTrigger = ed.querySelector("#pb-blocks-add-trigger");
-      var picker = ed.querySelector("#pbc-block-type-picker");
-      if (addTrigger && picker) addTrigger.addEventListener("click", function () {
-        var open = picker.style.display !== "none";
-        if (open) { picker.style.display = "none"; return; }
-        picker.style.display = "grid";
-        picker.innerHTML = PB_BLOCK_TYPES.map(function (t) {
-          return '<button type="button" class="pbc-type-card" data-pb-add-block-type="' + t.type + '">' +
-            '<span class="pbc-type-card__icon"><i class="ti ti-' + t.icon + '"></i></span>' +
-            '<span><span class="pbc-type-card__title">' + C.esc(t.label) + '</span><div class="pbc-type-card__desc">' + C.esc(t.desc) + '</div></span>' +
-          '</button>';
-        }).join("");
-        picker.querySelectorAll("[data-pb-add-block-type]").forEach(function (btn2) {
-          btn2.addEventListener("click", function () {
-            var type = btn2.getAttribute("data-pb-add-block-type");
-            readBlocksFromDom();
-            blocks.push({ id: pbNewBlockId(), type: type, slot: 0, data: Object.assign({}, PB_BLOCK_DEFAULTS[type]) });
-            picker.style.display = "none";
-            renderBlocksEditor(section, ed);
-            // UX-funn: flytt fokus inn i den nye blokka sitt fyrste felt --
-            // utan dette må ein tastatur-operatør tabbe gjennom heile lista
-            // på nytt for å nå fram til det han nettopp la til.
-            var newCards = box.querySelectorAll(".pbc-block-card");
-            var lastCard = newCards[newCards.length - 1];
-            var firstField = lastCard && lastCard.querySelector("input, select, textarea, [contenteditable]");
-            if (firstField) firstField.focus();
-            updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+      // "Legg til blokk"-triggarane/-pickerane er no INNI #pb-blocks-items
+      // sjølv (éin per kolonne, sett opp over) -- difor vert dei totalt
+      // øydelagde og friskt oppretta att KVAR gong box.innerHTML vert sett
+      // på nytt over, og lyttarane under vert difor aldri dobbelbundne.
+      // Ekte bug retta 2026-08-12: triggeren var FØR denne endringa eit
+      // vedvarande søskenelement UTANFOR box (aldri fjerna/gjenskapt), så
+      // KVAR renderBlocksEditor()-kalling (dvs. kvar gong ein la til/fjerna/
+      // flytta ei blokk) la på ENDÅ EIN "click"-lyttar oppå den same,
+      // uendra knappen. Andre gongen operatøren klikka "Legg til blokk"
+      // fyrte NO TO lyttarar synkront etter kvarandre på same klikk -- den
+      // fyrste opna pickeren, den andre las (feilaktig) det som ei "lukk"-
+      // handling og stengde han att i same augeblink, slik at ingenting
+      // synte seg å skje. Operatøren måtte minimere/opne seksjonen på nytt
+      // (som tvinga fram ei FRISK bindSectionEditor()/renderBlocksEditor()-
+      // kalling, og dermed nullstilte lyttar-talet til éin att) for å kunne
+      // leggje til éi einaste blokk til.
+      box.querySelectorAll("[data-pb-blocks-add-slot]").forEach(function (trigger) {
+        var slotIdx = parseInt(trigger.getAttribute("data-pb-blocks-add-slot"), 10);
+        var picker = trigger.nextElementSibling;
+        if (!picker) return;
+        trigger.addEventListener("click", function () {
+          var open = picker.style.display !== "none";
+          // UX-funn: med éin trigger/picker per kolonne kan fleire
+          // type-pickerar no i teorien stå opne samstundes (før denne
+          // endringa fanst det berre éin trigger i heile seksjonen) --
+          // lukk alle ANDRE opne pickerar FØR denne vert opna.
+          box.querySelectorAll('[data-pb-blocks-picker-for]').forEach(function (p) {
+            if (p !== picker) p.style.display = "none";
+          });
+          if (open) { picker.style.display = "none"; return; }
+          picker.style.display = "grid";
+          picker.innerHTML = PB_BLOCK_TYPES.map(function (t) {
+            return '<button type="button" class="pbc-type-card" data-pb-add-block-type="' + t.type + '">' +
+              '<span class="pbc-type-card__icon"><i class="ti ti-' + t.icon + '"></i></span>' +
+              '<span><span class="pbc-type-card__title">' + C.esc(t.label) + '</span><div class="pbc-type-card__desc">' + C.esc(t.desc) + '</div></span>' +
+            '</button>';
+          }).join("");
+          picker.querySelectorAll("[data-pb-add-block-type]").forEach(function (btn2) {
+            btn2.addEventListener("click", function () {
+              var type = btn2.getAttribute("data-pb-add-block-type");
+              readBlocksFromDom();
+              blocks.push({ id: pbNewBlockId(), type: type, slot: slotIdx, data: Object.assign({}, PB_BLOCK_DEFAULTS[type]) });
+              renderBlocksEditor(section, ed);
+              // UX-funn: flytt fokus inn i den nye blokka sitt fyrste felt --
+              // utan dette må ein tastatur-operatør tabbe gjennom heile
+              // lista på nytt for å nå fram til det han nettopp la til.
+              var newColLists = box.querySelectorAll(".pbc-blocks-col__list");
+              var targetList = newColLists[slotIdx];
+              var newCards = targetList ? targetList.querySelectorAll(".pbc-block-card") : [];
+              var lastCard = newCards[newCards.length - 1];
+              var firstField = lastCard && lastCard.querySelector("input, select, textarea, [contenteditable]");
+              if (firstField) firstField.focus();
+              updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+            });
           });
         });
       });
