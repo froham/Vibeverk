@@ -372,6 +372,146 @@ test("«Ramme inn»-avkryssinga finst for kvar blokktype (utanom mellomrom) og l
   assert.equal(savedPages[0].sections[0].data.blocks[0].data.frame, true, "frame:true vert lagra når avkryssinga er huka av");
 });
 
+test("«Dupliser blokk» set inn ein eksakt kopi RETT ETTER blokka i SAME kolonne, med fri id", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "1col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Fyrste" } },
+      { id: "b2", type: "heading", slot: 0, data: { level: "h2", text: "Andre" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  click(ed.querySelector('[data-pb-block-dup="0"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var blocks = savedPages[0].sections[0].data.blocks;
+  assert.equal(blocks.length, 3, "ei tredje blokk vart lagt til: " + blocks.length);
+  assert.equal(blocks[0].data.text, "Fyrste");
+  assert.equal(blocks[1].data.text, "Fyrste", "kopien hamna RETT ETTER originalen, ikkje sist i lista");
+  assert.equal(blocks[2].data.text, "Andre", "den opphavlege andre blokka er urørt, berre flytta ein plass ned");
+  assert.notEqual(blocks[1].id, "b1", "kopien har ein FRISK id");
+});
+
+test("UX-funn: «Dupliser kolonne» tek MED SEG kjeldekolonna sitt «Ramme inn heile kolonna»-val til den nye kolonna", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "2col", colFrame: [true, false], blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Ramma innhald" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  click(ed.querySelector('[data-pb-blocks-dup-col="0"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  assert.equal(savedPages[0].sections[0].data.colFrame[1], true, "kolonne 2 (den nye kopien) er ramma inn, sidan kjeldekolonna (kolonne 1) var det");
+});
+
+test("UX-polish: å fjerne den SISTE blokka i ei ramma kolonne nullstiller kolonna sitt ramme-val, slik at ei seinare NY blokk ikkje stille arvar det gamle valet", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "1col", colFrame: [true], blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Åleine" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  click(ed.querySelector('[data-pb-block-remove="0"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  assert.equal(savedPages[0].sections[0].data.colFrame[0], false, "kolonna (no tom) sitt ramme-val vart nullstilt");
+});
+
+test("«Dupliser kolonne» kopierer alle blokkene i kolonna inn i den FYRSTE tomme ANDRE kolonna, og er deaktivert når ingen tom kolonne finst", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "3col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Kol1-A" } },
+      { id: "b2", type: "richtext", slot: 0, data: { text: "Kol1-B" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var dupColBtn = ed.querySelector('[data-pb-blocks-dup-col="0"]');
+  assert(dupColBtn, "dupliser-kolonne-knappen finst for kolonne 1 (har innhald)");
+  assert(!dupColBtn.disabled, "aktiv sidan kolonne 2 og 3 er tomme");
+  click(dupColBtn);
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var blocks = savedPages[0].sections[0].data.blocks;
+  assert.equal(blocks.length, 4, "2 nye blokker (kopiar av dei 2 i kolonne 1) lagt til: " + blocks.length);
+  var col1Slot2 = blocks.filter(function (b) { return b.slot === 1; });
+  assert.equal(col1Slot2.length, 2, "kopiane hamna i kolonne 2 (fyrste tomme ANDRE kolonne), ikkje kolonne 3");
+  assert.equal(col1Slot2[0].data.text, "Kol1-A");
+  assert.equal(col1Slot2[1].data.text, "Kol1-B");
+  assert.notEqual(col1Slot2[0].id, "b1", "kopiane har friske id-ar");
+  assert.equal(blocks[0].id, "b1", "originalane i kolonne 1 er heilt urørte");
+
+  // No er kolonne 1 OG 2 fylte, kolonne 3 er den einaste tomme att.
+  var ed2 = dom.window.document.querySelector(".pbc-section-editor");
+  var dupColBtnAgain = ed2.querySelector('[data-pb-blocks-dup-col="0"]');
+  assert(!dupColBtnAgain.disabled, "framleis aktiv sidan kolonne 3 framleis er tom");
+  click(dupColBtnAgain);
+  await wait(800);
+  savedPages = dom._getStoreValue();
+  blocks = savedPages[0].sections[0].data.blocks;
+  assert.equal(blocks.filter(function (b) { return b.slot === 2; }).length, 2, "andre duplisering hamnar i kolonne 3 (no den einaste tomme)");
+
+  // No har alle 3 kolonnane innhald -- dupliser-knappen for kolonne 1 skal vere deaktivert.
+  var ed3 = dom.window.document.querySelector(".pbc-section-editor");
+  var dupColBtnFinal = ed3.querySelector('[data-pb-blocks-dup-col="0"]');
+  assert(dupColBtnFinal.disabled, "deaktivert no som alle kolonnar har innhald -- ingen tom kolonne att å kopiere til");
+  var blocksBeforeClick = savedPages[0].sections[0].data.blocks.length;
+  click(dupColBtnFinal);
+  await wait(300);
+  assert.equal(dom._getStoreValue()[0].sections[0].data.blocks.length, blocksBeforeClick, "eit klikk på den deaktiverte knappen gjer ingenting");
+});
+
+test("«Ramme inn heile kolonna»-avkryssinga lagrar colFrame[slot]=true, uavhengig av kvar blokk sin eigen «Ramme inn»-avkryssing", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "2col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Innhald" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var colFrameCb = ed.querySelector('[data-pb-blocks-colframe="0"]');
+  assert(colFrameCb, "kolonne-ramme-avkryssinga finst for kolonne 1 (har innhald)");
+  assert(!ed.querySelector('[data-pb-blocks-colframe="1"]'), "kolonne 2 (tom) har inga ramme-avkryssing -- ingenting å ramme inn");
+  colFrameCb.checked = true;
+  colFrameCb.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  assert.equal(savedPages[0].sections[0].data.colFrame[0], true, "colFrame[0] vart lagra");
+});
+
 test("«Fjern blokk»-knappen fjernar berre den eine blokka, resten av blokk-lista står urørt", async function (t) {
   var startPage = {
     id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
@@ -578,6 +718,43 @@ test("dra-og-slipp flytter en seksjon til en ny posisjon i set_config-nyttelaste
   assert.equal(ids.indexOf("s1") > ids.indexOf("s2"), true, "s1 vart flytta bort frå fyrsteplass etter draing: " + ids.join(","));
 });
 
+test("«Dupliser seksjon» set inn ein eksakt kopi RETT ETTER originalen, med fri id -- for ei «blocks»-seksjon får òg kvar blokk ein fri id", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [
+      { id: "s1", type: "text", variant: { background: "dark" }, data: { heading: "Original" } },
+      { id: "s2", type: "blocks", variant: {}, data: { layout: "1col", blocks: [{ id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Blokkinnhald" } }] } }
+    ]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-dup-section="s1"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var sections = savedPages[0].sections;
+  assert.equal(sections.length, 3, "ein tredje seksjon vart lagt til: " + sections.length);
+  assert.equal(sections[1].type, "text");
+  assert.equal(sections[1].data.heading, "Original", "kopien har same innhald som originalen");
+  assert.equal(sections[1].variant.background, "dark", "kopien har same variant som originalen");
+  assert.notEqual(sections[1].id, "s1", "kopien har ein FRISK id, ikkje same id som originalen");
+  assert.equal(sections[0].id, "s1", "originalen sjølv er urørt");
+  assert.equal(sections[2].id, "s2", "duplikatet hamna RETT ETTER originalen, ikkje sist i lista");
+
+  click(dom.window.document.querySelector('[data-pb-dup-section="s2"]'));
+  await wait(800);
+  savedPages = dom._getStoreValue();
+  // Rekkjefølgja er no [s1, s1-kopi, s2, s2-kopi] -- s2 flytta til indeks 2
+  // etter den FYRSTE dupliseringa, så s2 sin eigen kopi hamnar på indeks 3.
+  var dupBlocksSection = savedPages[0].sections[3];
+  assert.equal(dupBlocksSection.type, "blocks");
+  assert.equal(dupBlocksSection.data.blocks[0].data.text, "Blokkinnhald");
+  assert.notEqual(dupBlocksSection.data.blocks[0].id, "b1", "blokka inni ein duplisert «blocks»-seksjon får òg ein FRISK id");
+});
+
 test("«Slett side»-knappen inne i redigeringsvisninga (ikkje berre sidelista) spør om stadfesting og fjernar sida", async function (t) {
   var confirmText = null;
   var startPage = { id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] };
@@ -734,6 +911,6 @@ test("mobil-/skrivebord-brytaren viser ei tydeleg breiddeetikett (ikkje berre ei
 
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
-  assert.match(html, /components\.js\?v=24/);
-  assert.match(html, /console-core\.js\?v=250/);
+  assert.match(html, /components\.js\?v=25/);
+  assert.match(html, /console-core\.js\?v=251/);
 });

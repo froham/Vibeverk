@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.135.0 — 2026-08-12
+
+**Sidebygger: ramme inn heile kolonner, og dupliser seksjonar/blokker/kolonner.** Brukertilbakemelding rett etter 0.134.1, med skjermbilde: `frame`-avkryssinga per blokk gir separate ramma bokser med mellomrom mellom, ikke ÉN samanhengande boks rundt heile kolonnens innhold slik brukeren ønska.
+
+- **Ny «Ramme inn heile kolonna»-avkryssing** per kolonne (uavhengig av kvar blokk sin eigen «Ramme inn»-avkryssing frå 0.134.1) — slår saman bilde+overskrift+tekst osv. i éin kolonne til éin samanhengande boks (bakgrunn+kant+padding), same visuelle handsaming som `.pb-grid__item`. Ny `section.data.colFrame`-array (indeksert per kolonne/slot).
+- **Dupliser seksjon**: ny knapp på kvar seksjon, set inn ein eksakt kopi rett etter originalen med fri id (og friske blokk-id-ar for «Blokker»-seksjonar).
+- **Dupliser blokk**: ny knapp på kvar blokk, set inn ein kopi rett etter i same kolonne.
+- **Dupliser kolonne**: ny knapp i kvar kolonne sin overskrift-rad, kopierer alle blokkene i kolonna inn i den FYRSTE tomme ANDRE kolonna i same seksjon (brukaravklaring: eksplisitt valt framfor "ny sjølvstendig seksjon" eller å droppe kolonne-duplisering heilt). Deaktivert med tydeleg forklarande `title` når ingen tom kolonne finst å kopiere til.
+- Ingen Security Auditor-runde (ingen ny href-/sanitiserings-/dynamisk-CSS-flate -- duplisering er reine strukturkopiar med `JSON.parse(JSON.stringify(...))`, kolonne-ramme er ein enkel boolsk klasse-toggle som allereie eksisterer for blokk-nivå framing). UX/Mobile Reviewer-runde vart kjørt gitt ny UI-flate -- fann og fiksa to HIGH-funn før merge:
+  - «Dupliser kolonne» tok ikkje med seg kjeldekolonna sitt «Ramme inn heile kolonna»-val til den nye kopien -- ei stille motseiing av det heile "dupliser" skal bety. Retta.
+  - «Dupliser blokk» hamna rett attmed den destruktive, ikkje-stadfesta "Fjern blokk"-knappen i ei allereie 4-ikon-brei rad -- lagt til litt ekstra luft framfor faresknappar generelt (`.pbc-icon-btn.danger { margin-left:.35rem }`) for å redusere mistrykk-risiko, utan å endre sjølve stadfestingsmønsteret.
+  - Mindre polish same runde: kolonne-ramme-avkryssinga sitt etikettekst utvida med "(bakgrunn og kant)" for å matche det tilsvarande blokk-nivå-valet sin klårleik; å fjerne den siste blokka i ei ramma kolonne nullstiller no kolonna sitt ramme-val, slik at ei seinare ny blokk lagt til i same kolonne ikkje stille arvar eit gamalt val operatøren aldri fekk stadfesta på nytt.
+- Testdekning: nye testar for dupliser-seksjon (inkl. blokk-id-fornying), dupliser-blokk, dupliser-kolonne (inkl. det deaktiverte "ingen tom kolonne"-tilfellet, verifisert både via `disabled`-tilstand OG at eit synhetisk klikk framleis ikkje gjer noko), kolonne-ramme-avkryssinga, at duplisering av ei ramma kolonne tek med seg ramme-valet, at fjerning av siste blokk nullstiller ramme-valet, og render-stadfesting i `test.js` av at éi kolonne-ramma kolonne faktisk vert éin samanhengande `.pb-blocks__slot--framed`-boks rundt alle blokkene sine, ikkje separate.
+
 ## 0.134.1 — 2026-08-12
 
 **Sidebygger «Blokker»: fikset ekte bug med å legge til flere blokker på rad, gruppert kolonnevisning, og valgfri ramme rundt blokker.** Brukerrapport rett etter 0.134.0-lanseringa, med skjermbilde.

@@ -78,7 +78,7 @@ window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([
           { id: "b6", type: "spacer", slot: 1, data: {} },
           { id: "b-unknown", type: "not-a-real-block-type", slot: 0, data: { text: "Skal aldri vises (blokk)" } },
           { id: "b7", type: "heading", slot: 99, data: { level: "h3", text: "Klemt til siste kolonne" } }
-        ] } },
+        ], colFrame: [false, true] } },
       { id: "s9", type: "not-a-real-type", variant: {}, data: { heading: "Skal aldri vises" } }
     ]
   },
@@ -2741,6 +2741,12 @@ const __asyncTests = (async () => {
     assert(!!pbBlocks.querySelector(".pb-block-image__img"), "sidebygger/blokker: bilde-blokk rendra");
     assert(!!pbBlocks.querySelector(".pb-block--framed .pb-block-image__img"), "sidebygger/blokker: bilde-blokka sitt frame:true gjev ein synleg ramme-innpakking (bakgrunn+kant, same handsaming som .pb-grid__item)");
     assert(!pbBlocks.querySelector(".pb-block-heading").closest(".pb-block--framed"), "sidebygger/blokker: overskrift-blokka (frame ikkje sett) er IKKJE ramma inn -- ramme er opt-in per blokk, ikkje standard");
+    // colFrame:[false,true] -- kolonne 2 (slot 1: knapp+kontaktinfo+mellomrom)
+    // skal vere EIN samanhengande ramma boks, ikkje tre separate.
+    var slots = pbBlocks.querySelectorAll(".pb-blocks__slot");
+    assert(!slots[0].classList.contains("pb-blocks__slot--framed"), "sidebygger/blokker: kolonne 1 (colFrame[0]=false) er IKKJE kolonne-ramma");
+    assert(slots[1].classList.contains("pb-blocks__slot--framed"), "sidebygger/blokker: kolonne 2 (colFrame[1]=true) ER kolonne-ramma som éin samanhengande boks");
+    assert(slots[1].querySelector(".pb-block-button") && slots[1].querySelector(".pb-block-contact") && slots[1].querySelector(".pb-block-spacer"), "sidebygger/blokker: alle tre blokkene i den kolonne-ramma kolonnen ligg framleis inni same .pb-blocks__slot--framed-boks");
     assert(!pbBlocks.querySelector(".pb-block-button a[href*='javascript:']"), "sidebygger/blokker: ein javascript:-knapplenke i ei blokk vert ALDRI rendra som eit ekte href (button-blokka går via delte button())");
     assert(/Blokk-knapp/.test(pbBlocks.textContent), "sidebygger/blokker: knappeteksten vert framleis vist sjølv om lenka vart nekta");
     // Security Auditor-funn (BLOCKER, 2026-08-12): eit variant-attributtbrot-

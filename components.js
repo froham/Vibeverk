@@ -626,7 +626,17 @@ window.Components = (function () {
       const slotIdx = Math.min(Math.max(0, parseInt(b.slot, 10) || 0), layout.cols - 1);
       slots[slotIdx].push(html);
     });
-    const slotsHtml = slots.map(function (s) { return `<div class="pb-blocks__slot">${s.join("")}</div>`; }).join("");
+    // Brukarønske 2026-08-12 (oppfølging): frame:true på KVAR blokk gjev
+    // fleire separate ramma boksar med mellomrom mellom, ikkje éin
+    // samanhengande boks rundt HEILE kolonnen sitt innhald -- colFrame
+    // (indeksert per slot) løyser det andre, ofte meir ønska tilfellet:
+    // heile kolonnen som éin visuell eining. Dei to er uavhengige og kan
+    // kombinerast (gjev nesta boksar), ikkje gjensidig utelukkande.
+    const colFrame = Array.isArray(d.colFrame) ? d.colFrame : [];
+    const slotsHtml = slots.map(function (s, i) {
+      const framedCls = colFrame[i] ? " pb-blocks__slot--framed" : "";
+      return `<div class="pb-blocks__slot${framedCls}">${s.join("")}</div>`;
+    }).join("");
     return `<div class="pb-blocks ${layout.cls}">${slotsHtml}</div>`;
   }
 

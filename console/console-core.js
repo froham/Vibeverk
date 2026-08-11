@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.134.1";
+  var VIBEVERK_VERSION = "0.135.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2288,6 +2288,26 @@ window.VwConsole = (function () {
   function pbNewSectionId() {
     return "sec-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
   }
+  // Djup kopi av ein heil seksjon -- gjev sjølve seksjonen ein FRISK id
+  // (kritisk: s.id vert brukt som data-id for DOM-oppslag og lookup i
+  // move/delete/toggle, to seksjonar med same id ville broten desse), og
+  // for "blocks"-seksjonar òg friske id-ar på KVAR blokk (ikkje strengt
+  // naudsynt i dag, sidan blokker vert indekserte etter array-posisjon,
+  // ikkje id -- men god hygiene, unngår duplikat-id-ar om framtidig kode
+  // nokon gong slår opp ei blokk via id).
+  function pbCloneSection(s) {
+    var clone = JSON.parse(JSON.stringify(s));
+    clone.id = pbNewSectionId();
+    clone.open = false;
+    if (clone.type === "blocks" && clone.data && Array.isArray(clone.data.blocks)) {
+      clone.data.blocks = clone.data.blocks.map(function (b) {
+        var bc = JSON.parse(JSON.stringify(b));
+        bc.id = pbNewBlockId();
+        return bc;
+      });
+    }
+    return clone;
+  }
   function pbSelectField(id, label, options, value) {
     return '<div class="field"><label for="' + id + '">' + C.esc(label) + '</label><select id="' + id + '">' +
       options.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === value ? " selected" : "") + '>' + C.esc(o[1]) + '</option>'; }).join("") +
@@ -2724,6 +2744,7 @@ window.VwConsole = (function () {
       ".pb-block-contact a{color:inherit}",
       ".pb-block-spacer{height:1px}",
       ".pb-block--framed{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:1.2rem}",
+      ".pb-blocks__slot--framed{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:1.2rem}",
       "@media(max-width:900px){.pb-blocks--3col,.pb-blocks--4col{grid-template-columns:1fr 1fr}}",
       "@media(max-width:600px){.pb-blocks{grid-template-columns:1fr!important}}"
     ].join("");
@@ -2839,6 +2860,7 @@ window.VwConsole = (function () {
         section.data = section.data || {};
         section.data.layout = section.data.layout || "1col";
         section.data.blocks = Array.isArray(section.data.blocks) ? section.data.blocks : [];
+        section.data.colFrame = Array.isArray(section.data.colFrame) ? section.data.colFrame : [];
         renderBlocksEditor(section, ed);
         // Kolonneoppsett-veljaren er alt fanga av den generiske
         // onFieldChange-lyttaren over (oppdaterer section.data.layout FØR
@@ -2941,6 +2963,7 @@ window.VwConsole = (function () {
             '<div class="pbc-mini-actions">' +
               '<button type="button" class="pbc-icon-btn" title="Flytt opp" aria-label="Flytt blokk opp" ' + (pos === 0 ? "disabled" : "") + ' data-pb-block-up="' + i + '"><i class="ti ti-chevron-up"></i></button>' +
               '<button type="button" class="pbc-icon-btn" title="Flytt ned" aria-label="Flytt blokk ned" ' + (pos === group.length - 1 ? "disabled" : "") + ' data-pb-block-down="' + i + '"><i class="ti ti-chevron-down"></i></button>' +
+              '<button type="button" class="pbc-icon-btn" title="Dupliser blokk" aria-label="Dupliser blokk" data-pb-block-dup="' + i + '"><i class="ti ti-copy"></i></button>' +
               '<button type="button" class="pbc-icon-btn danger" title="Fjern blokk" aria-label="Fjern blokk" data-pb-block-remove="' + i + '"><i class="ti ti-trash"></i></button>' +
             '</div>' +
           '</div>' +
@@ -2959,12 +2982,31 @@ window.VwConsole = (function () {
       // blokk"-knapp som legg den nye blokka RETT i den kolonnen.
       // "Kolonne"-veljaren på kvart kort står att for å flytte ei
       // EKSISTERANDE blokk til ein annan kolonne seinare.
+      var colFrame = section.data.colFrame || [];
+      function firstEmptyOtherSlot(srcSlot) {
+        for (var o = 0; o < cols; o++) { if (o !== srcSlot && sameSlotIndices(o).length === 0) return o; }
+        return -1;
+      }
       var colsHtml = "";
       for (var s = 0; s < cols; s++) {
         var idxs = sameSlotIndices(s);
         var cardsHtml = idxs.map(renderBlockCard).join("");
-        colsHtml += '<div class="pbc-blocks-col">' +
-          (cols > 1 ? '<div class="pbc-blocks-col__head">Kolonne ' + (s + 1) + '</div>' : "") +
+        var headHtml = "";
+        if (cols > 1) {
+          var hasTarget = idxs.length && firstEmptyOtherSlot(s) !== -1;
+          headHtml = '<div class="pbc-blocks-col__head">' +
+            '<span>Kolonne ' + (s + 1) + '</span>' +
+            (idxs.length ? '<button type="button" class="pbc-icon-btn" ' + (hasTarget ? "" : "disabled") + ' title="' + (hasTarget ? "Dupliser kolonne til ei tom kolonne" : "Ingen tomme kolonner å kopiere til") + '" aria-label="Dupliser kolonne ' + (s + 1) + '" data-pb-blocks-dup-col="' + s + '"><i class="ti ti-copy"></i></button>' : "") +
+          '</div>';
+        }
+        // Brukarønske 2026-08-12 (oppfølging): "frame" på KVAR blokk gjev
+        // fleire separate boksar, ikkje éin samanhengande boks rundt heile
+        // kolonnen sitt innhald (sjå skjermbilete i tilbakemeldinga). Denne
+        // avkryssinga rammar heile kolonnen i éin bolk i staden.
+        var frameHtml = idxs.length
+          ? '<label class="pbc-blocks-col__frame"><input type="checkbox" data-pb-blocks-colframe="' + s + '"' + (colFrame[s] ? " checked" : "") + '> Ramme inn heile kolonna (bakgrunn og kant)</label>'
+          : "";
+        colsHtml += '<div class="pbc-blocks-col">' + headHtml + frameHtml +
           '<div class="pbc-blocks-col__list">' + (cardsHtml || '<p class="pbc-blocks-col__empty">Ingen blokker i denne kolonnen enno.</p>') + '</div>' +
           '<button type="button" class="btn btn--ghost btn--sm pbc-blocks-add-trigger" data-pb-blocks-add-slot="' + s + '"><i class="ti ti-plus"></i> Legg til blokk</button>' +
           '<div class="pbc-type-picker" data-pb-blocks-picker-for="' + s + '" style="display:none"></div>' +
@@ -3000,9 +3042,20 @@ window.VwConsole = (function () {
       // selektoren over -- ho treng "change", ikkje "input", og var ikkje
       // dekt av det generiske utvalet (som berre fanga select/tekst/url/
       // textarea, sidan ingen av dei 8 faste seksjonstypane har noka
-      // avkryssingsboks i sin eigen felt-editor i dag).
-      box.querySelectorAll("input[type=checkbox]").forEach(function (el) {
+      // avkryssingsboks i sin eigen felt-editor i dag). Kolonne-ramme-
+      // avkryssinga (data-pb-blocks-colframe) er MEDVITE UTELATEN her og
+      // bunden separat under, sidan ho ikkje høyrer til noka enkelt-blokk
+      // og treng skrive til section.data.colFrame, ikkje pbReadBlockDataFields().
+      box.querySelectorAll("input[type=checkbox]:not([data-pb-blocks-colframe])").forEach(function (el) {
         el.addEventListener("change", onBlockChange);
+      });
+      box.querySelectorAll("[data-pb-blocks-colframe]").forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          var s = parseInt(cb.getAttribute("data-pb-blocks-colframe"), 10);
+          section.data.colFrame = section.data.colFrame || [];
+          section.data.colFrame[s] = cb.checked;
+          refreshPreview(); scheduleSave();
+        });
       });
       App.ui.bindRichTextFields(box);
       box.querySelectorAll(".rtfield__editor").forEach(function (rt) { rt.addEventListener("input", onBlockChange); });
@@ -3010,10 +3063,60 @@ window.VwConsole = (function () {
         if (b.type === "image") pbBindImageField(box, "pb-block-" + i + "-img", tenantId, onBlockChange);
       });
 
+      box.querySelectorAll("[data-pb-block-dup]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          readBlocksFromDom();
+          var idx = parseInt(btn.getAttribute("data-pb-block-dup"), 10);
+          var copy = JSON.parse(JSON.stringify(blocks[idx]));
+          copy.id = pbNewBlockId();
+          blocks.splice(idx + 1, 0, copy);
+          renderBlocksEditor(section, ed);
+          updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+        });
+      });
       box.querySelectorAll("[data-pb-block-remove]").forEach(function (btn) {
         btn.addEventListener("click", function () {
           readBlocksFromDom();
-          blocks.splice(parseInt(btn.getAttribute("data-pb-block-remove"), 10), 1);
+          var idx = parseInt(btn.getAttribute("data-pb-block-remove"), 10);
+          var removedSlot = blocks[idx].slot || 0;
+          blocks.splice(idx, 1);
+          // UX-polish: om kolonnen no er heilt tom, nullstill eit ev. "ramme
+          // heile kolonna"-val for henne -- elles ville ein seinare NY blokk
+          // lagt til i same kolonne stille arve eit gamalt ramme-val
+          // operatøren aldri fekk stadfesta på nytt.
+          if (section.data.colFrame && sameSlotIndices(removedSlot).length === 0) {
+            section.data.colFrame[removedSlot] = false;
+          }
+          renderBlocksEditor(section, ed);
+          updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+        });
+      });
+      // Dupliser HEILE kolonna -- kopierer alle blokker i kjeldekolonna inn
+      // i den FYRSTE tomme ANDRE kolonna i same seksjon (brukaravklaring
+      // 2026-08-12: eksplisitt valt framfor "ny sjølvstendig seksjon" eller
+      // å droppe kolonne-duplisering heilt). Disabled/no-op om ingen tom
+      // kolonne finst (fastsett ved rendring over, men også dobbeltsjekka
+      // her sidan eit synhetisk klikk kan omgå eit HTML disabled-attributt).
+      box.querySelectorAll("[data-pb-blocks-dup-col]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var srcSlot = parseInt(btn.getAttribute("data-pb-blocks-dup-col"), 10);
+          var targetSlot = firstEmptyOtherSlot(srcSlot);
+          if (targetSlot === -1) return;
+          readBlocksFromDom();
+          var copies = sameSlotIndices(srcSlot).map(function (i) {
+            var c = JSON.parse(JSON.stringify(blocks[i]));
+            c.id = pbNewBlockId();
+            c.slot = targetSlot;
+            return c;
+          });
+          blocks.push.apply(blocks, copies);
+          // UX-funn: dupliseringa kopierte tidlegare ALDRI kjeldekolonna sitt
+          // eige "Ramme inn heile kolonna"-val -- kopien synte seg difor
+          // urframma sjølv om operatøren nettopp bad om å kopiere ei ramma
+          // kolonne, ei stille motseiing av det heile "dupliser" skal bety.
+          if (section.data.colFrame && section.data.colFrame[srcSlot]) {
+            section.data.colFrame[targetSlot] = true;
+          }
           renderBlocksEditor(section, ed);
           updateSummaryInPlace(section); refreshPreview(); scheduleSave();
         });
@@ -3170,6 +3273,7 @@ window.VwConsole = (function () {
             '<div class="pbc-mini-actions">' +
               '<button type="button" class="pbc-icon-btn" title="Flytt opp" aria-label="Flytt «' + C.esc(def.label) + '» opp" ' + (i === 0 ? "disabled" : "") + ' data-pb-move-up="' + C.esc(s.id) + '"><i class="ti ti-chevron-up"></i></button>' +
               '<button type="button" class="pbc-icon-btn" title="Flytt ned" aria-label="Flytt «' + C.esc(def.label) + '» ned" ' + (i === sections.length - 1 ? "disabled" : "") + ' data-pb-move-down="' + C.esc(s.id) + '"><i class="ti ti-chevron-down"></i></button>' +
+              '<button type="button" class="pbc-icon-btn" title="Dupliser seksjon" aria-label="Dupliser «' + C.esc(def.label) + '»" data-pb-dup-section="' + C.esc(s.id) + '"><i class="ti ti-copy"></i></button>' +
               '<button type="button" class="pbc-icon-btn danger" title="Slett seksjon" aria-label="Slett «' + C.esc(def.label) + '»" data-pb-del-section="' + C.esc(s.id) + '"><i class="ti ti-trash"></i></button>' +
             '</div>' +
           '</div>' +
@@ -3185,6 +3289,18 @@ window.VwConsole = (function () {
       });
       listEl.querySelectorAll("[data-pb-move-down]").forEach(function (btn) {
         btn.addEventListener("click", function () { moveSection(btn.getAttribute("data-pb-move-down"), 1); });
+      });
+      listEl.querySelectorAll("[data-pb-dup-section]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var id = btn.getAttribute("data-pb-dup-section");
+          var idx = (page.sections || []).findIndex(function (x) { return x.id === id; });
+          if (idx < 0) return;
+          var copy = pbCloneSection(page.sections[idx]);
+          page.sections.splice(idx + 1, 0, copy);
+          renderSectionList();
+          refreshPreview();
+          scheduleSave();
+        });
       });
       listEl.querySelectorAll("[data-pb-del-section]").forEach(function (btn) {
         btn.addEventListener("click", function () {
