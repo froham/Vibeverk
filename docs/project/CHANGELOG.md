@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.134.0 — 2026-08-12
+
+**Sidebygger: ny 9. seksjonstype "Blokker" — fritt komponerbare mini-blokker i 1–4 kolonner.** Dei 8 faste seksjonstypane har hatt kvar sin faste datamodell sidan Fase 1; ei konkret avgrensing (ønske om telefon/e-post inni ei seksjon, som ingen type støttar) synte at dette ikkje skalerer til "100 forskjellige kundebehov". Gjennomgått i to rundar (ein Architect-konsultasjon + ein Plan-agent-runde, begge kodeforankra) før implementering, jf. `docs/decisions/` sin standing "før større arkitektur-/datamodellendringar"-regel.
+
+- Ny, sidestilt seksjonstype `"blocks"` — dei 8 eksisterande typane er heilt urørte, ingen migrering trengst (broker sin `set_config` validerer aldri forma på `custom-pages`, stadfesta direkte i koden; `pageSection()`-dispatcheren hoppar allereie trygt over ukjende typar/blokker).
+- Datamodell: `{ layout: "1col"|"2col"|"2col-2-1"|"2col-1-2"|"3col"|"4col", blocks: [{id, type, slot, data}] }` — eit lukka layout-enum (fast CSS `grid-template-columns`-forhåndsval), ikkje frie breiddeverdiar, held fast på "ingen fri pikselplassering"-grensa frå Fase 1.
+- 6 blokktypar v1: overskrift, rikttekst, bilde, knapp, **kontaktinfo** (løyser det konkrete telefon/e-post-behovet — men generelt, ikkje som eit spesialtilfelle), mellomrom. Fleire (biletkarusell, statistikk-tal, badge, anmeldelse, logo-rad, kart/video-embed) er eksplisitt utsett til seinare rundar.
+- Tryggleik: `richtext`-blokk går uendra via `sanitizeRichHtml()`; `button`-blokk rendrast alltid via delte `button()` (arvar `javascript:`-vernet automatisk); `contact-item` har ALDRI eit fritt href-felt -- `tel:`/`mailto:` er alltid ein hardkoda prefiks framfor operatøren sin verdi, aldri eit sjølvstendig lenkefelt. `image`-blokk gjenbruker heile den eksisterande, alt reviderte opplastings-/komprimerings-/SVG-saneringspipelina uendra.
+- Console-UI: knapp-basert (opp/ned) reorder av blokker innanfor same kolonne, IKKJE dra-og-slipp -- same mobil-brukbarheitsgrunngjeving som alt gjeld seksjon-nivå reorder.
+- Testdekning: `test.js` (mot ekte `components.js`) stadfestar alle 6 blokktypar, ein ukjend blokktype vert stille utelaten, adversariske `javascript:`-forsøk i både button- og kontaktinfo-blokker vert nøytraliserte, og ei blokk med ugyldig/for høg slot-verdi vert klemt til siste gyldige kolonne i staden for forkasta. `test-page-builder-console.js` stadfestar Console-UI-flyten (leggje til/redigere/fjerne/omorganisere blokker, slot-avgrensa reorder, kolonneoppsett-endring).
+- **Security Auditor-funn (BLOCKER, retta før merge):** `pbBlockButton` sende `d.variant` (lagra operatør-data) uendra inn i `button()` sin `cls`-streng, som ALDRI vert `esc()`-a -- kvar EINASTE anna eksisterande `button()`-kallar i fila sender ein hardkoda bokstaveleg variant, så dette var aldri eit problem før. Sidan broker sin `set_config` ikkje validerer forma på `custom-pages` server-side, kunne eit vondsinna JSON-kall (ikkje berre UI-et sin avgrensa `<select>`) sett `variant` til ein attributtbrot-streng som ville injisert eit nytt element/attributt (t.d. `onload`) på den EKTE, USANDBOKSA offentlege sida -- eit strengt verre utfall enn den tilsvarande 2026-08-11-BLOCKER-en, som berre ramma den sandboksa Console-førehandsvisinga. Retta med same kvite-liste-mønster som `d.kind`/`d.level` alt bruker i denne runda (`["primary","secondary","ghost"]`, fell attende til `"primary"`), verifisert med det nøyaktige angrepet frå auditen sin eigen proof-of-concept i ein ny `test.js`-regresjonstest.
+- Kun frontend-/Console-endring, ingen broker-/RLS-endring -- ingen ny redeploy nødvendig.
+
 ## 0.133.6 — 2026-08-12
 
 **Sidebygger: fikset at helt ordinære 2-3MB PNG-bilder feilet med "kunne ikke komprimeres nok automatisk".** Brukerrapport: opplasting feilet konsekvent til tross for at grensehintet lovte "PNG/JPEG: opptil 8MB (komprimerast automatisk ned mot 600KB)".

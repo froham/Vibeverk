@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.133.6";
+  var VIBEVERK_VERSION = "0.134.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2239,8 +2239,33 @@ window.VwConsole = (function () {
     { type: "quote", label: "Sitat", desc: "Fremhevet sitat med navn og rolle", icon: "quote" },
     { type: "grid", label: "Rutenett", desc: "1–4 kolonner, hver rute med bilde/tekst/knapp", icon: "layout-grid" },
     { type: "cta", label: "CTA (handling)", desc: "Overskrift, tekst og en tydelig knapp", icon: "click" },
-    { type: "spacer", label: "Mellomrom", desc: "Luft mellom to seksjoner", icon: "arrows-vertical" }
+    { type: "spacer", label: "Mellomrom", desc: "Luft mellom to seksjoner", icon: "arrows-vertical" },
+    { type: "blocks", label: "Blokker", desc: "Fritt sett av små blokker (overskrift, tekst, bilde, knapp, kontaktinfo, mellomrom) i 1–4 kolonner", icon: "layout-board" }
   ];
+
+  // Blokk-paletten inni ei "blocks"-seksjon (sjå PB_SECTION_TYPES over) --
+  // same idé som PB_SECTION_TYPES, berre éin abstraksjonsnivå ned: kvar
+  // "blocks"-seksjon kan innehalde eit fritt tal av desse, uavhengig typa.
+  var PB_BLOCK_TYPES = [
+    { type: "heading", label: "Overskrift", desc: "Kort overskrift (stor eller mindre)", icon: "heading" },
+    { type: "richtext", label: "Tekst", desc: "Formatert brødtekst", icon: "align-left" },
+    { type: "image", label: "Bilde", desc: "Enkeltbilde", icon: "photo" },
+    { type: "button", label: "Knapp", desc: "Klikkbar knapp eller lenke", icon: "click" },
+    { type: "contact-item", label: "Kontaktinfo", desc: "Telefon, e-post, adresse eller fritekst", icon: "address-book" },
+    { type: "spacer", label: "Mellomrom", desc: "Luft mellom to blokker", icon: "arrows-vertical" }
+  ];
+  var PB_BLOCKS_LAYOUT_OPTIONS = [
+    ["1col", "1 kolonne"], ["2col", "2 kolonner (like)"],
+    ["2col-2-1", "2 kolonner (bred + smal)"], ["2col-1-2", "2 kolonner (smal + bred)"],
+    ["3col", "3 kolonner"], ["4col", "4 kolonner"]
+  ];
+  // Gjenbruker components.js sin EKSPORTERTE pbBlocksLayout()-tabell for
+  // kolonnetal -- unngår ein tredje, sjølvstendig duplisert kopi av same
+  // enum (CSS-en er alt eit medvite dupliserte unntak, dokumentert der).
+  function pbLayoutColCount(layout) { return C.pbBlocksLayout(layout).cols; }
+  function pbNewBlockId() {
+    return "blk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+  }
   var PB_SECTION_LABELS = PB_SECTION_TYPES.reduce(function (m, t) { m[t.type] = t.label; return m; }, {});
   // Faste modul-id-ar + tidlegare sidebygger-fane sjølv -- ei ny side kan
   // aldri kollidere med desse, sidan App.registerModule() (core.js) no-oppar
@@ -2416,8 +2441,83 @@ window.VwConsole = (function () {
     if (type === "spacer") {
       return '<p class="field__hint">Mellomrommet sin storleik styrast av «Luft»-valet over.</p>';
     }
+    if (type === "blocks") {
+      return pbSelectField("pb-sec-blocks-layout", "Kolonneoppsett", PB_BLOCKS_LAYOUT_OPTIONS, d.layout || "1col") +
+        '<div class="pbc-blocks-items" id="pb-blocks-items"></div>' +
+        '<div class="pbc-add-block">' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="pb-blocks-add-trigger"><i class="ti ti-plus"></i> Legg til blokk</button>' +
+          '<div class="pbc-type-picker" id="pbc-block-type-picker" style="display:none"></div>' +
+        '</div>';
+    }
     return "";
   }
+
+  // Per-blokktype felt-editorar, same mønster som pbSectionDataFieldsHtml/
+  // pbReadSectionDataFields over -- men ID-prefiksa (idp) sidan fleire
+  // blokker kan liggje opne i same DOM samstundes (same teknikk som
+  // renderGridItems alt bruker: "pb-grid-heading-" + i).
+  function pbBlockDataFieldsHtml(type, d, idp) {
+    d = d || {};
+    if (type === "heading") {
+      return pbSelectField(idp + "-level", "Storleik", [["h2", "Stor"], ["h3", "Mindre"]], d.level || "h2") +
+        C.field({ id: idp + "-text", label: "Overskriftstekst", value: d.text || "" });
+    }
+    if (type === "richtext") {
+      return C.richTextField({ id: idp + "-text-rt", label: "Tekst", value: d.text || "" });
+    }
+    if (type === "image") {
+      return pbImageFieldHtml(idp + "-img", "Bilde", d.image);
+    }
+    if (type === "button") {
+      return '<div class="pbc-field-grid">' +
+          C.field({ id: idp + "-label", label: "Knapptekst", value: d.label || "" }) +
+          C.field({ id: idp + "-url", label: "Knapplenke", value: d.url || "" }) +
+        '</div>' +
+        pbSelectField(idp + "-variant", "Stil", [["primary", "Primær"], ["secondary", "Sekundær"], ["ghost", "Diskret"]], d.variant || "primary");
+    }
+    if (type === "contact-item") {
+      return pbSelectField(idp + "-kind", "Type", [["phone", "Telefon"], ["email", "E-post"], ["address", "Adresse"], ["custom", "Anna (fritekst)"]], d.kind || "phone") +
+        C.field({ id: idp + "-label", label: "Etikett (valgfritt)", value: d.label || "", hint: "F.eks. «Ring oss» — vises foran verdien" }) +
+        C.field({ id: idp + "-value", label: "Verdi", value: d.value || "", hint: "For telefon/e-post lages lenken automatisk ut fra verdien — du skriver aldri inn en egen lenke." });
+    }
+    if (type === "spacer") {
+      return '<p class="field__hint">Fast mellomrom mellom to blokker i same kolonne.</p>';
+    }
+    return "";
+  }
+  function pbReadBlockDataFields(root, type, idp) {
+    if (type === "heading") {
+      return {
+        level: root.querySelector("#" + idp + "-level").value,
+        text: root.querySelector("#" + idp + "-text").value.trim()
+      };
+    }
+    if (type === "richtext") {
+      return { text: App.ui.readRichTextField(root, idp + "-text-rt") };
+    }
+    if (type === "image") {
+      return { image: pbReadImageField(root, idp + "-img") };
+    }
+    if (type === "button") {
+      return {
+        label: root.querySelector("#" + idp + "-label").value.trim(),
+        url: root.querySelector("#" + idp + "-url").value.trim(),
+        variant: root.querySelector("#" + idp + "-variant").value
+      };
+    }
+    if (type === "contact-item") {
+      return {
+        kind: root.querySelector("#" + idp + "-kind").value,
+        label: root.querySelector("#" + idp + "-label").value.trim(),
+        value: root.querySelector("#" + idp + "-value").value.trim()
+      };
+    }
+    return {};
+  }
+  var PB_BLOCK_DEFAULTS = {
+    heading: { level: "h2", text: "" }, richtext: { text: "" }, image: { image: null },
+    button: { label: "", url: "", variant: "primary" }, "contact-item": { kind: "phone", label: "", value: "" }, spacer: {}
+  };
 
   function pbReadSectionDataFields(ed, type) {
     if (type === "hero") {
@@ -2495,6 +2595,12 @@ window.VwConsole = (function () {
     if (s.type === "quote") return d.text ? "«" + d.text.slice(0, 34) + (d.text.length > 34 ? "…" : "") + "»" : "(uten sitat)";
     if (s.type === "grid") return (d.columns || 3) + " kolonner · " + (d.items || []).length + " ruter";
     if (s.type === "spacer") return "Luft: " + ((s.variant && s.variant.spacing) || "normal");
+    if (s.type === "blocks") {
+      var n = (d.blocks || []).length;
+      var layoutOpt = PB_BLOCKS_LAYOUT_OPTIONS.filter(function (o) { return o[0] === (d.layout || "1col"); })[0];
+      var layoutLabel = layoutOpt ? layoutOpt[1] : "1 kolonne";
+      return n + " blokk" + (n === 1 ? "" : "er") + " · " + layoutLabel;
+    }
     return "";
   }
 
@@ -2596,7 +2702,27 @@ window.VwConsole = (function () {
       "@media(max-width:600px){.pb-grid{grid-template-columns:1fr!important}}",
       ".pb-cta__title{font-family:var(--font-display);font-size:1.6rem;margin:0 0 .6rem}",
       ".pb-cta__text{margin:0 0 1.2rem}",
-      ".pb-spacer{height:1px}"
+      ".pb-spacer{height:1px}",
+      // Blokker -- MÅ haldast synk med den identiske kopien i
+      // module-page-builder.js sin injectStyles().
+      ".pb-blocks{display:grid;gap:1.5rem}",
+      ".pb-blocks--1col{grid-template-columns:1fr}",
+      ".pb-blocks--2col{grid-template-columns:1fr 1fr}",
+      ".pb-blocks--2col-2-1{grid-template-columns:2fr 1fr}",
+      ".pb-blocks--2col-1-2{grid-template-columns:1fr 2fr}",
+      ".pb-blocks--3col{grid-template-columns:1fr 1fr 1fr}",
+      ".pb-blocks--4col{grid-template-columns:1fr 1fr 1fr 1fr}",
+      ".pb-blocks__slot{display:flex;flex-direction:column;gap:1.2rem;min-width:0}",
+      ".pb-block-heading{margin:0;font-family:var(--font-display);font-weight:700}",
+      ".pb-block-heading--h2{font-size:1.5rem}",
+      ".pb-block-heading--h3{font-size:1.15rem}",
+      ".pb-block-image__img{width:100%;border-radius:12px;object-fit:cover}",
+      ".pb-block-button{margin:.2rem 0}",
+      ".pb-block-contact{display:flex;align-items:center;gap:.6rem;font-size:.95rem}",
+      ".pb-block-contact a{color:inherit}",
+      ".pb-block-spacer{height:1px}",
+      "@media(max-width:900px){.pb-blocks--3col,.pb-blocks--4col{grid-template-columns:1fr 1fr}}",
+      "@media(max-width:600px){.pb-blocks{grid-template-columns:1fr!important}}"
     ].join("");
     return vars + chrome + pb;
   }
@@ -2679,6 +2805,9 @@ window.VwConsole = (function () {
       if (section.type === "grid") {
         section.data = section.data || {};
         section.data.columns = parseInt(ed.querySelector("#pb-sec-cols").value, 10) || 3;
+      } else if (section.type === "blocks") {
+        section.data = section.data || {};
+        section.data.layout = ed.querySelector("#pb-sec-blocks-layout").value;
       } else {
         section.data = pbReadSectionDataFields(ed, section.type);
       }
@@ -2702,6 +2831,24 @@ window.VwConsole = (function () {
         section.data = section.data || {};
         section.data.items = Array.isArray(section.data.items) ? section.data.items : [];
         renderGridItems(section, ed);
+      }
+      if (section.type === "blocks") {
+        section.data = section.data || {};
+        section.data.layout = section.data.layout || "1col";
+        section.data.blocks = Array.isArray(section.data.blocks) ? section.data.blocks : [];
+        renderBlocksEditor(section, ed);
+        // Kolonneoppsett-veljaren er alt fanga av den generiske
+        // onFieldChange-lyttaren over (oppdaterer section.data.layout FØR
+        // denne lyttaren køyrer, sidan han vart registrert først på same
+        // element) -- denne re-rendrar berre blokklista slik at "Kolonne"-
+        // valet sitt alternativtal og eventuelle no-ugyldige slot-verdiar
+        // held seg synkronisert med det nye kolonnetalet.
+        var layoutSel = ed.querySelector("#pb-sec-blocks-layout");
+        if (layoutSel) layoutSel.addEventListener("change", function () {
+          var cols = pbLayoutColCount(section.data.layout);
+          section.data.blocks.forEach(function (b) { if ((b.slot || 0) >= cols) b.slot = cols - 1; });
+          renderBlocksEditor(section, ed);
+        });
       }
     }
 
@@ -2751,6 +2898,127 @@ window.VwConsole = (function () {
         items.push({ image: null, heading: "", text: "", button: null });
         renderGridItems(section, ed);
         updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+      });
+    }
+
+    // Blokk-redigering inni ei "blocks"-seksjon -- modellert direkte på
+    // renderGridItems over (same add/remove/re-render-mønster, muterer
+    // section.data.blocks direkte), med éin ny ting utan noko eksisterande
+    // mønster å kopiere: SLOT-medviten opp/ned-reorder. Ei "kolonne" kan
+    // innehalde fleire blokker stabla i array-rekkjefølgje -- "flytt opp/ned"
+    // flyttar ei blokk berre INNANFOR si eiga slot-gruppe, aldri på tvers.
+    // Knapp-basert reorder (ikkje dra-og-slipp) -- same mobil-brukbarheits-
+    // grunngjeving som alt gjeld for seksjon-nivå reorder.
+    function renderBlocksEditor(section, ed) {
+      var box = ed.querySelector("#pb-blocks-items");
+      if (!box) return;
+      var blocks = section.data.blocks;
+      var cols = pbLayoutColCount(section.data.layout);
+      var slotOptions = [];
+      for (var c = 0; c < cols; c++) slotOptions.push([String(c), "Kolonne " + (c + 1)]);
+
+      function blockDef(type) {
+        var found = PB_BLOCK_TYPES.filter(function (t) { return t.type === type; })[0];
+        return found || { label: type, icon: "square" };
+      }
+      function sameSlotIndices(slot) {
+        var out = [];
+        blocks.forEach(function (b, i) { if ((b.slot || 0) === slot) out.push(i); });
+        return out;
+      }
+
+      box.innerHTML = blocks.map(function (b, i) {
+        var idp = "pb-block-" + i;
+        var group = sameSlotIndices(b.slot || 0);
+        var pos = group.indexOf(i);
+        var def = blockDef(b.type);
+        return '<div class="pbc-block-card">' +
+          '<div class="pbc-block-card__head">' +
+            '<span class="pbc-block-card__type"><i class="ti ti-' + def.icon + '"></i> ' + C.esc(def.label) + '</span>' +
+            '<div class="pbc-mini-actions">' +
+              '<button type="button" class="pbc-icon-btn" title="Flytt opp" aria-label="Flytt blokk opp" ' + (pos === 0 ? "disabled" : "") + ' data-pb-block-up="' + i + '"><i class="ti ti-chevron-up"></i></button>' +
+              '<button type="button" class="pbc-icon-btn" title="Flytt ned" aria-label="Flytt blokk ned" ' + (pos === group.length - 1 ? "disabled" : "") + ' data-pb-block-down="' + i + '"><i class="ti ti-chevron-down"></i></button>' +
+              '<button type="button" class="pbc-icon-btn danger" title="Fjern blokk" aria-label="Fjern blokk" data-pb-block-remove="' + i + '"><i class="ti ti-trash"></i></button>' +
+            '</div>' +
+          '</div>' +
+          (cols > 1 ? pbSelectField(idp + "-slot", "Kolonne", slotOptions, String(b.slot || 0)) : "") +
+          pbBlockDataFieldsHtml(b.type, b.data || {}, idp) +
+        '</div>';
+      }).join("");
+
+      function readBlocksFromDom() {
+        blocks.forEach(function (b, i) {
+          var idp = "pb-block-" + i;
+          var slotEl = box.querySelector("#" + idp + "-slot");
+          if (slotEl) b.slot = parseInt(slotEl.value, 10) || 0;
+          b.data = pbReadBlockDataFields(box, b.type, idp);
+        });
+      }
+      function onBlockChange() { readBlocksFromDom(); updateSummaryInPlace(section); refreshPreview(); scheduleSave(); }
+
+      box.querySelectorAll("select, input[type=text], input[type=url], textarea").forEach(function (el) {
+        el.addEventListener(el.tagName === "SELECT" ? "change" : "input", onBlockChange);
+      });
+      App.ui.bindRichTextFields(box);
+      box.querySelectorAll(".rtfield__editor").forEach(function (rt) { rt.addEventListener("input", onBlockChange); });
+      blocks.forEach(function (b, i) {
+        if (b.type === "image") pbBindImageField(box, "pb-block-" + i + "-img", tenantId, onBlockChange);
+      });
+
+      box.querySelectorAll("[data-pb-block-remove]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          readBlocksFromDom();
+          blocks.splice(parseInt(btn.getAttribute("data-pb-block-remove"), 10), 1);
+          renderBlocksEditor(section, ed);
+          updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+        });
+      });
+      function moveWithinSlot(idx, dir) {
+        readBlocksFromDom();
+        var group = sameSlotIndices(blocks[idx].slot || 0);
+        var pos = group.indexOf(idx);
+        var swapIdx = group[pos + dir];
+        if (swapIdx === undefined) return;
+        var tmp = blocks[idx]; blocks[idx] = blocks[swapIdx]; blocks[swapIdx] = tmp;
+        renderBlocksEditor(section, ed);
+        updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+      }
+      box.querySelectorAll("[data-pb-block-up]").forEach(function (btn) {
+        btn.addEventListener("click", function () { moveWithinSlot(parseInt(btn.getAttribute("data-pb-block-up"), 10), -1); });
+      });
+      box.querySelectorAll("[data-pb-block-down]").forEach(function (btn) {
+        btn.addEventListener("click", function () { moveWithinSlot(parseInt(btn.getAttribute("data-pb-block-down"), 10), 1); });
+      });
+
+      var addTrigger = ed.querySelector("#pb-blocks-add-trigger");
+      var picker = ed.querySelector("#pbc-block-type-picker");
+      if (addTrigger && picker) addTrigger.addEventListener("click", function () {
+        var open = picker.style.display !== "none";
+        if (open) { picker.style.display = "none"; return; }
+        picker.style.display = "grid";
+        picker.innerHTML = PB_BLOCK_TYPES.map(function (t) {
+          return '<button type="button" class="pbc-type-card" data-pb-add-block-type="' + t.type + '">' +
+            '<span class="pbc-type-card__icon"><i class="ti ti-' + t.icon + '"></i></span>' +
+            '<span><span class="pbc-type-card__title">' + C.esc(t.label) + '</span><div class="pbc-type-card__desc">' + C.esc(t.desc) + '</div></span>' +
+          '</button>';
+        }).join("");
+        picker.querySelectorAll("[data-pb-add-block-type]").forEach(function (btn2) {
+          btn2.addEventListener("click", function () {
+            var type = btn2.getAttribute("data-pb-add-block-type");
+            readBlocksFromDom();
+            blocks.push({ id: pbNewBlockId(), type: type, slot: 0, data: Object.assign({}, PB_BLOCK_DEFAULTS[type]) });
+            picker.style.display = "none";
+            renderBlocksEditor(section, ed);
+            // UX-funn: flytt fokus inn i den nye blokka sitt fyrste felt --
+            // utan dette må ein tastatur-operatør tabbe gjennom heile lista
+            // på nytt for å nå fram til det han nettopp la til.
+            var newCards = box.querySelectorAll(".pbc-block-card");
+            var lastCard = newCards[newCards.length - 1];
+            var firstField = lastCard && lastCard.querySelector("input, select, textarea, [contenteditable]");
+            if (firstField) firstField.focus();
+            updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+          });
+        });
       });
     }
 
@@ -2976,7 +3244,8 @@ window.VwConsole = (function () {
             quote: { text: "", author: "", role: "" },
             grid: { columns: 3, items: [] },
             cta: { heading: "Ny overskrift", text: "", button: null },
-            spacer: {}
+            spacer: {},
+            blocks: { layout: "1col", blocks: [] }
           };
           page.sections = page.sections || [];
           page.sections = page.sections.map(function (s) { return Object.assign({}, s, { open: false }); });
