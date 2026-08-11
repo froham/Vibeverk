@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.133.4 — 2026-08-11
+
+**Sidebygger: forhåndsvisningen stables over verktøyet i stedet for å ligge i en tom kolonne når den minimeres.** Brukertest av 0.133.3 viste at minimering ikke faktisk løste noe -- "No ble jo dette veldig tullete" -- fordi to-kolonners CSS-grid-oppsettet beholdt kolonnebredden uansett, så minimering bare skjulte innholdet inni og etterlot tomt hvitt rom ved siden av seksjonspanelet.
+
+- `.pbc-workspace` er nå alltid én stablet kolonne (`display:flex;flex-direction:column`), ikke et to-kolonners grid med en smal-viewport-spesialkasus (`order:-1`-hacket er fjernet sammen med grid-et det hørte til).
+- Forhåndsvisningspanelet ligger nå FØRST i DOM-en og er minimert som standard -- åpnes med ett klikk når man vil se resultatet, tar minimal plass (kun toppraden) resten av tiden.
+- 1 test oppdatert (starttilstand: minimert/`aria-expanded="false"`), 1 ny test lagt til (DOM-rekkefølge: forhåndsvisning først).
+- Kun UI-lag, ingen backend-endring -- ingen ny broker-redeploy nødvendig.
+
 ## 0.133.3 — 2026-08-11
 
 **Sidebygger: mulighet til å minimere forhåndsvisningen.** Brukerforslag rett etter 0.133.2 ble merget.

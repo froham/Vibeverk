@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.133.3";
+  var VIBEVERK_VERSION = "0.133.4";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2899,6 +2899,25 @@ window.VwConsole = (function () {
         '</div>' +
       '</div>' +
       '<div class="pbc-workspace">' +
+        // UX-tilbakemelding 2026-08-11: forhåndsvisinga ligg no FØRST i
+        // DOM-en, alltid i full breidde, og STARTAR MINIMERT som standard
+        // -- eit tidlegare sidestilt to-kolonne-forsøk let kolonnebreidda
+        // stå urørt sjølv når minimert, som berre skapte tomt, ubrukt rom
+        // ("veldig tullete"). Eit stabla, alltid-full-breidde oppsett gjer
+        // at minimering faktisk fjernar plassen ho tok, ikkje berre
+        // innhaldet inni ho.
+        '<div class="pbc-panel pbc-preview-panel is-minimized" id="pbc-preview-panel">' +
+          '<div class="pbc-panel__head">' +
+            '<h4>Forhåndsvisning</h4>' +
+            '<div class="pbc-preview-toolbar">' +
+              '<span class="pbc-preview-width-label" id="pbc-pv-width-label">Skrivebord</span>' +
+              '<button type="button" class="is-active" id="pbc-pv-desktop" aria-label="Skrivebordsbredde" title="Skrivebord"><i class="ti ti-device-desktop"></i></button>' +
+              '<button type="button" id="pbc-pv-mobile" aria-label="Mobilbredde" title="Mobil"><i class="ti ti-device-mobile"></i></button>' +
+              '<button type="button" id="pbc-pv-toggle" aria-label="Vis forhåndsvisning" aria-expanded="false" title="Vis forhåndsvisning"><i class="ti ti-chevron-down"></i></button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="pbc-preview-frame-wrap"><iframe class="pbc-preview-frame" id="pbc-preview-iframe" title="Forhåndsvisning av siden" sandbox="allow-same-origin"></iframe></div>' +
+        '</div>' +
         '<div class="pbc-panel">' +
           '<div class="pbc-panel__head"><h4>Seksjonar</h4><span class="pbc-panel__head-hint" id="pbc-section-count"></span></div>' +
           '<div class="pbc-section-list" id="pbc-section-list"></div>' +
@@ -2906,26 +2925,6 @@ window.VwConsole = (function () {
             '<button type="button" class="pbc-add-trigger" id="pbc-add-trigger"><i class="ti ti-plus"></i> Legg til seksjon</button>' +
             '<div class="pbc-type-picker" id="pbc-type-picker" style="display:none"></div>' +
           '</div>' +
-        '</div>' +
-        '<div class="pbc-panel pbc-preview-panel" id="pbc-preview-panel">' +
-          '<div class="pbc-panel__head">' +
-            '<h4>Forhåndsvisning</h4>' +
-            '<div class="pbc-preview-toolbar">' +
-              // UX-funn 2026-08-11 (0.133.1): verktøyknappane åleine sa ikkje
-              // KVA breidde "mobil" faktisk simulerer. CSS-klassen vart lagt
-              // til då, men aldri kobla til noko element -- retta no.
-              '<span class="pbc-preview-width-label" id="pbc-pv-width-label">Skrivebord</span>' +
-              '<button type="button" class="is-active" id="pbc-pv-desktop" aria-label="Skrivebordsbredde" title="Skrivebord"><i class="ti ti-device-desktop"></i></button>' +
-              '<button type="button" id="pbc-pv-mobile" aria-label="Mobilbredde" title="Mobil"><i class="ti ti-device-mobile"></i></button>' +
-              // UX-tilbakemelding 2026-08-11: ynskje om å kunne minimere
-              // forhåndsvisinga -- spesielt nyttig i eitt-kolonne-modus (smalt
-              // vindauge, sjå .pbc-workspace sin @media(max-width:980px)), der
-              // forhåndsvisinga alt vert vist FØRST og elles alltid tek opp
-              // full høgd sjølv når operatøren berre vil redigere vidare.
-              '<button type="button" id="pbc-pv-toggle" aria-label="Minimer forhåndsvisning" aria-expanded="true" title="Minimer forhåndsvisning"><i class="ti ti-chevron-up"></i></button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="pbc-preview-frame-wrap"><iframe class="pbc-preview-frame" id="pbc-preview-iframe" title="Forhåndsvisning av siden" sandbox="allow-same-origin"></iframe></div>' +
         '</div>' +
       '</div>';
 
