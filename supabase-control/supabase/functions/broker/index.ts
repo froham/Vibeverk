@@ -42,7 +42,14 @@ const CORS = {
 // is gated on a login state Console never establishes) -- routed through the
 // same broker path as superconfig now. reset_config below also clears it,
 // matching the "reset everything" intent of that button.
-const ALLOWED_CONFIG_KEYS = ["superconfig", "superconfig-private", "analytics"];
+// "custom-pages" added 2026-08-11 (Sidebygger, Fase 1): sidebygger-sider
+// (module-page-builder.js) sitt lagringsskjema. Console er einaste skrivar
+// i Fase 1 (ingen kundeflyt finst enno) -- kunden sin eigen tenant-økt kan
+// aldri tilfredsstille store sin can_edit_content()-RLS via Console sin
+// anon-nøkkel tenantPublicClient() (ho har med vilje persistSession:false),
+// difor må skriving gå via denne service-role-broker-vegen, same som
+// superconfig alt gjer.
+const ALLOWED_CONFIG_KEYS = ["superconfig", "superconfig-private", "analytics", "custom-pages"];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -531,6 +538,104 @@ serve(async (req: Request) => {
       if (oldPath && oldPath.indexOf("logos/") === 0) {
         // supabase-js sitt storage.remove() kastar ikkje, det løyser til
         // { data, error } -- feilen her vert medvite ignorert (best-effort).
+        await tenantSrvSb.storage.from("media").remove([decodeURIComponent(oldPath)]);
+      }
+    }
+    const { data: pub } = tenantSrvSb.storage.from("media").getPublicUrl(path);
+    await auditFinish(auditId, "success", path);
+    return json({ success: true, url: pub.publicUrl });
+  }
+
+  // ── upload_section_image ─────────────────────────────────────────────────
+  // Sidebygger (module-page-builder.js, Fase 1) sitt biletopplastingsfelt --
+  // same service-role-kryssing/valideringsmønster som upload_logo over
+  // (SVG-sanering, XML-sniffing uavhengig av oppgjeven content_type,
+  // rå-storleik-avvisning FØR base64-dekoding), berre med ei anna
+  // storleiksgrense: seksjonsbilete (hero/stort bilete/rutenett-ruter) er
+  // fullbreidde-innhaldsbilete, same rolle som kunden sitt eige Mediabank-
+  // innhald, ikkje ein liten logo -- difor eit større tak enn upload_logo
+  // sine 300KB/6MB (kalibrert mot core.js sin Media.put(), MAX_DIM:1400/
+  // QUALITY:0.82, som heller ikkje har noko hardt sluttak).
+  if (action === "upload_section_image") {
+    const { file_base64, content_type, old_image_url } = body;
+    const ALLOWED_EXT: Record<string, string> = {
+      "image/svg+xml": "svg",
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/webp": "webp",
+    };
+    const ext = ALLOWED_EXT[content_type];
+    if (!ext) {
+      await audit(tenant.id, action, "error", "ikkje-tillaten filtype: " + content_type);
+      return json({ error: "Berre SVG, PNG, JPEG eller WebP er tillate" }, 400);
+    }
+    if (!file_base64 || typeof file_base64 !== "string") {
+      await audit(tenant.id, action, "error", "manglar fildata");
+      return json({ error: "Manglar fildata" }, 400);
+    }
+    const MAX_BYTES = 600 * 1024; // endeleg lagra storleik -- fullbreidde-innhaldsbilete, ~2x upload_logo sitt tak
+    const isCompressible = ext === "png" || ext === "jpg";
+    const RAW_MAX_BYTES = 8 * 1024 * 1024;
+    const rawCeiling = isCompressible ? RAW_MAX_BYTES : MAX_BYTES;
+    if (file_base64.length > Math.ceil((rawCeiling * 4) / 3) + 1024) {
+      await audit(tenant.id, action, "error", "base64-nyttelast for stor: " + file_base64.length + " teikn");
+      return json({ error: "Fila er for stor (maks " + Math.round(rawCeiling / 1024) + "KB)" }, 400);
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = base64Decode(file_base64);
+    } catch (_e) {
+      await audit(tenant.id, action, "error", "ugyldig base64-data");
+      return json({ error: "Ugyldig fildata" }, 400);
+    }
+    if (bytes.length > rawCeiling) {
+      await audit(tenant.id, action, "error", "fil for stor: " + bytes.length + " bytes");
+      return json({ error: "Fila er for stor (maks " + Math.round(rawCeiling / 1024) + "KB)" }, 400);
+    }
+    const xmlLike = looksLikeXml(bytes);
+    if (ext === "svg" && !xmlLike) {
+      await audit(tenant.id, action, "error", "hevda SVG, men inneheld ikkje XML/SVG-innhald");
+      return json({ error: "Fila hevdar å vere SVG, men inneheld ikkje gyldig SVG-innhald" }, 400);
+    }
+    if (ext !== "svg" && xmlLike) {
+      await audit(tenant.id, action, "error", "hevda " + content_type + ", men inneheld XML/SVG-innhald");
+      return json({ error: "Filinnhaldet stemmer ikkje med den oppgjevne filtypen" }, 400);
+    }
+    let uploadBytes: Uint8Array = bytes;
+    let uploadContentType = content_type;
+    if (xmlLike) {
+      const svgText = new TextDecoder().decode(bytes);
+      const sanitized = sanitizeSvg(svgText);
+      if (sanitized === null) {
+        await audit(tenant.id, action, "error", "SVG kunne ikkje saneras trygt");
+        return json({ error: "SVG-fila kunne ikkje verifiserast som trygg og vart avvist" }, 400);
+      }
+      uploadBytes = new TextEncoder().encode(sanitized);
+      uploadContentType = "image/svg+xml";
+    } else if (isCompressible && bytes.length > MAX_BYTES) {
+      const compressed = await compressRasterImage(bytes, ext, MAX_BYTES);
+      if (compressed === null) {
+        await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under " + Math.round(MAX_BYTES / 1024) + "KB");
+        return json({ error: "Biletet er for stort og kunne ikkje komprimerast nok automatisk. Prøv eit mindre bilete, eller last opp som JPEG." }, 400);
+      }
+      uploadBytes = compressed;
+    }
+    const path = "sections/" + tenant.id + "-" + Date.now() + "." + ext;
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error: upErr } = await tenantSrvSb.storage
+      .from("media")
+      .upload(path, uploadBytes, { contentType: uploadContentType, upsert: false });
+    if (upErr) {
+      await auditFinish(auditId, "error", upErr.message);
+      return json({ error: "Opplasting feila" }, 500);
+    }
+    // Best-effort opprydding av det GAMLE seksjonsbiletet (same mønster som
+    // upload_logo sin old_logo_url-handtering) -- feilar denne, blokkerer det
+    // ikkje den nye opplastinga, berre ein ubrukt fil vert liggjande att.
+    if (typeof old_image_url === "string" && old_image_url.indexOf("/storage/v1/object/public/media/") > -1) {
+      const oldPath = old_image_url.split("/storage/v1/object/public/media/")[1];
+      if (oldPath && oldPath.indexOf("sections/") === 0) {
         await tenantSrvSb.storage.from("media").remove([decodeURIComponent(oldPath)]);
       }
     }

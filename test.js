@@ -17,8 +17,53 @@ window.HTMLElement.prototype.scrollIntoView = () => {};
 window.URL.createObjectURL = window.URL.createObjectURL || (() => "blob:mock-url");
 window.URL.revokeObjectURL = window.URL.revokeObjectURL || (() => {});
 
+// Sidebygger (module-page-builder.js): frøplantar "custom-pages" i
+// localStorage FØR modulen lastar, sidan syncModules() køyrer synkront ved
+// skriptlasting i denne harnessen (same mønster som Karusell/Scrollbanner
+// under, men ingen feature-flagg å patche her -- modulen er med vilje
+// tilgjengeleg for alle tenantar, sjå brukaravklaring 2026-08-11). Éin side
+// med eitt av kvar seksjonstype (pluss ein ukjend type, for
+// versjonsskeivskap-tryggleiken i components.js sin pageSection()), og éin
+// side som seinare vert sletta frå lagringa for å teste "ingen unregister-
+// mekanisme"-fallbacken.
+window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([
+  {
+    id: "pb-test-side", label: "Testside", order: 60, navHidden: true, locked: true,
+    sections: [
+      { id: "s1", type: "hero", variant: { background: "dark", width: "wide", spacing: "normal", align: "center" },
+        data: { image: { src: "https://example.test/hero.jpg", alt: "" }, heading: "Velkommen", text: "Ingress", button: { label: "Les mer", url: "#kontakt" } } },
+      { id: "s2", type: "text", variant: { background: "light", width: "narrow", spacing: "normal", align: "left" },
+        data: { heading: "Om dette", text: "<p>Brødtekst</p>" } },
+      { id: "s3", type: "image-text", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
+        data: { image: { src: "https://example.test/it.jpg" }, imagePosition: "right", heading: "Bilde og tekst", text: "<p>Tekst</p>" } },
+      { id: "s4", type: "big-image", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
+        data: { image: { src: "https://example.test/big.jpg" }, caption: "Bildetekst" } },
+      { id: "s5", type: "quote", variant: { background: "branded", width: "narrow", spacing: "normal", align: "left" },
+        data: { text: "Et sitat", author: "Ola Nordmann", role: "Dagleg leiar" } },
+      { id: "s6", type: "grid", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
+        data: { columns: 3, items: [{ heading: "Rute 1", text: "Tekst 1" }, { heading: "Rute 2", text: "Tekst 2" }] } },
+      // button.url er MEDVITE ein javascript:-nyttelast her -- testar
+      // Security Auditor-funnet (MEDIUM, 2026-08-11) sin fiks direkte:
+      // button() i components.js skal ALDRI rendre ein slik URL som eit
+      // ekte href, same fareklasse som sanitizeRichHtml() sin eigen
+      // <a href>-sanering.
+      { id: "s7", type: "cta", variant: { background: "branded", width: "narrow", spacing: "large", align: "center" },
+        data: { heading: "Ta kontakt", text: "Vi svarer raskt", button: { label: "Kontakt oss", url: "javascript:alert(1)" } } },
+      { id: "s8", type: "spacer", variant: { background: "light", width: "wide", spacing: "large", align: "left" }, data: {} },
+      { id: "s9", type: "not-a-real-type", variant: {}, data: { heading: "Skal aldri vises" } }
+    ]
+  },
+  {
+    id: "pb-deleted-side", label: "Snart sletta", order: 61, navHidden: true, locked: true,
+    sections: [
+      { id: "d1", type: "text", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
+        data: { heading: "MARKØR-FØR-SLETTING", text: "<p>Dette skal forsvinne</p>" } }
+    ]
+  }
+]));
+
 // Last filene i samme rekkefølge som index.html
-["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-crm.js", "module-mediabank.js", "module-sidetelling.js"].forEach(f => {
+["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-crm.js", "module-mediabank.js", "module-page-builder.js", "module-sidetelling.js"].forEach(f => {
   const code = fs.readFileSync(f, "utf8");
   window.eval(code);
 });
@@ -2635,6 +2680,56 @@ const __asyncTests = (async () => {
     window.localStorage.setItem(ns + "chat:convs", JSON.stringify(saved));
   })();
 
+  // --- Sidebygger (module-page-builder.js) ---------------------------------
+  console.log("\n— Sidebygger —");
+  (function () {
+    window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
+    window.location.hash = "#pb-test-side"; window.dispatchEvent(new window.Event("hashchange"));
+    var pbMain = doc.getElementById("main");
+    assert(!!pbMain.querySelector(".pb-page"), "sidebygger: sidecontaineren rendra etter navigering til #pb-test-side");
+    var pbSects = pbMain.querySelectorAll(".pb-sect");
+    assert(pbSects.length === 8, "sidebygger: 8 kjende seksjonstypar rendra, den 9. (ukjend type) er stille utelaten: " + pbSects.length);
+    assert(!!pbMain.querySelector(".pb-hero"), "sidebygger: hero-seksjon rendra");
+    assert(!!pbMain.querySelector(".pb-hero__img"), "sidebygger: hero-seksjonen sitt bilete rendra");
+    assert(!!pbMain.querySelector(".pb-text"), "sidebygger: tekst-seksjon rendra");
+    assert(!!pbMain.querySelector(".pb-imgtext.pb-imgtext--right"), "sidebygger: bilde+tekst-seksjon rendra med rett biletplassering");
+    assert(!!pbMain.querySelector(".pb-bigimage"), "sidebygger: stort bilde-seksjon rendra");
+    assert(!!pbMain.querySelector(".pb-quote"), "sidebygger: sitat-seksjon rendra");
+    assert(!!pbMain.querySelector(".pb-grid.pb-grid--cols-3"), "sidebygger: rutenett-seksjon rendra med rett kolonnetal");
+    assert(pbMain.querySelectorAll(".pb-grid__item").length === 2, "sidebygger: rutenett har rett tal ruter: " + pbMain.querySelectorAll(".pb-grid__item").length);
+    assert(!!pbMain.querySelector(".pb-cta"), "sidebygger: CTA-seksjon rendra");
+    assert(!pbMain.querySelector(".pb-cta a[href*='javascript:']"), "sidebygger: ein javascript:-knapplenke vert ALDRI rendra som eit ekte href (Security Auditor-funn, retta i components.js sin button())");
+    assert(/Kontakt oss/.test(pbMain.querySelector(".pb-cta").textContent), "sidebygger: knappeteksten vert framleis vist sjølv om lenka vart nekta (fell attende til ein vanleg <button>, ikkje heile knappen fjerna)");
+    assert(!!pbMain.querySelector(".pb-spacer"), "sidebygger: mellomrom-seksjon rendra");
+    assert(pbMain.textContent.indexOf("Skal aldri vises") === -1, "sidebygger: ukjend seksjonstype sitt innhald vert aldri vist");
+    assert(!!pbMain.querySelector(".pb-sect--w-narrow"), "sidebygger: 'smal'-breidde-varianten gjev rett klasse");
+    assert(!!pbMain.querySelector(".pb-sect--bg-branded"), "sidebygger: 'merkefarge'-bakgrunnsvarianten gjev rett klasse");
+
+    // Sletta-side-fallback: App.registerModule() (core.js) har ingen
+    // unregister-mekanisme -- ei sletta side sin modul står registrert
+    // resten av økta, og renderPage()-closuren må vise "finst ikkje lenger"
+    // i staden for å krasje eller vise gammalt cacha innhald.
+    window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
+    window.location.hash = "#pb-deleted-side"; window.dispatchEvent(new window.Event("hashchange"));
+    assert(doc.getElementById("main").textContent.indexOf("MARKØR-FØR-SLETTING") !== -1,
+      "sidebygger: sida sitt innhald vert vist FØR sletting");
+    var pagesBeforeDelete = JSON.parse(window.localStorage.getItem("nordpunkt:custom-pages"));
+    window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify(pagesBeforeDelete.filter(function (p) { return p.id !== "pb-deleted-side"; })));
+    window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
+    window.location.hash = "#pb-deleted-side"; window.dispatchEvent(new window.Event("hashchange"));
+    var afterDeleteText = doc.getElementById("main").textContent;
+    assert(afterDeleteText.indexOf("MARKØR-FØR-SLETTING") === -1 && afterDeleteText.indexOf("finnes ikke lenger") !== -1,
+      "sidebygger: sletta side viser 'finst ikkje lenger' i staden for det gamle innhaldet, ikkje ein krasj: " + afterDeleteText.slice(0, 200));
+
+    // Nav-synlegheit (navHidden) er generisk core.js-logikk (modNavVisible()),
+    // ikkje sidebygger-spesifikk -- testar berre at modulen faktisk SENDER
+    // navHidden vidare til registerModule(), ikkje at modNavVisible() sjølv
+    // fungerer (det har den generiske sida si eiga dekning).
+    assert(!doc.querySelector('.nav__link[data-nav="pb-test-side"]'), "sidebygger: navHidden:true-sida dukkar ikkje opp i toppmenyen");
+
+    window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
+  })();
+
   // --- Karusell (module-carousel.js) ---------------------------------------
   // Karusellen ligg under Design-modulen (features.sidebygger, 2026-07-20) --
   // same flagg som sjølve sidebygger-funksjonen, eksplisitt false som
@@ -2942,6 +3037,22 @@ const __asyncTests = (async () => {
       "gammal vw-sidetelling-session-verdi vert ikkje lesen, overskriven eller fjerna av den nye mekanismen");
     assert(typeof window4.App.getAnalyticsSessionId === "undefined",
       "App.getAnalyticsSessionId() er heilt fjerna når sidetelling er aktiv");
+
+    // Sidebygger-integrasjon (module-page-builder.js, Fase 1): REAL_PAGE_PATTERNS
+    // er ei statisk liste og kan ikkje dekkje dynamiske, operatør-oppretta sider
+    // -- isRealPage() les difor "custom-pages" direkte (sjå module-sidetelling.js
+    // sin customPageIds()). Stadfest at ei hash-navigering til ei lagra
+    // sidebygger-side faktisk vert talt som ei ny sidevisning, ikkje filtrert
+    // bort som ein mjuk-scroll-seksjon (som ville skjedd utan denne endringa,
+    // sidan sida sin id ikkje står i den statiske REAL_PAGE_PATTERNS-lista).
+    window4.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([{ id: "pb-analytics-test", label: "Analysetest", sections: [] }]));
+    edgeCalls4.length = 0;
+    window4.location.hash = "#pb-analytics-test";
+    window4.dispatchEvent(new window4.Event("hashchange"));
+    var pbPageviewCall4 = edgeCalls4[0];
+    var pbPageviewPayload4 = pbPageviewCall4 ? JSON.parse(pbPageviewCall4.init.body) : {};
+    assert(edgeCalls4.length === 1 && pbPageviewPayload4.type === "pageview" && pbPageviewPayload4.path === "#pb-analytics-test",
+      "sidetelling: hash-navigering til ei dynamisk sidebygger-side vert talt som ei ny sidevisning: " + JSON.stringify(pbPageviewPayload4));
 
     // Fase 2 steg 3b (konverteringskobling) er FJERNA (beslutningsmøte
     // 2026-08-06, sjå docs/compliance/legal-complexity-vs-value-2026-08-06.md

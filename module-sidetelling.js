@@ -122,9 +122,22 @@
   // framtidig ny page:true-modul må leggjast til her óg, same
   // vedlikehaldskopling som bindGlobalNav() sjølv alt har.
   var REAL_PAGE_PATTERNS = [/^#booking(\/|$)/, /^#aktuelt\/alle$/, /^#sak\//];
+
+  // Sidebygger-sider (module-page-builder.js) er DYNAMISKE og operatør-
+  // oppretta -- ei statisk regex-oppføring per side held ikkje (ville krevje
+  // at kvar ny/sletta side oppdaterer denne fila). Les "custom-pages"-nøkkelen
+  // direkte i staden, same lagringsnøkkel som module-page-builder.js sjølv les.
+  function customPageIds() {
+    var pages = (App && App.store && App.store.get("custom-pages", [])) || [];
+    return pages.map(function (p) { return p && p.id; }).filter(Boolean);
+  }
   function isRealPage(path) {
     for (var i = 0; i < REAL_PAGE_PATTERNS.length; i++) {
       if (REAL_PAGE_PATTERNS[i].test(path)) return true;
+    }
+    var ids = customPageIds();
+    for (var j = 0; j < ids.length; j++) {
+      if (path === "#" + ids[j] || path.indexOf("#" + ids[j] + "/") === 0) return true;
     }
     return false;
   }

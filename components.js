@@ -142,12 +142,23 @@ window.Components = (function () {
   }
 
   // Knapp eller lenke-knapp. variant: "primary" | "secondary" | "ghost"
+  //
+  // Security Auditor-funn (MEDIUM, 2026-08-11, sidebygger-runda): dei nye
+  // seksjonstypane (pbHero/pbCta/pbGrid) tek imot ei fritt-skriven
+  // knapplenke frå ein Console-operatør og sender henne uendra hit som
+  // o.href -- esc() åleine hindrar IKKJE ein javascript:-URL, berre HTML-
+  // spesialteikn. Same fareklasse som sanitizeRichHtml() sin eigen <a href>-
+  // sanering og module-quote.js/module-crm.js sin isSafeAttachmentUrl()
+  // (begge bruker nøyaktig same regex) -- retta HER, éin gong, i staden for
+  // i kvar einskild kallar, sidan button() er den einaste staden ein href
+  // faktisk vert til eit <a>-element.
   function button(opts) {
     const o = opts || {};
     const variant = o.variant || "primary";
     const cls = `btn btn--${variant} ${o.class || ""}`.trim();
     const inner = `${o.icon ? icon(o.icon) + " " : ""}${esc(o.label)}`;
-    if (o.href) {
+    const safeHref = o.href && !/^\s*javascript:/i.test(o.href);
+    if (safeHref) {
       return `<a class="${cls}" href="${esc(o.href)}" ${o.attrs || ""}>${inner}</a>`;
     }
     return `<button type="${o.type || "button"}" class="${cls}" ${o.attrs || ""}>${inner}</button>`;
@@ -397,6 +408,136 @@ window.Components = (function () {
   function services(d) {
     var t = window.SiteTemplates && window.SiteTemplates.klassisk;
     return t ? t.services(d) : "";
+  }
+
+  /* --- Sidebygger-seksjonar (Fase 1, Console-only) --------------------------
+     Reine funksjonar, prefiks pb* -- skil klårt frå hero()/about()/services()
+     sine CFG/content-drivne datastrukturar for dei faste forsideseksjonane
+     over. Kvar seksjon har forma { id, type, variant:{background,width,
+     spacing,align}, data } -- sjå module-page-builder.js for lagringsskjemaet.
+     pageSection() er einaste offentlege inngangspunkt; dei typespesifikke
+     pb*-funksjonane under er interne detaljar, ikkje meint kalla direkte. */
+
+  function pbVariantClass(variant) {
+    var v = variant || {};
+    var bg = ["light", "dark", "branded"].indexOf(v.background) !== -1 ? v.background : "light";
+    var width = v.width === "narrow" ? "narrow" : "wide";
+    var spacing = ["small", "normal", "large"].indexOf(v.spacing) !== -1 ? v.spacing : "normal";
+    var align = v.align === "center" ? "center" : "left";
+    return "pb-sect--bg-" + bg + " pb-sect--w-" + width + " pb-sect--sp-" + spacing + " pb-sect--al-" + align;
+  }
+
+  function pbHero(d) {
+    var img = d.image && d.image.src ? d.image : null;
+    return (
+      '<div class="pb-hero' + (img ? " has-image" : "") + '">' +
+        (img ? coverImg(img, "pb-hero__img") : "") +
+        '<div class="pb-hero__body">' +
+          (d.heading ? '<h2 class="pb-hero__title">' + esc(d.heading) + '</h2>' : "") +
+          (d.text ? '<p class="pb-hero__text">' + esc(d.text) + '</p>' : "") +
+          (d.button && d.button.label && d.button.url ? button({ label: d.button.label, href: d.button.url, variant: "primary" }) : "") +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function pbText(d) {
+    return (
+      '<div class="pb-text">' +
+        (d.heading ? '<h2 class="pb-text__title">' + esc(d.heading) + '</h2>' : "") +
+        '<div class="prose">' + sanitizeRichHtml(d.text || "") + '</div>' +
+      '</div>'
+    );
+  }
+
+  function pbImageText(d) {
+    var img = d.image && d.image.src ? d.image : null;
+    var pos = d.imagePosition === "right" ? "right" : "left";
+    return (
+      '<div class="pb-imgtext pb-imgtext--' + pos + '">' +
+        (img ? coverImg(img, "pb-imgtext__img") : "") +
+        '<div class="pb-imgtext__body">' +
+          (d.heading ? '<h2 class="pb-imgtext__title">' + esc(d.heading) + '</h2>' : "") +
+          '<div class="prose">' + sanitizeRichHtml(d.text || "") + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function pbBigImage(d) {
+    if (!d.image || !d.image.src) return "";
+    return (
+      '<div class="pb-bigimage">' +
+        coverImg(d.image, "pb-bigimage__img") +
+        (d.caption ? '<p class="pb-bigimage__caption">' + esc(d.caption) + '</p>' : "") +
+      '</div>'
+    );
+  }
+
+  function pbQuote(d) {
+    if (!d.text) return "";
+    return (
+      '<blockquote class="pb-quote">' +
+        '<p class="pb-quote__text">' + esc(d.text) + '</p>' +
+        (d.author ? '<footer class="pb-quote__author">' + esc(d.author) + (d.role ? ' <span class="pb-quote__role">' + esc(d.role) + '</span>' : "") + '</footer>' : "") +
+      '</blockquote>'
+    );
+  }
+
+  // Den generaliserte arbeidshesten: 1-4 kolonnar, kvar rute har UAVHENGIG
+  // valfritt bilete/overskrift/tekst/knapp. Ingen tilsett-/stillings-
+  // spesifikke felt her med vilje -- same mekanisme dekker tilsattkort,
+  // tenestekort, biletgalleri, referansar, sertifiseringar, "kvifor oss"-
+  // punkt osv., berre med ulikt innhald og kolonnetal.
+  function pbGrid(d) {
+    var cols = [1, 2, 3, 4].indexOf(d.columns) !== -1 ? d.columns : 3;
+    var items = (d.items || []).map(function (item) {
+      var img = item.image && item.image.src ? item.image : null;
+      return (
+        '<article class="pb-grid__item">' +
+          (img ? coverImg(img, "pb-grid__img") : "") +
+          '<div class="pb-grid__body">' +
+            (item.heading ? '<h3 class="pb-grid__title">' + esc(item.heading) + '</h3>' : "") +
+            (item.text ? '<p class="pb-grid__text">' + esc(item.text) + '</p>' : "") +
+            (item.button && item.button.label && item.button.url ? button({ label: item.button.label, href: item.button.url, variant: "ghost" }) : "") +
+          '</div>' +
+        '</article>'
+      );
+    }).join("");
+    return '<div class="pb-grid pb-grid--cols-' + cols + '">' + items + '</div>';
+  }
+
+  function pbCta(d) {
+    return (
+      '<div class="pb-cta">' +
+        (d.heading ? '<h2 class="pb-cta__title">' + esc(d.heading) + '</h2>' : "") +
+        (d.text ? '<p class="pb-cta__text">' + esc(d.text) + '</p>' : "") +
+        (d.button && d.button.label && d.button.url ? button({ label: d.button.label, href: d.button.url, variant: "primary" }) : "") +
+      '</div>'
+    );
+  }
+
+  function pbSpacer() {
+    return '<div class="pb-spacer"></div>';
+  }
+
+  var PB_RENDERERS = {
+    hero: pbHero, text: pbText, "image-text": pbImageText, "big-image": pbBigImage,
+    quote: pbQuote, grid: pbGrid, cta: pbCta, spacer: pbSpacer
+  };
+
+  // Dispatcher -- einaste offentlege inngangspunkt for sidebygger-seksjonar.
+  // Returnerer "" for ein ukjend type (versjonsskeivskap-tryggleik: ein
+  // besøkjande med gamal cacha components.js skal aldri krasje eller vise
+  // rå/uforklart innhald for ein seksjonstype lagt til etter deira siste
+  // cache-bust -- berre stille utelate den eine seksjonen).
+  function pageSection(s) {
+    if (!s || !s.type || !PB_RENDERERS[s.type]) return "";
+    var body = PB_RENDERERS[s.type](s.data || {});
+    if (!body) return "";
+    return '<section id="' + esc(s.id || "") + '" class="pb-sect ' + pbVariantClass(s.variant) + '">' +
+      '<div class="pb-sect__inner">' + body + '</div>' +
+    '</section>';
   }
 
   // Kort utdrag på ordgrense
@@ -763,6 +904,7 @@ window.Components = (function () {
     esc, icon, button, eyebrow, field, passwordToggle, termsField, consentPurposesField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
-    contact, footer, modal, tabbar
+    contact, footer, modal, tabbar,
+    pageSection
   };
 })();
