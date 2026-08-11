@@ -405,9 +405,12 @@ test("biletopplasting viser det FAKTISKE komprimeringsresultatet (frå-til), ikk
   assert.match(statusText, /580KB/, "meldinga viser den FAKTISKE, ENDELEGE storleiken -- ikkje berre at noko skjedde");
 });
 
-test("den opne seksjonsredigeringa har eiga, avgrensa rulling (ikkje éi delt, uklår rulling for heile lista)", function () {
+test("verken den opne seksjonsredigeringa eller seksjonslista har ei kunstig høgd-grense lenger (UX-tilbakemelding: for trongt, vanskeleg å nå botnen -- sidan-nivå rulling handterer veksten no)", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
-  assert.match(html, /\.pbc-section-editor\s*\{[^}]*overflow-y:auto/, "seksjonsredigeringa har sitt eige rullefelt, avgrensa til si eiga høgd");
+  var editorRule = html.match(/\.pbc-section-editor\s*\{[^}]*\}/)[0];
+  var listRule = html.match(/\.pbc-section-list\s*\{[^}]*\}/)[0];
+  assert.doesNotMatch(editorRule, /max-height/, "seksjonsredigeringa har ikkje lenger ei eiga høgd-grense");
+  assert.doesNotMatch(listRule, /max-height/, "seksjonslista har ikkje lenger ei eiga høgd-grense");
 });
 
 test("«Minimer forhåndsvisning»-knappen skjular ramma og let deg vise ho att, utan å påverke sjølve lagringa", async function (t) {

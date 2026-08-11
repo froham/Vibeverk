@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.133.5 — 2026-08-12
+
+**Sidebygger: fjernet de kunstige høyde-grensene på seksjonsredigeringen og -listen.** Brukertilbakemelding: åpne seksjoner (f.eks. et rikteksfelt) ble klippet av en 50vh-høy indre rulling som var vanskelig å nå bunnen av -- "Blir igjen veldig unødvendig trangt ... Vanskelig å få tak i bunnen inne i de forskjellige nedtrekkene."
+
+- Både `.pbc-section-editor` (50vh) og `.pbc-section-list` (min(72vh,720px)) hadde egne, uavhengige høyde-grenser med indre rulling, kalibrert mot den gamle to-kolonners layouten der de skulle matche forhåndsvisningens høyde. Nå som arbeidsområdet er én stablet kolonne med forhåndsvisningen skjult som standard (0.133.4), tjente grensene ikke lenger noe formål -- de klippet bare innhold unødvendig.
+- Begge grensene er fjernet. Den vanlige Console-sidescrollen (`.cs-main`) håndterer veksten naturlig i stedet, uten noen liten, lett-å-glemme lokal rulling.
+- `.pbc-grid-items` (rutenett-repeateren inni en åpen rutenett-seksjon) beholder sin egen 360px-grense -- egen, uavhengig problemstilling (mange ruter i én seksjon), ikke berørt av denne tilbakemeldingen.
+- 1 test oppdatert til å verifisere at ingen av de to CSS-reglene lenger har `max-height`.
+- Kun UI-lag, ingen backend-endring -- ingen ny broker-redeploy nødvendig.
+
 ## 0.133.4 — 2026-08-11
 
 **Sidebygger: forhåndsvisningen stables over verktøyet i stedet for å ligge i en tom kolonne når den minimeres.** Brukertest av 0.133.3 viste at minimering ikke faktisk løste noe -- "No ble jo dette veldig tullete" -- fordi to-kolonners CSS-grid-oppsettet beholdt kolonnebredden uansett, så minimering bare skjulte innholdet inni og etterlot tomt hvitt rom ved siden av seksjonspanelet.

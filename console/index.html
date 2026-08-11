@@ -915,11 +915,7 @@
     .pbc-panel__head h4 { margin:0; font-size:.92rem; }
     .pbc-panel__head-hint { font-size:.76rem; color:var(--color-muted); }
 
-    /* UX-funn 2026-08-11: uavhengig rullefelt, matchar førehandsvisinga sin
-       eigen høgd-grense (min(72vh,720px)) -- utan dette voks venstre panel
-       ubegrensa (spesielt med fleire rutenett-ruter opne samstundes, sjå
-       .pbc-grid-items under), og førehandsvisinga hamna langt under. */
-    .pbc-section-list { padding:.65rem; display:flex; flex-direction:column; gap:.5rem; min-height:50px; max-height:min(72vh,720px); overflow-y:auto; }
+    .pbc-section-list { padding:.65rem; display:flex; flex-direction:column; gap:.5rem; min-height:50px; }
     .pbc-section-card { border:1.5px solid var(--color-border); border-radius:10px; background:var(--color-surface); overflow:hidden; transition:border-color .15s,box-shadow .15s; }
     .pbc-section-card.is-open { border-color:var(--color-primary); box-shadow:0 0 0 3px var(--color-tint); }
     .pbc-section-card.is-dragging { opacity:.4; }
@@ -943,11 +939,16 @@
     .pbc-icon-btn:disabled { opacity:.3; cursor:not-allowed; }
     .pbc-icon-btn.danger:hover { background:rgba(192,57,43,.1); color:#c0392b; }
 
-    /* UX-funn 2026-08-11: ei open seksjonsredigering utan eiga høgd-grense
-       gjorde HEILE venstre lista lang og tvinga fram éin delt, uklår
-       rulling for heile panelet -- ei tydeleg, lokal rulling for BERRE den
-       opne seksjonen gjer det opplagt kva som faktisk rullar. */
-    .pbc-section-editor { border-top:1px solid var(--color-border); padding:.9rem 1rem 1rem; background:var(--color-bg); display:flex; flex-direction:column; gap:.75rem; max-height:50vh; overflow-y:auto; }
+    /* UX-tilbakemelding 2026-08-12: den tidlegare 50vh-høgdgrensa (delt
+       fram og attende med .pbc-section-list sin eigen 72vh-grense, fjerna
+       same runde) var kalibrert mot DEN GAMLE to-kolonne-layouten, der
+       begge grensene skulle matche førehandsvisinga sin høgd. No som
+       arbeidsområdet er éin enkelt stabla kolonne (0.133.4) og
+       førehandsvisinga er skjult som standard, tener ikkje grensa lenger
+       noko føremål -- ho berre klipte av eit rikteksfelt (m.m.) midt i og
+       tvinga fram ei vesle, lett-å-gløyme lokal rulling ("vanskeleg å få
+       tak i botnen"). Sidan-nivå rulling handterer no veksten naturleg. */
+    .pbc-section-editor { border-top:1px solid var(--color-border); padding:.9rem 1rem 1rem; background:var(--color-bg); display:flex; flex-direction:column; gap:.75rem; }
     .pbc-variant-row { display:grid; grid-template-columns:repeat(4,1fr); gap:.5rem; }
     @media(max-width:520px) { .pbc-variant-row { grid-template-columns:1fr 1fr; } }
     .pbc-field-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
@@ -1034,6 +1035,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=246"></script>
+  <script src="console-core.js?v=247"></script>
 </body>
 </html>
