@@ -27,6 +27,13 @@ function button(o) {
   if (o.href) return '<a class="' + cls + '" href="' + esc(o.href) + '" ' + (o.attrs || "") + '>' + esc(o.label) + '</a>';
   return '<button type="' + (o.type || "button") + '" class="' + cls + '" ' + (o.attrs || "") + '>' + esc(o.label) + '</button>';
 }
+// Stub for den ekte pageSection()-dispatcheren i components.js -- brukt av
+// den nye live-forhåndsvisinga (pbRenderPreviewInto, kallar C.pageSection()
+// direkte inn i ein iframe). Treng ikkje pikselnøyaktig -- berre nok til at
+// testane kan stadfeste at seksjonsdata faktisk kjem gjennom.
+function pageSection(s) {
+  return '<section class="pb-sect" data-type="' + esc(s.type) + '">' + esc((s.data && s.data.heading) || (s.data && s.data.text) || "") + '</section>';
+}
 
 function query(result) {
   var value = {
@@ -57,7 +64,7 @@ async function mount(opts) {
       readRichTextField: function (root, id) { var el = root.querySelector("#" + id); return el ? el.value : ""; }
     }
   };
-  window.Components = { esc: esc, field: field, richTextField: richTextField, button: button, helpIcon: function () { return ""; } };
+  window.Components = { esc: esc, field: field, richTextField: richTextField, button: button, pageSection: pageSection, helpIcon: function () { return ""; } };
   var control = {
     auth: { onAuthStateChange: function () {}, getSession: function () { return Promise.resolve({ data: { session: { access_token: "operator-token", user: { id: "op-1" }, expires_at: 4102444800 } } }); }, signOut: function () {} },
     from: function (table) {
@@ -96,6 +103,14 @@ async function mount(opts) {
 function wait(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms || 15); }); }
 function submit(el) { el.dispatchEvent(new el.ownerDocument.defaultView.Event("submit", { bubbles: true, cancelable: true })); }
 function click(el) { el.dispatchEvent(new el.ownerDocument.defaultView.Event("click", { bubbles: true })); }
+// Redesignet Sidebygger-editor (2026-08-11) lagrar automatisk (debounca
+// 700ms) på kvart felt-input i staden for ein eksplisitt "Lagre"-knapp --
+// set verdien OG dispatchar ein ekte input-hending, sidan berre å setje
+// .value ikkje trigger nokon lyttar.
+function setFieldValue(el, value) {
+  el.value = value;
+  el.dispatchEvent(new el.ownerDocument.defaultView.Event("input", { bubbles: true }));
+}
 
 test("Sider er en egen Console-fane med tomt utgangspunkt og et opprett-skjema", async function (t) {
   var dom = await mount();
@@ -125,7 +140,7 @@ test("opprette ny side sender rett set_config-nyttelast og opnar sideredigeringa
   assert.equal(savedPages[0].locked, true, "Fase 1: nye sider er alltid låst (ingen kundeflyt finst enno)");
   assert.equal(setCalls[0].body.tenant_id, "t1", "tenant_id sendast eksplisitt, ikkje avhengig av ein potensielt endra _activeTenant seinare");
   var wrap = dom.window.document.querySelector("#cs-section-wrap");
-  assert(wrap.querySelector("#pb-page-title"), "hoppar rett vidare til sideredigeringa etter oppretting");
+  assert(wrap.querySelector("#pbc-title"), "hoppar rett vidare til sideredigeringa etter oppretting");
 });
 
 test("ny side med tittel som kolliderer med eit fast modul-id vert automatisk gjort unik", async function (t) {
@@ -140,26 +155,67 @@ test("ny side med tittel som kolliderer med eit fast modul-id vert automatisk gj
   assert.equal(savedPages[0].id, "hjem-2", "kolliderer med det faste 'hjem'-id-et -- vert automatisk disambiguert, ikkje avvist");
 });
 
-test("legge til en hero-seksjon og lagre sender seksjonen med i set_config-nyttelasten", async function (t) {
+test("legge til en hero-seksjon (via ikon-veljaren) opnar ho automatisk og autolagrar seksjonen med i set_config-nyttelasten", async function (t) {
   var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
   t.after(function () { dom.window.close(); });
   dom.window.VwConsole.navigate("sidebygger-sider");
   await wait();
   click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
   await wait();
-  dom.window.document.querySelector("#pb-add-section-type").value = "hero";
-  click(dom.window.document.querySelector("#pb-add-section-btn"));
+  click(dom.window.document.querySelector("#pbc-add-trigger"));
   await wait();
-  var ed = dom.window.document.querySelector("#pb-section-editor");
-  assert(ed.querySelector("#pb-sec-heading"), "hero-seksjonens felt (overskrift) er rendra");
-  ed.querySelector("#pb-sec-heading").value = "Velkommen til oss";
-  ed.querySelector("#pb-sec-text").value = "Ein ingress";
-  click(ed.querySelector("[data-pb-sec-save]"));
+  var typeCards = dom.window.document.querySelectorAll("[data-pb-add-type]");
+  assert(typeCards.length === 8, "alle åtte seksjonstypar er tilgjengelege i ikon-veljaren: " + typeCards.length);
+  click(dom.window.document.querySelector('[data-pb-add-type="hero"]'));
   await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  assert(ed && ed.querySelector("#pb-sec-heading"), "hero-seksjonen opnar seg automatisk med felta synlege, ingen ekstra «rediger»-klikk trengst");
+  setFieldValue(ed.querySelector("#pb-sec-heading"), "Velkommen til oss");
+  setFieldValue(ed.querySelector("#pb-sec-text"), "Ein ingress");
+  var iframe = dom.window.document.querySelector("#pbc-preview-iframe");
+  await wait();
+  assert.match(iframe.contentDocument.body.textContent, /Velkommen til oss/, "forhåndsvisinga oppdaterer seg live mens du skriv, utan å måtte lagre/opne sida på nytt");
+  await wait(800); // vent på den debounca autolagringa (700ms)
   var savedPages = dom._getStoreValue();
   assert.equal(savedPages[0].sections.length, 1);
   assert.equal(savedPages[0].sections[0].type, "hero");
   assert.equal(savedPages[0].sections[0].data.heading, "Velkommen til oss");
+  assert.match(dom.window.document.querySelector("#pbc-save-status").textContent, /Alt lagra/, "lagre-status viser at autolagringa faktisk fullførte");
+});
+
+test("pbPreviewCss(): eit forsøk på å bryte ut av <style>-taggen via superconfig sine farge-/font-felt vert nøytralisert (Security Auditor-funn BLOCKER, 2026-08-11)", async function (t) {
+  var dom = await mount();
+  t.after(function () { dom.window.close(); });
+  var maliciousSc = {
+    colors: { primary: "red;}</style><script>window.__pwned=1</script><style>{color:blue" },
+    fonts: { display: "Inter</style><script>window.__pwned2=1</script>" }
+  };
+  var css = dom.window.VwConsole._test.pbPreviewCss(maliciousSc);
+  assert(css.indexOf("</style>") === -1, "den genererte CSS-en inneheld ALDRI ein bokstaveleg </style>-sekvens: " + css.slice(0, 200));
+  assert(css.indexOf("<script") === -1, "den genererte CSS-en inneheld ALDRI ein bokstaveleg <script-sekvens: " + css.slice(0, 200));
+  assert.match(css, /--color-primary:#2563eb/, "ugyldig fargeverdi fell attende til den nøytrale standardfargen, ikkje den rå (farlege) verdien");
+  assert.match(css, /--font-display:'Inter'/, "ugyldig fontnamn fell attende til standardfonten, ikkje den rå (farlege) verdien");
+});
+
+test("pbPreviewCss(): eit GYLDIG hex-fargenamn/fontnamn frå superconfig kjem faktisk gjennom (saneringa er ikkje overivrig)", async function (t) {
+  var dom = await mount();
+  t.after(function () { dom.window.close(); });
+  var css = dom.window.VwConsole._test.pbPreviewCss({ colors: { primary: "#ff0033" }, fonts: { display: "Roboto Slab" } });
+  assert.match(css, /--color-primary:#ff0033/, "eit ekte, gyldig hex-fargenamn vert brukt uendra");
+  assert.match(css, /--font-display:'Roboto Slab'/, "eit ekte, gyldig fontnamn (med mellomrom) vert brukt uendra");
+});
+
+test("førehandsvisings-iframen har sandbox=\"allow-same-origin\" (ALDRI allow-scripts) -- andre forsvarslag mot Security Auditor-funnet over", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var iframe = dom.window.document.querySelector("#pbc-preview-iframe");
+  var sandbox = iframe.getAttribute("sandbox") || "";
+  assert.match(sandbox, /allow-same-origin/, "iframen har sandbox-attributtet sett");
+  assert(sandbox.indexOf("allow-scripts") === -1, "sandbox tillèt ALDRI skriptkøyring inne i iframen, sjølv om ein framtidig verdi skulle sleppe usanert gjennom");
 });
 
 test("flytt ned bytter rekkjefølgja på seksjonane i set_config-nyttelasten", async function (t) {
@@ -227,6 +283,76 @@ test("slett side spør om stadfesting (Nivå B) med sidenamn og hash i teksten, 
   assert.match(confirmText, /#jobb-hos-oss/);
   assert.match(confirmText, /kan ikke angres/i);
   assert.equal(dom._getStoreValue().length, 0, "sida er fjerna etter stadfesting");
+});
+
+test("dra-og-slipp flytter en seksjon til en ny posisjon i set_config-nyttelasten", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [
+      { id: "s1", type: "text", variant: {}, data: { heading: "Første" } },
+      { id: "s2", type: "text", variant: {}, data: { heading: "Andre" } },
+      { id: "s3", type: "text", variant: {}, data: { heading: "Tredje" } }
+    ]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var win = dom.window;
+  var s1Card = win.document.querySelector('.pbc-section-card[data-id="s1"]');
+  var s3Card = win.document.querySelector('.pbc-section-card[data-id="s3"]');
+  assert.equal(s1Card.getAttribute("draggable"), "true", "lukka seksjonskort er dragbare");
+  function dragEvt(type) { var e = new win.Event(type, { bubbles: true, cancelable: true }); e.dataTransfer = {}; return e; }
+  s1Card.dispatchEvent(dragEvt("dragstart"));
+  s3Card.dispatchEvent(dragEvt("dragover"));
+  s3Card.dispatchEvent(dragEvt("drop"));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var ids = savedPages[0].sections.map(function (s) { return s.id; });
+  assert.equal(ids.indexOf("s1") > ids.indexOf("s2"), true, "s1 vart flytta bort frå fyrsteplass etter draing: " + ids.join(","));
+});
+
+test("«Slett side»-knappen inne i redigeringsvisninga (ikkje berre sidelista) spør om stadfesting og fjernar sida", async function (t) {
+  var confirmText = null;
+  var startPage = { id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] };
+  var dom = await mount({ storeValue: [startPage], confirmImpl: function (msg) { confirmText = msg; return true; } });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  click(dom.window.document.querySelector("#pbc-del-page"));
+  await wait();
+  assert.match(confirmText, /Slett siden «Testside»/);
+  assert.match(confirmText, /kan ikke angres/i);
+  assert.equal(dom._getStoreValue().length, 0, "sida er fjerna");
+  assert(dom.window.document.querySelector("#pb-new-form"), "hamnar attende på sidelista etter sletting");
+});
+
+test("biletopplasting: grensene står synlege FØR nokon fil er valt, og eit for stort bilete gjev ei tydeleg, handlingsretta feilmelding", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [{ id: "s1", type: "hero", open: true, variant: {}, data: {} }] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  assert(ed, "seksjonen (lagra med open:true) startar allereie open");
+  assert.match(ed.textContent, /8MB/, "PNG\/JPEG-grensa er synleg FØR nokon fil er valt");
+  assert.match(ed.textContent, /600KB/, "SVG\/WebP-grensa er synleg FØR nokon fil er valt");
+
+  var fileInput = ed.querySelector("#pb-sec-img-file");
+  var file = new dom.window.File([new Uint8Array(10)], "stort.png", { type: "image/png" });
+  Object.defineProperty(file, "size", { value: 9 * 1024 * 1024 });
+  Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
+  fileInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait();
+  var statusText = dom.window.document.querySelector("#pb-sec-img-status").textContent;
+  assert.match(statusText, /for stort/i, "feilmeldinga seier tydeleg at fila er for stor");
+  assert.match(statusText, /8MB/, "feilmeldinga nemner den faktiske grensa, ikkje berre 'for stor'");
+  assert.match(statusText, /lavere oppløsning/, "feilmeldinga gjev eit konkret, handlingsretta forslag -- ikkje berre ei avvisning");
 });
 
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {

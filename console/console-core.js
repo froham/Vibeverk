@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.133.0";
+  var VIBEVERK_VERSION = "0.133.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2232,14 +2232,14 @@ window.VwConsole = (function () {
      difor alltid true og aldri vist som ein redigerbar brytar.
      ====================================================================== */
   var PB_SECTION_TYPES = [
-    { type: "hero", label: "Hero/banner" },
-    { type: "text", label: "Tekstblokk" },
-    { type: "image-text", label: "Bilde + tekst" },
-    { type: "big-image", label: "Stort bilde" },
-    { type: "quote", label: "Sitat" },
-    { type: "grid", label: "Rutenett" },
-    { type: "cta", label: "CTA (handling)" },
-    { type: "spacer", label: "Mellomrom" }
+    { type: "hero", label: "Hero/banner", desc: "Stort bilde med overskrift og knapp øverst på siden", icon: "photo" },
+    { type: "text", label: "Tekstblokk", desc: "Overskrift og brødtekst", icon: "align-left" },
+    { type: "image-text", label: "Bilde + tekst", desc: "Bilde ved siden av tekst", icon: "layout-2" },
+    { type: "big-image", label: "Stort bilde", desc: "Fullbredde bilde, valgfri bildetekst", icon: "photo-scan" },
+    { type: "quote", label: "Sitat", desc: "Fremhevet sitat med navn og rolle", icon: "quote" },
+    { type: "grid", label: "Rutenett", desc: "1–4 kolonner, hver rute med bilde/tekst/knapp", icon: "layout-grid" },
+    { type: "cta", label: "CTA (handling)", desc: "Overskrift, tekst og en tydelig knapp", icon: "click" },
+    { type: "spacer", label: "Mellomrom", desc: "Luft mellom to seksjoner", icon: "arrows-vertical" }
   ];
   var PB_SECTION_LABELS = PB_SECTION_TYPES.reduce(function (m, t) { m[t.type] = t.label; return m; }, {});
   // Faste modul-id-ar + tidlegare sidebygger-fane sjølv -- ei ny side kan
@@ -2275,31 +2275,57 @@ window.VwConsole = (function () {
   // brokerCall("upload_section_image", ...), same mønster som logo-
   // opplastinga i renderWeb() (#cs-logo-file), berre med eit anna
   // storleikstak (fullbreidde-innhaldsbilete, ikkje ein liten logo).
+  // UX-funn 2026-08-11 (brukartilbakemelding etter fyrste faktiske bruk):
+  // avgrensingane (storleik/filtype) vart berre synt ETTER at eit bilete
+  // alt var avvist -- ingen stad stod dei på førehand. Hint-teksten under
+  // står no alltid synleg i feltet, uansett om noko er lasta opp enno.
   function pbImageFieldHtml(id, label, img) {
     img = img || {};
     return '<div class="field">' +
       '<label>' + C.esc(label) + '</label>' +
-      (img.src ? '<div style="margin:.3rem 0"><img src="' + C.esc(img.src) + '" alt="" style="max-width:220px;max-height:140px;border-radius:8px;display:block;object-fit:cover"></div>' : "") +
-      '<input type="file" id="' + id + '-file" accept="image/svg+xml,image/png,image/jpeg,image/webp">' +
-      '<input type="hidden" id="' + id + '-src" value="' + C.esc(img.src || "") + '">' +
-      '<input type="text" id="' + id + '-alt" placeholder="Alt-tekst (for skjermlesere/SEO)" value="' + C.esc(img.alt || "") + '" style="margin-top:.4rem;width:100%">' +
-      '<p class="field__hint" id="' + id + '-status"></p>' +
+      '<div class="pbc-img-upload">' +
+        '<div class="pbc-img-upload__row">' +
+          '<div class="pbc-img-upload__thumb" id="' + id + '-thumb" style="' + (img.src ? "background-image:url('" + C.esc(img.src) + "')" : "") + '">' + (img.src ? "" : '<i class="ti ti-photo"></i>') + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<input type="file" id="' + id + '-file" accept="image/svg+xml,image/png,image/jpeg,image/webp">' +
+            '<p class="field__hint" style="margin-top:.3rem">PNG/JPEG: opptil 8MB (komprimerast automatisk ned mot 600KB) · SVG/WebP: opptil 600KB rått</p>' +
+          '</div>' +
+        '</div>' +
+        '<input type="hidden" id="' + id + '-src" value="' + C.esc(img.src || "") + '">' +
+        '<input type="text" id="' + id + '-alt" placeholder="Alt-tekst (for skjermlesere/SEO)" value="' + C.esc(img.alt || "") + '">' +
+        '<p class="field__hint" id="' + id + '-status"></p>' +
+      '</div>' +
     '</div>';
   }
-  function pbBindImageField(root, id, tenantId) {
+  // onChange-hooken kallast etter ei VELLUKKA opplasting -- brukt til å
+  // trigge forhåndsvisinga sin friske render utan at kallaren treng vite
+  // korleis biletfeltet sjølv fungerer.
+  function pbBindImageField(root, id, tenantId, onChange) {
     var fileInput = root.querySelector("#" + id + "-file");
     if (!fileInput) return;
     var statusEl = root.querySelector("#" + id + "-status");
     var srcEl    = root.querySelector("#" + id + "-src");
+    var thumbEl  = root.querySelector("#" + id + "-thumb");
     var ALLOWED_TYPES = { "image/svg+xml": 1, "image/png": 1, "image/jpeg": 1, "image/webp": 1 };
     var COMPRESSIBLE_TYPES = { "image/png": 1, "image/jpeg": 1 };
     var MAX_BYTES = 600 * 1024, RAW_MAX_BYTES = 8 * 1024 * 1024;
     fileInput.addEventListener("change", function () {
       var file = fileInput.files && fileInput.files[0];
       if (!file) return;
-      if (!ALLOWED_TYPES[file.type]) { statusEl.textContent = "Filtypen er ikkje støtta. Bruk SVG, PNG, JPEG eller WebP."; fileInput.value = ""; return; }
-      var ceiling = COMPRESSIBLE_TYPES[file.type] ? RAW_MAX_BYTES : MAX_BYTES;
-      if (file.size > ceiling) { statusEl.textContent = "Fila er for stor (maks " + Math.round(ceiling / 1024) + "KB)."; fileInput.value = ""; return; }
+      if (!ALLOWED_TYPES[file.type]) {
+        statusEl.textContent = "Filtypen «" + (file.type || "ukjend") + "» er ikkje støtta. Bruk SVG, PNG, JPEG eller WebP.";
+        fileInput.value = ""; return;
+      }
+      var isCompressible = !!COMPRESSIBLE_TYPES[file.type];
+      var ceiling = isCompressible ? RAW_MAX_BYTES : MAX_BYTES;
+      if (file.size > ceiling) {
+        var maxLabel = isCompressible ? "8MB" : "600KB";
+        var tip = isCompressible
+          ? " Prøv å lagre bildet i lavere oppløsning før du laster opp på nytt."
+          : " Denne filtypen vert ikkje komprimert automatisk -- bruk PNG eller JPEG i staden, eller last opp eit mindre bilete.";
+        statusEl.textContent = "Bildet er for stort (maks " + maxLabel + " for " + file.type.split("/")[1].toUpperCase() + ")." + tip;
+        fileInput.value = ""; return;
+      }
       statusEl.textContent = file.size > MAX_BYTES ? "Lastar opp og komprimerer …" : "Lastar opp …";
       var reader = new FileReader();
       reader.onerror = function () { statusEl.textContent = "Kunne ikkje lese fila."; };
@@ -2311,6 +2337,8 @@ window.VwConsole = (function () {
           srcEl.value = r.url;
           statusEl.textContent = "✓ Lasta opp";
           fileInput.value = "";
+          if (thumbEl) { thumbEl.style.backgroundImage = "url('" + r.url + "')"; thumbEl.innerHTML = ""; }
+          if (typeof onChange === "function") onChange();
         });
       };
       reader.readAsDataURL(file);
@@ -2328,8 +2356,10 @@ window.VwConsole = (function () {
       return pbImageFieldHtml("pb-sec-img", "Bilde (valgfritt)", d.image) +
         C.field({ id: "pb-sec-heading", label: "Overskrift", value: d.heading || "" }) +
         C.field({ id: "pb-sec-text", label: "Tekst", value: d.text || "", multiline: true, rows: 3 }) +
-        C.field({ id: "pb-sec-btn-label", label: "Knapptekst (valgfritt)", value: (d.button && d.button.label) || "" }) +
-        C.field({ id: "pb-sec-btn-url", label: "Knapplenke", value: (d.button && d.button.url) || "" });
+        '<div class="pbc-field-grid">' +
+          C.field({ id: "pb-sec-btn-label", label: "Knapptekst (valgfritt)", value: (d.button && d.button.label) || "" }) +
+          C.field({ id: "pb-sec-btn-url", label: "Knapplenke", value: (d.button && d.button.url) || "" }) +
+        '</div>';
     }
     if (type === "text") {
       return C.field({ id: "pb-sec-heading", label: "Overskrift (valgfritt)", value: d.heading || "" }) +
@@ -2347,19 +2377,23 @@ window.VwConsole = (function () {
     }
     if (type === "quote") {
       return C.field({ id: "pb-sec-text", label: "Sitat", value: d.text || "", multiline: true, rows: 2 }) +
-        C.field({ id: "pb-sec-author", label: "Navn (valgfritt)", value: d.author || "" }) +
-        C.field({ id: "pb-sec-role", label: "Rolle/tittel (valgfritt)", value: d.role || "" });
+        '<div class="pbc-field-grid">' +
+          C.field({ id: "pb-sec-author", label: "Navn (valgfritt)", value: d.author || "" }) +
+          C.field({ id: "pb-sec-role", label: "Rolle/tittel (valgfritt)", value: d.role || "" }) +
+        '</div>';
     }
     if (type === "grid") {
       return pbSelectField("pb-sec-cols", "Antall kolonner", [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]], String(d.columns || 3)) +
-        '<div id="pb-grid-items"></div>' +
-        '<button type="button" class="btn btn--ghost btn--sm" id="pb-grid-add-item">Legg til rute</button>';
+        '<div class="pbc-grid-items" id="pb-grid-items"></div>' +
+        '<button type="button" class="btn btn--ghost btn--sm" id="pb-grid-add-item"><i class="ti ti-plus"></i> Legg til rute</button>';
     }
     if (type === "cta") {
       return C.field({ id: "pb-sec-heading", label: "Overskrift", value: d.heading || "" }) +
         C.field({ id: "pb-sec-text", label: "Tekst (valgfritt)", value: d.text || "", multiline: true, rows: 2 }) +
-        C.field({ id: "pb-sec-btn-label", label: "Knapptekst", value: (d.button && d.button.label) || "" }) +
-        C.field({ id: "pb-sec-btn-url", label: "Knapplenke", value: (d.button && d.button.url) || "" });
+        '<div class="pbc-field-grid">' +
+          C.field({ id: "pb-sec-btn-label", label: "Knapptekst", value: (d.button && d.button.label) || "" }) +
+          C.field({ id: "pb-sec-btn-url", label: "Knapplenke", value: (d.button && d.button.url) || "" }) +
+        '</div>';
     }
     if (type === "spacer") {
       return '<p class="field__hint">Mellomrommet sin storleik styrast av «Luft»-valet over.</p>';
@@ -2432,102 +2466,188 @@ window.VwConsole = (function () {
     });
   }
 
-  function pbMoveSection(wrap, tenantId, page, sectionId, dir) {
-    var list = page.sections || [];
-    var idx = list.findIndex(function (x) { return x.id === sectionId; });
-    var swapIdx = idx + dir;
-    if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return;
-    var tmp = list[idx]; list[idx] = list[swapIdx]; list[swapIdx] = tmp;
-    page.sections = list;
-    pbSavePage(wrap, tenantId, page, function (err) {
-      if (err) { alert(err); return; }
-      renderPageEditor(wrap, tenantId, page);
-    });
+  // Éin-line-oppsummering av ein seksjon sitt faktiske innhald -- brukt i
+  // seksjonslista slik at operatøren kan sjå PÅ SIDA kva som faktisk står
+  // der, ikkje berre typenamnet (UX-redesign 2026-08-11, brukartilbakemelding
+  // "vanskeleg å forholde seg til" etter fyrste faktiske bruk).
+  function pbSectionSummary(s) {
+    var d = s.data || {};
+    if (s.type === "hero" || s.type === "cta" || s.type === "text" || s.type === "image-text") return d.heading || "(uten overskrift)";
+    if (s.type === "big-image") return d.caption || "(uten bildetekst)";
+    if (s.type === "quote") return d.text ? "«" + d.text.slice(0, 34) + (d.text.length > 34 ? "…" : "") + "»" : "(uten sitat)";
+    if (s.type === "grid") return (d.columns || 3) + " kolonner · " + (d.items || []).length + " ruter";
+    if (s.type === "spacer") return "Luft: " + ((s.variant && s.variant.spacing) || "normal");
+    return "";
   }
 
-  function openSectionEditor(wrap, tenantId, page, section, isNew) {
-    var ed = wrap.querySelector("#pb-section-editor");
-    if (!ed) return;
-    var v = section.variant || {};
-    var d = section.data || {};
-    var gridItems = section.type === "grid" ? (Array.isArray(d.items) ? d.items.slice() : []) : null;
+  // CSS injisert INNI førehandsvisings-iframen (sjå pbRenderPreviewInto under)
+  // -- KOPI av module-page-builder.js sin injectStyles()-array (den ekte,
+  // publiserte offentleg-side-koden), pluss ein minimal :root med tema-
+  // variablar henta frå superconfig sine FAKTISKE farge-/font-val når dei
+  // finst (elles nøytrale standardverdiar) og ein forenkla .btn/.btn--*-
+  // approksimasjon (den ekte kjem frå index.html sitt globale stilsett, som
+  // ALDRI er lasta inni denne isolerte iframen -- CSS-eigenskapar arvar
+  // ikkje over ein iframe-grense). MÅ haldast i synk MANUELT med
+  // module-page-builder.js sin injectStyles() -- ingen delt fil mellom
+  // offentleg side og Console.
+  // Security Auditor-funn (BLOCKER, 2026-08-11, uavhengig gjennomgang FØR
+  // merge): sc.colors/sc.fonts kjem frå superconfig, som ein KUNDE-ADMIN
+  // (lågare tillitsnivå enn ein Console-operatør) fritt kan setje via sin
+  // eigen Web-admin ("Design → Fontar" er eit reint fritekstfelt, berre
+  // .trim(), ingen allowlist -- sjå core.js). Desse vart tidlegare limt
+  // UENDRA inn i ein CSS-streng som gjekk gjennom doc.write() -- ein ekte
+  // HTML-parsar, ikkje innerHTML -- så ein verdi som "...';}</style><script>
+  // ..." kunne bryte ut av <style>-taggen og KØYRE inne i iframen. Iframen
+  // hadde ingen sandbox og delte difor same opphav som Console sjølv,
+  // inkludert tilgang til _sbControl sin persistSession:true-token i
+  // localStorage -- ein kunde-admin kunne difor i teorien stele ein ekte
+  // Console-operatør sin plattform-brei økt. Retta med TO uavhengige lag:
+  // (1) streng allowlist her (fargar må sjå ut som #hex, fontnamn eit trygt
+  // teiknsett) -- alt anna fell attende til nøytrale standardverdiar; (2) ny
+  // sandbox="allow-same-origin" på sjølve <iframe>-en (IKKJE allow-scripts)
+  // lenger nede i denne funksjonen sin kallar, som gjer at INGEN skript kan
+  // køyre der i det heile, sjølv om ein framtidig ny superconfig-verdi vert
+  // limt inn usanert ved ein feil.
+  function pbSafeCssColor(v, fallback) {
+    return (typeof v === "string" && /^#[0-9a-fA-F]{3,8}$/.test(v)) ? v : fallback;
+  }
+  function pbSafeCssFontName(v, fallback) {
+    return (typeof v === "string" && /^[\w \-]{1,60}$/.test(v)) ? v : fallback;
+  }
+  function pbPreviewCss(sc) {
+    var col = (sc && sc.colors) || {};
+    var fnt = (sc && sc.fonts) || {};
+    var vars = ":root{" +
+      "--color-primary:" + pbSafeCssColor(col.primary, "#2563eb") + ";" +
+      "--color-secondary:" + pbSafeCssColor(col.secondary, "#7c3aed") + ";" +
+      "--color-bg:" + pbSafeCssColor(col.background, "#f1f5f9") + ";" +
+      "--color-surface:" + pbSafeCssColor(col.surface, "#ffffff") + ";" +
+      "--color-text:" + pbSafeCssColor(col.text, "#0f172a") + ";" +
+      "--color-muted:#64748b;--color-border:rgba(15,23,42,.12);--color-tint:rgba(37,99,235,.08);--btn-radius:999px;" +
+      "--font-display:'" + pbSafeCssFontName(fnt.display, "Inter") + "',system-ui,sans-serif;" +
+      "--font-body:'" + pbSafeCssFontName(fnt.body, "Inter") + "',system-ui,sans-serif;" +
+    "}";
+    var chrome = "*{box-sizing:border-box}body{margin:0;font-family:var(--font-body);color:var(--color-text);background:var(--color-surface);line-height:1.55}" +
+      "h1,h2,h3{font-family:var(--font-display)}img{max-width:100%;display:block}" +
+      ".btn{display:inline-flex;align-items:center;gap:.5rem;font:inherit;font-weight:600;padding:.8rem 1.4rem;border-radius:var(--btn-radius);border:1.5px solid transparent;text-decoration:none;line-height:1}" +
+      ".btn--primary{background:var(--color-primary);color:#fff}" +
+      ".btn--ghost{background:transparent;color:var(--color-text);border-color:var(--color-border)}";
+    var pb = [
+      ".pb-page{}",
+      ".pb-sect{padding:3rem var(--gap,1.5rem)}",
+      ".pb-sect__inner{max-width:1100px;margin:0 auto}",
+      ".pb-sect--w-narrow .pb-sect__inner{max-width:760px}",
+      ".pb-sect--sp-small{padding-top:1.5rem;padding-bottom:1.5rem}",
+      ".pb-sect--sp-normal{padding-top:3rem;padding-bottom:3rem}",
+      ".pb-sect--sp-large{padding-top:5rem;padding-bottom:5rem}",
+      ".pb-sect--bg-light{background:var(--color-bg)}",
+      ".pb-sect--bg-dark{background:var(--color-text);color:#fff}",
+      ".pb-sect--bg-branded{background:var(--color-primary);color:#fff}",
+      ".pb-sect--al-center .pb-sect__inner{text-align:center}",
+      ".pb-hero{position:relative}",
+      ".pb-hero.has-image{border-radius:12px;overflow:hidden}",
+      ".pb-hero__img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}",
+      ".pb-hero.has-image::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.3));z-index:0}",
+      ".pb-hero__body{position:relative;z-index:1;padding:3rem 1.5rem}",
+      ".pb-hero.has-image .pb-hero__body{color:#fff}",
+      ".pb-hero__title{font-family:var(--font-display);font-size:clamp(1.5rem,4vw,2.4rem);font-weight:700;margin:0 0 .6rem}",
+      ".pb-hero__text{font-size:clamp(.95rem,2vw,1.1rem);line-height:1.6;margin:0 0 1.2rem}",
+      ".pb-text__title{font-family:var(--font-display);font-size:1.6rem;margin:0 0 .8rem}",
+      ".pb-imgtext{display:flex;gap:2rem;align-items:center}",
+      ".pb-imgtext--right{flex-direction:row-reverse}",
+      ".pb-imgtext__img{flex:1 1 45%;width:100%;max-width:520px;border-radius:12px;object-fit:cover;aspect-ratio:4/3}",
+      ".pb-imgtext__body{flex:1 1 45%;min-width:0}",
+      ".pb-imgtext__title{font-family:var(--font-display);font-size:1.5rem;margin:0 0 .8rem}",
+      "@media(max-width:700px){.pb-imgtext{flex-direction:column}.pb-imgtext__img{max-width:100%}}",
+      ".pb-bigimage__img{width:100%;border-radius:12px;object-fit:cover;max-height:70vh}",
+      ".pb-bigimage__caption{font-size:.85rem;color:var(--color-muted);margin:.6rem 0 0;text-align:center}",
+      ".pb-quote{border-left:4px solid var(--color-primary);padding-left:1.5rem;margin:0}",
+      ".pb-quote__text{font-size:1.3rem;font-style:italic;line-height:1.5;margin:0 0 .8rem}",
+      ".pb-quote__author{font-weight:600;font-style:normal}",
+      ".pb-quote__role{font-weight:400;color:var(--color-muted)}",
+      ".pb-grid{display:grid;gap:1.5rem}",
+      ".pb-grid--cols-1{grid-template-columns:repeat(1,1fr)}",
+      ".pb-grid--cols-2{grid-template-columns:repeat(2,1fr)}",
+      ".pb-grid--cols-3{grid-template-columns:repeat(3,1fr)}",
+      ".pb-grid--cols-4{grid-template-columns:repeat(4,1fr)}",
+      ".pb-grid__item{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:1.2rem;overflow:hidden}",
+      ".pb-grid__img{width:100%;border-radius:8px;object-fit:cover;aspect-ratio:4/3;margin-bottom:.8rem}",
+      ".pb-grid__title{font-size:1.05rem;margin:0 0 .4rem}",
+      ".pb-grid__text{font-size:.9rem;color:var(--color-muted);margin:0 0 .6rem}",
+      "@media(max-width:900px){.pb-grid--cols-3,.pb-grid--cols-4{grid-template-columns:repeat(2,1fr)}}",
+      "@media(max-width:600px){.pb-grid{grid-template-columns:1fr!important}}",
+      ".pb-cta__title{font-family:var(--font-display);font-size:1.6rem;margin:0 0 .6rem}",
+      ".pb-cta__text{margin:0 0 1.2rem}",
+      ".pb-spacer{height:1px}"
+    ].join("");
+    return vars + chrome + pb;
+  }
 
-    ed.innerHTML =
-      '<div class="admin-form admin-form--card" style="margin-top:.8rem">' +
-        '<h4 style="margin:0 0 1rem">' + (isNew ? "Ny seksjon: " : "Rediger seksjon: ") + C.esc(PB_SECTION_LABELS[section.type] || section.type) + '</h4>' +
-        '<fieldset style="border:1px solid var(--color-border);border-radius:10px;padding:.85rem;margin-bottom:.8rem">' +
-          '<legend style="font-weight:600;font-size:.82rem;padding:0 .35rem;color:var(--color-muted)">Utseende</legend>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">' +
-            pbSelectField("pb-sec-bg", "Bakgrunn", [["light", "Lys"], ["dark", "Mørk"], ["branded", "Merkefarge"]], v.background || "light") +
-            pbSelectField("pb-sec-width", "Bredde", [["wide", "Bred"], ["narrow", "Smal"]], v.width || "wide") +
-            pbSelectField("pb-sec-spacing", "Luft", [["small", "Liten"], ["normal", "Normal"], ["large", "Stor"]], v.spacing || "normal") +
-            pbSelectField("pb-sec-align", "Justering", [["left", "Venstre"], ["center", "Sentrert"]], v.align || "left") +
-          '</div>' +
-        '</fieldset>' +
-        '<div id="pb-sec-data-fields">' + pbSectionDataFieldsHtml(section.type, d) + '</div>' +
-        '<div style="display:flex;gap:.6rem;margin-top:.8rem">' +
-          C.button({ label: "Lagre seksjon", variant: "primary", attrs: "data-pb-sec-save" }) +
-          C.button({ label: "Avbryt", variant: "ghost", attrs: "data-pb-sec-cancel" }) +
+  // Rendrar INN I ei ekte <iframe> (ikkje ein vanleg <div>) -- avgjerande for
+  // at mobil-/skrivebord-brytaren under faktisk skal teste rette bruddpunkt.
+  // CSS-medieforespørsler reagerer på VINDAUGET sin eigen breidde, ikkje ein
+  // vilkårleg indre boks -- eit tidlegare mockup-forsøk brukte ein vanleg,
+  // smalna <div>, som ALDRI trigga @media(max-width:600px) osv. i det heile,
+  // og synte difor feilaktig eit ustabla rutenett på "mobil" (brukarfunn
+  // 2026-08-11, sjå skjermbilete i samtalen). Bruker C.pageSection() DIREKTE
+  // -- same, ekte rendringsfunksjon som module-page-builder.js kallar på den
+  // faktiske offentlege sida -- så det operatøren ser her ER det som blir
+  // publisert, ikkje ein tilnærma kopi.
+  function pbRenderPreviewInto(iframeEl, sections, sc) {
+    var doc = iframeEl.contentDocument || (iframeEl.contentWindow && iframeEl.contentWindow.document);
+    if (!doc) return;
+    var body = (sections && sections.length)
+      ? '<div class="pb-page">' + sections.map(function (s) { return C.pageSection(s); }).join("") + '</div>'
+      : '<div style="padding:3rem 1.5rem;text-align:center;color:#94a3b8;font-size:.9rem">Ingen seksjonar enno — legg til den første i panelet til venstre.</div>';
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><style>' + pbPreviewCss(sc) + '</style></head><body>' + body + '</body></html>');
+    doc.close();
+  }
+
+  function renderPageEditor(wrap, tenantId, page, sc) {
+    var saveTimer = null;
+    var dragFromId = null;
+
+    function scheduleSave() {
+      var st = wrap.querySelector("#pbc-save-status");
+      if (st) { st.className = "pbc-save-status"; st.textContent = "Lagrar …"; }
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () {
+        pbSavePage(wrap, tenantId, page, function (err) {
+          var el = wrap.querySelector("#pbc-save-status");
+          if (!el) return;
+          if (err) { el.className = "pbc-save-status is-error"; el.textContent = err; return; }
+          el.className = "pbc-save-status is-ok"; el.textContent = "✓ Alt lagra";
+        });
+      }, 700);
+    }
+
+    function refreshPreview() {
+      var iframe = wrap.querySelector("#pbc-preview-iframe");
+      if (iframe) pbRenderPreviewInto(iframe, page.sections || [], sc);
+    }
+
+    function findSection(id) { return (page.sections || []).find(function (x) { return x.id === id; }); }
+
+    function sectionEditorFieldsHtml(section) {
+      var v = section.variant || {};
+      return '<div class="pbc-variant-row">' +
+          pbSelectField("pb-sec-bg", "Bakgrunn", [["light", "Lys"], ["dark", "Mørk"], ["branded", "Merkefarge"]], v.background || "light") +
+          pbSelectField("pb-sec-width", "Bredde", [["wide", "Bred"], ["narrow", "Smal"]], v.width || "wide") +
+          pbSelectField("pb-sec-spacing", "Luft", [["small", "Liten"], ["normal", "Normal"], ["large", "Stor"]], v.spacing || "normal") +
+          pbSelectField("pb-sec-align", "Justering", [["left", "Venstre"], ["center", "Sentrert"]], v.align || "left") +
         '</div>' +
-        '<p class="form__status" id="pb-sec-status"></p>' +
-      '</div>';
-
-    if (section.type === "hero" || section.type === "image-text" || section.type === "big-image") {
-      pbBindImageField(ed, "pb-sec-img", tenantId);
-    }
-    if (section.type === "text" || section.type === "image-text") {
-      App.ui.bindRichTextFields(ed);
+        pbSectionDataFieldsHtml(section.type, section.data || {}) +
+        '<p class="field__hint">Endringar vert lagra automatisk mens du skriv, og syner i forhåndsvisinga med det same.</p>';
     }
 
-    // Rutenett-ruter: haldne som ei EIGEN JS-liste i denne lukkinga (ikkje
-    // berre lest frå DOM ved lagring), sidan rute-talet endrar seg dynamisk
-    // (legg til/fjern) og kvar rute har sitt eige biletopplastingsfelt som må
-    // rebindast kvar gong lista teiknast om.
-    if (section.type === "grid") {
-      var itemsBox = ed.querySelector("#pb-grid-items");
-      function captureGridItemsFromDom() {
-        gridItems.forEach(function (it, i) {
-          it.image = pbReadImageField(itemsBox, "pb-grid-img-" + i);
-          it.heading = (itemsBox.querySelector("#pb-grid-heading-" + i) || {}).value || "";
-          it.text = (itemsBox.querySelector("#pb-grid-text-" + i) || {}).value || "";
-          var bl = ((itemsBox.querySelector("#pb-grid-btn-label-" + i) || {}).value || "").trim();
-          var bu = ((itemsBox.querySelector("#pb-grid-btn-url-" + i) || {}).value || "").trim();
-          it.button = (bl && bu) ? { label: bl, url: bu } : null;
-        });
-      }
-      function renderGridItems() {
-        itemsBox.innerHTML = gridItems.map(function (it, i) {
-          return '<fieldset style="border:1px solid var(--color-border);border-radius:10px;padding:.7rem;margin-bottom:.6rem">' +
-            '<legend style="font-size:.78rem;color:var(--color-muted)">Rute ' + (i + 1) + '</legend>' +
-            pbImageFieldHtml("pb-grid-img-" + i, "Bilde (valgfritt)", it.image) +
-            C.field({ id: "pb-grid-heading-" + i, label: "Overskrift (valgfritt)", value: it.heading || "" }) +
-            C.field({ id: "pb-grid-text-" + i, label: "Tekst (valgfritt)", value: it.text || "", multiline: true, rows: 2 }) +
-            C.field({ id: "pb-grid-btn-label-" + i, label: "Knapptekst (valgfritt)", value: (it.button && it.button.label) || "" }) +
-            C.field({ id: "pb-grid-btn-url-" + i, label: "Knapplenke", value: (it.button && it.button.url) || "" }) +
-            '<button type="button" class="btn btn--ghost btn--sm" data-pb-grid-remove="' + i + '">Fjern rute</button>' +
-          '</fieldset>';
-        }).join("");
-        gridItems.forEach(function (it, i) { pbBindImageField(itemsBox, "pb-grid-img-" + i, tenantId); });
-        itemsBox.querySelectorAll("[data-pb-grid-remove]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            captureGridItemsFromDom();
-            gridItems.splice(parseInt(btn.getAttribute("data-pb-grid-remove"), 10), 1);
-            renderGridItems();
-          });
-        });
-      }
-      ed.querySelector("#pb-grid-add-item").addEventListener("click", function () {
-        captureGridItemsFromDom();
-        gridItems.push({ image: null, heading: "", text: "", button: null });
-        renderGridItems();
-      });
-      renderGridItems();
-      ed._pbCaptureGridItems = captureGridItemsFromDom;
-    }
-
-    ed.querySelector("[data-pb-sec-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
-    ed.querySelector("[data-pb-sec-save]").addEventListener("click", function () {
-      var out = ed.querySelector("#pb-sec-status");
+    // Syncar det OPNE seksjonskortet sine skjemaverdiar tilbake til
+    // page.sections (in-memory modellen) -- kalla på kvar input/change, FØR
+    // refreshPreview()/scheduleSave(), slik at forhåndsvisinga og den
+    // faktiske lagringa alltid reflekterer det som faktisk står i felta.
+    function syncOpenSectionFromDom(section, cardEl) {
+      var ed = cardEl.querySelector(".pbc-section-editor");
+      if (!ed) return;
       section.variant = {
         background: ed.querySelector("#pb-sec-bg").value,
         width:      ed.querySelector("#pb-sec-width").value,
@@ -2535,119 +2655,313 @@ window.VwConsole = (function () {
         align:      ed.querySelector("#pb-sec-align").value
       };
       if (section.type === "grid") {
-        if (typeof ed._pbCaptureGridItems === "function") ed._pbCaptureGridItems();
-        section.data = { columns: parseInt(ed.querySelector("#pb-sec-cols").value, 10) || 3, items: gridItems };
+        section.data = section.data || {};
+        section.data.columns = parseInt(ed.querySelector("#pb-sec-cols").value, 10) || 3;
       } else {
         section.data = pbReadSectionDataFields(ed, section.type);
       }
-      page.sections = page.sections || [];
-      var idx = page.sections.findIndex(function (x) { return x.id === section.id; });
-      if (idx >= 0) page.sections[idx] = section; else page.sections.push(section);
-      statusMsg(out, "Lagrar …", true);
-      pbSavePage(wrap, tenantId, page, function (err) {
-        if (err) { statusMsg(out, err, false); return; }
-        renderPageEditor(wrap, tenantId, page);
-      });
-    });
-  }
+    }
 
-  function renderPageEditor(wrap, tenantId, page) {
+    function bindSectionEditor(section, cardEl) {
+      var ed = cardEl.querySelector(".pbc-section-editor");
+      if (!ed) return;
+      function onFieldChange() { syncOpenSectionFromDom(section, cardEl); updateSummaryInPlace(section); refreshPreview(); scheduleSave(); }
+      ed.querySelectorAll("select, input[type=text], input[type=url], textarea").forEach(function (el) {
+        el.addEventListener(el.tagName === "SELECT" ? "change" : "input", onFieldChange);
+      });
+      if (section.type === "hero" || section.type === "image-text" || section.type === "big-image") {
+        pbBindImageField(ed, "pb-sec-img", tenantId, onFieldChange);
+      }
+      if (section.type === "text" || section.type === "image-text") {
+        App.ui.bindRichTextFields(ed);
+        ed.querySelectorAll(".rtfield__editor").forEach(function (rt) { rt.addEventListener("input", onFieldChange); });
+      }
+      if (section.type === "grid") {
+        section.data = section.data || {};
+        section.data.items = Array.isArray(section.data.items) ? section.data.items : [];
+        renderGridItems(section, ed);
+      }
+    }
+
+    function renderGridItems(section, ed) {
+      var box = ed.querySelector("#pb-grid-items");
+      if (!box) return;
+      var items = section.data.items;
+      box.innerHTML = items.map(function (it, i) {
+        return '<div class="pbc-grid-item-fields">' +
+          '<p class="field__hint" style="margin:0;font-weight:700">Rute ' + (i + 1) + '</p>' +
+          pbImageFieldHtml("pb-grid-img-" + i, "Bilde (valgfritt)", it.image) +
+          C.field({ id: "pb-grid-heading-" + i, label: "Overskrift (valgfritt)", value: it.heading || "" }) +
+          C.field({ id: "pb-grid-text-" + i, label: "Tekst (valgfritt)", value: it.text || "", multiline: true, rows: 2 }) +
+          '<div class="pbc-field-grid">' +
+            C.field({ id: "pb-grid-btn-label-" + i, label: "Knapptekst (valgfritt)", value: (it.button && it.button.label) || "" }) +
+            C.field({ id: "pb-grid-btn-url-" + i, label: "Knapplenke", value: (it.button && it.button.url) || "" }) +
+          '</div>' +
+          '<button type="button" class="btn btn--ghost btn--sm" data-pb-grid-remove="' + i + '"><i class="ti ti-trash"></i> Fjern rute</button>' +
+        '</div>';
+      }).join("");
+      function readItemsFromDom() {
+        items.forEach(function (it, i) {
+          it.image = pbReadImageField(box, "pb-grid-img-" + i);
+          it.heading = (box.querySelector("#pb-grid-heading-" + i) || {}).value || "";
+          it.text = (box.querySelector("#pb-grid-text-" + i) || {}).value || "";
+          var bl = ((box.querySelector("#pb-grid-btn-label-" + i) || {}).value || "").trim();
+          var bu = ((box.querySelector("#pb-grid-btn-url-" + i) || {}).value || "").trim();
+          it.button = (bl && bu) ? { label: bl, url: bu } : null;
+        });
+      }
+      function onItemChange() { readItemsFromDom(); updateSummaryInPlace(section); refreshPreview(); scheduleSave(); }
+      box.querySelectorAll("select, input[type=text], input[type=url], textarea").forEach(function (el) {
+        el.addEventListener(el.tagName === "SELECT" ? "change" : "input", onItemChange);
+      });
+      items.forEach(function (it, i) { pbBindImageField(box, "pb-grid-img-" + i, tenantId, onItemChange); });
+      box.querySelectorAll("[data-pb-grid-remove]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          readItemsFromDom();
+          items.splice(parseInt(btn.getAttribute("data-pb-grid-remove"), 10), 1);
+          renderGridItems(section, ed);
+          updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+        });
+      });
+      var addBtn = ed.querySelector("#pb-grid-add-item");
+      if (addBtn) addBtn.addEventListener("click", function () {
+        readItemsFromDom();
+        items.push({ image: null, heading: "", text: "", button: null });
+        renderGridItems(section, ed);
+        updateSummaryInPlace(section); refreshPreview(); scheduleSave();
+      });
+    }
+
+    function updateSummaryInPlace(section) {
+      var row = wrap.querySelector('.pbc-section-card[data-id="' + section.id + '"] .pbc-section-meta__summary');
+      if (row) row.textContent = pbSectionSummary(section);
+    }
+
+    function toggleSection(id) {
+      page.sections = (page.sections || []).map(function (s) { return Object.assign({}, s, { open: s.id === id ? !s.open : false }); });
+      renderSectionList();
+    }
+
+    function bindDragAndDrop() {
+      var cards = wrap.querySelectorAll(".pbc-section-card");
+      cards.forEach(function (card) {
+        card.addEventListener("dragstart", function (e) {
+          dragFromId = card.getAttribute("data-id");
+          card.classList.add("is-dragging");
+          e.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragend", function () {
+          card.classList.remove("is-dragging");
+          cards.forEach(function (c) { c.classList.remove("drop-before", "drop-after"); });
+        });
+        card.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          if (card.getAttribute("data-id") === dragFromId) return;
+          var rect = card.getBoundingClientRect();
+          var before = (e.clientY - rect.top) < rect.height / 2;
+          card.classList.toggle("drop-before", before);
+          card.classList.toggle("drop-after", !before);
+        });
+        card.addEventListener("dragleave", function () { card.classList.remove("drop-before", "drop-after"); });
+        card.addEventListener("drop", function (e) {
+          e.preventDefault();
+          var toId = card.getAttribute("data-id");
+          var before = card.classList.contains("drop-before");
+          card.classList.remove("drop-before", "drop-after");
+          if (!dragFromId || dragFromId === toId) return;
+          var list = page.sections || [];
+          var fromIdx = list.findIndex(function (s) { return s.id === dragFromId; });
+          var moved = list.splice(fromIdx, 1)[0];
+          var toIdx = list.findIndex(function (s) { return s.id === toId; });
+          if (!before) toIdx += 1;
+          list.splice(toIdx, 0, moved);
+          page.sections = list;
+          dragFromId = null;
+          renderSectionList();
+          refreshPreview();
+          scheduleSave();
+        });
+      });
+    }
+
+    function renderSectionList() {
+      var listEl = wrap.querySelector("#pbc-section-list");
+      var countEl = wrap.querySelector("#pbc-section-count");
+      var sections = page.sections || [];
+      if (countEl) countEl.textContent = sections.length + " seksjon" + (sections.length === 1 ? "" : "ar");
+      if (!listEl) return;
+      if (!sections.length) {
+        listEl.innerHTML = '<div class="pbc-empty-sections">Ingen seksjonar enno. Trykk «Legg til seksjon» under for å komme i gang.</div>';
+        refreshPreview();
+        return;
+      }
+      listEl.innerHTML = sections.map(function (s, i) {
+        var def = PB_SECTION_TYPES.filter(function (t) { return t.type === s.type; })[0] || { label: s.type, icon: "square" };
+        return '<div class="pbc-section-card' + (s.open ? " is-open" : "") + '" data-id="' + C.esc(s.id) + '" draggable="' + (s.open ? "false" : "true") + '">' +
+          '<div class="pbc-section-row">' +
+            '<button type="button" class="pbc-drag-handle" tabindex="0" aria-label="Dra for å flytte «' + C.esc(def.label) + '»"><i class="ti ti-grip-vertical"></i></button>' +
+            '<span class="pbc-section-icon"><i class="ti ti-' + def.icon + '"></i></span>' +
+            '<button type="button" class="pbc-section-meta" data-pb-toggle="' + C.esc(s.id) + '">' +
+              '<div class="pbc-section-meta__type">' + C.esc(def.label) + '</div>' +
+              '<div class="pbc-section-meta__summary">' + C.esc(pbSectionSummary(s)) + '</div>' +
+            '</button>' +
+            '<div class="pbc-mini-actions">' +
+              '<button type="button" class="pbc-icon-btn" title="Flytt opp" aria-label="Flytt «' + C.esc(def.label) + '» opp" ' + (i === 0 ? "disabled" : "") + ' data-pb-move-up="' + C.esc(s.id) + '"><i class="ti ti-chevron-up"></i></button>' +
+              '<button type="button" class="pbc-icon-btn" title="Flytt ned" aria-label="Flytt «' + C.esc(def.label) + '» ned" ' + (i === sections.length - 1 ? "disabled" : "") + ' data-pb-move-down="' + C.esc(s.id) + '"><i class="ti ti-chevron-down"></i></button>' +
+              '<button type="button" class="pbc-icon-btn danger" title="Slett seksjon" aria-label="Slett «' + C.esc(def.label) + '»" data-pb-del-section="' + C.esc(s.id) + '"><i class="ti ti-trash"></i></button>' +
+            '</div>' +
+          '</div>' +
+          (s.open ? '<div class="pbc-section-editor">' + sectionEditorFieldsHtml(s) + '</div>' : "") +
+        '</div>';
+      }).join("");
+
+      listEl.querySelectorAll("[data-pb-toggle]").forEach(function (btn) {
+        btn.addEventListener("click", function () { toggleSection(btn.getAttribute("data-pb-toggle")); });
+      });
+      listEl.querySelectorAll("[data-pb-move-up]").forEach(function (btn) {
+        btn.addEventListener("click", function () { moveSection(btn.getAttribute("data-pb-move-up"), -1); });
+      });
+      listEl.querySelectorAll("[data-pb-move-down]").forEach(function (btn) {
+        btn.addEventListener("click", function () { moveSection(btn.getAttribute("data-pb-move-down"), 1); });
+      });
+      listEl.querySelectorAll("[data-pb-del-section]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var id = btn.getAttribute("data-pb-del-section");
+          if (!confirm("Slett denne seksjonen? Innholdet i seksjonen fjernes fra siden. Dette kan ikke angres.")) return;
+          page.sections = (page.sections || []).filter(function (x) { return x.id !== id; });
+          renderSectionList();
+          refreshPreview();
+          scheduleSave();
+        });
+      });
+      sections.forEach(function (s) {
+        if (!s.open) return;
+        var cardEl = listEl.querySelector('.pbc-section-card[data-id="' + C.esc(s.id) + '"]');
+        if (cardEl) bindSectionEditor(s, cardEl);
+      });
+      bindDragAndDrop();
+      refreshPreview();
+    }
+
+    function moveSection(id, dir) {
+      var list = page.sections || [];
+      var idx = list.findIndex(function (x) { return x.id === id; });
+      var swapIdx = idx + dir;
+      if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return;
+      var tmp = list[idx]; list[idx] = list[swapIdx]; list[swapIdx] = tmp;
+      page.sections = list;
+      renderSectionList();
+      refreshPreview();
+      scheduleSave();
+    }
+
     wrap.innerHTML =
-      '<div class="admin-group">' +
-        '<button type="button" class="btn btn--ghost btn--sm" id="pb-back" style="margin-bottom:.8rem">&larr; Til sider</button>' +
-        '<h3 style="margin:0 0 .8rem">' + C.esc(page.label || page.id) + '</h3>' +
-        '<form id="pb-page-meta-form" style="margin-bottom:1.2rem">' +
-          C.field({ id: "pb-page-title", label: "Tittel", value: page.label || "" }) +
-          '<label style="display:flex;align-items:center;gap:.4rem;margin:.5rem 0"><input type="checkbox" id="pb-page-navhidden"' + (page.navHidden ? " checked" : "") + '> Skjul frå toppmeny (framleis nåbar via #' + C.esc(page.id) + ')</label>' +
-          '<button type="submit" class="btn btn--ghost btn--sm">Lagre tittel</button>' +
-          '<p class="form__status" id="pb-page-meta-status"></p>' +
-        '</form>' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.6rem;flex-wrap:wrap">' +
-          '<h4 style="margin:0">Seksjonar</h4>' +
-          '<div>' +
-            '<select id="pb-add-section-type">' +
-              PB_SECTION_TYPES.map(function (t) { return '<option value="' + t.type + '">' + C.esc(t.label) + '</option>'; }).join("") +
-            '</select> ' +
-            '<button type="button" class="btn btn--primary btn--sm" id="pb-add-section-btn">Legg til seksjon</button>' +
+      '<div class="pbc-editor-head">' +
+        '<div>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="pbc-back" style="margin-bottom:.5rem"><i class="ti ti-arrow-left"></i> Til sider</button>' +
+          '<div><input class="pbc-title-input" id="pbc-title" value="' + C.esc(page.label || "") + '" aria-label="Sidetittel"></div>' +
+          '<div class="pbc-editor-sub">' +
+            '<span>#' + C.esc(page.id) + '</span>' +
+            '<label><input type="checkbox" id="pbc-navhidden"' + (page.navHidden ? " checked" : "") + '> Skjul frå toppmeny</label>' +
           '</div>' +
         '</div>' +
-        '<div id="pb-sections-list">' +
-          ((page.sections || []).length
-            ? page.sections.map(function (s, i) {
-                return '<div class="kd-card" style="display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap">' +
-                  '<div><strong>' + C.esc(PB_SECTION_LABELS[s.type] || s.type) + '</strong></div>' +
-                  '<div style="display:flex;gap:.3rem">' +
-                    // Same mønster som Priser sin pakke-flytting (pkg-row__move,
-                    // ti-chevron-up/down + disabled ved grensa) -- UX-funn
-                    // 2026-08-11: rå "↑"/"↓"-teiknknappar som HEILT UTELET seg
-                    // sjølv ved grensa (i staden for å visast, deaktiverte) let
-                    // knapperada endre breidde avhengig av posisjon.
-                    '<button type="button" class="btn btn--ghost btn--sm" data-pb-move-up="' + C.esc(s.id) + '" aria-label="Flytt «' + C.esc(PB_SECTION_LABELS[s.type] || s.type) + '» opp"' + (i === 0 ? " disabled" : "") + '><i class="ti ti-chevron-up"></i></button>' +
-                    '<button type="button" class="btn btn--ghost btn--sm" data-pb-move-down="' + C.esc(s.id) + '" aria-label="Flytt «' + C.esc(PB_SECTION_LABELS[s.type] || s.type) + '» ned"' + (i === page.sections.length - 1 ? " disabled" : "") + '><i class="ti ti-chevron-down"></i></button>' +
-                    C.button({ label: "Rediger", variant: "ghost", class: "btn--sm", attrs: 'data-pb-edit-section="' + C.esc(s.id) + '"' }) +
-                    C.button({ label: "Slett", variant: "ghost", class: "btn--sm", attrs: 'data-pb-del-section="' + C.esc(s.id) + '"' }) +
-                  '</div>' +
-                '</div>';
-              }).join("")
-            : '<p class="field__hint">Ingen seksjonar enno.</p>'
-          ) +
+        '<div class="pbc-editor-actions">' +
+          '<span class="pbc-live-pill"><span class="pbc-live-pill__dot" aria-hidden="true"></span>Live på nettstedet</span>' +
+          '<span class="pbc-save-status is-ok" id="pbc-save-status">✓ Alt lagra</span>' +
+          C.button({ label: "Slett side", variant: "ghost", class: "btn--sm", attrs: 'id="pbc-del-page" style="color:#c0392b;border-color:#c0392b"' }) +
         '</div>' +
-        '<div id="pb-section-editor"></div>' +
+      '</div>' +
+      '<div class="pbc-workspace">' +
+        '<div class="pbc-panel">' +
+          '<div class="pbc-panel__head"><h4>Seksjonar</h4><span class="pbc-panel__head-hint" id="pbc-section-count"></span></div>' +
+          '<div class="pbc-section-list" id="pbc-section-list"></div>' +
+          '<div class="pbc-add-section">' +
+            '<button type="button" class="pbc-add-trigger" id="pbc-add-trigger"><i class="ti ti-plus"></i> Legg til seksjon</button>' +
+            '<div class="pbc-type-picker" id="pbc-type-picker" style="display:none"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pbc-panel pbc-preview-panel">' +
+          '<div class="pbc-panel__head">' +
+            '<h4>Forhåndsvisning</h4>' +
+            '<div class="pbc-preview-toolbar">' +
+              '<button type="button" class="is-active" id="pbc-pv-desktop" aria-label="Skrivebordsbredde" title="Skrivebord"><i class="ti ti-device-desktop"></i></button>' +
+              '<button type="button" id="pbc-pv-mobile" aria-label="Mobilbredde" title="Mobil"><i class="ti ti-device-mobile"></i></button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="pbc-preview-frame-wrap"><iframe class="pbc-preview-frame" id="pbc-preview-iframe" title="Forhåndsvisning av siden" sandbox="allow-same-origin"></iframe></div>' +
+        '</div>' +
       '</div>';
 
-    wrap.querySelector("#pb-back").addEventListener("click", function () {
-      getStoreKey("custom-pages", function (v) { renderPagesList(wrap, tenantId, Array.isArray(v) ? v : []); });
+    wrap.querySelector("#pbc-back").addEventListener("click", function () {
+      getStoreKey("custom-pages", function (v) { renderPagesList(wrap, tenantId, Array.isArray(v) ? v : [], sc); });
     });
-
-    wrap.querySelector("#pb-page-meta-form").addEventListener("submit", function (e) {
-      e.preventDefault();
-      var title = wrap.querySelector("#pb-page-title").value.trim();
-      var out = wrap.querySelector("#pb-page-meta-status");
-      if (!title) { statusMsg(out, "Tittel er påkrevd", false); return; }
-      page.label = title;
-      page.navHidden = wrap.querySelector("#pb-page-navhidden").checked;
-      page.updatedAt = new Date().toISOString();
-      pbSavePage(wrap, tenantId, page, function (err) {
-        if (err) { statusMsg(out, err, false); return; }
-        statusMsg(out, "✓ Lagra", true);
-      });
+    wrap.querySelector("#pbc-title").addEventListener("input", function () {
+      page.label = this.value.trim();
+      scheduleSave();
     });
-
-    wrap.querySelector("#pb-add-section-btn").addEventListener("click", function () {
-      var type = wrap.querySelector("#pb-add-section-type").value;
-      openSectionEditor(wrap, tenantId, page, {
-        id: pbNewSectionId(), type: type,
-        variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
-        data: {}
-      }, true);
+    wrap.querySelector("#pbc-navhidden").addEventListener("change", function () {
+      page.navHidden = this.checked;
+      scheduleSave();
     });
-
-    wrap.querySelectorAll("[data-pb-move-up]").forEach(function (btn) {
-      btn.addEventListener("click", function () { pbMoveSection(wrap, tenantId, page, btn.getAttribute("data-pb-move-up"), -1); });
-    });
-    wrap.querySelectorAll("[data-pb-move-down]").forEach(function (btn) {
-      btn.addEventListener("click", function () { pbMoveSection(wrap, tenantId, page, btn.getAttribute("data-pb-move-down"), 1); });
-    });
-    wrap.querySelectorAll("[data-pb-edit-section]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var s = (page.sections || []).find(function (x) { return x.id === btn.getAttribute("data-pb-edit-section"); });
-        if (s) openSectionEditor(wrap, tenantId, page, s, false);
-      });
-    });
-    wrap.querySelectorAll("[data-pb-del-section]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var id = btn.getAttribute("data-pb-del-section");
-        if (!confirm("Slett denne seksjonen? Innholdet i seksjonen fjernes fra siden. Dette kan ikke angres.")) return;
-        page.sections = (page.sections || []).filter(function (x) { return x.id !== id; });
-        pbSavePage(wrap, tenantId, page, function (err) {
-          if (err) { alert(err); return; }
-          renderPageEditor(wrap, tenantId, page);
+    wrap.querySelector("#pbc-del-page").addEventListener("click", function () {
+      if (!confirm('Slett siden «' + (page.label || "siden") + '»? Alle seksjonene og innstillingene for denne siden fjernes, og siden («#' + page.id + '») blir utilgjengelig for besøkende. Dette kan ikke angres.')) return;
+      getStoreKey("custom-pages", function (v) {
+        var list = (Array.isArray(v) ? v : []).filter(function (x) { return x.id !== page.id; });
+        brokerCall("set_config", { key: "custom-pages", value: list, tenant_id: tenantId }, function (r) {
+          if (r.error) { alert(r.error); return; }
+          renderPagesList(wrap, tenantId, list, sc);
         });
       });
     });
+    wrap.querySelector("#pbc-add-trigger").addEventListener("click", function () {
+      var picker = wrap.querySelector("#pbc-type-picker");
+      var open = picker.style.display !== "none";
+      if (open) { picker.style.display = "none"; return; }
+      picker.style.display = "grid";
+      picker.innerHTML = PB_SECTION_TYPES.map(function (t) {
+        return '<button type="button" class="pbc-type-card" data-pb-add-type="' + t.type + '">' +
+          '<span class="pbc-type-card__icon"><i class="ti ti-' + t.icon + '"></i></span>' +
+          '<span><span class="pbc-type-card__title">' + C.esc(t.label) + '</span><div class="pbc-type-card__desc">' + C.esc(t.desc) + '</div></span>' +
+        '</button>';
+      }).join("");
+      picker.querySelectorAll("[data-pb-add-type]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var type = btn.getAttribute("data-pb-add-type");
+          var defaults = {
+            hero: { image: null, heading: "Ny overskrift", text: "", button: null },
+            text: { heading: "", text: "" },
+            "image-text": { image: null, imagePosition: "left", heading: "", text: "" },
+            "big-image": { image: null, caption: "" },
+            quote: { text: "", author: "", role: "" },
+            grid: { columns: 3, items: [] },
+            cta: { heading: "Ny overskrift", text: "", button: null },
+            spacer: {}
+          };
+          page.sections = page.sections || [];
+          page.sections = page.sections.map(function (s) { return Object.assign({}, s, { open: false }); });
+          page.sections.push({ id: pbNewSectionId(), type: type, open: true, variant: { background: "light", width: "wide", spacing: "normal", align: "left" }, data: defaults[type] });
+          picker.style.display = "none";
+          renderSectionList();
+          refreshPreview();
+          scheduleSave();
+        });
+      });
+    });
+    wrap.querySelector("#pbc-pv-desktop").addEventListener("click", function () {
+      wrap.querySelector("#pbc-preview-iframe").classList.remove("w-mobile");
+      this.classList.add("is-active");
+      wrap.querySelector("#pbc-pv-mobile").classList.remove("is-active");
+    });
+    wrap.querySelector("#pbc-pv-mobile").addEventListener("click", function () {
+      wrap.querySelector("#pbc-preview-iframe").classList.add("w-mobile");
+      this.classList.add("is-active");
+      wrap.querySelector("#pbc-pv-desktop").classList.remove("is-active");
+    });
+
+    renderSectionList();
   }
 
-  function renderPagesList(wrap, tenantId, pages) {
+  function renderPagesList(wrap, tenantId, pages, sc) {
     wrap.innerHTML =
       '<div class="admin-group">' +
         '<h3 style="margin:0">Sider</h3>' +
@@ -2669,10 +2983,15 @@ window.VwConsole = (function () {
         '<div id="pb-list">' +
           (pages.length
             ? pages.map(function (p) {
+                var icons = (p.sections || []).slice(0, 6).map(function (s) {
+                  var def = PB_SECTION_TYPES.filter(function (t) { return t.type === s.type; })[0] || { icon: "square" };
+                  return '<span title="' + C.esc(def.label || s.type) + '"><i class="ti ti-' + def.icon + '"></i></span>';
+                }).join("");
                 return '<div class="kd-card" style="display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap">' +
                   '<div>' +
                     '<strong>' + C.esc(p.label || p.id) + '</strong>' +
                     '<p class="field__hint" style="margin:.2rem 0 0">#' + C.esc(p.id) + ' · ' + ((p.sections || []).length) + ' seksjonar' + (p.navHidden ? " · skjult frå meny" : "") + '</p>' +
+                    (icons ? '<div class="pbc-page-card__types">' + icons + '</div>' : "") +
                   '</div>' +
                   '<div style="display:flex;gap:.4rem">' +
                     C.button({ label: "Rediger", variant: "ghost", class: "btn--sm", attrs: 'data-pb-edit-page="' + C.esc(p.id) + '"' }) +
@@ -2697,14 +3016,14 @@ window.VwConsole = (function () {
       statusMsg(out, "Oppretter …", true);
       brokerCall("set_config", { key: "custom-pages", value: list, tenant_id: tenantId }, function (r) {
         if (r.error) { statusMsg(out, r.error, false); return; }
-        renderPageEditor(wrap, tenantId, newPage);
+        renderPageEditor(wrap, tenantId, newPage, sc);
       });
     });
 
     wrap.querySelectorAll("[data-pb-edit-page]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var p = pages.find(function (x) { return x.id === btn.getAttribute("data-pb-edit-page"); });
-        if (p) renderPageEditor(wrap, tenantId, p);
+        if (p) renderPageEditor(wrap, tenantId, p, sc);
       });
     });
     wrap.querySelectorAll("[data-pb-del-page]").forEach(function (btn) {
@@ -2716,18 +3035,18 @@ window.VwConsole = (function () {
         var list = pages.filter(function (x) { return x.id !== id; });
         brokerCall("set_config", { key: "custom-pages", value: list, tenant_id: tenantId }, function (r) {
           if (r.error) { alert(r.error); return; }
-          renderPagesList(wrap, tenantId, list);
+          renderPagesList(wrap, tenantId, list, sc);
         });
       });
     });
   }
 
-  function renderSidebyggerSider(_sc, wrap) {
+  function renderSidebyggerSider(sc, wrap) {
     var tenantId = _activeTenant && _activeTenant.id;
     var myGen = _renderGen;
     getStoreKey("custom-pages", function (v) {
       if (myGen !== _renderGen) return; // avløyst av ein seinare navigate()/tenant-byte
-      renderPagesList(wrap, tenantId, Array.isArray(v) ? v : []);
+      renderPagesList(wrap, tenantId, Array.isArray(v) ? v : [], sc);
     });
   }
 
@@ -6601,5 +6920,14 @@ window.VwConsole = (function () {
     });
   });
 
-  return { navigate: navigate, isAiLabLocalEnvironment: isAiLabLocalEnvironment };
+  return {
+    navigate: navigate, isAiLabLocalEnvironment: isAiLabLocalEnvironment,
+    // Eksponerer reine funksjonar for testing, same mønster som core.js sin
+    // eigen _test: {dbLeadToJs, jsLeadToDb} -- pbPreviewCss() sin sanering av
+    // superconfig sine farge-/font-verdiar er sikkerheitskritisk (Security
+    // Auditor-funn BLOCKER, 2026-08-11) og bør testast direkte, ikkje berre
+    // implisitt gjennom eit mock-oppsett som ikkje skil ut superconfig frå
+    // andre store-nøklar.
+    _test: { pbPreviewCss: pbPreviewCss, pbSafeCssColor: pbSafeCssColor, pbSafeCssFontName: pbSafeCssFontName }
+  };
 })();
