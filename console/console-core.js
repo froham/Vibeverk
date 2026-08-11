@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.131.0";
+  var VIBEVERK_VERSION = "0.132.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -172,7 +172,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_updated_at")
       .order("slug").then(function (r) {
         _tenants = r.data || [];
         // Ikkje default til ein arkivert tenant -- sidan sidepanel-veljaren
@@ -5787,6 +5787,23 @@ window.VwConsole = (function () {
           '<p id="kd-activate-result" class="field__hint"></p>' +
         '</div>' +
 
+        '<div class="kd-card"><strong>Sidesperre for dette domenet</strong> — ' + (tenant.site_lock_enabled ? "PÅ" : "AV") +
+          '<p class="field__hint">Eit eige passord berre for denne kunden sine domene — når det er slått på, erstattar det den delte utviklingssperra for akkurat desse domena (dei andre kundane sine domene er upåverka). Nyttig når de utviklar saman med kunden og treng å vise fram noko utan at tilfeldige besøkjande ser det. Ikkje meint som sterk tryggleik — ingen avgrensing på talet på forsøk.</p>' +
+          (tenant.status === "active"
+            ? '<p class="field__hint">⚠️ Kunden er aktiv — lagrar du med sperra PÅ, vert ekte besøkjande blokkerte frå den livesida UMIDDELBART. Sjekk at det er tilsikta før du lagrar.</p>'
+            : '') +
+          (tenant.status === "provisioning" || tenant.status === "active"
+            ? '<form id="kd-sitelock-form" style="margin-top:.6rem">' +
+                C.field({ id: "kd-sitelock-password", label: "Nytt passord (la stå tomt for å behalde noverande)", type: "password", placeholder: "minst 4 teikn" }) +
+                '<label style="display:flex;align-items:center;gap:.4rem;margin:.6rem 0"><input type="checkbox" id="kd-sitelock-enabled"' + (tenant.site_lock_enabled ? " checked" : "") + '> Sperre PÅ</label>' +
+                '<button type="submit" class="btn btn--ghost btn--sm">Lagre sidesperre</button>' +
+                '<p class="field__hint">' + (tenant.site_lock_updated_at ? "Sist endra: " + C.esc(new Date(tenant.site_lock_updated_at).toLocaleString("nb-NO")) : "Ingen sperre sett enno.") + '</p>' +
+                '<p class="form__status" id="kd-sitelock-status" style="margin-top:.4rem"></p>' +
+              '</form>'
+            : '<p class="field__hint">Kan ikkje endrast i denne statusen.</p>'
+          ) +
+        '</div>' +
+
         (tenant.status !== "archived"
           ? '<div class="kd-card"><strong>Support-tilgang</strong>' +
               '<p class="field__hint">Lagar ei mellombels innloggingslenke for ein eksisterande admin-brukar, slik at du kan hjelpe kunden direkte utan å kjenne passordet deira. Lenka går berre til DEG (ikkje til kunden) og går ut av seg sjølv. Kunden ser ei tydeleg melding i Workspace mens ho er i bruk.</p>' +
@@ -5960,6 +5977,24 @@ window.VwConsole = (function () {
         if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
       });
     });
+
+    var sitelockForm = wrap.querySelector("#kd-sitelock-form");
+    if (sitelockForm) {
+      sitelockForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var password = wrap.querySelector("#kd-sitelock-password").value;
+        var enabled = wrap.querySelector("#kd-sitelock-enabled").checked;
+        var out = wrap.querySelector("#kd-sitelock-status");
+        var payload = { tenant_id: tenant.id, enabled: enabled };
+        if (password) payload.password = password;
+        statusMsg(out, "Lagrar…", true);
+        tenantAdminCall("set_tenant_site_lock", payload, function (r) {
+          if (r.error) { statusMsg(out, r.error, false); return; }
+          statusMsg(out, "✓ Lagra", true);
+          loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
 
     var archiveBtn = wrap.querySelector("#kd-archive-btn");
     if (archiveBtn) {

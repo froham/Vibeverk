@@ -603,7 +603,7 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at")
+    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, site_lock_enabled, site_lock_updated_at")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
@@ -738,6 +738,55 @@ serve(async (req: Request) => {
       return json({ error: "Tenanten vart arkivert mens handlinga køyrde" }, 409);
     }
     await auditFinish(auditId, "success");
+    return json({ success: true });
+  }
+
+  // ── set_tenant_site_lock ─────────────────────────────────────────────────
+  // Per-tenant sidesperre (forenkla design, 2026-08-10 -- sjå
+  // 20260810234227_tenant_site_lock.sql sin eigen kommentar for full
+  // grunngjeving). Erstattar den globale SITE_LOCK_PASSWORD i middleware.js
+  // for akkurat denne tenanten sine domene når enabled = true. Passordet vert
+  // ALDRI lese attende her -- berre set/endra/slå av, same
+  // write-only-mønster som set_tenant_service_role_key over. Hashinga skjer
+  // inne i set_tenant_site_lock()-SQL-funksjonen (service_role-only, sjå
+  // migrasjonen), ikkje her -- denne handlinga er berre eit tynt, audit-logga
+  // kall inn til den.
+  //
+  // Tillate for 'provisioning' og 'active' (same gate som
+  // update_tenant_hostnames) -- ein operatør kan ønskje å sperre ein tenant
+  // sine domene mens han framleis vert bygd saman med kunden, ikkje berre
+  // etter go-live.
+  if (action === "set_tenant_site_lock") {
+    if (tenant.status !== "provisioning" && tenant.status !== "active") {
+      await auditReject(tenant.id, action, "tenant er ikkje i status 'provisioning' eller 'active' (er: " + tenant.status + ")");
+      return json({ error: "Denne handlinga er berre tillate mens kunden er 'provisioning' eller 'active'" }, 403);
+    }
+    const { enabled, password } = body;
+    if (typeof enabled !== "boolean") {
+      return json({ error: "enabled må vere true/false" }, 400);
+    }
+    const hasPassword = password !== undefined && password !== null && password !== "";
+    if (hasPassword && (typeof password !== "string" || password.length < 4)) {
+      return json({ error: "Passordet må vere minst 4 teikn" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb.rpc("set_tenant_site_lock", {
+      p_tenant_id: tenant_id,
+      p_enabled: enabled,
+      p_password: hasPassword ? password : null,
+    });
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      if (error.message && error.message.indexOf("no password set") !== -1) {
+        return json({ error: "Kan ikkje slå på sperra før eit passord er sett" }, 400);
+      }
+      if (error.message && error.message.indexOf("password too short") !== -1) {
+        return json({ error: "Passordet må vere minst 4 teikn" }, 400);
+      }
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", enabled ? "sperre PÅ" + (hasPassword ? " (nytt passord)" : "") : "sperre AV");
     return json({ success: true });
   }
 

@@ -77,6 +77,60 @@ function checkSiteLock(request) {
   return pass === expected;
 }
 
+// ── Per-tenant sidesperre (2026-08-10) ──────────────────────────────────────
+// Ekte, kundevald passord (forenkla design, sjå
+// supabase-control/supabase/migrations/20260810234227_tenant_site_lock.sql
+// for full grunngjeving) som ERSTATTAR den globale utviklingsfase-sperra over
+// for akkurat denne tenanten sine domene, når admin har slått han på i
+// Console. Trong for tenant-oppløysing FØR sperre-avgjerda vert teken --
+// difor er tenant-oppslaget nedanfor flytta framfor sjekken, i motsetnad til
+// den opphavlege rekkjefølgja (som berre løyste opp tenant for å avvise
+// ukjende domene, etter sperra alt var sjekka globalt).
+//
+// Fail-CLOSED ved feil (i motsetnad til checkSiteLock sin med-vilje
+// fail-open) -- dette er eit ekte passord kunden sjølv har sett, ikkje ei
+// mellombels utviklingssperre, så ein feila RPC-kall skal ALDRI stille som
+// eit ope hol.
+async function checkTenantSiteLock(request, host, controlUrl, controlAnonKey) {
+  const auth = request.headers.get("authorization") || "";
+  if (!auth.startsWith("Basic ")) return false;
+  let decoded;
+  try { decoded = atob(auth.slice(6)); } catch (e) { return false; }
+  const sep = decoded.indexOf(":");
+  const pass = sep === -1 ? decoded : decoded.slice(sep + 1);
+  try {
+    const resp = await fetch(controlUrl + "/rest/v1/rpc/verify_tenant_site_lock_password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: controlAnonKey,
+        Authorization: "Bearer " + controlAnonKey,
+      },
+      body: JSON.stringify({ p_hostname: host, p_password: pass }),
+    });
+    if (!resp.ok) return false;
+    return (await resp.json()) === true;
+  } catch (e) {
+    console.error("[vibeverk-middleware] tenant-sitelock-verifisering feila", e);
+    return false;
+  }
+}
+
+async function resolveTenant(controlUrl, controlAnonKey, host) {
+  const resp = await fetch(controlUrl + "/rest/v1/rpc/resolve_tenant_by_hostname", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: controlAnonKey,
+      Authorization: "Bearer " + controlAnonKey,
+    },
+    body: JSON.stringify({ p_hostname: host }),
+  });
+  if (!resp.ok) throw new Error("resolve_tenant_by_hostname HTTP " + resp.status);
+  const rows = await resp.json();
+  return Array.isArray(rows) ? rows[0] : null;
+}
+
 export default async function middleware(request) {
   const url = new URL(request.url);
 
@@ -105,7 +159,29 @@ export default async function middleware(request) {
     return rewrite(new URL("/api/admin-manifest", request.url));
   }
 
-  if (!checkSiteLock(request)) {
+  const controlUrl = process.env.VIBEVERK_CONTROL_URL;
+  const controlAnonKey = process.env.VIBEVERK_CONTROL_ANON_KEY;
+  const host = (request.headers.get("host") || "").toLowerCase().split(":")[0];
+
+  let tenant = null;
+  if (controlUrl && controlAnonKey && host) {
+    try {
+      tenant = await resolveTenant(controlUrl, controlAnonKey, host);
+    } catch (e) {
+      console.error("[vibeverk-middleware] tenant-oppslag feila", e);
+      return new Response(
+        "Mellombels feil — prøv igjen straks.",
+        { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      );
+    }
+  } else {
+    console.error("[vibeverk-middleware] mangler control-plane-config eller host — slepp gjennom uløyst");
+  }
+
+  const lockOk = tenant && tenant.site_lock_enabled
+    ? await checkTenantSiteLock(request, host, controlUrl, controlAnonKey)
+    : checkSiteLock(request);
+  if (!lockOk) {
     return new Response("Autentisering kravd.", {
       status: 401,
       headers: { "WWW-Authenticate": 'Basic realm="Vibeverk (under utvikling)"' },
@@ -116,39 +192,10 @@ export default async function middleware(request) {
     return rewrite(new URL("/api/tenant-config", request.url));
   }
 
-  const controlUrl = process.env.VIBEVERK_CONTROL_URL;
-  const controlAnonKey = process.env.VIBEVERK_CONTROL_ANON_KEY;
-  const host = (request.headers.get("host") || "").toLowerCase().split(":")[0];
-
-  if (!controlUrl || !controlAnonKey || !host) {
-    console.error("[vibeverk-middleware] mangler control-plane-config eller host — slepp gjennom uløyst");
-    return next();
-  }
-
-  try {
-    const resp = await fetch(controlUrl + "/rest/v1/rpc/resolve_tenant_by_hostname", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: controlAnonKey,
-        Authorization: "Bearer " + controlAnonKey,
-      },
-      body: JSON.stringify({ p_hostname: host }),
-    });
-    if (!resp.ok) throw new Error("resolve_tenant_by_hostname HTTP " + resp.status);
-    const rows = await resp.json();
-    const tenant = Array.isArray(rows) ? rows[0] : null;
-    if (!tenant) {
-      return new Response(
-        "Dette domenet er ikkje registrert som ein Vibeverk-kunde.",
-        { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
-      );
-    }
-  } catch (e) {
-    console.error("[vibeverk-middleware] tenant-oppslag feila", e);
+  if (controlUrl && controlAnonKey && host && !tenant) {
     return new Response(
-      "Mellombels feil — prøv igjen straks.",
-      { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      "Dette domenet er ikkje registrert som ein Vibeverk-kunde.",
+      { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
     );
   }
 

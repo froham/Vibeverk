@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.132.0 — 2026-08-10
+
+**Per-tenant sidesperre i Console.** Brukerønske etter å ha spurt om å bruke Kundeanalyse til å teste mot en kundes side (`sunnvask.vibeverk.no`) som ligger bak den globale, midlertidige utviklingssperra (`SITE_LOCK_PASSWORD` i `middleware.js`, delt på tvers av ALLE domener) -- forespørselen om å la analyseverktøyet selv oppgi det globale passordet ble avvist (ville normalisert et unntak fra sperra inne i selve verktøyet), og dette ble bygget som et bedre alternativ i stedet. Forenklet med vilje etter et Arkitekt-forslag med engangsvisning + forsøksteller ble vurdert som overbygd for trusselbildet ("hindre tilfeldige besøkende", ikke brute-force-motstand) -- brukervedtak samme dag.
+
+- Ny migrasjon `supabase-control/supabase/migrations/20260810234227_tenant_site_lock.sql`: `tenants.site_lock_enabled`/`site_lock_password_hash`/`site_lock_updated_at`, pluss tre funksjoner -- `resolve_tenant_by_hostname()` utvidet med `site_lock_enabled` (ufarlig boolsk flagg, ikke selve hashen), `verify_tenant_site_lock_password()` (anon-kjørbar, returnerer kun boolsk), `set_tenant_site_lock()` (service_role-only, hasher med pgcrypto bcrypt -- passordet lagres aldri i klartekst, kostet ingenting ekstra å legge til). Kjørt og verifisert direkte mot `vibeverk-control` (kolonner, funksjonssignaturer og grants alle bekreftet via `information_schema`/`has_function_privilege`, ikke bare en "Finished"-melding).
+- Security Auditor-funn FØR merge (HIGH, uavhengig gjennomgang): baseline-migrasjonens tabellnivå `grant all on ... tenants to authenticated` (ikke avgrenset til kolonner) kombinert med en rolle-blind RLS-policy betydde at ENHVER aktiv operatør -- ikke bare superadmin -- kunne lese `site_lock_password_hash` rått via et direkte PostgREST-kall, forbi Console og `set_tenant_site_lock()`s egen superadmin-sperre helt. Rettet i samme migrasjon med et eksplisitt kolonnenivå `revoke select (site_lock_password_hash) on tenants from authenticated`.
+- Ny `set_tenant_site_lock`-handling i `tenant-admin`-funksjonen (superadmin-only, audit-logget, status-sperret til provisioning/active, samme mønster som `update_tenant_hostnames`).
+- `middleware.js` løyser nå opp tenanten FØR sperreavgjerda blir tatt (tidligere skjedde det etterpå, kun for å avvise ukjente domener) -- når en tenant har `site_lock_enabled`, erstatter tenantens eget passord den globale sperra for akkurat de domenene, resten av plattformen er upåvirket. Feiler LUKKET ved en RPC-feil (i motsetning til den globale sperras bevisste fail-open), siden dette er et ekte kundevalgt passord, ikke en midlertidig utviklingshindring.
+- Ny «Sidesperre for dette domenet»-kort i Kundar-sjekklista (`console/console-core.js`, `renderKdDetail()`) -- rent passordfelt + på/av-bryter, ikke en engangsvisningsflyt.
+- Nye tester i `test-api.js` (d7-d12): tenant-spesifikk sperre krever Basic Auth, globalt passord alene holder ikke, riktig/feil tenant-passord, fail-closed ved RPC-feil, ukjent domene bruker fortsatt den globale sperra.
+
 ## 0.131.0 — 2026-08-10
 
 **Kundeanalyse: operatøren kan nå velge AI-modell (Haiku eller Sonnet) per kjøring.** Brukerønske etter å ha bekreftet at Haiku var standardmodellen -- Sonnet ble spesifikt etterspurt som kandidat for en grundigere vurdering.
