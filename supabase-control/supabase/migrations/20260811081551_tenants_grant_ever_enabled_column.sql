@@ -1,0 +1,22 @@
+-- Regresjonsfiks: Console si Kundar-side synte tom liste for ALLE tenantar
+-- rett etter 20260811074128_tenant_site_lock_off_state.sql -- ikkje fordi
+-- data var sletta (stadfesta direkte: alle 6 tenant-rader finst framleis),
+-- men fordi loadTenants() (console-core.js) sitt .select() no ber om den nye
+-- kolonna site_lock_ever_enabled, og "authenticated" hadde ingen SELECT-
+-- rett på han i det heile.
+--
+-- Rotårsak: 20260810234227_tenant_site_lock.sql (Security Auditor-funn HIGH,
+-- sjå den migrasjonen sin eigen kommentar) bytte "authenticated" sin tilgang
+-- til tenants frå eit tabellnivå-GRANT til eit EKSPLISITT KOLONNENIVÅ-GRANT
+-- (fordi eit reint kolonnenivå-REVOKE ikkje held åleine mot eit eksisterande
+-- tabellnivå-GRANT -- sjå den migrasjonen for detaljar). Denne oppfølgings-
+-- migrasjonen la til site_lock_ever_enabled som ny kolonne, men gløymde å
+-- utvide det eksplisitte kolonnenivå-GRANT-et til å inkludere ho -- ei ny
+-- kolonne vert ALDRI automatisk inkludert i eit tidlegare, eksplisitt
+-- kolonnenamngjeve GRANT, ulikt eit tabellnivå-GRANT som ville dekt ho med
+-- det same.
+--
+-- Alt køyrt direkte mot vibeverk-control 2026-08-11 som ein hastefiks
+-- (Console var reelt utilgjengeleg for alle operatørar) -- denne migrasjonen
+-- gjer berre det same idempotent og sporbart i historikken.
+grant select (site_lock_ever_enabled) on tenants to authenticated;
