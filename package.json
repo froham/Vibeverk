@@ -2,7 +2,8 @@
   "scripts": {
     "ai-lab": "node scripts/ai-lab-server.js",
     "test:ai-lab": "node test-ai-lab.js && node test-ai-lab-console.js",
-    "test:customer-analysis": "node --test test-customer-analysis.js test-customer-analysis-console.js"
+    "test:customer-analysis": "node --test test-customer-analysis.js test-customer-analysis-console.js",
+    "test:page-builder": "node --test test-page-builder-console.js"
   },
   "dependencies": {
     "@vercel/functions": "^3.7.5",

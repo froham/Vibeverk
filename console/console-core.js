@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.132.1";
+  var VIBEVERK_VERSION = "0.133.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -506,6 +506,7 @@ window.VwConsole = (function () {
     { id: "kundar",     icon: "building",    label: "Kundar" },
     { id: "produkt",    icon: "package",     label: "Produkt" },
     { id: "web",        icon: "world",       label: "Web" },
+    { id: "sidebygger-sider", icon: "files", label: "Sider" },
     { id: "workspace",  icon: "briefcase",   label: "Workspace" },
     { id: "modular",    icon: "puzzle",      label: "Modular" },
     { id: "priser",     icon: "tag",         label: "Priser" },
@@ -2215,6 +2216,519 @@ window.VwConsole = (function () {
       var el = priserFindMatch(wrap, restore.selectorAttr, restore.attrs);
       if (el) el.focus();
     }
+  }
+
+  /* =========================================================================
+     SIDEBYGGER — SIDER (Fase 1, Console-only)
+     -------------------------------------------------------------------------
+     Lagring: éin store-nøkkel "custom-pages" på den valde tenanten sitt eige
+     prosjekt (same mønster som superconfig -- lest via getStoreKey(), skrive
+     via brokerCall("set_config", ...) sidan Console si eiga tenantPublicClient()
+     er anon/persistSession:false og aldri kan tilfredsstille store sin
+     can_edit_content()-RLS). Sjå module-page-builder.js for korleis desse
+     sidene faktisk vert rendra på den offentlege sida.
+
+     Ingen kundeflyt her enno (Fase 2) -- alt går via Console, "locked" er
+     difor alltid true og aldri vist som ein redigerbar brytar.
+     ====================================================================== */
+  var PB_SECTION_TYPES = [
+    { type: "hero", label: "Hero/banner" },
+    { type: "text", label: "Tekstblokk" },
+    { type: "image-text", label: "Bilde + tekst" },
+    { type: "big-image", label: "Stort bilde" },
+    { type: "quote", label: "Sitat" },
+    { type: "grid", label: "Rutenett" },
+    { type: "cta", label: "CTA (handling)" },
+    { type: "spacer", label: "Mellomrom" }
+  ];
+  var PB_SECTION_LABELS = PB_SECTION_TYPES.reduce(function (m, t) { m[t.type] = t.label; return m; }, {});
+  // Faste modul-id-ar + tidlegare sidebygger-fane sjølv -- ei ny side kan
+  // aldri kollidere med desse, sidan App.registerModule() (core.js) no-oppar
+  // stille på duplikat-id utan feilmelding.
+  var PB_RESERVED_IDS = ["hjem", "om-oss", "tjenester", "aktuelt", "kontakt", "booking", "referanser", "mediabank", "faq", "admin", "sak", "sidebygger-sider"];
+
+  function pbSlugify(s) {
+    var out = String(s || "").trim().toLowerCase()
+      .replace(/æ/g, "ae").replace(/ø/g, "o").replace(/å/g, "a")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return out || "side";
+  }
+  function pbUniquePageId(base, existingIds) {
+    var id = base, n = 2;
+    while (PB_RESERVED_IDS.indexOf(id) !== -1 || existingIds.indexOf(id) !== -1) {
+      id = base + "-" + n; n++;
+    }
+    return id;
+  }
+  function pbNewSectionId() {
+    return "sec-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+  }
+  function pbSelectField(id, label, options, value) {
+    return '<div class="field"><label for="' + id + '">' + C.esc(label) + '</label><select id="' + id + '">' +
+      options.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === value ? " selected" : "") + '>' + C.esc(o[1]) + '</option>'; }).join("") +
+    '</select></div>';
+  }
+
+  // Eige, enkelt biletopplastingsfelt (IKKJE App.ui.imageField/Media.put() --
+  // dei krev ei ekte, innlogga KUNDE-økt, som Console aldri har, sjå
+  // console-core.js sin tenantPublicClient()-kommentar). Går via
+  // brokerCall("upload_section_image", ...), same mønster som logo-
+  // opplastinga i renderWeb() (#cs-logo-file), berre med eit anna
+  // storleikstak (fullbreidde-innhaldsbilete, ikkje ein liten logo).
+  function pbImageFieldHtml(id, label, img) {
+    img = img || {};
+    return '<div class="field">' +
+      '<label>' + C.esc(label) + '</label>' +
+      (img.src ? '<div style="margin:.3rem 0"><img src="' + C.esc(img.src) + '" alt="" style="max-width:220px;max-height:140px;border-radius:8px;display:block;object-fit:cover"></div>' : "") +
+      '<input type="file" id="' + id + '-file" accept="image/svg+xml,image/png,image/jpeg,image/webp">' +
+      '<input type="hidden" id="' + id + '-src" value="' + C.esc(img.src || "") + '">' +
+      '<input type="text" id="' + id + '-alt" placeholder="Alt-tekst (for skjermlesere/SEO)" value="' + C.esc(img.alt || "") + '" style="margin-top:.4rem;width:100%">' +
+      '<p class="field__hint" id="' + id + '-status"></p>' +
+    '</div>';
+  }
+  function pbBindImageField(root, id, tenantId) {
+    var fileInput = root.querySelector("#" + id + "-file");
+    if (!fileInput) return;
+    var statusEl = root.querySelector("#" + id + "-status");
+    var srcEl    = root.querySelector("#" + id + "-src");
+    var ALLOWED_TYPES = { "image/svg+xml": 1, "image/png": 1, "image/jpeg": 1, "image/webp": 1 };
+    var COMPRESSIBLE_TYPES = { "image/png": 1, "image/jpeg": 1 };
+    var MAX_BYTES = 600 * 1024, RAW_MAX_BYTES = 8 * 1024 * 1024;
+    fileInput.addEventListener("change", function () {
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      if (!ALLOWED_TYPES[file.type]) { statusEl.textContent = "Filtypen er ikkje støtta. Bruk SVG, PNG, JPEG eller WebP."; fileInput.value = ""; return; }
+      var ceiling = COMPRESSIBLE_TYPES[file.type] ? RAW_MAX_BYTES : MAX_BYTES;
+      if (file.size > ceiling) { statusEl.textContent = "Fila er for stor (maks " + Math.round(ceiling / 1024) + "KB)."; fileInput.value = ""; return; }
+      statusEl.textContent = file.size > MAX_BYTES ? "Lastar opp og komprimerer …" : "Lastar opp …";
+      var reader = new FileReader();
+      reader.onerror = function () { statusEl.textContent = "Kunne ikkje lese fila."; };
+      reader.onload = function () {
+        var base64 = String(reader.result).split(",")[1] || "";
+        var oldUrl = srcEl.value;
+        brokerCall("upload_section_image", { file_base64: base64, content_type: file.type, old_image_url: oldUrl, tenant_id: tenantId }, function (r) {
+          if (r.error) { statusEl.textContent = "Opplasting feila: " + r.error; return; }
+          srcEl.value = r.url;
+          statusEl.textContent = "✓ Lasta opp";
+          fileInput.value = "";
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function pbReadImageField(root, id) {
+    var srcEl = root.querySelector("#" + id + "-src");
+    var altEl = root.querySelector("#" + id + "-alt");
+    if (!srcEl || !srcEl.value) return null;
+    return { src: srcEl.value, alt: altEl ? altEl.value.trim() : "" };
+  }
+
+  function pbSectionDataFieldsHtml(type, d) {
+    if (type === "hero") {
+      return pbImageFieldHtml("pb-sec-img", "Bilde (valgfritt)", d.image) +
+        C.field({ id: "pb-sec-heading", label: "Overskrift", value: d.heading || "" }) +
+        C.field({ id: "pb-sec-text", label: "Tekst", value: d.text || "", multiline: true, rows: 3 }) +
+        C.field({ id: "pb-sec-btn-label", label: "Knapptekst (valgfritt)", value: (d.button && d.button.label) || "" }) +
+        C.field({ id: "pb-sec-btn-url", label: "Knapplenke", value: (d.button && d.button.url) || "" });
+    }
+    if (type === "text") {
+      return C.field({ id: "pb-sec-heading", label: "Overskrift (valgfritt)", value: d.heading || "" }) +
+        C.richTextField({ id: "pb-sec-text-rt", label: "Tekst", value: d.text || "" });
+    }
+    if (type === "image-text") {
+      return pbImageFieldHtml("pb-sec-img", "Bilde", d.image) +
+        pbSelectField("pb-sec-imgpos", "Biletplassering", [["left", "Venstre"], ["right", "Høgre"]], d.imagePosition || "left") +
+        C.field({ id: "pb-sec-heading", label: "Overskrift (valgfritt)", value: d.heading || "" }) +
+        C.richTextField({ id: "pb-sec-text-rt", label: "Tekst", value: d.text || "" });
+    }
+    if (type === "big-image") {
+      return pbImageFieldHtml("pb-sec-img", "Bilde", d.image) +
+        C.field({ id: "pb-sec-caption", label: "Bildetekst (valgfritt)", value: d.caption || "" });
+    }
+    if (type === "quote") {
+      return C.field({ id: "pb-sec-text", label: "Sitat", value: d.text || "", multiline: true, rows: 2 }) +
+        C.field({ id: "pb-sec-author", label: "Navn (valgfritt)", value: d.author || "" }) +
+        C.field({ id: "pb-sec-role", label: "Rolle/tittel (valgfritt)", value: d.role || "" });
+    }
+    if (type === "grid") {
+      return pbSelectField("pb-sec-cols", "Antall kolonner", [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]], String(d.columns || 3)) +
+        '<div id="pb-grid-items"></div>' +
+        '<button type="button" class="btn btn--ghost btn--sm" id="pb-grid-add-item">Legg til rute</button>';
+    }
+    if (type === "cta") {
+      return C.field({ id: "pb-sec-heading", label: "Overskrift", value: d.heading || "" }) +
+        C.field({ id: "pb-sec-text", label: "Tekst (valgfritt)", value: d.text || "", multiline: true, rows: 2 }) +
+        C.field({ id: "pb-sec-btn-label", label: "Knapptekst", value: (d.button && d.button.label) || "" }) +
+        C.field({ id: "pb-sec-btn-url", label: "Knapplenke", value: (d.button && d.button.url) || "" });
+    }
+    if (type === "spacer") {
+      return '<p class="field__hint">Mellomrommet sin storleik styrast av «Luft»-valet over.</p>';
+    }
+    return "";
+  }
+
+  function pbReadSectionDataFields(ed, type) {
+    if (type === "hero") {
+      var hbl = ed.querySelector("#pb-sec-btn-label").value.trim();
+      var hbu = ed.querySelector("#pb-sec-btn-url").value.trim();
+      return {
+        image: pbReadImageField(ed, "pb-sec-img"),
+        heading: ed.querySelector("#pb-sec-heading").value.trim(),
+        text: ed.querySelector("#pb-sec-text").value.trim(),
+        button: (hbl && hbu) ? { label: hbl, url: hbu } : null
+      };
+    }
+    if (type === "text") {
+      return {
+        heading: ed.querySelector("#pb-sec-heading").value.trim(),
+        text: App.ui.readRichTextField(ed, "pb-sec-text-rt")
+      };
+    }
+    if (type === "image-text") {
+      return {
+        image: pbReadImageField(ed, "pb-sec-img"),
+        imagePosition: ed.querySelector("#pb-sec-imgpos").value,
+        heading: ed.querySelector("#pb-sec-heading").value.trim(),
+        text: App.ui.readRichTextField(ed, "pb-sec-text-rt")
+      };
+    }
+    if (type === "big-image") {
+      return {
+        image: pbReadImageField(ed, "pb-sec-img"),
+        caption: ed.querySelector("#pb-sec-caption").value.trim()
+      };
+    }
+    if (type === "quote") {
+      return {
+        text: ed.querySelector("#pb-sec-text").value.trim(),
+        author: ed.querySelector("#pb-sec-author").value.trim(),
+        role: ed.querySelector("#pb-sec-role").value.trim()
+      };
+    }
+    if (type === "cta") {
+      var cbl = ed.querySelector("#pb-sec-btn-label").value.trim();
+      var cbu = ed.querySelector("#pb-sec-btn-url").value.trim();
+      return {
+        heading: ed.querySelector("#pb-sec-heading").value.trim(),
+        text: ed.querySelector("#pb-sec-text").value.trim(),
+        button: (cbl && cbu) ? { label: cbl, url: cbu } : null
+      };
+    }
+    return {};
+  }
+
+  // Skriv HEILE sida (denne eine, oppdaterte) inn i den ferske "custom-pages"-
+  // arrayen -- refetchar FØR skriving (i staden for å stole på ein potensielt
+  // gamal array halden i lukking) for å unngå å overskrive ei anna side som
+  // vart endra av nokon andre medan denne redigeringa stod open.
+  function pbSavePage(wrap, tenantId, page, cb) {
+    getStoreKey("custom-pages", function (v) {
+      var list = Array.isArray(v) ? v : [];
+      var idx = list.findIndex(function (x) { return x.id === page.id; });
+      if (idx >= 0) list[idx] = page; else list.push(page);
+      brokerCall("set_config", { key: "custom-pages", value: list, tenant_id: tenantId }, function (r) {
+        cb(r.error || null);
+      });
+    });
+  }
+
+  function pbMoveSection(wrap, tenantId, page, sectionId, dir) {
+    var list = page.sections || [];
+    var idx = list.findIndex(function (x) { return x.id === sectionId; });
+    var swapIdx = idx + dir;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return;
+    var tmp = list[idx]; list[idx] = list[swapIdx]; list[swapIdx] = tmp;
+    page.sections = list;
+    pbSavePage(wrap, tenantId, page, function (err) {
+      if (err) { alert(err); return; }
+      renderPageEditor(wrap, tenantId, page);
+    });
+  }
+
+  function openSectionEditor(wrap, tenantId, page, section, isNew) {
+    var ed = wrap.querySelector("#pb-section-editor");
+    if (!ed) return;
+    var v = section.variant || {};
+    var d = section.data || {};
+    var gridItems = section.type === "grid" ? (Array.isArray(d.items) ? d.items.slice() : []) : null;
+
+    ed.innerHTML =
+      '<div class="admin-form admin-form--card" style="margin-top:.8rem">' +
+        '<h4 style="margin:0 0 1rem">' + (isNew ? "Ny seksjon: " : "Rediger seksjon: ") + C.esc(PB_SECTION_LABELS[section.type] || section.type) + '</h4>' +
+        '<fieldset style="border:1px solid var(--color-border);border-radius:10px;padding:.85rem;margin-bottom:.8rem">' +
+          '<legend style="font-weight:600;font-size:.82rem;padding:0 .35rem;color:var(--color-muted)">Utseende</legend>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">' +
+            pbSelectField("pb-sec-bg", "Bakgrunn", [["light", "Lys"], ["dark", "Mørk"], ["branded", "Merkefarge"]], v.background || "light") +
+            pbSelectField("pb-sec-width", "Bredde", [["wide", "Bred"], ["narrow", "Smal"]], v.width || "wide") +
+            pbSelectField("pb-sec-spacing", "Luft", [["small", "Liten"], ["normal", "Normal"], ["large", "Stor"]], v.spacing || "normal") +
+            pbSelectField("pb-sec-align", "Justering", [["left", "Venstre"], ["center", "Sentrert"]], v.align || "left") +
+          '</div>' +
+        '</fieldset>' +
+        '<div id="pb-sec-data-fields">' + pbSectionDataFieldsHtml(section.type, d) + '</div>' +
+        '<div style="display:flex;gap:.6rem;margin-top:.8rem">' +
+          C.button({ label: "Lagre seksjon", variant: "primary", attrs: "data-pb-sec-save" }) +
+          C.button({ label: "Avbryt", variant: "ghost", attrs: "data-pb-sec-cancel" }) +
+        '</div>' +
+        '<p class="form__status" id="pb-sec-status"></p>' +
+      '</div>';
+
+    if (section.type === "hero" || section.type === "image-text" || section.type === "big-image") {
+      pbBindImageField(ed, "pb-sec-img", tenantId);
+    }
+    if (section.type === "text" || section.type === "image-text") {
+      App.ui.bindRichTextFields(ed);
+    }
+
+    // Rutenett-ruter: haldne som ei EIGEN JS-liste i denne lukkinga (ikkje
+    // berre lest frå DOM ved lagring), sidan rute-talet endrar seg dynamisk
+    // (legg til/fjern) og kvar rute har sitt eige biletopplastingsfelt som må
+    // rebindast kvar gong lista teiknast om.
+    if (section.type === "grid") {
+      var itemsBox = ed.querySelector("#pb-grid-items");
+      function captureGridItemsFromDom() {
+        gridItems.forEach(function (it, i) {
+          it.image = pbReadImageField(itemsBox, "pb-grid-img-" + i);
+          it.heading = (itemsBox.querySelector("#pb-grid-heading-" + i) || {}).value || "";
+          it.text = (itemsBox.querySelector("#pb-grid-text-" + i) || {}).value || "";
+          var bl = ((itemsBox.querySelector("#pb-grid-btn-label-" + i) || {}).value || "").trim();
+          var bu = ((itemsBox.querySelector("#pb-grid-btn-url-" + i) || {}).value || "").trim();
+          it.button = (bl && bu) ? { label: bl, url: bu } : null;
+        });
+      }
+      function renderGridItems() {
+        itemsBox.innerHTML = gridItems.map(function (it, i) {
+          return '<fieldset style="border:1px solid var(--color-border);border-radius:10px;padding:.7rem;margin-bottom:.6rem">' +
+            '<legend style="font-size:.78rem;color:var(--color-muted)">Rute ' + (i + 1) + '</legend>' +
+            pbImageFieldHtml("pb-grid-img-" + i, "Bilde (valgfritt)", it.image) +
+            C.field({ id: "pb-grid-heading-" + i, label: "Overskrift (valgfritt)", value: it.heading || "" }) +
+            C.field({ id: "pb-grid-text-" + i, label: "Tekst (valgfritt)", value: it.text || "", multiline: true, rows: 2 }) +
+            C.field({ id: "pb-grid-btn-label-" + i, label: "Knapptekst (valgfritt)", value: (it.button && it.button.label) || "" }) +
+            C.field({ id: "pb-grid-btn-url-" + i, label: "Knapplenke", value: (it.button && it.button.url) || "" }) +
+            '<button type="button" class="btn btn--ghost btn--sm" data-pb-grid-remove="' + i + '">Fjern rute</button>' +
+          '</fieldset>';
+        }).join("");
+        gridItems.forEach(function (it, i) { pbBindImageField(itemsBox, "pb-grid-img-" + i, tenantId); });
+        itemsBox.querySelectorAll("[data-pb-grid-remove]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            captureGridItemsFromDom();
+            gridItems.splice(parseInt(btn.getAttribute("data-pb-grid-remove"), 10), 1);
+            renderGridItems();
+          });
+        });
+      }
+      ed.querySelector("#pb-grid-add-item").addEventListener("click", function () {
+        captureGridItemsFromDom();
+        gridItems.push({ image: null, heading: "", text: "", button: null });
+        renderGridItems();
+      });
+      renderGridItems();
+      ed._pbCaptureGridItems = captureGridItemsFromDom;
+    }
+
+    ed.querySelector("[data-pb-sec-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
+    ed.querySelector("[data-pb-sec-save]").addEventListener("click", function () {
+      var out = ed.querySelector("#pb-sec-status");
+      section.variant = {
+        background: ed.querySelector("#pb-sec-bg").value,
+        width:      ed.querySelector("#pb-sec-width").value,
+        spacing:    ed.querySelector("#pb-sec-spacing").value,
+        align:      ed.querySelector("#pb-sec-align").value
+      };
+      if (section.type === "grid") {
+        if (typeof ed._pbCaptureGridItems === "function") ed._pbCaptureGridItems();
+        section.data = { columns: parseInt(ed.querySelector("#pb-sec-cols").value, 10) || 3, items: gridItems };
+      } else {
+        section.data = pbReadSectionDataFields(ed, section.type);
+      }
+      page.sections = page.sections || [];
+      var idx = page.sections.findIndex(function (x) { return x.id === section.id; });
+      if (idx >= 0) page.sections[idx] = section; else page.sections.push(section);
+      statusMsg(out, "Lagrar …", true);
+      pbSavePage(wrap, tenantId, page, function (err) {
+        if (err) { statusMsg(out, err, false); return; }
+        renderPageEditor(wrap, tenantId, page);
+      });
+    });
+  }
+
+  function renderPageEditor(wrap, tenantId, page) {
+    wrap.innerHTML =
+      '<div class="admin-group">' +
+        '<button type="button" class="btn btn--ghost btn--sm" id="pb-back" style="margin-bottom:.8rem">&larr; Til sider</button>' +
+        '<h3 style="margin:0 0 .8rem">' + C.esc(page.label || page.id) + '</h3>' +
+        '<form id="pb-page-meta-form" style="margin-bottom:1.2rem">' +
+          C.field({ id: "pb-page-title", label: "Tittel", value: page.label || "" }) +
+          '<label style="display:flex;align-items:center;gap:.4rem;margin:.5rem 0"><input type="checkbox" id="pb-page-navhidden"' + (page.navHidden ? " checked" : "") + '> Skjul frå toppmeny (framleis nåbar via #' + C.esc(page.id) + ')</label>' +
+          '<button type="submit" class="btn btn--ghost btn--sm">Lagre tittel</button>' +
+          '<p class="form__status" id="pb-page-meta-status"></p>' +
+        '</form>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.6rem;flex-wrap:wrap">' +
+          '<h4 style="margin:0">Seksjonar</h4>' +
+          '<div>' +
+            '<select id="pb-add-section-type">' +
+              PB_SECTION_TYPES.map(function (t) { return '<option value="' + t.type + '">' + C.esc(t.label) + '</option>'; }).join("") +
+            '</select> ' +
+            '<button type="button" class="btn btn--primary btn--sm" id="pb-add-section-btn">Legg til seksjon</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="pb-sections-list">' +
+          ((page.sections || []).length
+            ? page.sections.map(function (s, i) {
+                return '<div class="kd-card" style="display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap">' +
+                  '<div><strong>' + C.esc(PB_SECTION_LABELS[s.type] || s.type) + '</strong></div>' +
+                  '<div style="display:flex;gap:.3rem">' +
+                    // Same mønster som Priser sin pakke-flytting (pkg-row__move,
+                    // ti-chevron-up/down + disabled ved grensa) -- UX-funn
+                    // 2026-08-11: rå "↑"/"↓"-teiknknappar som HEILT UTELET seg
+                    // sjølv ved grensa (i staden for å visast, deaktiverte) let
+                    // knapperada endre breidde avhengig av posisjon.
+                    '<button type="button" class="btn btn--ghost btn--sm" data-pb-move-up="' + C.esc(s.id) + '" aria-label="Flytt «' + C.esc(PB_SECTION_LABELS[s.type] || s.type) + '» opp"' + (i === 0 ? " disabled" : "") + '><i class="ti ti-chevron-up"></i></button>' +
+                    '<button type="button" class="btn btn--ghost btn--sm" data-pb-move-down="' + C.esc(s.id) + '" aria-label="Flytt «' + C.esc(PB_SECTION_LABELS[s.type] || s.type) + '» ned"' + (i === page.sections.length - 1 ? " disabled" : "") + '><i class="ti ti-chevron-down"></i></button>' +
+                    C.button({ label: "Rediger", variant: "ghost", class: "btn--sm", attrs: 'data-pb-edit-section="' + C.esc(s.id) + '"' }) +
+                    C.button({ label: "Slett", variant: "ghost", class: "btn--sm", attrs: 'data-pb-del-section="' + C.esc(s.id) + '"' }) +
+                  '</div>' +
+                '</div>';
+              }).join("")
+            : '<p class="field__hint">Ingen seksjonar enno.</p>'
+          ) +
+        '</div>' +
+        '<div id="pb-section-editor"></div>' +
+      '</div>';
+
+    wrap.querySelector("#pb-back").addEventListener("click", function () {
+      getStoreKey("custom-pages", function (v) { renderPagesList(wrap, tenantId, Array.isArray(v) ? v : []); });
+    });
+
+    wrap.querySelector("#pb-page-meta-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var title = wrap.querySelector("#pb-page-title").value.trim();
+      var out = wrap.querySelector("#pb-page-meta-status");
+      if (!title) { statusMsg(out, "Tittel er påkrevd", false); return; }
+      page.label = title;
+      page.navHidden = wrap.querySelector("#pb-page-navhidden").checked;
+      page.updatedAt = new Date().toISOString();
+      pbSavePage(wrap, tenantId, page, function (err) {
+        if (err) { statusMsg(out, err, false); return; }
+        statusMsg(out, "✓ Lagra", true);
+      });
+    });
+
+    wrap.querySelector("#pb-add-section-btn").addEventListener("click", function () {
+      var type = wrap.querySelector("#pb-add-section-type").value;
+      openSectionEditor(wrap, tenantId, page, {
+        id: pbNewSectionId(), type: type,
+        variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
+        data: {}
+      }, true);
+    });
+
+    wrap.querySelectorAll("[data-pb-move-up]").forEach(function (btn) {
+      btn.addEventListener("click", function () { pbMoveSection(wrap, tenantId, page, btn.getAttribute("data-pb-move-up"), -1); });
+    });
+    wrap.querySelectorAll("[data-pb-move-down]").forEach(function (btn) {
+      btn.addEventListener("click", function () { pbMoveSection(wrap, tenantId, page, btn.getAttribute("data-pb-move-down"), 1); });
+    });
+    wrap.querySelectorAll("[data-pb-edit-section]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var s = (page.sections || []).find(function (x) { return x.id === btn.getAttribute("data-pb-edit-section"); });
+        if (s) openSectionEditor(wrap, tenantId, page, s, false);
+      });
+    });
+    wrap.querySelectorAll("[data-pb-del-section]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-pb-del-section");
+        if (!confirm("Slett denne seksjonen? Innholdet i seksjonen fjernes fra siden. Dette kan ikke angres.")) return;
+        page.sections = (page.sections || []).filter(function (x) { return x.id !== id; });
+        pbSavePage(wrap, tenantId, page, function (err) {
+          if (err) { alert(err); return; }
+          renderPageEditor(wrap, tenantId, page);
+        });
+      });
+    });
+  }
+
+  function renderPagesList(wrap, tenantId, pages) {
+    wrap.innerHTML =
+      '<div class="admin-group">' +
+        '<h3 style="margin:0">Sider</h3>' +
+        '<p class="field__hint" style="margin:.2rem 0 .8rem">Ekstrasider bygd av kontrollerte seksjonar (hero, tekst, bilde, rutenett osv.) — same mønster som Mediabank/Aktuelt, egen side med egen URL. Kunden kan ikke redigere selv ennå.</p>' +
+        // Nivå B-inline (docs/architecture/copy-style-guide.md) -- UX-funn
+        // 2026-08-11: ingen stad synte at Sidebygger manglar kladd/publisert i
+        // det heile. Alt Console lagrar her går live UMIDDELBART på den ekte
+        // offentlege sida, same risikoprofil som ei kvar anna Console-lagring,
+        // men utan noka gjennomgangs- eller angrestег -- må difor seiast
+        // eksplisitt, ikkje berre antakast forstått.
+        '<div class="i-notice i-notice--warn" style="margin-bottom:1rem;padding:.8rem 1rem;border:1.5px solid #E8833A;border-radius:8px;background:color-mix(in srgb,#E8833A 10%,transparent);font-size:.88rem">' +
+          '<strong>⚠️ Ingen kladd eller forhåndsvisning i denne versjonen.</strong> Alt du oppretter eller endrar her, blir umiddelbart synleg for besøkjande på det offentlege nettstedet med det same du lagrar.' +
+        '</div>' +
+        '<form id="pb-new-form" style="display:flex;gap:.6rem;align-items:flex-end;margin-bottom:1rem;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:200px">' + C.field({ id: "pb-new-title", label: "Ny side", placeholder: "F.eks. Jobb hos oss" }) + '</div>' +
+          '<button type="submit" class="btn btn--primary btn--sm">Opprett side</button>' +
+        '</form>' +
+        '<p class="form__status" id="pb-new-status"></p>' +
+        '<div id="pb-list">' +
+          (pages.length
+            ? pages.map(function (p) {
+                return '<div class="kd-card" style="display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap">' +
+                  '<div>' +
+                    '<strong>' + C.esc(p.label || p.id) + '</strong>' +
+                    '<p class="field__hint" style="margin:.2rem 0 0">#' + C.esc(p.id) + ' · ' + ((p.sections || []).length) + ' seksjonar' + (p.navHidden ? " · skjult frå meny" : "") + '</p>' +
+                  '</div>' +
+                  '<div style="display:flex;gap:.4rem">' +
+                    C.button({ label: "Rediger", variant: "ghost", class: "btn--sm", attrs: 'data-pb-edit-page="' + C.esc(p.id) + '"' }) +
+                    C.button({ label: "Slett", variant: "ghost", class: "btn--sm", attrs: 'data-pb-del-page="' + C.esc(p.id) + '"' }) +
+                  '</div>' +
+                '</div>';
+              }).join("")
+            : '<p class="field__hint">Ingen sider oppretta enno.</p>'
+          ) +
+        '</div>' +
+      '</div>';
+
+    wrap.querySelector("#pb-new-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var title = wrap.querySelector("#pb-new-title").value.trim();
+      var out = wrap.querySelector("#pb-new-status");
+      if (!title) { statusMsg(out, "Tittel er påkrevd", false); return; }
+      var id = pbUniquePageId(pbSlugify(title), pages.map(function (p) { return p.id; }));
+      var now = new Date().toISOString();
+      var newPage = { id: id, label: title, order: 60, navHidden: false, locked: true, createdAt: now, updatedAt: now, sections: [] };
+      var list = pages.concat([newPage]);
+      statusMsg(out, "Oppretter …", true);
+      brokerCall("set_config", { key: "custom-pages", value: list, tenant_id: tenantId }, function (r) {
+        if (r.error) { statusMsg(out, r.error, false); return; }
+        renderPageEditor(wrap, tenantId, newPage);
+      });
+    });
+
+    wrap.querySelectorAll("[data-pb-edit-page]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var p = pages.find(function (x) { return x.id === btn.getAttribute("data-pb-edit-page"); });
+        if (p) renderPageEditor(wrap, tenantId, p);
+      });
+    });
+    wrap.querySelectorAll("[data-pb-del-page]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-pb-del-page");
+        var p = pages.find(function (x) { return x.id === id; });
+        if (!p) return;
+        if (!confirm('Slett siden «' + (p.label || "siden") + '»? Alle seksjonene og innstillingene for denne siden fjernes, og siden («#' + p.id + '») blir utilgjengelig for besøkende. Dette kan ikke angres.')) return;
+        var list = pages.filter(function (x) { return x.id !== id; });
+        brokerCall("set_config", { key: "custom-pages", value: list, tenant_id: tenantId }, function (r) {
+          if (r.error) { alert(r.error); return; }
+          renderPagesList(wrap, tenantId, list);
+        });
+      });
+    });
+  }
+
+  function renderSidebyggerSider(_sc, wrap) {
+    var tenantId = _activeTenant && _activeTenant.id;
+    var myGen = _renderGen;
+    getStoreKey("custom-pages", function (v) {
+      if (myGen !== _renderGen) return; // avløyst av ein seinare navigate()/tenant-byte
+      renderPagesList(wrap, tenantId, Array.isArray(v) ? v : []);
+    });
   }
 
   function renderPriserEdit(wrap) {
@@ -6015,13 +6529,14 @@ window.VwConsole = (function () {
      SEKSJONSDISPATCH
      ====================================================================== */
   var TITLES = {
-    kundar:"Kundar", produkt:"Produkt", web:"Web", workspace:"Workspace",
+    kundar:"Kundar", produkt:"Produkt", web:"Web", "sidebygger-sider":"Sider", workspace:"Workspace",
     modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", analyse:"Analyse", personvern:"Personvern", laring:"Læring", "ai-lab":"AI Lab", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
     produkt:    renderProdukt,
     web:        renderWeb,
+    "sidebygger-sider": renderSidebyggerSider,
     workspace:  renderWorkspace,
     modular:    renderModular,
     priser:     renderPriser,
@@ -6044,7 +6559,7 @@ window.VwConsole = (function () {
     // Priser og den eksplisitte side-ved-side-visninga i AI Lab treng breiare
     // enn lesebreidde -- sjå CSS-kommentaren ved
     // .cs-content--wide (console/index.html) for grunngjeving.
-    content.classList.toggle("cs-content--wide", id === "priser" || id === "ai-lab" || id === "kundeanalyse");
+    content.classList.toggle("cs-content--wide", id === "priser" || id === "ai-lab" || id === "kundeanalyse" || id === "sidebygger-sider");
     var myGen = ++_renderGen;
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +
