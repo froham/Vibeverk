@@ -34,6 +34,15 @@ function button(o) {
 function pageSection(s) {
   return '<section class="pb-sect" data-type="' + esc(s.type) + '">' + esc((s.data && s.data.heading) || (s.data && s.data.text) || "") + '</section>';
 }
+// Stub for den ekte pbBlocksLayout()-tabellen i components.js -- console-
+// core.js sin "Kolonne"-veljar (pbLayoutColCount) gjenbruker denne direkte,
+// same tabell som den ekte fila eksporterer.
+var PB_BLOCKS_LAYOUTS_STUB = {
+  "1col": 1, "2col": 2, "2col-2-1": 2, "2col-1-2": 2, "3col": 3, "4col": 4
+};
+function pbBlocksLayout(layout) {
+  return { cols: PB_BLOCKS_LAYOUTS_STUB[layout] || 1 };
+}
 
 function query(result) {
   var value = {
@@ -64,7 +73,7 @@ async function mount(opts) {
       readRichTextField: function (root, id) { var el = root.querySelector("#" + id); return el ? el.value : ""; }
     }
   };
-  window.Components = { esc: esc, field: field, richTextField: richTextField, button: button, pageSection: pageSection, helpIcon: function () { return ""; } };
+  window.Components = { esc: esc, field: field, richTextField: richTextField, button: button, pageSection: pageSection, helpIcon: function () { return ""; }, pbBlocksLayout: pbBlocksLayout };
   var control = {
     auth: { onAuthStateChange: function () {}, getSession: function () { return Promise.resolve({ data: { session: { access_token: "operator-token", user: { id: "op-1" }, expires_at: 4102444800 } } }); }, signOut: function () {} },
     from: function (table) {
@@ -165,7 +174,7 @@ test("legge til en hero-seksjon (via ikon-veljaren) opnar ho automatisk og autol
   click(dom.window.document.querySelector("#pbc-add-trigger"));
   await wait();
   var typeCards = dom.window.document.querySelectorAll("[data-pb-add-type]");
-  assert(typeCards.length === 8, "alle åtte seksjonstypar er tilgjengelege i ikon-veljaren: " + typeCards.length);
+  assert(typeCards.length === 9, "alle ni seksjonstypar (inkl. «Blokker») er tilgjengelege i ikon-veljaren: " + typeCards.length);
   click(dom.window.document.querySelector('[data-pb-add-type="hero"]'));
   await wait();
   var ed = dom.window.document.querySelector(".pbc-section-editor");
@@ -181,6 +190,137 @@ test("legge til en hero-seksjon (via ikon-veljaren) opnar ho automatisk og autol
   assert.equal(savedPages[0].sections[0].type, "hero");
   assert.equal(savedPages[0].sections[0].data.heading, "Velkommen til oss");
   assert.match(dom.window.document.querySelector("#pbc-save-status").textContent, /Alt lagra/, "lagre-status viser at autolagringa faktisk fullførte");
+});
+
+test("«Blokker»-seksjonen sin type-veljar tilbyr alle 6 blokktypane, og kvar type rendrar rette felt når han vert valt", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  click(dom.window.document.querySelector("#pbc-add-trigger"));
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-add-type="blocks"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  assert(ed && ed.querySelector("#pb-sec-blocks-layout"), "«Blokker»-seksjonen opnar seg automatisk med kolonneoppsett-veljaren synleg");
+  click(ed.querySelector("#pb-blocks-add-trigger"));
+  await wait();
+  var blockTypeCards = ed.querySelectorAll("[data-pb-add-block-type]");
+  assert.equal(blockTypeCards.length, 6, "alle 6 blokktypane er tilgjengelege i blokk-paletten");
+  click(ed.querySelector('[data-pb-add-block-type="contact-item"]'));
+  await wait();
+  assert(ed.querySelector("#pb-block-0-kind"), "kontaktinfo-blokka rendrar sine eigne felt (type/etikett/verdi) med det same");
+  assert(ed.querySelector("#pb-block-0-label"));
+  assert(ed.querySelector("#pb-block-0-value"));
+});
+
+test("redigere felt i ei blokk lagrar rett blocks[i].data i set_config-nyttelasten", async function (t) {
+  // Merk: denne testen sin pageSection()-stubb (øvst i fila) er bevisst
+  // enkel og les berre s.data.heading/s.data.text på SEKSJONSNIVÅ -- han
+  // representerer ikkje innhaldet inni enkeltblokker. Rendringsstadfesting
+  // for blokk-innhald høyrer heime i test.js (mot den ekte components.js),
+  // ikkje her -- denne testen stadfestar berre at Console-UI-en faktisk
+  // skriv rette verdiar inn i set_config-nyttelasten.
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  click(dom.window.document.querySelector("#pbc-add-trigger"));
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-add-type="blocks"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  click(ed.querySelector("#pb-blocks-add-trigger"));
+  await wait();
+  click(ed.querySelector('[data-pb-add-block-type="heading"]'));
+  await wait();
+  setFieldValue(ed.querySelector("#pb-block-0-text"), "Ny blokk-overskrift");
+  await wait();
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  assert.equal(savedPages[0].sections[0].type, "blocks");
+  assert.equal(savedPages[0].sections[0].data.blocks.length, 1);
+  assert.equal(savedPages[0].sections[0].data.blocks[0].type, "heading");
+  assert.equal(savedPages[0].sections[0].data.blocks[0].data.text, "Ny blokk-overskrift");
+});
+
+test("«Fjern blokk»-knappen fjernar berre den eine blokka, resten av blokk-lista står urørt", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "1col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Fyrste" } },
+      { id: "b2", type: "heading", slot: 0, data: { level: "h2", text: "Andre" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  click(ed.querySelector('[data-pb-block-remove="0"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var blocks = savedPages[0].sections[0].data.blocks;
+  assert.equal(blocks.length, 1, "berre éi blokk att");
+  assert.equal(blocks[0].data.text, "Andre", "den GJENVERANDE blokka er den som IKKJE vart fjerna");
+});
+
+test("opp/ned-reorder av blokker er avgrensa til SAME kolonne (slot) -- flytting av ei blokk i slot 0 rører aldri blokka i slot 1", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "2col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Slot0-A" } },
+      { id: "b2", type: "heading", slot: 0, data: { level: "h2", text: "Slot0-B" } },
+      { id: "b3", type: "heading", slot: 1, data: { level: "h2", text: "Slot1-einaste" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  // b2 (Slot0-B) er posisjon 1 innanfor slot 0 -- flytt han opp, forbi b1.
+  click(ed.querySelector('[data-pb-block-up="1"]'));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var blocks = savedPages[0].sections[0].data.blocks;
+  var texts = blocks.map(function (b) { return b.data.text; });
+  assert.deepEqual(texts, ["Slot0-B", "Slot0-A", "Slot1-einaste"], "b1/b2 bytte plass innanfor slot 0, b3 (åleine i slot 1) er heilt urørt: " + texts.join(","));
+  assert.equal(blocks[2].slot, 1, "slot-verdien til den urørte blokka er framleis 1");
+});
+
+test("å endre kolonneoppsettet på ei «Blokker»-seksjon klemmer no-ugyldige slot-verdiar til siste gyldige kolonne", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "2col", blocks: [
+      { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Venstre" } },
+      { id: "b2", type: "heading", slot: 1, data: { level: "h2", text: "Høgre" } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var layoutSel = ed.querySelector("#pb-sec-blocks-layout");
+  layoutSel.value = "1col";
+  layoutSel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait(800);
+  var savedPages = dom._getStoreValue();
+  var blocks = savedPages[0].sections[0].data.blocks;
+  assert.equal(savedPages[0].sections[0].data.layout, "1col", "kolonneoppsettet vert faktisk lagra");
+  assert(blocks.every(function (b) { return b.slot === 0; }), "begge blokkene sine slot-verdiar er klemt til 0, den einaste gyldige kolonnen i «1col»: " + blocks.map(function (b) { return b.slot; }).join(","));
+  assert(!ed.querySelector("#pb-block-1-slot"), "kolonne-veljaren for kvar blokk er sjølv skjult att når det berre finst éi kolonne");
 });
 
 test("pbPreviewCss(): eit forsøk på å bryte ut av <style>-taggen via superconfig sine farge-/font-felt vert nøytralisert (Security Auditor-funn BLOCKER, 2026-08-11)", async function (t) {
@@ -470,5 +610,6 @@ test("mobil-/skrivebord-brytaren viser ei tydeleg breiddeetikett (ikkje berre ei
 
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
-  assert.match(html, /components\.js\?v=22/);
+  assert.match(html, /components\.js\?v=23/);
+  assert.match(html, /console-core\.js\?v=249/);
 });

@@ -4,7 +4,8 @@
    Console-only i denne fasen (sjå docs/roadmap): Vibeverk-operatøren bygger
    ekstrasider (t.d. "Jobb hos oss", "Ansatte", "HMS") som ei ordna liste av
    kontrollerte seksjonstypar (hero/tekst/bilde+tekst/stort bilde/sitat/
-   rutenett/CTA/mellomrom) — INGEN fri HTML/CSS/JS, INGEN pikselplassering.
+   rutenett/CTA/mellomrom/blokker) — INGEN fri HTML/CSS/JS, INGEN
+   pikselplassering.
    Kunden kan ikkje redigere sjølv enno (det er Fase 2, gata på
    page.locked===false, ikkje bygd her).
 
@@ -106,7 +107,32 @@
       ".pb-cta__text{margin:0 0 1.2rem}",
 
       /* Mellomrom */
-      ".pb-spacer{height:1px}"
+      ".pb-spacer{height:1px}",
+
+      /* Blokker (9. seksjonstype) — .pb-blocks__slot er MEDVITE ein eigen
+         klassefamilie, ikkje .pb-grid__item: ein slot kan stable FLEIRE,
+         ulikt-typa blokker, ikkje eitt fast kort. Same "faste fr-verdiar,
+         ikkje auto-fit"-filosofi og same brotpunkt (900px/600px) som
+         .pb-grid over -- ingen nye verdiar oppfunne. MÅ haldast synk med
+         den identiske kopien i console/console-core.js sin pbPreviewCss(). */
+      ".pb-blocks{display:grid;gap:1.5rem}",
+      ".pb-blocks--1col{grid-template-columns:1fr}",
+      ".pb-blocks--2col{grid-template-columns:1fr 1fr}",
+      ".pb-blocks--2col-2-1{grid-template-columns:2fr 1fr}",
+      ".pb-blocks--2col-1-2{grid-template-columns:1fr 2fr}",
+      ".pb-blocks--3col{grid-template-columns:1fr 1fr 1fr}",
+      ".pb-blocks--4col{grid-template-columns:1fr 1fr 1fr 1fr}",
+      ".pb-blocks__slot{display:flex;flex-direction:column;gap:1.2rem;min-width:0}",
+      ".pb-block-heading{margin:0;font-family:var(--font-display);font-weight:700}",
+      ".pb-block-heading--h2{font-size:1.5rem}",
+      ".pb-block-heading--h3{font-size:1.15rem}",
+      ".pb-block-image__img{width:100%;border-radius:12px;object-fit:cover}",
+      ".pb-block-button{margin:.2rem 0}",
+      ".pb-block-contact{display:flex;align-items:center;gap:.6rem;font-size:.95rem}",
+      ".pb-block-contact a{color:inherit}",
+      ".pb-block-spacer{height:1px}",
+      "@media(max-width:900px){.pb-blocks--3col,.pb-blocks--4col{grid-template-columns:1fr 1fr}}",
+      "@media(max-width:600px){.pb-blocks{grid-template-columns:1fr!important}}"
     ].join("");
     document.head.appendChild(s);
   }

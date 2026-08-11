@@ -50,6 +50,35 @@ window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([
       { id: "s7", type: "cta", variant: { background: "branded", width: "narrow", spacing: "large", align: "center" },
         data: { heading: "Ta kontakt", text: "Vi svarer raskt", button: { label: "Kontakt oss", url: "javascript:alert(1)" } } },
       { id: "s8", type: "spacer", variant: { background: "light", width: "wide", spacing: "large", align: "left" }, data: {} },
+      // "blocks" (9. seksjonstype, 2026-08-12): alle 6 blokktypar PLUSS ein
+      // ukjend blokktype (skal aldri visast, same versjonsskeivskap-prinsipp
+      // som s9 under testar på seksjonsnivå) PLUSS to adversariske
+      // href-forsøk (contact-item og button) PLUSS ei blokk med ein
+      // ugyldig/for høg slot-verdi (layout "2col-2-1" har berre 2 gyldige
+      // kolonner, 0-1 -- b7 sin slot:99 skal klemmast til 1, ikkje forkastast).
+      { id: "s10", type: "blocks", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
+        data: { layout: "2col-2-1", blocks: [
+          { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Blokk-overskrift" } },
+          { id: "b2", type: "richtext", slot: 0, data: { text: "<script>alert(1)</script><p>Blokk-tekst</p>" } },
+          { id: "b3", type: "image", slot: 0, data: { image: { src: "https://example.test/block.jpg" } } },
+          // url er MEDVITE ein javascript:-nyttelast -- button-blokka MÅ gå
+          // via components.js sin delte button(), som ALDRI skal rendre
+          // dette som eit ekte href (same fareklasse som s7 sin CTA-test).
+          // variant er MEDVITE eit attributtbrot-forsøk -- Security Auditor-
+          // funn (BLOCKER, 2026-08-12): button() sin class-streng vert ALDRI
+          // esc()-a, og d.variant var det FYRSTE staden i heile fila der ein
+          // ikkje-hardkoda verdi når fram til button() sin variant-parameter.
+          // pbBlockButton MÅ kvitelista variant FØR han når button().
+          { id: "b4", type: "button", slot: 1, data: { label: "Blokk-knapp", url: "javascript:alert(2)", variant: 'primary"><svg/onload=alert(4)>' } },
+          // value er MEDVITE ein javascript:-nyttelast -- kontaktinfo-blokka
+          // sin href MÅ alltid ha ein bokstaveleg "tel:"-prefiks framfor
+          // verdien, uansett kva operatøren skriv, sidan ho ALDRI har eit
+          // fritt href-felt.
+          { id: "b5", type: "contact-item", slot: 1, data: { kind: "phone", label: "Ring oss", value: "javascript:alert(3)" } },
+          { id: "b6", type: "spacer", slot: 1, data: {} },
+          { id: "b-unknown", type: "not-a-real-block-type", slot: 0, data: { text: "Skal aldri vises (blokk)" } },
+          { id: "b7", type: "heading", slot: 99, data: { level: "h3", text: "Klemt til siste kolonne" } }
+        ] } },
       { id: "s9", type: "not-a-real-type", variant: {}, data: { heading: "Skal aldri vises" } }
     ]
   },
@@ -2688,7 +2717,7 @@ const __asyncTests = (async () => {
     var pbMain = doc.getElementById("main");
     assert(!!pbMain.querySelector(".pb-page"), "sidebygger: sidecontaineren rendra etter navigering til #pb-test-side");
     var pbSects = pbMain.querySelectorAll(".pb-sect");
-    assert(pbSects.length === 8, "sidebygger: 8 kjende seksjonstypar rendra, den 9. (ukjend type) er stille utelaten: " + pbSects.length);
+    assert(pbSects.length === 9, "sidebygger: 9 kjende seksjonstypar rendra (inkl. «blocks»), den 10. (ukjend type) er stille utelaten: " + pbSects.length);
     assert(!!pbMain.querySelector(".pb-hero"), "sidebygger: hero-seksjon rendra");
     assert(!!pbMain.querySelector(".pb-hero__img"), "sidebygger: hero-seksjonen sitt bilete rendra");
     assert(!!pbMain.querySelector(".pb-text"), "sidebygger: tekst-seksjon rendra");
@@ -2701,6 +2730,29 @@ const __asyncTests = (async () => {
     assert(!pbMain.querySelector(".pb-cta a[href*='javascript:']"), "sidebygger: ein javascript:-knapplenke vert ALDRI rendra som eit ekte href (Security Auditor-funn, retta i components.js sin button())");
     assert(/Kontakt oss/.test(pbMain.querySelector(".pb-cta").textContent), "sidebygger: knappeteksten vert framleis vist sjølv om lenka vart nekta (fell attende til ein vanleg <button>, ikkje heile knappen fjerna)");
     assert(!!pbMain.querySelector(".pb-spacer"), "sidebygger: mellomrom-seksjon rendra");
+
+    // Blokker (9. seksjonstype)
+    var pbBlocks = pbMain.querySelector(".pb-blocks.pb-blocks--2col-2-1");
+    assert(!!pbBlocks, "sidebygger/blokker: blokk-seksjonen rendra med rett layout-klasse");
+    assert(pbBlocks.querySelectorAll(".pb-blocks__slot").length === 2, "sidebygger/blokker: rett tal slots for «2col-2-1»: " + (pbBlocks && pbBlocks.querySelectorAll(".pb-blocks__slot").length));
+    assert(!!pbBlocks.querySelector(".pb-block-heading.pb-block-heading--h2"), "sidebygger/blokker: overskrift-blokk rendra med rett storleik");
+    assert(/Blokk-tekst/.test(pbBlocks.textContent), "sidebygger/blokker: rikttekst-blokk rendra");
+    assert(pbBlocks.textContent.indexOf("alert(1)") === -1 && pbMain.innerHTML.indexOf("<script>alert(1)</script>") === -1, "sidebygger/blokker: rikttekst-blokka sin <script>-tag vert sanert (går via same sanitizeRichHtml())");
+    assert(!!pbBlocks.querySelector(".pb-block-image__img"), "sidebygger/blokker: bilde-blokk rendra");
+    assert(!pbBlocks.querySelector(".pb-block-button a[href*='javascript:']"), "sidebygger/blokker: ein javascript:-knapplenke i ei blokk vert ALDRI rendra som eit ekte href (button-blokka går via delte button())");
+    assert(/Blokk-knapp/.test(pbBlocks.textContent), "sidebygger/blokker: knappeteksten vert framleis vist sjølv om lenka vart nekta");
+    // Security Auditor-funn (BLOCKER, 2026-08-12): eit variant-attributtbrot-
+    // forsøk skal ALDRI klare å bryte ut av class-attributtet -- verifiser at
+    // det ikkje finst noko element med eit vondsinna onload-handterar-
+    // attributt kor som helst i heile det rendra hovudinnhaldet.
+    assert(!pbMain.querySelector("[onload]"), "sidebygger/blokker: eit variant-attributtbrot-forsøk i ei knapp-blokk klarer ALDRI å injisere eit nytt element/attributt (kvitelista mot 'primary'/'secondary'/'ghost' FØR button())");
+    assert(pbMain.innerHTML.indexOf("svg/onload") === -1, "sidebygger/blokker: den rå, vondsinna variant-verdien vert aldri rendra bokstaveleg nokon stad i markupet");
+    var contactLink = pbBlocks.querySelector(".pb-block-contact a");
+    assert(!!contactLink && contactLink.getAttribute("href").indexOf("tel:") === 0, "sidebygger/blokker: kontaktinfo-blokk (telefon) sin href startar ALLTID bokstaveleg med «tel:», uansett kva verdien inneheld: " + (contactLink && contactLink.getAttribute("href")));
+    assert(!!pbBlocks.querySelector(".pb-block-spacer"), "sidebygger/blokker: mellomrom-blokk rendra");
+    assert(pbMain.textContent.indexOf("Skal aldri vises (blokk)") === -1, "sidebygger/blokker: ukjend blokktype sitt innhald vert aldri vist");
+    assert(/Klemt til siste kolonne/.test(pbBlocks.textContent), "sidebygger/blokker: ei blokk med ugyldig/for høg slot-verdi vert framleis rendra (klemt til siste gyldige kolonne), ikkje forkasta");
+
     assert(pbMain.textContent.indexOf("Skal aldri vises") === -1, "sidebygger: ukjend seksjonstype sitt innhald vert aldri vist");
     assert(!!pbMain.querySelector(".pb-sect--w-narrow"), "sidebygger: 'smal'-breidde-varianten gjev rett klasse");
     assert(!!pbMain.querySelector(".pb-sect--bg-branded"), "sidebygger: 'merkefarge'-bakgrunnsvarianten gjev rett klasse");

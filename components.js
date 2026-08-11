@@ -521,9 +521,113 @@ window.Components = (function () {
     return '<div class="pb-spacer"></div>';
   }
 
+  // --- Blokker (9. seksjonstype, 2026-08-12) ---------------------------------
+  // Dei 8 seksjonstypane over har kvar sin FASTE datamodell. "blocks" er ein
+  // sidestilt, ny type -- ein fri container av små, uavhengig komponerbare
+  // mini-blokker (overskrift/tekst/bilete/knapp/kontaktinfo/mellomrom) i eit
+  // fast (ikkje fritt) kolonneoppsett. Dei 8 andre typane er UENDRA av dette.
+
+  // Layout-enum -> kolonnetal + CSS-klasse. Lukka enum (ikkje fri breidde) --
+  // held fast på "ingen fri pikselplassering"-grensa frå Fase 1. Eksportert
+  // (sjå return-lista nedst i fila) slik at console-core.js sin "Kolonne"-
+  // veljar bruker NØYAKTIG same kolonnetal-tabell, ikkje ein tredje,
+  // sjølvstendig duplisert versjon.
+  var PB_BLOCKS_LAYOUTS = {
+    "1col":     { cols: 1, cls: "pb-blocks--1col" },
+    "2col":     { cols: 2, cls: "pb-blocks--2col" },
+    "2col-2-1": { cols: 2, cls: "pb-blocks--2col-2-1" },
+    "2col-1-2": { cols: 2, cls: "pb-blocks--2col-1-2" },
+    "3col":     { cols: 3, cls: "pb-blocks--3col" },
+    "4col":     { cols: 4, cls: "pb-blocks--4col" }
+  };
+  function pbBlocksLayout(layout) {
+    return PB_BLOCKS_LAYOUTS[layout] || PB_BLOCKS_LAYOUTS["1col"];
+  }
+
+  function pbBlockHeading(d) {
+    if (!d.text) return "";
+    var level = d.level === "h3" ? "h3" : "h2";
+    return `<${level} class="pb-block-heading pb-block-heading--${level}">${esc(d.text)}</${level}>`;
+  }
+  function pbBlockRichtext(d) {
+    if (!d.text) return "";
+    return `<div class="pb-block-richtext prose">${sanitizeRichHtml(d.text)}</div>`;
+  }
+  function pbBlockImage(d) {
+    const img = d.image && d.image.src ? d.image : null;
+    if (!img) return "";
+    return `<div class="pb-block-image">${coverImg(img, "pb-block-image__img")}</div>`;
+  }
+  // Security Auditor-funn (BLOCKER, 2026-08-12): button() sin `cls`-streng
+  // (bygd av `variant`) vert ALDRI esc()-a -- kvar ANNAN eksisterande
+  // button()-kallar i denne fila sender ein hardkoda bokstaveleg variant, så
+  // dette var aldri eit problem før. d.variant her er derimot lagra
+  // operatør-data (og broker sin set_config validerer ALDRI forma på
+  // custom-pages server-side, så eit vondsinna JSON-kall utanom sjølve UI-en
+  // kunne setje `variant` til kva som helst) -- eit `variant`-attributtbrot-
+  // forsøk ville brote ut av class-attributtet på det ekte, USANDBOKSA
+  // offentlege sida (til skilnad frå Console sin sandboksa iframe-
+  // førehandsvisning). Same kvite-liste-mønster som d.kind (pbBlockContactItem)
+  // og d.level (pbBlockHeading) alt bruker over.
+  function pbBlockButton(d) {
+    if (!d.label || !d.url) return "";
+    const variant = ["primary", "secondary", "ghost"].indexOf(d.variant) !== -1 ? d.variant : "primary";
+    return `<div class="pb-block-button">${button({ label: d.label, href: d.url, variant: variant })}</div>`;
+  }
+  // kind: "phone"|"email"|"address"|"custom". Href for phone/email er ALLTID
+  // utleia frå `kind`, ALDRI eit fritt href-felt frå operatøren -- verdien
+  // vert limt inn ETTER den harde skjema-prefiksen ("tel:"/"mailto:"), så
+  // heile URI-en sitt FAKTISKE skjema er alltid tel/mailto, same kva
+  // operatøren skriv i `value` (t.d. ein "javascript:..."-verdi vert berre
+  // "tel:javascript:...", eit ugyldig/ufarleg telefonnummer, aldri eit
+  // eksekverbart skjema). Ingen ny href-saneringsflate ved sida av button().
+  var PB_CONTACT_ICONS = { phone: "phone", email: "mail", address: "map-pin", custom: "user" };
+  function pbBlockContactItem(d) {
+    if (!d.value) return "";
+    const kind = ["phone", "email", "address", "custom"].indexOf(d.kind) !== -1 ? d.kind : "custom";
+    const labelHtml = d.label ? `<strong class="pb-block-contact__label">${esc(d.label)}</strong> ` : "";
+    const valueHtml = kind === "phone"
+      ? `<a href="tel:${esc(d.value)}">${esc(d.value)}</a>`
+      : kind === "email"
+      ? `<a href="mailto:${esc(d.value)}">${esc(d.value)}</a>`
+      : `<span>${esc(d.value)}</span>`;
+    return `<div class="pb-block-contact">${icon(PB_CONTACT_ICONS[kind])}${labelHtml}${valueHtml}</div>`;
+  }
+  function pbBlockSpacer() {
+    return '<div class="pb-block-spacer"></div>';
+  }
+
+  var PB_BLOCK_RENDERERS = {
+    heading: pbBlockHeading, richtext: pbBlockRichtext, image: pbBlockImage,
+    button: pbBlockButton, "contact-item": pbBlockContactItem, spacer: pbBlockSpacer
+  };
+
+  // Generalisert blokk-container -- 1-4 kolonnar ("slots"), kvar slot kan
+  // stable FLEIRE, ulikt-typa blokker (stabla vertikalt i array-rekkjefølgje).
+  // Ukjend blokktype (eller ein renderer som gjev tom streng) vert stille
+  // utelaten -- same versjonsskeivskap-prinsipp som pageSection() sjølv nedst
+  // i fila. Ein ugyldig/for høg `slot`-verdi (t.d. lagra då layout hadde
+  // fleire kolonnar enn no) vert klemt til siste gyldige kolonne, ikkje
+  // forkasta -- ei innhaldsblokk skal aldri forsvinne stille pga. eit seinare
+  // layout-val.
+  function pbBlocks(d) {
+    const layout = pbBlocksLayout(d.layout);
+    const slots = [];
+    for (let i = 0; i < layout.cols; i++) slots.push([]);
+    (d.blocks || []).forEach(function (b) {
+      if (!b || !b.type || !PB_BLOCK_RENDERERS[b.type]) return;
+      const html = PB_BLOCK_RENDERERS[b.type](b.data || {});
+      if (!html) return;
+      const slotIdx = Math.min(Math.max(0, parseInt(b.slot, 10) || 0), layout.cols - 1);
+      slots[slotIdx].push(html);
+    });
+    const slotsHtml = slots.map(function (s) { return `<div class="pb-blocks__slot">${s.join("")}</div>`; }).join("");
+    return `<div class="pb-blocks ${layout.cls}">${slotsHtml}</div>`;
+  }
+
   var PB_RENDERERS = {
     hero: pbHero, text: pbText, "image-text": pbImageText, "big-image": pbBigImage,
-    quote: pbQuote, grid: pbGrid, cta: pbCta, spacer: pbSpacer
+    quote: pbQuote, grid: pbGrid, cta: pbCta, spacer: pbSpacer, blocks: pbBlocks
   };
 
   // Dispatcher -- einaste offentlege inngangspunkt for sidebygger-seksjonar.
@@ -905,6 +1009,6 @@ window.Components = (function () {
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
     contact, footer, modal, tabbar,
-    pageSection
+    pageSection, pbBlocksLayout
   };
 })();
