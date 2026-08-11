@@ -420,15 +420,34 @@ test("«Minimer forhåndsvisning»-knappen skjular ramma og let deg vise ho att,
   var panel = dom.window.document.querySelector("#pbc-preview-panel");
   var toggleBtn = dom.window.document.querySelector("#pbc-pv-toggle");
   assert(toggleBtn, "minimer-knappen finst");
-  assert.equal(toggleBtn.getAttribute("aria-expanded"), "true", "startar utvida");
-  assert(!panel.classList.contains("is-minimized"), "panelet er ikkje minimert som standard");
+  // UX-tilbakemelding 2026-08-11 (0.133.4): eit sidestilt to-kolonne-forsøk
+  // let kolonnebreidda stå urørt sjølv minimert, som berre skapte tomt,
+  // ubrukt rom ("veldig tullete"). Arbeidsområdet er no alltid éin stabla
+  // kolonne, og forhåndsvisinga startar MINIMERT som standard -- minimering
+  // fjernar difor faktisk plassen ho tok, ikkje berre innhaldet inni ho.
+  assert.equal(toggleBtn.getAttribute("aria-expanded"), "false", "startar minimert som standard");
+  assert(panel.classList.contains("is-minimized"), "panelet ER minimert som standard");
   click(toggleBtn);
-  assert(panel.classList.contains("is-minimized"), "eitt klikk minimerer panelet");
-  assert.equal(toggleBtn.getAttribute("aria-expanded"), "false");
-  assert.match(toggleBtn.getAttribute("aria-label"), /Vis forhåndsvisning/);
-  click(toggleBtn);
-  assert(!panel.classList.contains("is-minimized"), "eit andre klikk viser panelet att");
+  assert(!panel.classList.contains("is-minimized"), "eitt klikk viser panelet");
   assert.equal(toggleBtn.getAttribute("aria-expanded"), "true");
+  assert.match(toggleBtn.getAttribute("aria-label"), /Minimer forhåndsvisning/);
+  click(toggleBtn);
+  assert(panel.classList.contains("is-minimized"), "eit andre klikk minimerer att");
+  assert.equal(toggleBtn.getAttribute("aria-expanded"), "false");
+});
+
+test("arbeidsområdet er éin stabla kolonne med forhåndsvisinga FØRST i DOM-en, ikkje sidestilte kolonnar", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var workspace = dom.window.document.querySelector(".pbc-workspace");
+  var panels = workspace.children;
+  assert.equal(panels.length, 2, "arbeidsområdet har nøyaktig to panel");
+  assert(panels[0].classList.contains("pbc-preview-panel"), "forhåndsvisingspanelet er FØRST i DOM-en");
+  assert(!panels[1].classList.contains("pbc-preview-panel"), "seksjonspanelet er ANDRE");
 });
 
 test("mobil-/skrivebord-brytaren viser ei tydeleg breiddeetikett (ikkje berre eit ikon)", async function (t) {
