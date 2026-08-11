@@ -991,6 +991,14 @@
        380px svarar til deira eiga telefon eller ikkje. */
     .pbc-preview-width-label { font-size:.72rem; color:var(--color-muted); }
     .pbc-preview-frame-wrap { padding:.9rem; background:var(--color-bg); border-radius:0 0 var(--radius) var(--radius); }
+    /* UX-tilbakemelding 2026-08-11: "Minimere forhåndsvisning" -- skjuler
+       sjølve ramma (og reduserer verktøylinja til berre utvid-knappen) utan
+       å røre sjølve grid-kolonnebreidda -- enkelt å slå av/på, ingen
+       ombygging av .pbc-workspace sitt oppsett treng skje. */
+    .pbc-preview-panel.is-minimized .pbc-preview-frame-wrap { display:none; }
+    .pbc-preview-panel.is-minimized .pbc-preview-width-label,
+    .pbc-preview-panel.is-minimized #pbc-pv-desktop,
+    .pbc-preview-panel.is-minimized #pbc-pv-mobile { display:none; }
     .pbc-preview-frame { border:none; background:#fff; border-radius:10px; box-shadow:0 0 0 1px var(--color-border); width:100%; height:min(72vh,720px); transition:max-width .2s ease; display:block; margin:0 auto; }
     .pbc-preview-frame.w-mobile { max-width:380px; }
 
@@ -1025,6 +1033,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=244"></script>
+  <script src="console-core.js?v=245"></script>
 </body>
 </html>

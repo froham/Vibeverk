@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.133.3 — 2026-08-11
+
+**Sidebygger: mulighet til å minimere forhåndsvisningen.** Brukerforslag rett etter 0.133.2 ble merget.
+
+- Ny minimer/vis-knapp i forhåndsvisningens verktøylinje -- skjuler selve rammen (og desktop-/mobilbryterne) uten å røre selve to-kolonners oppsettet, enkelt å slå av og på. Spesielt nyttig i ett-kolonne-modus (smalt Console-vindu), der forhåndsvisningen nå vises FØRST (0.133.1-fiks) og ellers alltid tar full høyde selv når man bare vil fortsette å redigere.
+- I samme slengen: fant og rettet at forrige rundes "vis mobilbredde-etikett"-fiks (0.133.1) bare la til CSS-klassen, men aldri det faktiske `<span>`-elementet eller kobling til bryterne -- etiketten ("Skrivebord" / "Mobil (~380px)") viser nå faktisk noe.
+- 2 nye tester dekker begge.
+- Kun UI-lag, ingen backend-endring -- ingen ny broker-redeploy nødvendig.
+
 ## 0.133.2 — 2026-08-11
 
 **Sidebygger: tre mindre presiseringer etter test av 0.133.1 i ekte nettleser.** Bruker testet den redesignede editoren og ga tre konkrete tilbakemeldinger via skjermbilde.
