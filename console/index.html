@@ -941,7 +941,11 @@
     .pbc-icon-btn:disabled { opacity:.3; cursor:not-allowed; }
     .pbc-icon-btn.danger:hover { background:rgba(192,57,43,.1); color:#c0392b; }
 
-    .pbc-section-editor { border-top:1px solid var(--color-border); padding:.9rem 1rem 1rem; background:var(--color-bg); display:flex; flex-direction:column; gap:.75rem; }
+    /* UX-funn 2026-08-11: ei open seksjonsredigering utan eiga høgd-grense
+       gjorde HEILE venstre lista lang og tvinga fram éin delt, uklår
+       rulling for heile panelet -- ei tydeleg, lokal rulling for BERRE den
+       opne seksjonen gjer det opplagt kva som faktisk rullar. */
+    .pbc-section-editor { border-top:1px solid var(--color-border); padding:.9rem 1rem 1rem; background:var(--color-bg); display:flex; flex-direction:column; gap:.75rem; max-height:50vh; overflow-y:auto; }
     .pbc-variant-row { display:grid; grid-template-columns:repeat(4,1fr); gap:.5rem; }
     @media(max-width:520px) { .pbc-variant-row { grid-template-columns:1fr 1fr; } }
     .pbc-field-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
@@ -1021,6 +1025,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=243"></script>
+  <script src="console-core.js?v=244"></script>
 </body>
 </html>

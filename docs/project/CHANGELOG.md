@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.133.2 — 2026-08-11
+
+**Sidebygger: tre mindre presiseringer etter test av 0.133.1 i ekte nettleser.** Bruker testet den redesignede editoren og ga tre konkrete tilbakemeldinger via skjermbilde.
+
+- **Eiga, avgrensa rulling for den opne seksjonsredigeringa** (`max-height:50vh; overflow-y:auto` på `.pbc-section-editor`) -- tidligere hadde kun den ytre seksjonslista rulling, som gjorde det uklart hva som faktisk skulle rulle når en lang seksjon (f.eks. Hero med bilde+alt-tekst+overskrift+tekst+knapp) var åpen.
+- **Viser det faktiske komprimeringsresultatet, ikke bare at det skjedde.** Broker sin `upload_section_image`-handling returnerer nå den faktiske endelige filstørrelsen (`size: uploadBytes.length`) i tillegg til URL-en. Console sammenligner denne med originalfilens størrelse og viser "✓ Lasta opp og komprimert frå 3.0MB til 580KB" i stedet for bare "✓ Lasta opp" -- direkte svar på "se hvordan komprimeringen blir".
+- **Lagt til en eksplisitt "Lagre no"-knapp** ved siden av autolagre-statusen i redigeringshodet. Autolagringen (debounced 700ms) er uendret og fortsatt standardveien -- knappen flusher bare den samme lagringsfunksjonen umiddelbart og kansellerer en eventuell ventende debounce-timer (ingen duplikat-lagring), for brukerens uttrykte trygghetsbehov ("selv om det ofte er auto-lagring, tror jeg også en lagreknapp er lurt").
+- 3 nye tester dekker alle tre: eksplisitt lagre-timing (og at debounce-timeren faktisk kanselleres, ikke bare overlappes), det faktiske komprimert-fra-til-innholdet i statusteksten, og at seksjonsredigeringens CSS faktisk har sitt eget rullefelt.
+- Kun UI-lag + én additiv, ikke-brytende endring i et eksisterende broker-svar (nytt `size`-felt) -- ingen nye handlinger, tillatelser eller datastier. Vurdert som lavrisiko nok til å ikke kreve en ny full Security Auditor/UX Reviewer-runde, gitt at de to foregående rundene allerede dekket alt det underliggende maskineriet grundig.
+
 ## 0.133.1 — 2026-08-11
 
 **Sidebygger: full UI-redesign av Console-editoren, etter reell bruk og en validert mockup-runde.** Bruker testet 0.133.0 og ga konkret tilbakemelding: "tungvint", "vanskelig å forholde seg til", "framstår veldig uferdig" -- manglet forhåndsvisning og dra-og-slipp, feilmeldinger var reaktive i stedet for proaktive. Fulgte den etablerte mockup-først-arbeidsflyten (samme mønster som Innsikt-redesignet): bygde et interaktivt HTML-utkast, iterert med bruker over to runder, FØR noe ble endret i ekte kode.

@@ -641,7 +641,11 @@ serve(async (req: Request) => {
     }
     const { data: pub } = tenantSrvSb.storage.from("media").getPublicUrl(path);
     await auditFinish(auditId, "success", path);
-    return json({ success: true, url: pub.publicUrl });
+    // size = den faktiske, ENDELEGE storleiken (etter evt. komprimering) --
+    // UX-funn 2026-08-11: operatøren kunne ikkje sjå kva komprimeringa
+    // faktisk resulterte i, berre at ho skjedde. Console bruker dette til å
+    // vise "komprimert frå X til Y" i staden for berre "✓ Lasta opp".
+    return json({ success: true, url: pub.publicUrl, size: uploadBytes.length });
   }
 
   // ── get_tenant_status ────────────────────────────────────────────────────

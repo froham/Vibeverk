@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.133.1";
+  var VIBEVERK_VERSION = "0.133.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2300,6 +2300,15 @@ window.VwConsole = (function () {
   // onChange-hooken kallast etter ei VELLUKKA opplasting -- brukt til å
   // trigge forhåndsvisinga sin friske render utan at kallaren treng vite
   // korleis biletfeltet sjølv fungerer.
+  // UX-funn 2026-08-11: "✓ Lasta opp" åleine synte ALDRI kva komprimeringa
+  // faktisk resulterte i -- berre at ho hadde skjedd. broker sin
+  // upload_section_image returnerer no den faktiske endelege storleiken
+  // (size), som vert samanlikna mot originalfila sin storleik her.
+  function pbFormatBytes(n) {
+    if (typeof n !== "number") return "";
+    if (n > 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + "MB";
+    return Math.round(n / 1024) + "KB";
+  }
   function pbBindImageField(root, id, tenantId, onChange) {
     var fileInput = root.querySelector("#" + id + "-file");
     if (!fileInput) return;
@@ -2335,7 +2344,16 @@ window.VwConsole = (function () {
         brokerCall("upload_section_image", { file_base64: base64, content_type: file.type, old_image_url: oldUrl, tenant_id: tenantId }, function (r) {
           if (r.error) { statusEl.textContent = "Opplasting feila: " + r.error; return; }
           srcEl.value = r.url;
-          statusEl.textContent = "✓ Lasta opp";
+          // Vis det faktiske komprimeringsresultatet (ikkje berre "det skjedde")
+          // -- viser "frå X til Y" berre når storleiken faktisk gjekk merkbart
+          // ned, elles berre den endelege storleiken.
+          var sizeNote = "";
+          if (typeof r.size === "number") {
+            sizeNote = (file.size - r.size > 10 * 1024)
+              ? " (komprimert frå " + pbFormatBytes(file.size) + " til " + pbFormatBytes(r.size) + ")"
+              : " (" + pbFormatBytes(r.size) + ")";
+          }
+          statusEl.textContent = "✓ Lasta opp" + sizeNote;
           fileInput.value = "";
           if (thumbEl) { thumbEl.style.backgroundImage = "url('" + r.url + "')"; thumbEl.innerHTML = ""; }
           if (typeof onChange === "function") onChange();
@@ -2608,18 +2626,22 @@ window.VwConsole = (function () {
     var saveTimer = null;
     var dragFromId = null;
 
+    function doSaveNow() {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      pbSavePage(wrap, tenantId, page, function (err) {
+        var el = wrap.querySelector("#pbc-save-status");
+        if (!el) return;
+        if (err) { el.className = "pbc-save-status is-error"; el.textContent = err; return; }
+        el.className = "pbc-save-status is-ok"; el.textContent = "✓ Alt lagra";
+      });
+    }
+
     function scheduleSave() {
       var st = wrap.querySelector("#pbc-save-status");
       if (st) { st.className = "pbc-save-status"; st.textContent = "Lagrar …"; }
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(function () {
-        pbSavePage(wrap, tenantId, page, function (err) {
-          var el = wrap.querySelector("#pbc-save-status");
-          if (!el) return;
-          if (err) { el.className = "pbc-save-status is-error"; el.textContent = err; return; }
-          el.className = "pbc-save-status is-ok"; el.textContent = "✓ Alt lagra";
-        });
-      }, 700);
+      saveTimer = setTimeout(doSaveNow, 700);
     }
 
     function refreshPreview() {
@@ -2868,6 +2890,11 @@ window.VwConsole = (function () {
         '<div class="pbc-editor-actions">' +
           '<span class="pbc-live-pill"><span class="pbc-live-pill__dot" aria-hidden="true"></span>Live på nettstedet</span>' +
           '<span class="pbc-save-status is-ok" id="pbc-save-status">✓ Alt lagra</span>' +
+          // UX-tilbakemelding 2026-08-11: "Sjølv om det ofte er auto-lagring,
+          // så trur eg også ein lagreknapp er lurt" -- ein eksplisitt knapp
+          // GJEV IKKJE eit anna resultat enn autolagringa (same doSaveNow()),
+          // berre trygdar operatøren utan å måtte vente på debounce-en.
+          C.button({ label: "Lagre no", variant: "ghost", class: "btn--sm", attrs: 'id="pbc-save-now"' }) +
           C.button({ label: "Slett side", variant: "ghost", class: "btn--sm", attrs: 'id="pbc-del-page" style="color:#c0392b;border-color:#c0392b"' }) +
         '</div>' +
       '</div>' +
@@ -2902,6 +2929,11 @@ window.VwConsole = (function () {
     wrap.querySelector("#pbc-navhidden").addEventListener("change", function () {
       page.navHidden = this.checked;
       scheduleSave();
+    });
+    wrap.querySelector("#pbc-save-now").addEventListener("click", function () {
+      var st = wrap.querySelector("#pbc-save-status");
+      if (st) { st.className = "pbc-save-status"; st.textContent = "Lagrar …"; }
+      doSaveNow();
     });
     wrap.querySelector("#pbc-del-page").addEventListener("click", function () {
       if (!confirm('Slett siden «' + (page.label || "siden") + '»? Alle seksjonene og innstillingene for denne siden fjernes, og siden («#' + page.id + '») blir utilgjengelig for besøkende. Dette kan ikke angres.')) return;

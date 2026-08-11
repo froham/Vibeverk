@@ -355,6 +355,61 @@ test("biletopplasting: grensene står synlege FØR nokon fil er valt, og eit for
   assert.match(statusText, /lavere oppløsning/, "feilmeldinga gjev eit konkret, handlingsretta forslag -- ikkje berre ei avvisning");
 });
 
+test("«Lagre no»-knappen lagrar umiddelbart, utan å vente på den 700ms debounca autolagringa", async function (t) {
+  var setCallTimes = [];
+  var start = Date.now();
+  var dom = await mount({
+    storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }],
+    onInvoke: function (name, body) { if (body.action === "set_config") setCallTimes.push(Date.now() - start); return null; }
+  });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  setFieldValue(dom.window.document.querySelector("#pbc-title"), "Nytt namn");
+  var saveNowBtn = dom.window.document.querySelector("#pbc-save-now");
+  assert(saveNowBtn, "ein eksplisitt «Lagre no»-knapp finst, i tillegg til autolagringa");
+  click(saveNowBtn);
+  await wait(30);
+  assert.equal(setCallTimes.length, 1, "nøyaktig eitt set_config-kall skjedde, umiddelbart etter klikk");
+  assert(setCallTimes[0] < 200, "lagringa skjedde langt før dei 700ms autolagringa elles ville venta: " + setCallTimes[0] + "ms");
+  assert.match(dom.window.document.querySelector("#pbc-save-status").textContent, /Alt lagra/);
+  await wait(800); // stadfest at IKKJE eit ekstra, duplikat set_config-kall kjem seinare frå den (no kansellerte) debounce-timeren
+  assert.equal(setCallTimes.length, 1, "ingen duplikat, seinare set_config-kall frå den kansellerte autolagringstimeren");
+});
+
+test("biletopplasting viser det FAKTISKE komprimeringsresultatet (frå-til), ikkje berre at noko vart lasta opp", async function (t) {
+  var dom = await mount({
+    storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [{ id: "s1", type: "hero", open: true, variant: {}, data: {} }] }],
+    onInvoke: function (name, body) {
+      if (body.action === "upload_section_image") return { data: { success: true, url: "https://example.test/img.jpg", size: 580 * 1024 }, error: null };
+      return null;
+    }
+  });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var fileInput = ed.querySelector("#pb-sec-img-file");
+  var file = new dom.window.File([new Uint8Array(10)], "bilde.png", { type: "image/png" });
+  Object.defineProperty(file, "size", { value: 3 * 1024 * 1024 }); // 3MB original
+  Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
+  fileInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait();
+  var statusText = dom.window.document.querySelector("#pb-sec-img-status").textContent;
+  assert.match(statusText, /komprimert/i, "meldinga nemner at biletet faktisk vart komprimert");
+  assert.match(statusText, /3\.0MB/, "meldinga viser den ORIGINALE storleiken");
+  assert.match(statusText, /580KB/, "meldinga viser den FAKTISKE, ENDELEGE storleiken -- ikkje berre at noko skjedde");
+});
+
+test("den opne seksjonsredigeringa har eiga, avgrensa rulling (ikkje éi delt, uklår rulling for heile lista)", function () {
+  var html = fs.readFileSync("console/index.html", "utf8");
+  assert.match(html, /\.pbc-section-editor\s*\{[^}]*overflow-y:auto/, "seksjonsredigeringa har sitt eige rullefelt, avgrensa til si eiga høgd");
+});
+
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
   assert.match(html, /components\.js\?v=22/);
