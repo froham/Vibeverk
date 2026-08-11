@@ -77,12 +77,17 @@ function checkSiteLock(request) {
   return pass === expected;
 }
 
-// ── Per-tenant sidesperre (2026-08-10) ──────────────────────────────────────
+// ── Per-tenant sidesperre (2026-08-10, utvida 2026-08-11 med AV-tilstand) ───
 // Ekte, kundevald passord (forenkla design, sjå
 // supabase-control/supabase/migrations/20260810234227_tenant_site_lock.sql
 // for full grunngjeving) som ERSTATTAR den globale utviklingsfase-sperra over
 // for akkurat denne tenanten sine domene, når admin har slått han på i
-// Console. Trong for tenant-oppløysing FØR sperre-avgjerda vert teken --
+// Console. Tre tilstandar totalt (sjå lock-avgjerda i middleware()):
+// PÅ (eige passord), AV-etter-å-ha-vore-konfigurert (heilt open, ingen
+// sperre), og aldri-konfigurert (fell attende til den globale sperra) --
+// sjå 20260811074128_tenant_site_lock_off_state.sql for grunngjevinga bak
+// kvifor eit reint boolsk flagg ikkje held for å skilje dei to siste frå
+// kvarandre. Trong for tenant-oppløysing FØR sperre-avgjerda vert teken --
 // difor er tenant-oppslaget nedanfor flytta framfor sjekken, i motsetnad til
 // den opphavlege rekkjefølgja (som berre løyste opp tenant for å avvise
 // ukjende domene, etter sperra alt var sjekka globalt).
@@ -178,9 +183,26 @@ export default async function middleware(request) {
     console.error("[vibeverk-middleware] mangler control-plane-config eller host — slepp gjennom uløyst");
   }
 
+  // Tre tilstandar (2026-08-11, jf. brukarfeedback -- "AV = heilt av"):
+  // 1. tenant.site_lock_enabled === true -- tenanten sitt eige passord.
+  // 2. site_lock_enabled er false, MEN site_lock_ever_enabled er true --
+  //    tenanten HAR hatt sperra PÅ minst éin gong før og operatøren har
+  //    sidan eksplisitt slått han AV -- HEILT open, ingen sperre i det
+  //    heile, verken tenant-spesifikk eller global.
+  // 3. site_lock_ever_enabled er false -- tenanten har ALDRI hatt sperra PÅ
+  //    -- fell tilbake til den delte, globale utviklingssperra (uendra
+  //    åtferd for alle andre, urørte tenantar).
+  //
+  // Medvite IKKJE basert på site_lock_updated_at (Security Auditor-funn
+  // HIGH, 2026-08-11): den kolonna vert sett av set_tenant_site_lock() kvar
+  // gong eit passord vert lagra, UAVHENGIG av om "Sperre PÅ" er kryssa av
+  // -- ein operatør som berre "legg inn eit passord for seinare" utan å
+  // krysse av boksen ville elles ved eit uhell opna domenet heilt.
+  // site_lock_ever_enabled er monotont og vert kun sant etter ei EKTE
+  // PÅ-hending, difor upåverka av eit reint passord-lagre.
   const lockOk = tenant && tenant.site_lock_enabled
     ? await checkTenantSiteLock(request, host, controlUrl, controlAnonKey)
-    : checkSiteLock(request);
+    : (tenant && tenant.site_lock_ever_enabled ? true : checkSiteLock(request));
   if (!lockOk) {
     return new Response("Autentisering kravd.", {
       status: 401,
