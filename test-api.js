@@ -69,7 +69,23 @@ async function main() {
           data_plane_storage_key: "nordpunkt",
           product_mode: "full",
           enabled_modules: { features: { crm: true }, intranettFeatures: { tasks: true } },
-          site_lock_enabled: scenario === "tenant-locked",
+          // "tenant-lock-rpc-error" må òg telje som site_lock_enabled=true
+          // her (sjølve RPC-feilen vert mocka separat, i
+          // verify_tenant_site_lock_password-grenen under) -- elles ville
+          // middleware.js sin per-tenant-gren aldri blitt kalla for det
+          // scenarioet, og d11 sin påstand ville (feilaktig) passert via den
+          // GLOBALE sperra i staden, utan å teste fail-closed-åtferda han
+          // faktisk skal dekkje.
+          site_lock_enabled: scenario === "tenant-locked" || scenario === "tenant-lock-rpc-error",
+          // Skil "aldri konfigurert" (site_lock_ever_enabled false -- fell
+          // attende til den globale sperra) frå "operatør har eksplisitt
+          // slått AV att etter å ha hatt sperra PÅ" (site_lock_ever_enabled
+          // true, MEN site_lock_enabled er false -- skal vere heilt open,
+          // sjå middleware.js sin trestegs lock-avgjerd). MONOTONT flagg,
+          // IKKJE site_lock_updated_at (Security Auditor-funn HIGH,
+          // 2026-08-11: eit reint passord-lagre utan å krysse av «Sperre PÅ»
+          // ville elles ved eit uhell opna domenet heilt).
+          site_lock_ever_enabled: scenario === "tenant-locked" || scenario === "tenant-off-configured",
           // custom_modules_manifest.smartAarshjul.enabled: true her (og
           // IKKJE i "aw-not-entitled" pga eigen gren under) -- api/ai/
           // annual-wheel.js sin eigen entitlement-sjekk (lagt til etter
@@ -356,9 +372,25 @@ async function main() {
   r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader(tenantSiteLockPassword) }));
   assert(r.status === 401, "d11: feila verify-RPC failar CLOSED (avvist), ikkje open, ulikt den globale sperra sin med-vilje fail-open");
 
+  // d12-d13: den tredje tilstanden (2026-08-11, retta etter brukarfeedback
+  // "AV = heilt av") -- ein tenant som HAR hatt sperra PÅ minst éin gong
+  // (site_lock_ever_enabled) men no står på AV skal vere HEILT open, ikkje
+  // falle attende til den globale sperra. Skil seg frå d4 (global sperre
+  // fell heilt bort når SITE_LOCK_PASSWORD ikkje er sett i det heile -- eit
+  // miljøval som gjeld ALLE tenantar) og frå "aldri konfigurert"-tilstanden
+  // (d1-d6, der site_lock_ever_enabled er false og den globale sperra
+  // framleis gjeld -- også dersom eit passord er lagra utan at boksen
+  // nokon gong vart kryssa av, sjå Security Auditor-funn HIGH over).
+  scenario = "tenant-off-configured";
+  r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no" }));
+  assert(r.status !== 401, "d12: tenant eksplisitt sperre AV etter å ha hatt han PÅ (site_lock_ever_enabled, enabled=false) er HEILT open -- ingen Basic Auth kravd, ikkje eingong det globale passordet");
+
+  r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader("eit feil passord uansett") }));
+  assert(r.status !== 401, "d13: same tenant -- eit FEIL passord i headeren stoppar heller ikkje, sidan det ikkje finst nokon sperre å samanlikne mot");
+
   scenario = "no-tenant";
   r = await middleware(fakeRequest("https://ukjend.no/workspace/", { host: "ukjend.no", authorization: basicAuthHeader("hemmelig") }));
-  assert(r.status === 404, "d12: ukjend hostname (tenant null) bruker den GLOBALE sperra for lock-avgjerda, ikkje ein krasj -- passerer med rett globalt passord, deretter 404 for ukjend domene");
+  assert(r.status === 404, "d14: ukjend hostname (tenant null) bruker den GLOBALE sperra for lock-avgjerda, ikkje ein krasj -- passerer med rett globalt passord, deretter 404 for ukjend domene");
 
   scenario = "full-success";
 
