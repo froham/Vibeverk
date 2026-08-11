@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.133.6 — 2026-08-12
+
+**Sidebygger: fikset at helt ordinære 2-3MB PNG-bilder feilet med "kunne ikke komprimeres nok automatisk".** Brukerrapport: opplasting feilet konsekvent til tross for at grensehintet lovte "PNG/JPEG: opptil 8MB (komprimerast automatisk ned mot 600KB)".
+
+- Rotårsak: `compressRasterImage()` i broker-en kunne bare komprimere JPEG ved BÅDE nedskalering og kvalitetsreduksjon (25 kombinasjoner), men PNG kunne KUN nedskaleres -- `imagescript` sin PNG-enkoder har ingen kvalitets-/tapsfri-knapp. Et fotografisk PNG (skjermbilde, "lagre bilde som" fra nettleseren) klarer ofte ikke komme under 600KB med nedskalering alene, siden PNG er tapsfritt.
+- Fiks: PNG-bilder UTEN faktisk brukt gjennomsiktighet (ingen piksel med alpha<255, sjekket via ny `hasTransparency()`-hjelpefunksjon som skanner det avkodede bitmapet) faller nå trygt tilbake til JPEG-komprimering når nedskalering alene ikke holder. PNG-er som FAKTISK trenger alfakanalen (f.eks. en logo på transparent bakgrunn) fortsetter å bruke bare nedskalering, uendret -- JPEG har ingen alfakanal og ville ødelagt gjennomsiktigheten deres.
+- `compressRasterImage()` sin returtype ble utvidet til å inkludere det faktiske sluttformatet (`{bytes, ext}` i stedet for bare `bytes`), og begge kallstedene (`upload_logo`, `upload_section_image`) oppdaterer nå `ext`/`contentType`/lagringsstien til å matche det VIRKELIGE sluttformatet -- unngår at JPEG-byte ville blitt lagret med feil `.png`-filnavn/`image/png`-innholdstype.
+- Uavhengig Security Auditor-gjennomgang før merge (fil-opplasting er sikkerhetssensitivt per CLAUDE.md): ingen BLOCKER/HIGH-funn. Kun trivielle LOW-notater (avgrenset ekstra CPU-kostnad, ingen ny DoS-flate; en bevisst konservativ alpha-terskel som aldri kan svekke gjennomsiktighetsvern, bare gjøre det strengere enn strengt nødvendig).
+- Krever redeploy av `broker`-funksjonen til `vibeverk-control` (prosjektref `jxoglthrnshabqmdmnui`) etter merge -- Edge Functions deployer ikke automatisk ved `git push`.
+
 ## 0.133.5 — 2026-08-12
 
 **Sidebygger: fjernet de kunstige høyde-grensene på seksjonsredigeringen og -listen.** Brukertilbakemelding: åpne seksjoner (f.eks. et rikteksfelt) ble klippet av en 50vh-høy indre rulling som var vanskelig å nå bunnen av -- "Blir igjen veldig unødvendig trangt ... Vanskelig å få tak i bunnen inne i de forskjellige nedtrekkene."
