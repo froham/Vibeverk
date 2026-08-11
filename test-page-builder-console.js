@@ -410,6 +410,42 @@ test("den opne seksjonsredigeringa har eiga, avgrensa rulling (ikkje éi delt, u
   assert.match(html, /\.pbc-section-editor\s*\{[^}]*overflow-y:auto/, "seksjonsredigeringa har sitt eige rullefelt, avgrensa til si eiga høgd");
 });
 
+test("«Minimer forhåndsvisning»-knappen skjular ramma og let deg vise ho att, utan å påverke sjølve lagringa", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var panel = dom.window.document.querySelector("#pbc-preview-panel");
+  var toggleBtn = dom.window.document.querySelector("#pbc-pv-toggle");
+  assert(toggleBtn, "minimer-knappen finst");
+  assert.equal(toggleBtn.getAttribute("aria-expanded"), "true", "startar utvida");
+  assert(!panel.classList.contains("is-minimized"), "panelet er ikkje minimert som standard");
+  click(toggleBtn);
+  assert(panel.classList.contains("is-minimized"), "eitt klikk minimerer panelet");
+  assert.equal(toggleBtn.getAttribute("aria-expanded"), "false");
+  assert.match(toggleBtn.getAttribute("aria-label"), /Vis forhåndsvisning/);
+  click(toggleBtn);
+  assert(!panel.classList.contains("is-minimized"), "eit andre klikk viser panelet att");
+  assert.equal(toggleBtn.getAttribute("aria-expanded"), "true");
+});
+
+test("mobil-/skrivebord-brytaren viser ei tydeleg breiddeetikett (ikkje berre eit ikon)", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var label = dom.window.document.querySelector("#pbc-pv-width-label");
+  assert.equal(label.textContent, "Skrivebord", "startar med skrivebord-etiketten");
+  click(dom.window.document.querySelector("#pbc-pv-mobile"));
+  assert.match(label.textContent, /Mobil.*380px/, "etiketten seier faktisk kva breidde 'mobil' simulerer");
+  click(dom.window.document.querySelector("#pbc-pv-desktop"));
+  assert.equal(label.textContent, "Skrivebord", "byter attende ved klikk på skrivebordsknappen");
+});
+
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
   assert.match(html, /components\.js\?v=22/);
