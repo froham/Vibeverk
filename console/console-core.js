@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.137.0";
+  var VIBEVERK_VERSION = "0.138.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -524,6 +524,7 @@ window.VwConsole = (function () {
     { id: "modular",    icon: "puzzle",      label: "Modular",    group: "kundedrift" },
     { id: "priser",     icon: "tag",         label: "Priser",     group: "internt" },
     { id: "kundeanalyse", icon: "zoom-check", label: "Kundeanalyse", group: "internt" },
+    { id: "compliance", icon: "clipboard-text", label: "Compliance", group: "internt" },
     { id: "analyse",    icon: "chart-bar",   label: "Analyse",    group: "kundedrift" },
     { id: "personvern", icon: "shield-lock", label: "Personvern", group: "kundedrift" },
     { id: "laring",     icon: "book",        label: "Læring",     group: "internt" },
@@ -7468,11 +7469,188 @@ window.VwConsole = (function () {
   }
 
   /* =========================================================================
+     COMPLIANCE (Bolk 3/4, 2026-08-12) -- reint Vibeverk-internt, IKKJE
+     tenant-skopa (same "internt"-nav-gruppe som Priser/Kundeanalyse/Læring,
+     sjå NAV_ITEMS). To sjølvstendige register i separate tabellar
+     (compliance_record/vendor_registry, migrasjon 20260812170000):
+     - Behandlingsprotokoll (GDPR art. 30) -- KUN for Vibeverk AS sjølv,
+       ALDRI ein per-kunde-funksjon (eksplisitt brukarvedtak). Ingen
+       versjonering/godkjenning-ceremoni, ulikt det kundevendte Personvern-
+       dokumentet -- rein direkte redigering, éi rad per behandlingsaktivitet.
+     - Leverandør-/DPA-register -- SAMA globale sanning som VIBEVERK_VENDORS
+       (console-core.js, Personvern-modulen) hadde som hardkoda JS-konstant,
+       no flytta til database og gjort redigerbar. VIBEVERK_VENDORS SJØLV ER
+       IKKJE RØRT ENNO -- Personvern-fana sin eigen Leverandørar-tab (kunde-
+       vendt tekstgenerering) les framleis frå den gamle konstanten, med
+       vilje isolert frå dette nye registeret til det er operatør-verifisert
+       (Arkitekten sin fase 4/"Bolk 5", eit seinare steg).
+     Lesing: direkte mot _sbControl (same mønster som pricing_config/
+     tenants/operators). Skriving: tenant-admin sine set_compliance_record/
+     set_vendor-handlingar (superadmin-gata, auditert til broker_audit_log
+     med tenant_id=NULL).
+     ====================================================================== */
+  var _complianceData = null;    // { records: [...], vendors: [...] } -- null til fyrste lasting er ferdig
+  var _complianceLoading = false;
+  var _complianceView = "protokoll"; // "protokoll" | "leverandorar"
+  var COMPLIANCE_COUNTRY_LABEL = { eu: "EU/EØS", us: "USA" };
+  var COMPLIANCE_TRANSFER_LABEL = { none: "Ikkje relevant (ingen overføring ut av EU/EØS)", scc: "EUs standardavtaler (SCC)", scc_or_dpf: "SCC og/eller DPF" };
+  var COMPLIANCE_DPA_STATUS_OPTIONS = [
+    ["tba", "TBA — Vibeverk AS ikkje stifta enno"],
+    ["unconfirmed", "Ikkje stadfesta"],
+    ["likely_confirmed", "Truleg alt i kraft"],
+    ["confirmed", "Stadfesta"]
+  ];
+  var COMPLIANCE_RECORD_FIELDS = [
+    ["formaal", "Formål"],
+    ["kategori_registrerte", "Kategori registrerte (t.d. besøkjande, tilsette)"],
+    ["kategori_data", "Kategori personopplysningar"],
+    ["behandlingsgrunnlag", "Behandlingsgrunnlag"],
+    ["mottakere", "Mottakarar"],
+    ["lagringstid", "Lagringstid"],
+    ["sikkerhetstiltak", "Sikkerheitstiltak"]
+  ];
+
+  function complianceLoad(wrap) {
+    if (_complianceLoading) return;
+    _complianceLoading = true;
+    Promise.all([
+      _sbControl.from("compliance_record").select("*").order("id"),
+      _sbControl.from("vendor_registry").select("*").order("sort_order")
+    ]).then(function (results) {
+      _complianceLoading = false;
+      var recordsRes = results[0], vendorsRes = results[1];
+      var err = recordsRes.error || vendorsRes.error;
+      if (err) {
+        wrap.innerHTML = '<p style="color:#c0392b">Kunne ikkje laste Compliance-data: ' + C.esc(err.message) + '</p>' +
+          C.button({ label: "Prøv igjen", variant: "ghost", attrs: 'type="button" id="compliance-retry"' });
+        var retryBtn = wrap.querySelector("#compliance-retry");
+        if (retryBtn) retryBtn.addEventListener("click", function () { complianceLoad(wrap); });
+        return;
+      }
+      _complianceData = { records: recordsRes.data || [], vendors: vendorsRes.data || [] };
+      renderCompliance(null, wrap);
+    });
+  }
+
+  function renderCompliance(_sc, wrap) {
+    if (!_complianceData) {
+      wrap.innerHTML = '<p style="color:var(--color-muted)">Lastar …</p>';
+      complianceLoad(wrap);
+      return;
+    }
+    var views = [["protokoll", "Behandlingsprotokoll"], ["leverandorar", "Leverandørar"]];
+    wrap.innerHTML =
+      '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 1rem">Reint internt for Vibeverk AS — aldri publisert, aldri kundevendt. Sjå <code>docs/compliance/personvern-rammeverk-status-2026-08-12.md</code>.</p>' +
+      '<div class="seg" id="compliance-view-toggle" style="margin-bottom:1.4rem">' +
+        views.map(function (v) {
+          return '<button type="button" class="' + (v[0] === _complianceView ? "is-active" : "") + '" data-compliance-view="' + v[0] + '">' + C.esc(v[1]) + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div id="compliance-pane"></div>';
+    wrap.querySelectorAll("[data-compliance-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        _complianceView = btn.getAttribute("data-compliance-view");
+        renderCompliance(null, wrap);
+      });
+    });
+    var pane = wrap.querySelector("#compliance-pane");
+    if (_complianceView === "protokoll") renderComplianceProtokoll(pane);
+    else renderComplianceLeverandorar(pane);
+  }
+
+  function renderComplianceProtokoll(pane) {
+    pane.innerHTML = _complianceData.records.map(function (rec) {
+      return '<fieldset class="admin-group" style="margin-bottom:.8rem" data-compliance-record="' + C.esc(rec.id) + '">' +
+        '<legend>' + C.esc(rec.label) + '</legend>' +
+        COMPLIANCE_RECORD_FIELDS.map(function (f) {
+          return C.field({ id: "cr-" + rec.id + "-" + f[0], label: f[1], multiline: true, rows: 2, value: rec[f[0]] || "" });
+        }).join("") +
+        C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" class="compliance-record-save" data-id="' + C.esc(rec.id) + '"' }) +
+        '<span class="cs-status" data-compliance-record-status="' + C.esc(rec.id) + '"></span>' +
+      '</fieldset>';
+    }).join("");
+
+    pane.querySelectorAll(".compliance-record-save").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-id");
+        var statusEl = pane.querySelector('[data-compliance-record-status="' + id + '"]');
+        var payload = { id: id };
+        COMPLIANCE_RECORD_FIELDS.forEach(function (f) {
+          payload[f[0]] = pane.querySelector("#cr-" + id + "-" + f[0]).value;
+        });
+        btn.disabled = true;
+        statusMsg(statusEl, "Lagrar…", true);
+        tenantAdminCall("set_compliance_record", payload, function (r) {
+          btn.disabled = false;
+          if (r.error) { statusMsg(statusEl, r.error, false); return; }
+          statusMsg(statusEl, "✓ Lagra", true);
+          var rec = _complianceData.records.filter(function (x) { return x.id === id; })[0];
+          if (rec) COMPLIANCE_RECORD_FIELDS.forEach(function (f) { rec[f[0]] = payload[f[0]]; });
+        });
+      });
+    });
+  }
+
+  function renderComplianceLeverandorar(pane) {
+    pane.innerHTML = _complianceData.vendors.map(function (v) {
+      return '<fieldset class="admin-group" style="margin-bottom:.8rem" data-compliance-vendor="' + C.esc(v.id) + '">' +
+        '<legend>' + C.esc(v.name) + '</legend>' +
+        C.field({ id: "cv-" + v.id + "-name", label: "Namn", value: v.name || "" }) +
+        C.field({ id: "cv-" + v.id + "-what", label: "Kva leverandøren gjer", multiline: true, rows: 2, value: v.what_it_does || "" }) +
+        '<div class="field"><label for="cv-' + v.id + '-country">Land</label><select id="cv-' + v.id + '-country">' +
+          Object.keys(COMPLIANCE_COUNTRY_LABEL).map(function (c) {
+            return '<option value="' + c + '"' + (v.country === c ? " selected" : "") + '>' + C.esc(COMPLIANCE_COUNTRY_LABEL[c]) + '</option>';
+          }).join("") +
+        '</select></div>' +
+        '<div class="field"><label for="cv-' + v.id + '-transfer">Overføringsmekanisme</label><select id="cv-' + v.id + '-transfer">' +
+          Object.keys(COMPLIANCE_TRANSFER_LABEL).map(function (t) {
+            return '<option value="' + t + '"' + (v.transfer_mechanism === t ? " selected" : "") + '>' + C.esc(COMPLIANCE_TRANSFER_LABEL[t]) + '</option>';
+          }).join("") +
+        '</select></div>' +
+        '<div class="field"><label for="cv-' + v.id + '-dpastatus">DPA-status</label><select id="cv-' + v.id + '-dpastatus">' +
+          COMPLIANCE_DPA_STATUS_OPTIONS.map(function (o) {
+            return '<option value="' + o[0] + '"' + (v.dpa_status === o[0] ? " selected" : "") + '>' + C.esc(o[1]) + '</option>';
+          }).join("") +
+        '</select></div>' +
+        C.field({ id: "cv-" + v.id + "-note", label: "DPA-notat", multiline: true, rows: 2, value: v.dpa_note || "",
+          help: "Operatør-internt notat — lekk aldri direkte til kundevendt tekst." }) +
+        C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" class="compliance-vendor-save" data-id="' + C.esc(v.id) + '"' }) +
+        '<span class="cs-status" data-compliance-vendor-status="' + C.esc(v.id) + '"></span>' +
+      '</fieldset>';
+    }).join("");
+
+    pane.querySelectorAll(".compliance-vendor-save").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-id");
+        var statusEl = pane.querySelector('[data-compliance-vendor-status="' + id + '"]');
+        var payload = {
+          id: id,
+          name: pane.querySelector("#cv-" + id + "-name").value,
+          what_it_does: pane.querySelector("#cv-" + id + "-what").value,
+          country: pane.querySelector("#cv-" + id + "-country").value,
+          transfer_mechanism: pane.querySelector("#cv-" + id + "-transfer").value,
+          dpa_status: pane.querySelector("#cv-" + id + "-dpastatus").value,
+          dpa_note: pane.querySelector("#cv-" + id + "-note").value
+        };
+        btn.disabled = true;
+        statusMsg(statusEl, "Lagrar…", true);
+        tenantAdminCall("set_vendor", payload, function (r) {
+          btn.disabled = false;
+          if (r.error) { statusMsg(statusEl, r.error, false); return; }
+          statusMsg(statusEl, "✓ Lagra", true);
+          var v = _complianceData.vendors.filter(function (x) { return x.id === id; })[0];
+          if (v) Object.assign(v, payload);
+        });
+      });
+    });
+  }
+
+  /* =========================================================================
      SEKSJONSDISPATCH
      ====================================================================== */
   var TITLES = {
     kundar:"Kundar", produkt:"Produkt", web:"Web", "sidebygger-sider":"Sider", workspace:"Workspace",
-    modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", analyse:"Analyse", personvern:"Personvern", laring:"Læring", "ai-lab":"AI Lab", system:"System"
+    modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", compliance:"Compliance", analyse:"Analyse", personvern:"Personvern", laring:"Læring", "ai-lab":"AI Lab", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
@@ -7483,6 +7661,7 @@ window.VwConsole = (function () {
     modular:    renderModular,
     priser:     renderPriser,
     kundeanalyse: renderKundeanalyse,
+    compliance: renderCompliance,
     analyse:    renderAnalyse,
     personvern: renderPersonvern,
     laring:     renderLaring,
@@ -7511,7 +7690,7 @@ window.VwConsole = (function () {
     var wrap = document.getElementById("cs-section-wrap"); // fanga no, før det asynkrone hoppet
     // AI Lab er eit reint lokalt utviklingsverktøy utan tenant-data, database
     // eller App.store. Det skal difor ikkje hentast eller koplast til SC-data.
-    if (id === "ai-lab" || id === "kundeanalyse") {
+    if (id === "ai-lab" || id === "kundeanalyse" || id === "compliance") {
       fn({}, wrap);
       return;
     }
