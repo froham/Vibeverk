@@ -697,6 +697,94 @@ serve(async (req: Request) => {
     return json({ success: true });
   }
 
+  // ── mark_compliance_record_reviewed ──────────────────────────────────────
+  // Bolk 7/8/9/11 (2026-08-12): brukarønske -- "stempel" med dato og namn at
+  // ei behandlingsaktivitet faktisk er vurdert konkret, ikkje berre at nokon
+  // har fylt inn tekst. MEDVITE ei eiga handling, ALDRI implisitt sett av
+  // set_compliance_record sjølv -- same "godkjenning er alltid ei eiga,
+  // medviten handling"-disiplin som Personvern sin approval-journal.
+  if (action === "mark_compliance_record_reviewed") {
+    const COMPLIANCE_RECORD_IDS = ["kontakt", "tilbud", "booking", "chat", "crm", "ansatte", "sidetelling", "ai"];
+    const recordId = typeof body.id === "string" ? body.id : "";
+    if (!COMPLIANCE_RECORD_IDS.includes(recordId)) {
+      return json({ error: "Ukjend behandlingsaktivitet: «" + recordId + "»" }, 400);
+    }
+    const reviewedBy = typeof body.reviewed_by === "string" ? body.reviewed_by.trim() : "";
+    if (!reviewedBy || reviewedBy.length > 200) {
+      return json({ error: "Namn på den som vurderte er påkrevd (maks 200 teikn)" }, 400);
+    }
+    const auditId = await auditStart(null, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb
+      .from("compliance_record")
+      .update({ reviewed_at: new Date().toISOString(), reviewed_by: reviewedBy })
+      .eq("id", recordId);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", "behandlingsaktivitet «" + recordId + "» markert vurdert av " + reviewedBy);
+    return json({ success: true });
+  }
+
+  // ── set_compliance_document ──────────────────────────────────────────────
+  // Bolk 7/8/9/11: dei tre nye frie tekstdokumenta (kundeavtale/DPA,
+  // sikkerheitspolicy, rutine for registrerte sine rettar) -- same
+  // global/superadmin/auditert mønster som set_compliance_record, men eitt
+  // samanhengande "content"-felt i staden for strukturerte delfelt, sidan
+  // desse dokumenta ER samanhengande tekst, ikkje datapunkt.
+  if (action === "set_compliance_document") {
+    const DOCUMENT_IDS = ["kundeavtale", "sikkerheitspolicy", "rettar_rutine"];
+    const docId = typeof body.id === "string" ? body.id : "";
+    if (!DOCUMENT_IDS.includes(docId)) {
+      return json({ error: "Ukjend dokument: «" + docId + "»" }, 400);
+    }
+    const content = typeof body.content === "string" ? body.content : "";
+    const MAX_CONTENT_LEN = 50000;
+    if (content.length > MAX_CONTENT_LEN) {
+      return json({ error: "Dokumentet er for stort (maks " + MAX_CONTENT_LEN + " teikn)" }, 400);
+    }
+    const auditId = await auditStart(null, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb
+      .from("compliance_document")
+      .update({ content, updated_at: new Date().toISOString(), updated_by: user.id })
+      .eq("id", docId);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", "dokument «" + docId + "» oppdatert");
+    return json({ success: true });
+  }
+
+  // ── mark_compliance_document_reviewed ────────────────────────────────────
+  // Same stempel-mønster som mark_compliance_record_reviewed, for dei tre
+  // dokumenta.
+  if (action === "mark_compliance_document_reviewed") {
+    const DOCUMENT_IDS = ["kundeavtale", "sikkerheitspolicy", "rettar_rutine"];
+    const docId = typeof body.id === "string" ? body.id : "";
+    if (!DOCUMENT_IDS.includes(docId)) {
+      return json({ error: "Ukjend dokument: «" + docId + "»" }, 400);
+    }
+    const reviewedBy = typeof body.reviewed_by === "string" ? body.reviewed_by.trim() : "";
+    if (!reviewedBy || reviewedBy.length > 200) {
+      return json({ error: "Namn på den som vurderte er påkrevd (maks 200 teikn)" }, 400);
+    }
+    const auditId = await auditStart(null, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb
+      .from("compliance_document")
+      .update({ reviewed_at: new Date().toISOString(), reviewed_by: reviewedBy })
+      .eq("id", docId);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", "dokument «" + docId + "» markert vurdert av " + reviewedBy);
+    return json({ success: true });
+  }
+
   // Every action below operates on an existing tenant (tenant_id already
   // destructured above, alongside action, for the auth-failure audit path).
   if (!tenant_id) return json({ error: "tenant_id er påkrevd" }, 400);

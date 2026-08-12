@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.141.0 — 2026-08-12
+
+**Personvern «Bolk 7/8/9/11»: kundeavtale (DPA), sikkerheitspolicy, rettar-rutine + «stempling» av reelt vurdert innhald.** Brukarønske same dag som Bolk 6 (0.140.0), etter ein strukturgjennomgang mot ei generell compliance-oversikt frå ChatGPT — det eine vesentlege hòlet oversikta avdekte var ein manglande databehandleravtale FRÅ Vibeverk TIL kvar kunde (ikkje det same som `vendor_registry`, som dekker retninga leverandør → Vibeverk).
+
+- **Ny `compliance_document`-tabell** (kontrollplanet) — tre frie tekstdokument: «Kundeavtale (DPA)», «Sikkerheitspolicy», «Rettar-rutine (Vibeverk sitt eige)». Same globale, ikkje-tenant-skopa mønster som `compliance_record`/`vendor_registry`.
+- **Ny "stempel"-mekanisme**: `reviewed_at`/`reviewed_by`-kolonner på `compliance_record`, same par på `compliance_document`. Ei EIGA, medviten "Merk som vurdert"-handling (namn + dato) — ALDRI implisitt sett av eit vanleg Lagre-klikk, same disiplin som Personvern sin eigen approval-journal. Viser tydeleg "Ikkje vurdert enno" til nokon faktisk stadfestar det.
+- Tre nye sub-faner i Compliance: **Kundeavtale (DPA)**, **Sikkerheitspolicy**, **Rettar-rutine** — kvar med Standardforslag, Lagre, stempel, og "Generer full tekstversjon".
+- Fire nye `tenant-admin`-handlingar: `mark_compliance_record_reviewed`, `set_compliance_document`, `mark_compliance_document_reviewed` (pluss den eksisterande `set_compliance_record` er urørt).
+- **Standardforslag for alle tre dokumenta** — konkret utkast til databehandleravtale (13 standardpunkt), sikkerheitspolicy (skriven ÆRLEG om faktisk status, t.d. at MFA IKKJE er handheva i dag, ikkje overdrive), og rettar-rutine for Vibeverk sitt eige (ikkje kundane sine plikter — same skilje som resten av prosjektet held på).
+- 5 nye testar (10 totalt i `test-compliance-console.js` no).
+- Bygd i isolert `git worktree`, same disiplin som Bolk 5-7 sidan Codex sitt urelaterte Arctic-arbeid framleis er i gang.
+
+**Ikkje del av dette**: automatisk sletting (kode-arbeid, ikkje tekst — framleis vedteke men ubygd) og konkrete lagringstider (framleis tomt for kundeskjema).
+
+Cache-bust: `console-core.js` 258→259.
+
 ## 0.140.0 — 2026-08-12
 
 **Personvern «Bolk 6»: Standardforslag for behandlingsprotokollen + «Generer full tekstversjon» på Personvern og Compliance.** Brukarønske same dag som Bolk 5 (0.139.0).
