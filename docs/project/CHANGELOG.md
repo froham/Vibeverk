@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.140.0 — 2026-08-12
+
+**Personvern «Bolk 6»: Standardforslag for behandlingsprotokollen + «Generer full tekstversjon» på Personvern og Compliance.** Brukarønske same dag som Bolk 5 (0.139.0).
+
+- **Ny `COMPLIANCE_STANDARD_SUGGESTIONS`** — Vibeverk AS sitt eige utkast til behandlingsprotokoll (formål/kategori registrerte/kategori data/behandlingsgrunnlag/mottakarar/lagringstid/sikkerheitstiltak) for alle 8 kjende behandlingsaktivitetar (kontakt/tilbod/booking/chat/CRM/tilsette/sidetelling/AI), grunngjeve i det som faktisk er stadfesta om eigen arkitektur/leverandørar gjennom heile denne personvern-runda. Same fråskriving som resten av Standardforslag-mønsteret — eit utgangspunkt, ikkje juridisk kvalitetssikra åleine. **Faktisk lagt inn i produksjonstabellen** (sjå eige avsnitt under), ikkje berre koda som eit forslag ingen har trykt på.
+- **Ny "Standardforslag"-knapp** i Compliance → Behandlingsprotokoll: fyller inn felta (åtvarar før overskriving av utfylt innhald), lagrar ALDRI automatisk — operatøren må sjølv trykke Lagre/Lagre alle, konsistent med korleis Standardforslag alltid har fungert i Personvern-fana.
+- **Ny "Lagre alle"-knapp**: lagrar alle 8 aktivitetane med éin klikk (eitt `set_compliance_record`-kall per aktivitet) i staden for å måtte opne kvar gardinmeny og trykke Lagre 8 gonger.
+- **Ny "Generer full tekstversjon"-knapp** på tre stader: Personvern → Dokument (både publisert og utkast-visning) og Compliance → Behandlingsprotokoll. Opnar ein enkel, sjølvstendig modal med heile dokumentet/protokollen som samanhengande, lesbar tekst -- lettare å lese gjennom enn boks for boks. Utkast-visinga fangar FYRST opp skrivne-men-ikkje-lagra endringar (same `captureFieldEdits()` som Lagre/Publiser brukar), så førehandsvisinga speglar det operatøren faktisk ser i felta akkurat no.
+- Ny delt `showTextPreviewModal()`-hjelpar (sjølvstendig, ingen ekstern CSS-avhengigheit) -- gjenbrukt av alle tre knappane.
+- **Fann og retta ein reell, forhåndseksisterande delt-state-bug i `test-compliance-console.js`**: seed-dataen for `compliance_record`/`vendor_registry` vart delt (same objektreferansar) mellom alle `mount()`-kall i fila, utan djupklone -- ein tidlegare test sitt lagra innhald lak inn som "alt utfylt frå før" i eit heilt nytt, urelatert `mount()`-kall. Retta med djupklone per mount(), same feilklasse som `test-privacy-console.js` sin `SC_SEED`-fiks i Bolk 5. Utvida samtidig seed-dataen frå 2 til alle 8 ekte behandlingsaktivitetar (matchar den faktiske migrasjonen).
+- 4 nye testar totalt (3 i `test-compliance-console.js`, 1 i `test-privacy-console.js`).
+
+**Faktisk databaseoppdatering (2026-08-12, same økt):** `compliance_record`-tabellen i `vibeverk-control` er oppdatert med `COMPLIANCE_STANDARD_SUGGESTIONS` sitt innhald for alle 8 rader, direkte via `db query` (rein datainnhald-oppdatering, ingen skjemaendring, ingen ny migrasjon). Console → Compliance → Behandlingsprotokoll syner difor no eit reelt utkast for kvar aktivitet, ikkje tomme boksar -- framleis eit Standardforslag å kvalitetssikre, ikkje eit ferdig, juridisk godkjent dokument.
+
+Cache-bust: `console-core.js` 257→258.
+
 ## 0.139.0 — 2026-08-12
 
 **Personvern «Bolk 5»: kundevendt Leverandørar-tekst les no frå vendor_registry, ikkje lenger berre den hardkoda VIBEVERK_VENDORS-konstanten.** Siste steget i planen frå `docs/compliance/personvern-rammeverk-status-2026-08-12.md` — flagga då som "den mest risikable enkeltendringa i heile planen" sidan ho endrar ein live, kundevendt tekstgenerator.

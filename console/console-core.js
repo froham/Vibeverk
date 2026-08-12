@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.139.0";
+  var VIBEVERK_VERSION = "0.140.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -597,6 +597,35 @@ window.VwConsole = (function () {
     el.textContent = text;
     el.className = "form__status " + (isOk ? "is-ok" : "is-error");
     setTimeout(function () { if (el) el.textContent = ""; }, 3500);
+  }
+
+  // Generisk fulltekst-førehandsvising (2026-08-12, brukarønske: "generer
+  // full tekstversjon"-knapp på både Personvern og Behandlingsprotokoll, for
+  // å gjere det lettare å lese gjennom heile dokumentet samanhengande i
+  // staden for boks for boks). Sjølvstendig, inline-styla modal -- brukar
+  // ikkje nokon delt CSS-klasse frå public-sida sin termsField()-popup,
+  // sidan Console har sitt eige, separate stilsett. isHtml=true for allereie
+  // sanert rik-tekst-HTML (Personvern sine blokker), isHtml=false/utelate for
+  // rein tekst som må escapast (Behandlingsprotokoll sine frie tekstfelt).
+  function showTextPreviewModal(title, content, isHtml) {
+    var overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1.5rem";
+    overlay.innerHTML =
+      '<div style="background:var(--color-surface,#fff);border-radius:12px;max-width:760px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+        '<div style="padding:1rem 1.4rem;border-bottom:1px solid var(--color-border,#e2e8f0);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">' +
+          '<strong>' + C.esc(title) + '</strong>' +
+          '<button type="button" id="cs-text-preview-close" aria-label="Lukk" style="background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;color:var(--color-muted,#64748b)">×</button>' +
+        '</div>' +
+        '<div style="padding:1.4rem;overflow:auto;font-size:.88rem;line-height:1.65">' +
+          (isHtml ? content : '<div style="white-space:pre-wrap">' + C.esc(content) + '</div>') +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close() { overlay.remove(); document.removeEventListener("keydown", onKey); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    overlay.querySelector("#cs-text-preview-close").addEventListener("click", close);
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", onKey);
   }
 
   function checkboxGrid(obj, labels, attr, help) {
@@ -5406,6 +5435,7 @@ window.VwConsole = (function () {
         '</fieldset>' +
         '<div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">' +
           C.button({ label: "Rediger (opprett nytt utkast)", variant: "primary", attrs: 'type="button" id="cs-priv-new-draft"' }) +
+          C.button({ label: "Generer full tekstversjon", variant: "ghost", attrs: 'type="button" id="cs-priv-fulltext"' }) +
           C.button({ label: "Last ned som HTML", variant: "ghost", attrs: 'type="button" id="cs-priv-export"' }) +
         '</div>';
       pane.querySelector("#cs-priv-new-draft").addEventListener("click", function () {
@@ -5419,6 +5449,13 @@ window.VwConsole = (function () {
           if (r && r.error) console.error("[console] personvern-versjonering feila:", r.error);
         });
         renderPersonvernDokument(sc, pane, wrap);
+      });
+      // Brukarønske (2026-08-12): éin samanhengande, lesbar visning av heile
+      // dokumentet -- lettare å lese gjennom enn å bla mellom enkeltavsnitt.
+      // Reint les-modus, ingen redigering, difor trygt å bruke same
+      // privacyBlocksToFlatHtml() som den publiserte visinga alt brukar.
+      pane.querySelector("#cs-priv-fulltext").addEventListener("click", function () {
+        showTextPreviewModal("Personvernerklæring — full tekst", privacyBlocksToFlatHtml(version.bodyBlocks) || "<p>(Tomt innhald)</p>", true);
       });
       // Fase 4 (eksport, 2026-08-06): brukaren avklarte eksplisitt -- kun ein
       // nedlastbar fil av DEN PUBLISERTE versjonen, til kunden sitt eige
@@ -5511,6 +5548,7 @@ window.VwConsole = (function () {
       '<div style="display:flex;gap:.6rem;align-items:center;margin-top:1rem;flex-wrap:wrap">' +
         C.button({ label: "Lagre som utkast", variant: "ghost", attrs: 'type="button" id="cs-priv-save-draft"' }) +
         C.button({ label: "Publiser", variant: "primary", attrs: 'type="button" id="cs-priv-publish"' }) +
+        C.button({ label: "Generer full tekstversjon", variant: "ghost", attrs: 'type="button" id="cs-priv-fulltext"' }) +
       '</div>' +
       '<p class="form__status" id="cs-status" style="margin-top:.6rem"></p>';
 
@@ -5648,6 +5686,15 @@ window.VwConsole = (function () {
         if (r && r.error) { statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje lagre: " + r.error, false); return; }
         statusMsg(pane.querySelector("#cs-status"), "✓ Lagra som utkast", true);
       });
+    });
+
+    // Brukarønske (2026-08-12): fangar FYRST opp skrivne-men-ikkje-lagra
+    // endringar (same captureFieldEdits() som Lagre/Publiser brukar) slik at
+    // førehandsvisinga speglar det operatøren faktisk ser i felta akkurat
+    // no, ikkje sist lagra tilstand.
+    pane.querySelector("#cs-priv-fulltext").addEventListener("click", function () {
+      captureFieldEdits();
+      showTextPreviewModal("Personvernerklæring — full tekst (utkast)", privacyBlocksToFlatHtml(version.bodyBlocks) || "<p>(Tomt innhald)</p>", true);
     });
 
     pane.querySelector("#cs-priv-publish").addEventListener("click", function () {
@@ -7603,6 +7650,90 @@ window.VwConsole = (function () {
     ["sikkerhetstiltak", "Sikkerheitstiltak"]
   ];
 
+  // Standardforslag (2026-08-12, brukarønske): Vibeverk AS sitt EIGE utkast
+  // til behandlingsprotokoll, grunngjeve i det som faktisk er stadfesta om
+  // eigen arkitektur/leverandørar gjennom heile denne økta (docs/compliance/
+  // data-map-vibeverk.md, VIBEVERK_VENDORS, dei faktiske modulane). Same
+  // fråskriving som resten av "Standardforslag"-mønsteret i denne fila --
+  // eit utgangspunkt, ikkje juridisk kvalitetssikra åleine. Konkrete
+  // lagringstider er forretningsskjøn (same fråskriving som del B i
+  // docs/compliance/personvern-rammeverk-status-2026-08-12.md), ikkje
+  // stadfesta juridisk minimum.
+  var COMPLIANCE_STANDARD_SUGGESTIONS = {
+    kontakt: {
+      formaal: "Besvare henvendelser fra besøkende på vibeverk.no som tar kontakt via kontaktskjemaet.",
+      kategori_registrerte: "Besøkende på vibeverk.no som sender en henvendelse.",
+      kategori_data: "Navn, e-postadresse, telefonnummer (hvis oppgitt), innholdet i meldingen.",
+      behandlingsgrunnlag: "Berettiget interesse i å kunne besvare henvendelser rettet til oss (GDPR art. 6(1)(f)), evt. tiltak før avtaleinngåelse (art. 6(1)(b)) dersom henvendelsen gjelder et konkret oppdrag.",
+      mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
+      lagringstid: "Inntil 12 måneder etter siste aktivitet, med mindre kundeforhold etableres.",
+      sikkerhetstiltak: "Tilgang begrenset til autoriserte Vibeverk-ansatte via rollestyrt pålogging (RLS). Data overføres kryptert (TLS)."
+    },
+    tilbud: {
+      formaal: "Utarbeide og sende tilbud til potensielle kunder som ber om det via vibeverk.no.",
+      kategori_registrerte: "Potensielle kunder som ber om tilbud.",
+      kategori_data: "Navn, e-postadresse, telefonnummer, beskrivelse av forespørselen, eventuelle vedlegg.",
+      behandlingsgrunnlag: "Tiltak før avtaleinngåelse (GDPR art. 6(1)(b)).",
+      mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
+      lagringstid: "Inntil 12 måneder etter at tilbudet er avsluttet/utgått, med mindre kundeforhold etableres.",
+      sikkerhetstiltak: "Tilgang begrenset til autoriserte Vibeverk-ansatte. Vedlegg lagres i tilgangskontrollert Storage med signerte URL-er."
+    },
+    booking: {
+      formaal: "Gjennomføre avtalte møter/timer bestilt via vibeverk.no.",
+      kategori_registrerte: "Personer som bestiller en time/møte.",
+      kategori_data: "Navn, e-postadresse, telefonnummer, valgt tidspunkt, eventuell melding.",
+      behandlingsgrunnlag: "Oppfyllelse av avtale (GDPR art. 6(1)(b)).",
+      mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
+      lagringstid: "Inntil 12-24 måneder etter avtalt dato.",
+      sikkerhetstiltak: "Tilgang begrenset til autoriserte Vibeverk-ansatte via rollestyrt pålogging (RLS)."
+    },
+    chat: {
+      formaal: "Besvare henvendelser fra besøkende via chat-funksjonen på vibeverk.no.",
+      kategori_registrerte: "Besøkende som starter en chat-samtale.",
+      kategori_data: "Navn og e-postadresse (hvis oppgitt), meldingsinnhold, side/henvisning, grunnleggende nettlesertekniske opplysninger.",
+      behandlingsgrunnlag: "Berettiget interesse i å kunne besvare henvendelsen (GDPR art. 6(1)(f)).",
+      mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
+      lagringstid: "Inntil 6-12 måneder etter siste melding i samtalen.",
+      sikkerhetstiltak: "Tilgang begrenset til autoriserte Vibeverk-ansatte via rollestyrt pålogging (RLS)."
+    },
+    crm: {
+      formaal: "Administrere løpende kunde- og samarbeidsrelasjoner (kontaktinformasjon, kommunikasjonshistorikk).",
+      kategori_registrerte: "Kontaktpersoner hos kunder og samarbeidspartnere.",
+      kategori_data: "Navn, e-postadresse, telefonnummer, tittel/rolle, kommunikasjonslogg (e-post/notater).",
+      behandlingsgrunnlag: "Berettiget interesse i å administrere pågående forretningsforhold (GDPR art. 6(1)(f)), evt. oppfyllelse av avtale (art. 6(1)(b)).",
+      mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
+      lagringstid: "Så lenge kundeforholdet er aktivt, og inntil 24 måneder etter siste aktivitet.",
+      sikkerhetstiltak: "Tilgang begrenset til autoriserte Vibeverk-ansatte via rollestyrt pålogging (Workspace)."
+    },
+    ansatte: {
+      formaal: "Administrere arbeidsforholdet og gi tilgang til interne arbeidsverktøy (Workspace).",
+      kategori_registrerte: "Ansatte i Vibeverk.",
+      kategori_data: "Navn, e-postadresse, rolle/tilgangsnivå, aktivitet i Workspace (oppgaver, notater, kunnskapsbase).",
+      behandlingsgrunnlag: "Nødvendig for å oppfylle arbeidsavtalen og berettiget interesse i å drifte virksomheten (GDPR art. 6(1)(b) og (f)).",
+      mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
+      lagringstid: "Så lenge arbeidsforholdet varer. Fjernes normalt ved avslutning av arbeidsforholdet.",
+      sikkerhetstiltak: "Rollestyrt tilgang (admin/editor/member), autentisering via Supabase Auth."
+    },
+    sidetelling: {
+      formaal: "Intern trafikkstatistikk for vibeverk.no (sidevisninger, henvisninger).",
+      kategori_registrerte: "Besøkende på vibeverk.no.",
+      kategori_data: "Pseudonymisert, daglig rotert hash av IP-adresse/nettleserinformasjon/domene -- ingen rå IP-adresse eller direkte identifiserbare opplysninger lagres.",
+      behandlingsgrunnlag: "Berettiget interesse i å forstå trafikk til egen nettside (GDPR art. 6(1)(f)) -- endelig vurdering under arbeid, se docs/architecture/sidetelling.md.",
+      mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
+      lagringstid: "Hash roteres daglig -- ingen rå identifiserende data lagres over tid.",
+      sikkerhetstiltak: "Ingen cookies eller nettleserlagring brukt. Hash-basert pseudonymisering utført på server."
+    },
+    ai: {
+      formaal: "AI-baserte forslag (Oversikt, Smart årshjul) til intern bruk i Workspace -- fortsatt i trial-fase, ikke tilbudt kunder.",
+      kategori_registrerte: "Ansatte i Vibeverk som bruker modulene.",
+      kategori_data: "Tekst/innhold ansatte selv skriver inn som grunnlag for AI-forslaget.",
+      behandlingsgrunnlag: "Berettiget interesse i å teste og forbedre interne arbeidsverktøy (GDPR art. 6(1)(f)).",
+      mottakere: "Anthropic (databehandler for AI-modellkall) -- DPA-status ikke avklart, se Leverandørar-fana. Kun trial-fase.",
+      lagringstid: "Så lenge modulen er i aktiv bruk/trial.",
+      sikkerhetstiltak: "Tilgang begrenset til autoriserte Vibeverk-ansatte via rollestyrt pålogging (Workspace)."
+    }
+  };
+
   function complianceLoad(wrap) {
     if (_complianceLoading) return;
     _complianceLoading = true;
@@ -7651,41 +7782,123 @@ window.VwConsole = (function () {
     else renderComplianceLeverandorar(pane);
   }
 
+  // Genererer éin samanhengande tekstversjon av heile behandlingsprotokollen
+  // frå DEI FAKTISKE FELTVERDIANE I DOM-EN (skrivne-men-ikkje-lagra endringar
+  // tekne med, same "les live, ikkje sist lagra"-prinsipp som Personvern sin
+  // eigen fulltekst-knapp).
+  function complianceProtokollFullText(pane) {
+    return _complianceData.records.map(function (rec) {
+      var lines = [rec.label];
+      COMPLIANCE_RECORD_FIELDS.forEach(function (f) {
+        var el = pane.querySelector("#cr-" + rec.id + "-" + f[0]);
+        var v = (el ? el.value : (rec[f[0]] || "")).trim();
+        lines.push(f[1] + ": " + (v || "(ikkje fylt ut)"));
+      });
+      return lines.join("\n");
+    }).join("\n\n" + "—".repeat(3) + "\n\n");
+  }
+
+  // Lagrar éin behandlingsaktivitet -- feltverdiane vert lest frå DOM-en, ikkje
+  // sende inn som argument, sidan både enkelt-Lagre-knappen og "Lagre alle"
+  // skal lese akkurat det som faktisk står i felta no. cb(errorOrNull).
+  function saveComplianceRecord(pane, id, cb) {
+    var payload = { id: id };
+    COMPLIANCE_RECORD_FIELDS.forEach(function (f) {
+      payload[f[0]] = pane.querySelector("#cr-" + id + "-" + f[0]).value;
+    });
+    tenantAdminCall("set_compliance_record", payload, function (r) {
+      if (!r.error) {
+        var rec = _complianceData.records.filter(function (x) { return x.id === id; })[0];
+        if (rec) COMPLIANCE_RECORD_FIELDS.forEach(function (f) { rec[f[0]] = payload[f[0]]; });
+      }
+      cb(r.error || null);
+    });
+  }
+
   function renderComplianceProtokoll(pane) {
     // <details>/<summary> (brukarønske 2026-08-12: "gardinmeny" per seksjon)
     // -- same native kollaps-mønster som alt brukast andre stader i Console
     // (t.d. AI Lab sin rå-JSON-visning, Kundar sitt manuelle nøkkel-felt).
     // Alle startar LUKKA -- 8 rader × 7 tekstfelt kvar er mykje loddrett plass
     // om alt er opna samstundes.
-    pane.innerHTML = _complianceData.records.map(function (rec) {
-      return '<details class="admin-group" style="margin-bottom:.8rem" data-compliance-record="' + C.esc(rec.id) + '">' +
-        '<summary style="cursor:pointer;font-weight:700;font-size:.95rem">' + C.esc(rec.label) + '</summary>' +
-        COMPLIANCE_RECORD_FIELDS.map(function (f) {
-          return C.field({ id: "cr-" + rec.id + "-" + f[0], label: f[1], multiline: true, rows: 2, value: rec[f[0]] || "" });
-        }).join("") +
-        C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" class="compliance-record-save" data-id="' + C.esc(rec.id) + '"' }) +
-        '<span class="cs-status" data-compliance-record-status="' + C.esc(rec.id) + '"></span>' +
-      '</details>';
-    }).join("");
+    pane.innerHTML =
+      '<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">' +
+        C.button({ label: "Standardforslag", variant: "ghost", attrs: 'type="button" id="cp-standard"' }) +
+        C.button({ label: "Lagre alle", variant: "primary", attrs: 'type="button" id="cp-save-all"' }) +
+        C.button({ label: "Generer full tekstversjon", variant: "ghost", attrs: 'type="button" id="cp-fulltext"' }) +
+      '</div>' +
+      '<p class="form__status" id="cp-bulk-status" style="margin:0 0 .8rem"></p>' +
+      _complianceData.records.map(function (rec) {
+        return '<details class="admin-group" style="margin-bottom:.8rem" data-compliance-record="' + C.esc(rec.id) + '">' +
+          '<summary style="cursor:pointer;font-weight:700;font-size:.95rem">' + C.esc(rec.label) + '</summary>' +
+          COMPLIANCE_RECORD_FIELDS.map(function (f) {
+            return C.field({ id: "cr-" + rec.id + "-" + f[0], label: f[1], multiline: true, rows: 2, value: rec[f[0]] || "" });
+          }).join("") +
+          C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" class="compliance-record-save" data-id="' + C.esc(rec.id) + '"' }) +
+          '<span class="cs-status" data-compliance-record-status="' + C.esc(rec.id) + '"></span>' +
+        '</details>';
+      }).join("");
 
     pane.querySelectorAll(".compliance-record-save").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-id");
         var statusEl = pane.querySelector('[data-compliance-record-status="' + id + '"]');
-        var payload = { id: id };
-        COMPLIANCE_RECORD_FIELDS.forEach(function (f) {
-          payload[f[0]] = pane.querySelector("#cr-" + id + "-" + f[0]).value;
-        });
         btn.disabled = true;
         statusMsg(statusEl, "Lagrar…", true);
-        tenantAdminCall("set_compliance_record", payload, function (r) {
+        saveComplianceRecord(pane, id, function (err) {
           btn.disabled = false;
-          if (r.error) { statusMsg(statusEl, r.error, false); return; }
-          statusMsg(statusEl, "✓ Lagra", true);
-          var rec = _complianceData.records.filter(function (x) { return x.id === id; })[0];
-          if (rec) COMPLIANCE_RECORD_FIELDS.forEach(function (f) { rec[f[0]] = payload[f[0]]; });
+          statusMsg(statusEl, err ? err : "✓ Lagra", !err);
         });
       });
+    });
+
+    // Standardforslag (brukarønske 2026-08-12): fyller INN I FELTA (lagrar
+    // ikkje automatisk -- operatøren stadfestar med Lagre/Lagre alle, same
+    // "utgangspunkt, ikkje automatisk skriving"-prinsipp som resten av
+    // Standardforslag-mønsteret i denne fila). Åtvarar FØR overskriving viss
+    // noko alt er fylt ut, same mønster som den kundevendte Standardforslag-
+    // knappen i Personvern-fana.
+    pane.querySelector("#cp-standard").addEventListener("click", function () {
+      var hasContent = _complianceData.records.some(function (rec) {
+        return COMPLIANCE_RECORD_FIELDS.some(function (f) {
+          return (pane.querySelector("#cr-" + rec.id + "-" + f[0]).value || "").trim();
+        });
+      });
+      if (hasContent && !confirm("Dette fyller inn standardforslag i alle felt som har innhald frå før, og overskriv det som står der. Ingenting vert lagra automatisk -- du må framleis trykke Lagre/Lagre alle. Fortsette?")) return;
+      _complianceData.records.forEach(function (rec) {
+        var suggestion = COMPLIANCE_STANDARD_SUGGESTIONS[rec.id];
+        if (!suggestion) return;
+        COMPLIANCE_RECORD_FIELDS.forEach(function (f) {
+          var el = pane.querySelector("#cr-" + rec.id + "-" + f[0]);
+          if (el) el.value = suggestion[f[0]] || "";
+        });
+      });
+      statusMsg(pane.querySelector("#cp-bulk-status"), "Standardforslag fylt inn -- hugs å trykke «Lagre alle» for å lagre.", true);
+    });
+
+    pane.querySelector("#cp-save-all").addEventListener("click", function () {
+      var btn = pane.querySelector("#cp-save-all");
+      var statusEl = pane.querySelector("#cp-bulk-status");
+      btn.disabled = true;
+      statusMsg(statusEl, "Lagrar alle …", true);
+      var ids = _complianceData.records.map(function (rec) { return rec.id; });
+      var errors = [];
+      var remaining = ids.length;
+      ids.forEach(function (id) {
+        saveComplianceRecord(pane, id, function (err) {
+          if (err) errors.push(rec_label(id) + ": " + err);
+          remaining--;
+          if (remaining === 0) {
+            btn.disabled = false;
+            statusMsg(statusEl, errors.length ? ("Lagra med feil -- " + errors.join("; ")) : "✓ Alle " + ids.length + " aktivitetar lagra", !errors.length);
+          }
+        });
+      });
+      function rec_label(id) { var r = _complianceData.records.filter(function (x) { return x.id === id; })[0]; return r ? r.label : id; }
+    });
+
+    pane.querySelector("#cp-fulltext").addEventListener("click", function () {
+      showTextPreviewModal("Behandlingsprotokoll — full tekst", complianceProtokollFullText(pane), false);
     });
   }
 
