@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.138.1 — 2026-08-12
+
+**Compliance-fana: kvar seksjon (behandlingsprotokoll-rad/leverandør) er no ein `<details>`-gardinmeny, lukka som standard.** Brukarønske same dag, rett etter at Bolk 3/4 (0.138.0) gjekk live — 8 rader × 7 tekstfelt kvar vart mykje loddrett plass når alt var opna samstundes. Same native kollaps-mønster som alt brukast andre stader i Console (AI Lab sin rå-JSON-visning, Kundar sitt manuelle nøkkel-felt) — ingen ny JS-logikk for sjølve av/på-tilstanden, berre `<fieldset>/<legend>` → `<details>/<summary>`. To nye testpåstandar i `test-compliance-console.js` (tag er faktisk DETAILS, `open`-attributtet er faktisk fråverande).
+
+**Retta same commit: to allereie-merga, stale versjonspåstandar i `test-customer-analysis-console.js`/`test-page-builder-console.js`** (venta `console-core.js?v=254`, den faktiske verdien var alt `255` sidan Bolk 3/4 sin eigen cache-bump) — eit reelt glipp frå 0.138.0 (cache-bumpen skjedde etter siste testkøyring den runda, ikkje fanga opp før no). Understrekar kvifor desse tre filene (ikkje i CI) må køyrast manuelt EVERY gong, heilt til slutten av ei økt, ikkje berre midtvegs.
+
+Cache-bust: `console-core.js` 255→256.
+
 ## 0.138.0 — 2026-08-12
 
 **Personvern «Bolk 3» + «Bolk 4»: ny Console-fane «Compliance» — behandlingsprotokoll (Art. 30) + leverandør-/DPA-register.** Same dags fortsetjing av Bolk 1/2 (#246), Arkitekt-planlagt før bygging (`docs/compliance/personvern-rammeverk-status-2026-08-12.md` del 3, Arkitekten sin fulle plan i sesjonen). **Reint internt for Vibeverk AS — ALDRI ein per-kunde-funksjon**, brukarvedtak.
