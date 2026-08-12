@@ -21,6 +21,50 @@ function button(options) {
   return '<button ' + (o.attrs || "") + '>' + esc(o.label || "") + '</button>';
 }
 
+// Minimal, tru kopi av richTextField()/sanitizeRichHtml() (components.js) --
+// denne testfila lastar ALDRI det ekte components.js, berre mocken sin
+// eigen, difor må sjølve HTML-strukturen (id på det skjulte feltet, "rtfield"
+// wrapper) matche det ekte komponentet nøyaktig, elles ville bindRichTextFields()
+// (mocken under, tru kopi av core.js sin eigen) ikkje finne elementa sine.
+function sanitizeRichHtml(html) { return String(html || ""); } // reint pass-through -- ikkje det testane her prøver å dekke
+function richTextField(o) {
+  o = o || {};
+  return '<div class="field rtfield" data-rtfield><label>' + esc(o.label) + '</label>' +
+    '<div class="rtfield__editor" contenteditable="true" data-rt-editor></div>' +
+    '<input type="hidden" id="' + esc(o.id) + '" value="' + esc(sanitizeRichHtml(o.value || "")) + '"></div>';
+}
+// Tru kopi av core.js sine App.ui-funksjonar (bindRichTextFields/
+// readRichTextField/setRichTextField/textToRichHtml) -- denne testfila
+// mockar App/Components sjølv i staden for å laste ekte core.js.
+function bindRichTextFields(scope) {
+  scope.querySelectorAll("[data-rtfield]").forEach(function (wrap) {
+    var editor = wrap.querySelector("[data-rt-editor]");
+    var hidden = wrap.querySelector('input[type="hidden"]');
+    editor.innerHTML = hidden.value || "";
+    function sync() { hidden.value = sanitizeRichHtml(editor.innerHTML); }
+    editor.addEventListener("input", sync);
+    editor.addEventListener("blur", sync);
+  });
+}
+function readRichTextField(scope, id) {
+  var el = scope.querySelector("#" + id);
+  return el ? sanitizeRichHtml(el.value) : "";
+}
+function setRichTextField(scope, id, html) {
+  var hidden = scope.querySelector("#" + id);
+  if (!hidden) return;
+  var wrap = hidden.closest("[data-rtfield]");
+  var editor = wrap && wrap.querySelector("[data-rt-editor]");
+  var sanitized = sanitizeRichHtml(html || "");
+  hidden.value = sanitized;
+  if (editor) editor.innerHTML = sanitized;
+}
+function textToRichHtml(text) {
+  return String(text || "").split(/\n\n+/).map(function (para) {
+    return "<p>" + esc(para).replace(/\n/g, "<br>") + "</p>";
+  }).join("");
+}
+
 function query(result) {
   var value = {
     select: function () { return value; }, eq: function () { return value; },
@@ -50,8 +94,8 @@ async function mount() {
   var dom = new JSDOM('<!doctype html><html><body><div id="console-app"></div></body></html>', { runScripts:"outside-only", pretendToBeVisual:true, url:"https://vibeverk.no/console/" });
   var window = dom.window;
   window.SITE_CONFIG = { storageKey:"nordpunkt", company:{ name:"Vibeverk" } };
-  window.App = { ready:function (callback) { callback(window.SITE_CONFIG); } };
-  window.Components = { esc:esc, field:field, button:button, helpIcon:function () { return ""; } };
+  window.App = { ready:function (callback) { callback(window.SITE_CONFIG); }, ui:{ bindRichTextFields:bindRichTextFields, readRichTextField:readRichTextField, setRichTextField:setRichTextField, textToRichHtml:textToRichHtml } };
+  window.Components = { esc:esc, field:field, button:button, richTextField:richTextField, sanitizeRichHtml:sanitizeRichHtml, helpIcon:function () { return ""; } };
   var invokeCalls = [];
   var control = {
     auth:{ onAuthStateChange:function () {}, getSession:function () { return Promise.resolve({ data:{ session:{ access_token:"operator-token", user:{ id:"op-1" }, expires_at:4102444800 } } }); }, signOut:function () {} },
@@ -191,9 +235,10 @@ test("Kundeavtale-fana (og dei andre dokumenta): Standardforslag fyller inn, Lag
   await new Promise(function (resolve) { setTimeout(resolve, 10); });
   assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Databehandleravtale/);
   var contentEl = dom.window.document.querySelector("#cd-content");
-  assert.equal(contentEl.value, "", "tomt før Standardforslag");
+  assert.doesNotMatch(contentEl.value, /Databehandlar/i, "tomt før Standardforslag");
   dom.window.document.querySelector("#cd-standard").click();
   assert.match(contentEl.value, /Databehandlar/i, "Standardforslag fyller inn eit reelt DPA-utkast");
+  assert.match(contentEl.value, /<strong>1\. Partar<\/strong>/, "overskriftene kjem ut som fet skrift, ikkje rein tekst");
   dom.window.document.querySelector("#cd-save").click();
   await new Promise(function (resolve) { setTimeout(resolve, 10); });
   var call = m.invokeCalls.filter(function (c) { return c.name === "tenant-admin"; }).pop();
