@@ -12,6 +12,15 @@
 -- Fram til det er gjort, feilar trigger_retention_sweep() stille (fangar
 -- feilen, loggar, gjer ingenting anna) -- trygt, sidan retention-sweep
 -- uansett berre er dry-run i denne fasen.
+--
+-- STADFESTA EMPIRISK 2026-08-12 (fyrste faktiske utrulling): "den faktiske
+-- service_role-nøkkelen" over må vere den NYE `sb_secret_...`-forma
+-- (Project Settings → API Keys → "secret", IKKJE "Legacy service_role
+-- API key" som framleis er eit JWT). Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+-- inne i sjølve Edge Function-en returnerer den nye forma for prosjekt som
+-- har rulla ut det nyare API-nøkkel-systemet -- den gamle legacy-JWT-en gav
+-- eit reelt, stadfesta 401 ("Ikkje tilgjengeleg") heilt til nøkkelen vart
+-- bytt til `sb_secret_...`-forma, verifisert direkte via net._http_response.
 
 create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net with schema extensions;
