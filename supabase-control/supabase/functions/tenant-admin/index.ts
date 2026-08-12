@@ -124,6 +124,7 @@
 //   "no AAAA record" lookup failure is not treated as blocking (only "A"
 //   failures are, unchanged from before).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
@@ -744,11 +745,31 @@ serve(async (req: Request) => {
     if (content.length > MAX_CONTENT_LEN) {
       return json({ error: "Dokumentet er for stort (maks " + MAX_CONTENT_LEN + " teikn)" }, 400);
     }
+    // Brukarønske ("gjer det ferdig" på versjoneringsforslaget, 2026-08-12):
+    // LETT historikk -- IKKJE det fulle draft/publiser-maskineriet Personvern
+    // har, berre eit snapshot av det FORRIGE innhaldet + tidsstempel, kvar
+    // gong nokon faktisk lagrar. Avgrensa til siste 20 (unngår ubunda vekst).
+    // Les FØR skriving sidan denne handlinga treng det gamle innhaldet --
+    // ingen eigen frå-klient-sendt "previous content" å stole på.
+    const { data: existing, error: readErr } = await controlSrvSb
+      .from("compliance_document")
+      .select("content, history")
+      .eq("id", docId)
+      .single();
+    if (readErr || !existing) {
+      await auditReject(null, action, "fann ikkje dokumentet: " + docId);
+      return json({ error: "Fann ikkje dokumentet" }, 404);
+    }
+    const MAX_HISTORY_ENTRIES = 20;
+    let history = Array.isArray(existing.history) ? existing.history : [];
+    if (existing.content && existing.content !== content) {
+      history = [...history, { content: existing.content, saved_at: new Date().toISOString() }].slice(-MAX_HISTORY_ENTRIES);
+    }
     const auditId = await auditStart(null, action);
     if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
     const { error } = await controlSrvSb
       .from("compliance_document")
-      .update({ content, updated_at: new Date().toISOString(), updated_by: user.id })
+      .update({ content, history, updated_at: new Date().toISOString(), updated_by: user.id })
       .eq("id", docId);
     if (error) {
       await auditFinish(auditId, "error", error.message);
@@ -791,7 +812,7 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, site_lock_enabled, site_lock_updated_at")
+    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, site_lock_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
@@ -975,6 +996,155 @@ serve(async (req: Request) => {
       return json({ error: "Lagring feila" }, 500);
     }
     await auditFinish(auditId, "success", enabled ? "sperre PÅ" + (hasPassword ? " (nytt passord)" : "") : "sperre AV");
+    return json({ success: true });
+  }
+
+  // ── mark_tenant_dpa_sent ──────────────────────────────────────────────────
+  // Brukarønske 2026-08-12: sporing av databehandleravtale-status per kunde,
+  // i kontrollplanet (Kundar-fana), IKKJE i nokon Workspace. Signeringa sjølv
+  // skjer HEILT UTANFOR systemet (operatøren eksporterer malen til Word/PDF
+  // og sender manuelt) -- denne handlinga registrerer berre AT det vart sendt,
+  // og NÅR. Kan kallast fleire gongar (t.d. sendt på nytt) -- stemplar berre
+  // siste sendetidspunkt.
+  if (action === "mark_tenant_dpa_sent") {
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb
+      .from("tenants")
+      .update({ dpa_sent_at: new Date().toISOString() })
+      .eq("id", tenant_id);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", "DPA markert sendt");
+    return json({ success: true });
+  }
+
+  // ── upload_tenant_dpa_signed ──────────────────────────────────────────────
+  // Lastar opp den SIGNERTE PDF-en (operatøren har alt fått ho attende frå
+  // kunden, utanfor systemet) til ei privat kontrollplan-bøtte
+  // (customer-dpa-documents, migrasjon 20260812210000). Same
+  // valideringsdisiplin som broker.ts sin upload_logo (storleikstak FØR
+  // base64-dekoding, deretter reell magic-byte-sjekk -- her "％PDF" i staden
+  // for XML-sniffing, sidan klienten sin oppgjevne content_type aldri er
+  // tillit aleine). Rydder best-effort opp det gamle objektet ved erstatting,
+  // same "feilar dette, blokkerer det ikkje sjølve opplastinga"-prinsipp som
+  // upload_logo.
+  if (action === "upload_tenant_dpa_signed") {
+    const { file_base64 } = body;
+    if (!file_base64 || typeof file_base64 !== "string") {
+      await auditReject(tenant.id, action, "manglar fildata");
+      return json({ error: "Manglar fildata" }, 400);
+    }
+    const MAX_BYTES = 10 * 1024 * 1024;
+    if (file_base64.length > Math.ceil((MAX_BYTES * 4) / 3) + 1024) {
+      await auditReject(tenant.id, action, "base64-nyttelast for stor: " + file_base64.length + " teikn");
+      return json({ error: "Fila er for stor (maks " + Math.round(MAX_BYTES / 1024 / 1024) + "MB)" }, 400);
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = base64Decode(file_base64);
+    } catch (_e) {
+      await auditReject(tenant.id, action, "ugyldig base64-data");
+      return json({ error: "Ugyldig fildata" }, 400);
+    }
+    if (bytes.length > MAX_BYTES) {
+      await auditReject(tenant.id, action, "fil for stor: " + bytes.length + " bytes");
+      return json({ error: "Fila er for stor (maks " + Math.round(MAX_BYTES / 1024 / 1024) + "MB)" }, 400);
+    }
+    const magic = new TextDecoder().decode(bytes.slice(0, 5));
+    if (magic !== "%PDF-") {
+      await auditReject(tenant.id, action, "fila er ikkje ei gyldig PDF (feil magic bytes)");
+      return json({ error: "Fila er ikkje ei gyldig PDF" }, 400);
+    }
+    const path = "signed/" + tenant.id + "-" + Date.now() + ".pdf";
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error: upErr } = await controlSrvSb.storage
+      .from("customer-dpa-documents")
+      .upload(path, bytes, { contentType: "application/pdf", upsert: false });
+    if (upErr) {
+      await auditFinish(auditId, "error", upErr.message);
+      return json({ error: "Opplasting feila" }, 500);
+    }
+    // Security Auditor-funn (LOW, 2026-08-12): utan denne vakta kunne to
+    // nær-samtidige kall for same kunde (t.d. ei erstatning som kappast med
+    // ei "Fjern signert-status") gje eit tapt oppdatering eller eit aldri-
+    // sletta gamalt objekt -- same TOCTOU-disiplin som update_tenant_hostnames/
+    // activate_tenant alt bruker andre stader i denne fila (gjenta vilkåret
+    // på sjølve UPDATE-en, ikkje berre lese det éin gong tidlegare).
+    const oldPath = tenant.dpa_document_path as string | null;
+    const updateQuery = controlSrvSb
+      .from("tenants")
+      .update({ dpa_signed_at: new Date().toISOString(), dpa_document_path: path })
+      .eq("id", tenant_id);
+    const { data: updated, error } = await (oldPath === null ? updateQuery.is("dpa_document_path", null) : updateQuery.eq("dpa_document_path", oldPath)).select("id");
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "samtidig endring oppdaga -- prøv igjen");
+      // Rydd opp den nye, no-forelaupige fila -- unngår eit ekstra ubrukt objekt.
+      await controlSrvSb.storage.from("customer-dpa-documents").remove([path]);
+      return json({ error: "Ein annan operatør endra denne kunden sin DPA-status samtidig -- last sida på nytt og prøv igjen" }, 409);
+    }
+    if (oldPath) {
+      // Best-effort -- feilar dette, ligg berre eit ubrukt gamalt objekt att.
+      await controlSrvSb.storage.from("customer-dpa-documents").remove([oldPath]);
+    }
+    await auditFinish(auditId, "success", "signert DPA lasta opp: " + path);
+    return json({ success: true });
+  }
+
+  // ── get_tenant_dpa_document_url ───────────────────────────────────────────
+  // Bøtta er privat (ingen storage.objects-RLS for authenticated i det heile)
+  // -- nedlasting går difor alltid via eit kortvarig signert URL generert her,
+  // aldri ein direkte offentleg lenke.
+  if (action === "get_tenant_dpa_document_url") {
+    if (!tenant.dpa_document_path) {
+      return json({ error: "Ingen signert avtale lasta opp for denne kunden" }, 404);
+    }
+    const { data, error } = await controlSrvSb.storage
+      .from("customer-dpa-documents")
+      .createSignedUrl(tenant.dpa_document_path as string, 300);
+    if (error || !data) {
+      return json({ error: "Kunne ikkje generere nedlastingslenke" }, 500);
+    }
+    return json({ success: true, url: data.signedUrl });
+  }
+
+  // ── clear_tenant_dpa_signed ───────────────────────────────────────────────
+  // Reversibel angre-lenke (same "Fjern godkjenning"-mønster som Personvern
+  // sin approval-journal) -- t.d. ved feilklikk/feil opplasta fil. Rører
+  // ALDRI dpa_sent_at, berre den signerte statusen. Fjernar sjølve PDF-objektet
+  // òg, ikkje berre stempelet -- elles ville ho blitt liggjande ubrukt att.
+  if (action === "clear_tenant_dpa_signed") {
+    if (!tenant.dpa_document_path) {
+      return json({ error: "Ingen signert avtale å fjerne" }, 400);
+    }
+    // Security Auditor-funn (LOW, 2026-08-12) -- same TOCTOU-vakt som
+    // upload_tenant_dpa_signed over.
+    const oldPath = tenant.dpa_document_path as string;
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: updated, error } = await controlSrvSb
+      .from("tenants")
+      .update({ dpa_signed_at: null, dpa_document_path: null })
+      .eq("id", tenant_id)
+      .eq("dpa_document_path", oldPath)
+      .select("id");
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    if (!updated || updated.length === 0) {
+      await auditFinish(auditId, "error", "samtidig endring oppdaga -- prøv igjen");
+      return json({ error: "Ein annan operatør endra denne kunden sin DPA-status samtidig -- last sida på nytt og prøv igjen" }, 409);
+    }
+    await controlSrvSb.storage.from("customer-dpa-documents").remove([oldPath]);
+    await auditFinish(auditId, "success", "signert DPA-status fjerna");
     return json({ success: true });
   }
 

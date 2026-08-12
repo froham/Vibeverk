@@ -302,3 +302,28 @@ test("Dokument-stempling («Merk som vurdert») fungerer likt for dei frie dokum
   assert.equal(call.body.id, "sikkerheitspolicy");
   assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Sist vurdert .* av Frode/);
 });
+
+test("Lett versjonshistorikk: fyrste lagring gjev ingen historikk (tomt før), andre lagring med nytt innhald gjev éin", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  dom.window.document.querySelector('[data-compliance-view="rettar"]').click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Ingen tidlegare versjonar lagra enno/);
+
+  dom.window.document.querySelector("#cd-standard").click();
+  dom.window.document.querySelector("#cd-save").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Ingen tidlegare versjonar lagra enno/, "fyrste lagring (frå tomt) skal ikkje skape eit historikk-innslag");
+
+  // Endre innhaldet og lagre på nytt -- no SKAL det forrige innhaldet snapshottast
+  var contentEl = dom.window.document.querySelector("#cd-content");
+  contentEl.value = "<p>Eit heilt anna innhald denne gongen.</p>";
+  dom.window.document.querySelector("#cd-save").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Historikk \(1 tidlegare versjon\)/, "andre lagring med reelt endra innhald gjev nøyaktig éin historikk-rad");
+  dom.window.document.querySelector(".cd-history-view").click();
+  assert.match(dom.window.document.body.textContent, /Formål/, "«Vis» opnar det gamle (Standardforslag-)innhaldet i førehandsvisinga");
+});

@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.142.0";
+  var VIBEVERK_VERSION = "0.143.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -172,7 +172,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_ever_enabled, site_lock_updated_at")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_ever_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path")
       .order("slug").then(function (r) {
         _tenants = r.data || [];
         // Ikkje default til ein arkivert tenant -- sidan sidepanel-veljaren
@@ -7402,6 +7402,23 @@ window.VwConsole = (function () {
           ) +
         '</div>' +
 
+        '<div class="kd-card"><strong>Databehandleravtale (DPA)</strong> — ' +
+          (tenant.dpa_signed_at ? "Signert " + C.esc(new Date(tenant.dpa_signed_at).toLocaleDateString("nb-NO"))
+            : tenant.dpa_sent_at ? "Sendt " + C.esc(new Date(tenant.dpa_sent_at).toLocaleDateString("nb-NO")) + ", ikkje signert enno"
+            : "Ikkje sendt") +
+          '<p class="field__hint">Malen finn du i Compliance → Kundeavtale (DPA) — eksporter til Word/PDF og send manuelt for signatur, deretter registrer status her. Ingen e-signeringsintegrasjon i dag.</p>' +
+          '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem">' +
+            C.button({ label: "Marker som sendt", variant: "ghost", attrs: 'type="button" id="kd-dpa-sent-btn" style="font-size:.82rem"' }) +
+            '<input type="file" id="kd-dpa-file" accept="application/pdf" style="max-width:220px;font-size:.8rem">' +
+            C.button({ label: "Last opp signert PDF", variant: "ghost", attrs: 'type="button" id="kd-dpa-upload-btn" style="font-size:.82rem"' }) +
+            (tenant.dpa_document_path
+              ? C.button({ label: "Last ned signert avtale", variant: "ghost", attrs: 'type="button" id="kd-dpa-download-btn" style="font-size:.82rem"' }) +
+                C.button({ label: "Fjern signert-status", variant: "ghost", attrs: 'type="button" id="kd-dpa-clear-btn" style="font-size:.82rem;color:#c0392b"' })
+              : "") +
+          '</div>' +
+          '<p id="kd-dpa-status" class="field__hint" style="margin-top:.4rem"></p>' +
+        '</div>' +
+
         (tenant.status !== "archived"
           ? '<div class="kd-card"><strong>Support-tilgang</strong>' +
               '<p class="field__hint">Lagar ei mellombels innloggingslenke for ein eksisterande admin-brukar, slik at du kan hjelpe kunden direkte utan å kjenne passordet deira. Lenka går berre til DEG (ikkje til kunden) og går ut av seg sjølv. Kunden ser ei tydeleg melding i Workspace mens ho er i bruk.</p>' +
@@ -7589,6 +7606,69 @@ window.VwConsole = (function () {
         tenantAdminCall("set_tenant_site_lock", payload, function (r) {
           if (r.error) { statusMsg(out, r.error, false); return; }
           statusMsg(out, "✓ Lagra", true);
+          loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
+
+    var dpaSentBtn = wrap.querySelector("#kd-dpa-sent-btn");
+    if (dpaSentBtn) {
+      dpaSentBtn.addEventListener("click", function () {
+        var out = wrap.querySelector("#kd-dpa-status");
+        dpaSentBtn.disabled = true;
+        statusMsg(out, "Lagrar…", true);
+        tenantAdminCall("mark_tenant_dpa_sent", { tenant_id: tenant.id }, function (r) {
+          dpaSentBtn.disabled = false;
+          if (r.error) { statusMsg(out, r.error, false); return; }
+          loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
+    var dpaUploadBtn = wrap.querySelector("#kd-dpa-upload-btn");
+    if (dpaUploadBtn) {
+      dpaUploadBtn.addEventListener("click", function () {
+        var out = wrap.querySelector("#kd-dpa-status");
+        var fileInput = wrap.querySelector("#kd-dpa-file");
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) { statusMsg(out, "Vel ei PDF-fil først", false); return; }
+        if (file.type !== "application/pdf") { statusMsg(out, "Berre PDF er tillate", false); return; }
+        if (file.size > 10 * 1024 * 1024) { statusMsg(out, "Fila er for stor (maks 10MB)", false); return; }
+        dpaUploadBtn.disabled = true;
+        statusMsg(out, "Lastar opp…", true);
+        var reader = new FileReader();
+        reader.onerror = function () { dpaUploadBtn.disabled = false; statusMsg(out, "Kunne ikkje lese fila", false); };
+        reader.onload = function () {
+          var base64 = String(reader.result).split(",")[1] || "";
+          tenantAdminCall("upload_tenant_dpa_signed", { tenant_id: tenant.id, file_base64: base64 }, function (r) {
+            dpaUploadBtn.disabled = false;
+            if (r.error) { statusMsg(out, r.error, false); return; }
+            loadTenants(function () { renderKundar(_sc, fullWrap); });
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    var dpaDownloadBtn = wrap.querySelector("#kd-dpa-download-btn");
+    if (dpaDownloadBtn) {
+      dpaDownloadBtn.addEventListener("click", function () {
+        var out = wrap.querySelector("#kd-dpa-status");
+        dpaDownloadBtn.disabled = true;
+        tenantAdminCall("get_tenant_dpa_document_url", { tenant_id: tenant.id }, function (r) {
+          dpaDownloadBtn.disabled = false;
+          if (r.error) { statusMsg(out, r.error, false); return; }
+          window.open(r.url, "_blank");
+        });
+      });
+    }
+    var dpaClearBtn = wrap.querySelector("#kd-dpa-clear-btn");
+    if (dpaClearBtn) {
+      dpaClearBtn.addEventListener("click", function () {
+        if (!confirm("Fjerne signert-status og slette den opplasta PDF-en? Dette kan ikkje angrast (du må laste ho opp på nytt om du treng ho att).")) return;
+        var out = wrap.querySelector("#kd-dpa-status");
+        dpaClearBtn.disabled = true;
+        tenantAdminCall("clear_tenant_dpa_signed", { tenant_id: tenant.id }, function (r) {
+          dpaClearBtn.disabled = false;
+          if (r.error) { statusMsg(out, r.error, false); return; }
           loadTenants(function () { renderKundar(_sc, fullWrap); });
         });
       });
@@ -8017,6 +8097,27 @@ window.VwConsole = (function () {
   // er vanlege tekstboksar, ikkje rik-tekst). Same C.richTextField()/
   // App.ui.bindRichTextFields()-infrastruktur som Personvern-dokumentet alt
   // brukar for sine blokker.
+  // Brukarønske ("gjer det ferdig" på versjoneringsforslaget, 2026-08-12):
+  // LETT historikk-visning -- éi liste, nyaste FØRST, kvar rad opnar det
+  // gamle innhaldet i den delte fulltekst-modalen. Ingen samanlikning/diff,
+  // ingen "gjenopprett"-knapp -- reint eit lesbart tilbakeblikk, konsistent
+  // med kor lite det underliggande historikk-feltet faktisk lagrar (berre
+  // content+saved_at, ikkje kven).
+  function complianceDocumentHistoryHtml(doc) {
+    var history = doc.history || [];
+    if (!history.length) return '<p style="font-size:.78rem;color:var(--color-muted);margin-top:.6rem">Ingen tidlegare versjonar lagra enno.</p>';
+    var rows = history.slice().reverse().map(function (entry, i) {
+      var idx = history.length - 1 - i; // reell indeks i doc.history, sidan lista er snudd for visning
+      return '<li style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.35rem 0;border-bottom:1px solid var(--color-border)">' +
+        '<span style="font-size:.82rem;color:var(--color-muted)">' + C.esc(new Date(entry.saved_at).toLocaleString("nb-NO")) + '</span>' +
+        C.button({ label: "Vis", variant: "ghost", attrs: 'type="button" class="cd-history-view" data-idx="' + idx + '" style="font-size:.76rem;padding:.25rem .6rem"' }) +
+      '</li>';
+    }).join("");
+    return '<details style="margin-top:.8rem"><summary style="cursor:pointer;font-size:.85rem;color:#2563eb">Historikk (' + history.length + ' tidlegare versjon' + (history.length === 1 ? "" : "ar") + ')</summary>' +
+      '<ul style="list-style:none;margin:.6rem 0 0;padding:0">' + rows + '</ul>' +
+    '</details>';
+  }
+
   function renderComplianceDocument(pane, docId) {
     var doc = _complianceData.documents.filter(function (d) { return d.id === docId; })[0];
     if (!doc) { pane.innerHTML = '<p style="color:#c0392b">Fann ikkje dokumentet.</p>'; return; }
@@ -8034,9 +8135,18 @@ window.VwConsole = (function () {
       '</div>' +
       C.richTextField({ id: "cd-content", label: doc.title, value: initialHtml }) +
       '<p class="form__status" id="cd-status" style="margin:.4rem 0 0"></p>' +
-      reviewStampHtml("cd", doc.reviewed_at, doc.reviewed_by);
+      reviewStampHtml("cd", doc.reviewed_at, doc.reviewed_by) +
+      complianceDocumentHistoryHtml(doc);
 
     App.ui.bindRichTextFields(pane);
+    pane.querySelectorAll(".cd-history-view").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var idx = parseInt(btn.getAttribute("data-idx"), 10);
+        var entry = (doc.history || [])[idx];
+        if (!entry) return;
+        showTextPreviewModal(doc.title + " — versjon frå " + new Date(entry.saved_at).toLocaleString("nb-NO"), entry.content || "<p>(Tomt)</p>", true);
+      });
+    });
 
     pane.querySelector("#cd-standard").addEventListener("click", function () {
       var current = App.ui.readRichTextField(pane, "cd-content").trim();
@@ -8054,8 +8164,17 @@ window.VwConsole = (function () {
       tenantAdminCall("set_compliance_document", { id: docId, content: content }, function (r) {
         btn.disabled = false;
         if (r.error) { statusMsg(pane.querySelector("#cd-status"), r.error, false); return; }
+        // Speglar SERVERen sin eigen historikk-logikk (same vilkår: berre
+        // snapshot om det faktisk var innhald frå før OG det faktisk endra
+        // seg) -- reint for å vise historikken med det same, utan ein ekstra
+        // rundtur. Tidsstempelet er ein tilnærming (client-side "no"), ikkje
+        // nødvendigvis talt identisk med det serveren lagra til sekundet.
+        if (doc.content && doc.content !== content) {
+          doc.history = ((doc.history || []).concat([{ content: doc.content, saved_at: new Date().toISOString() }])).slice(-20);
+        }
         doc.content = content;
-        statusMsg(pane.querySelector("#cd-status"), "✓ Lagra", true);
+        renderComplianceDocument(pane, docId); // oppdaterer historikklista med det nye innslaget
+        statusMsg(pane.querySelector("#cd-status"), "✓ Lagra", true); // MÅ komme ETTER re-render, elles vert han straks bytt vekk
       });
     });
 
