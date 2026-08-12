@@ -54,3 +54,4 @@ Link to a prior or replacement ADR, if applicable. Omit if not relevant.
 | [ADR-0011](ADR-0011-backup-export-rpc-scope.md) | `export_backup_tables()` closes the admin-enforcement gap, not the underlying broad-read model | Accepted |
 | [ADR-0012](ADR-0012-single-focus-point-position.md) | Image focus-point stays a single stored position, with multi-context live previews instead of multiple stored positions | Accepted |
 | [ADR-0013](ADR-0013-unique-visitors-rejected.md) | "Unike besøkjande" rejected for the sidetelling module — customers needing it are referred to Plausible/Google Analytics | Accepted |
+| [ADR-0014](ADR-0014-page-builder-blocks-sibling-type.md) | Sidebygger's "blocks" section type is a sibling to the 8 fixed types, not a replacement — and cannot be embedded inside them | Accepted |
