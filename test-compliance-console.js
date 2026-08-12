@@ -40,6 +40,11 @@ var COMPLIANCE_RECORD_SEED = ["kontakt","tilbud","booking","chat","crm","ansatte
 var VENDOR_REGISTRY_SEED = [
   { id:"supabase", name:"Supabase", what_it_does:"Database", country:"eu", transfer_mechanism:"none", dpa_status:"tba", dpa_note:"" }
 ];
+var COMPLIANCE_DOCUMENT_SEED = [
+  { id:"kundeavtale", title:"Databehandleravtale (Vibeverk -> kunde)", content:"", reviewed_at:null, reviewed_by:null },
+  { id:"sikkerheitspolicy", title:"Sikkerheits- og tilgangspolicy", content:"", reviewed_at:null, reviewed_by:null },
+  { id:"rettar_rutine", title:"Rutine for registrerte sine rettar", content:"", reviewed_at:null, reviewed_by:null }
+];
 
 async function mount() {
   var dom = new JSDOM('<!doctype html><html><body><div id="console-app"></div></body></html>', { runScripts:"outside-only", pretendToBeVisual:true, url:"https://vibeverk.no/console/" });
@@ -60,6 +65,7 @@ async function mount() {
       // "alt utfylt" i eit HEILT NYTT mount()-kall).
       if (table === "compliance_record") return query({ data:JSON.parse(JSON.stringify(COMPLIANCE_RECORD_SEED)), error:null });
       if (table === "vendor_registry") return query({ data:JSON.parse(JSON.stringify(VENDOR_REGISTRY_SEED)), error:null });
+      if (table === "compliance_document") return query({ data:JSON.parse(JSON.stringify(COMPLIANCE_DOCUMENT_SEED)), error:null });
       throw new Error("Uventet tabell " + table);
     },
     functions:{ invoke:function (name, opts) {
@@ -173,4 +179,81 @@ test("Generer full tekstversjon viser ei samanhengande, lesbar visning av behand
   assert.match(modalText, /Kontaktskjema/, "aktivitetsnamnet er med");
   dom.window.document.querySelector("#cs-text-preview-close").click();
   assert.equal(dom.window.document.querySelector("#cs-text-preview-close"), null, "modalen lukkar seg");
+});
+
+test("Kundeavtale-fana (og dei andre dokumenta): Standardforslag fyller inn, Lagre kallar set_compliance_document", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  dom.window.document.querySelector('[data-compliance-view="kundeavtale"]').click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Databehandleravtale/);
+  var contentEl = dom.window.document.querySelector("#cd-content");
+  assert.equal(contentEl.value, "", "tomt før Standardforslag");
+  dom.window.document.querySelector("#cd-standard").click();
+  assert.match(contentEl.value, /Databehandlar/i, "Standardforslag fyller inn eit reelt DPA-utkast");
+  dom.window.document.querySelector("#cd-save").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  var call = m.invokeCalls.filter(function (c) { return c.name === "tenant-admin"; }).pop();
+  assert.equal(call.body.action, "set_compliance_document");
+  assert.equal(call.body.id, "kundeavtale");
+  assert.match(call.body.content, /Databehandlar/i);
+});
+
+test("Sikkerheitspolicy og Rettar-rutine-fanene finst og har eigne Standardforslag", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  dom.window.document.querySelector('[data-compliance-view="sikkerheitspolicy"]').click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  dom.window.document.querySelector("#cd-standard").click();
+  assert.match(dom.window.document.querySelector("#cd-content").value, /MFA/i, "sikkerheitspolicy-forslaget er reelt innhald, ikkje ein stubb");
+
+  dom.window.document.querySelector('[data-compliance-view="rettar"]').click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  dom.window.document.querySelector("#cd-standard").click();
+  assert.match(dom.window.document.querySelector("#cd-content").value, /GDPR-verktøyet/i, "rettar-rutine-forslaget er reelt innhald");
+});
+
+test("«Merk som vurdert» stempler dato+namn og krev at namn er fylt ut", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Ikkje vurdert enno/, "ustempla rader syner tydeleg at dei ikkje er vurdert");
+  // Utan namn -- skal ikkje kalle tenant-admin
+  dom.window.document.querySelector("#cr-kontakt-mark-reviewed").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.equal(m.invokeCalls.filter(function (c) { return c.name === "tenant-admin"; }).length, 0, "krev namn før stempling");
+  // Med namn
+  dom.window.document.querySelector("#cr-kontakt-reviewer-name").value = "Frode";
+  dom.window.document.querySelector("#cr-kontakt-mark-reviewed").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  var call = m.invokeCalls.filter(function (c) { return c.name === "tenant-admin"; }).pop();
+  assert.equal(call.body.action, "mark_compliance_record_reviewed");
+  assert.equal(call.body.id, "kontakt");
+  assert.equal(call.body.reviewed_by, "Frode");
+  assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Sist vurdert .* av Frode/, "stempelet vert vist med det same, utan ny sideinnlasting");
+});
+
+test("Dokument-stempling («Merk som vurdert») fungerer likt for dei frie dokumenta", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  dom.window.document.querySelector('[data-compliance-view="sikkerheitspolicy"]').click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  dom.window.document.querySelector("#cd-reviewer-name").value = "Frode";
+  dom.window.document.querySelector("#cd-mark-reviewed").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  var call = m.invokeCalls.filter(function (c) { return c.name === "tenant-admin"; }).pop();
+  assert.equal(call.body.action, "mark_compliance_document_reviewed");
+  assert.equal(call.body.id, "sikkerheitspolicy");
+  assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Sist vurdert .* av Frode/);
 });
