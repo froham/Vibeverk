@@ -30,6 +30,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.143.1 — 2026-08-12
+
+**INCIDENT-fiks: «Kundar»-fana synte tom liste i produksjon, ingen synleg feilmelding.** Sjølvforvolda regresjon frå 0.143.0 (DPA-arbeidet, same dag): `20260812210000_add_dpa_tracking_and_document_history.sql` la til tre nye kolonnar på `tenants` (`dpa_sent_at`/`dpa_signed_at`/`dpa_document_path`) utan å leggje dei til i den eksplisitte kolonnenivå-SELECT-tillatingslista `authenticated` har hatt sidan `20260810234227_tenant_site_lock.sql` (innført for å skjerme `site_lock_password_hash`). `loadTenants()` spør etter alle desse felta i éin SELECT — manglande kolonnetilgang på berre tre av dei fekk PostgREST til å avvise heile spørringa, og sidan koden aldri sjekka `r.error`, synte kundelista seg stille tom. Oppdaga live av brukaren midt i denne økta. Fiksa med éin ny migrasjon (`20260812235500_fix_dpa_columns_missing_authenticated_grant.sql`, berre attgjeving av tiltenkt tilgang, ingen ny eksponering) + `loadTenants()` no loggar `r.error` til konsollen i staden for å svelgje han stille — same mønster som resten av fila alt brukar. **Lærdom for framtidige kolonnetillegg på `tenants`: sjekk alltid om ei kolonnenivå-tillatingsliste finst før ein legg til `alter table ... add column` utan tilhøyrande `grant select (...)`.**
+
 ## 0.143.0 — 2026-08-12
 
 **DPA-arbeidet "ferdiggjort": signerings-sporing per kunde (Kundar) + lett versjonshistorikk på Compliance-dokumenta.** Følgjer opp brukaravklaringane frå same dag (signering skjer heilt utanfor systemet -- Word→PDF sendt manuelt, signert avtale lastast opp i etterkant; sporing i kontrollplanet/Console, ikkje nokon Workspace; lett historikk, ikkje det fulle draft/publiser-maskineriet).
