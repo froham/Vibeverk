@@ -190,6 +190,89 @@ test("legge til en hero-seksjon (via ikon-veljaren) opnar ho automatisk og autol
   assert.equal(savedPages[0].sections[0].type, "hero");
   assert.equal(savedPages[0].sections[0].data.heading, "Velkommen til oss");
   assert.match(dom.window.document.querySelector("#pbc-save-status").textContent, /Alt lagra/, "lagre-status viser at autolagringa faktisk fullførte");
+  assert(!ed.querySelector("#pb-sec-imgshape"), "hero-seksjonen har INGEN biletform-veljar -- hero sitt bilete er ein fullbleed-bakgrunn, ikkje eit sjølvstendig innramma bilete");
+  assert.match(ed.textContent, /ingen eiga biletform her/, "UX-funn: hero forklarer KVIFOR biletform manglar her, i staden for at fråveret berre ser ut som ein mangel");
+});
+
+test("«Biletform»-veljaren finst for bilde+tekst, stort bilete og rutenett (seksjonsnivå), og lagrar rett imageShape i set_config-nyttelasten", async function (t) {
+  var dom = await mount({ storeValue: [{ id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true, sections: [] }] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+
+  click(dom.window.document.querySelector("#pbc-add-trigger"));
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-add-type="image-text"]'));
+  await wait();
+  var ed1 = dom.window.document.querySelector(".pbc-section-editor");
+  var shapeSel1 = ed1.querySelector("#pb-sec-imgshape");
+  assert(shapeSel1, "bilde+tekst har ein biletform-veljar");
+  assert.match(ed1.textContent, /skjer biletet til eit sentrert kvadrat/, "UX-funn: hint forklarer at sirkel skjer til eit SENTRERT kvadrat -- Sidebygger sitt eige biletfelt har ingen fokuspunktkontroll");
+  shapeSel1.value = "circle";
+  shapeSel1.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait(800);
+  assert.equal(dom._getStoreValue()[0].sections[0].data.imageShape, "circle");
+
+  click(dom.window.document.querySelector('[data-pb-toggle="' + dom._getStoreValue()[0].sections[0].id + '"]'));
+  click(dom.window.document.querySelector("#pbc-add-trigger"));
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-add-type="big-image"]'));
+  await wait();
+  var savedAfterFirst = dom._getStoreValue();
+  var newSectionEl = dom.window.document.querySelector('.pbc-section-card[data-id="' + savedAfterFirst[0].sections[1].id + '"] .pbc-section-editor');
+  var shapeSel2 = newSectionEl.querySelector("#pb-sec-imgshape");
+  assert(shapeSel2, "stort bilete har ein biletform-veljar");
+  shapeSel2.value = "square";
+  shapeSel2.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait(800);
+  assert.equal(dom._getStoreValue()[0].sections[1].data.imageShape, "square");
+});
+
+test("rutenett sin «Biletform»-veljar (Antall kolonner sitt naboval) gjeld HEILE rutenettet, ikkje per rute", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "grid", open: true, variant: {}, data: { columns: 3, imageShape: "rounded", items: [{ image: { src: "x.jpg" }, heading: "Rute" }] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var shapeSel = ed.querySelector("#pb-sec-imgshape");
+  assert(shapeSel, "rutenett-seksjonen har ein biletform-veljar på SEKSJONSNIVÅ, ikkje éin per rute");
+  assert.match(ed.textContent, /Gjeld alle rutene i rutenettet/, "UX-funn: eige hint under valet forklarer at det gjeld HEILE rutenettet -- den einaste ikkje-per-rute-innstillinga på denne seksjonstypen");
+  shapeSel.value = "circle";
+  shapeSel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait(800);
+  assert.equal(dom._getStoreValue()[0].sections[0].data.imageShape, "circle");
+});
+
+test("bilde-blokka sin «Biletform»-veljar lagrar rett imageShape, uavhengig av «Ramme inn»-avkryssinga", async function (t) {
+  var startPage = {
+    id: "test-side", label: "Testside", order: 60, navHidden: false, locked: true,
+    sections: [{ id: "s1", type: "blocks", open: true, variant: {}, data: { layout: "1col", blocks: [
+      { id: "b1", type: "image", slot: 0, data: { image: { src: "x.jpg" }, imageShape: "rounded", frame: false } }
+    ] } }]
+  };
+  var dom = await mount({ storeValue: [startPage] });
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("sidebygger-sider");
+  await wait();
+  click(dom.window.document.querySelector('[data-pb-edit-page="test-side"]'));
+  await wait();
+  var ed = dom.window.document.querySelector(".pbc-section-editor");
+  var shapeSel = ed.querySelector("#pb-block-0-imgshape");
+  assert(shapeSel, "bilde-blokka har ein biletform-veljar");
+  shapeSel.value = "circle";
+  shapeSel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await wait(800);
+  var savedBlock = dom._getStoreValue()[0].sections[0].data.blocks[0];
+  assert.equal(savedBlock.data.imageShape, "circle");
+  assert.equal(savedBlock.data.frame, false, "ramme-valet er urørt av biletform-endringa");
 });
 
 test("«Blokker»-seksjonen sin type-veljar tilbyr alle 6 blokktypane, og kvar type rendrar rette felt når han vert valt", async function (t) {
@@ -911,6 +994,6 @@ test("mobil-/skrivebord-brytaren viser ei tydeleg breiddeetikett (ikkje berre ei
 
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
-  assert.match(html, /components\.js\?v=25/);
-  assert.match(html, /console-core\.js\?v=251/);
+  assert.match(html, /components\.js\?v=26/);
+  assert.match(html, /console-core\.js\?v=252/);
 });

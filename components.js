@@ -427,6 +427,22 @@ window.Components = (function () {
     return "pb-sect--bg-" + bg + " pb-sect--w-" + width + " pb-sect--sp-" + spacing + " pb-sect--al-" + align;
   }
 
+  // Brukarønske 2026-08-12: valfri biletform (kvadratisk/avrunda/sirkel) --
+  // "avrunda" er den EKSISTERANDE, uendra standardhandsaminga (ingen ny
+  // klasse trengst for han), "kvadratisk"/"sirkel" er nye modifikator-
+  // klassar delt på tvers av alle stadar bilete kan leggjast inn (bilde+
+  // tekst, stort bilete, rutenett, bilde-blokk -- IKKJE hero, sidan hero
+  // sitt bilete er ein full-bleed, absolutt-posisjonert BAKGRUNN attom
+  // tekst, eit strukturelt anna bruksmønster enn eit sjølvstendig
+  // "innramma" bilete). Delt namn (ikkje éin per kontekst) sidan
+  // border-radius/aspect-ratio-verdiane er identiske uansett kva slags
+  // bilete det gjeld.
+  function pbImgShapeClass(shape) {
+    if (shape === "square") return " pb-img-shape--square";
+    if (shape === "circle") return " pb-img-shape--circle";
+    return "";
+  }
+
   function pbHero(d) {
     var img = d.image && d.image.src ? d.image : null;
     return (
@@ -455,7 +471,7 @@ window.Components = (function () {
     var pos = d.imagePosition === "right" ? "right" : "left";
     return (
       '<div class="pb-imgtext pb-imgtext--' + pos + '">' +
-        (img ? coverImg(img, "pb-imgtext__img") : "") +
+        (img ? coverImg(img, "pb-imgtext__img" + pbImgShapeClass(d.imageShape)) : "") +
         '<div class="pb-imgtext__body">' +
           (d.heading ? '<h2 class="pb-imgtext__title">' + esc(d.heading) + '</h2>' : "") +
           '<div class="prose">' + sanitizeRichHtml(d.text || "") + '</div>' +
@@ -468,7 +484,7 @@ window.Components = (function () {
     if (!d.image || !d.image.src) return "";
     return (
       '<div class="pb-bigimage">' +
-        coverImg(d.image, "pb-bigimage__img") +
+        coverImg(d.image, "pb-bigimage__img" + pbImgShapeClass(d.imageShape)) +
         (d.caption ? '<p class="pb-bigimage__caption">' + esc(d.caption) + '</p>' : "") +
       '</div>'
     );
@@ -491,11 +507,15 @@ window.Components = (function () {
   // punkt osv., berre med ulikt innhald og kolonnetal.
   function pbGrid(d) {
     var cols = [1, 2, 3, 4].indexOf(d.columns) !== -1 ? d.columns : 3;
+    // Biletform er MEDVITE eit felles val for HEILE rutenettet (ikkje per
+    // rute) -- typisk bruk (t.d. eit tilsettkort-rutenett) vil ha same form
+    // på alle portrettbileta i same rutenett, ikkje eit vilkårleg utval.
+    var imgShapeCls = pbImgShapeClass(d.imageShape);
     var items = (d.items || []).map(function (item) {
       var img = item.image && item.image.src ? item.image : null;
       return (
         '<article class="pb-grid__item">' +
-          (img ? coverImg(img, "pb-grid__img") : "") +
+          (img ? coverImg(img, "pb-grid__img" + imgShapeCls) : "") +
           '<div class="pb-grid__body">' +
             (item.heading ? '<h3 class="pb-grid__title">' + esc(item.heading) + '</h3>' : "") +
             (item.text ? '<p class="pb-grid__text">' + esc(item.text) + '</p>' : "") +
@@ -556,7 +576,7 @@ window.Components = (function () {
   function pbBlockImage(d) {
     const img = d.image && d.image.src ? d.image : null;
     if (!img) return "";
-    return `<div class="pb-block-image">${coverImg(img, "pb-block-image__img")}</div>`;
+    return `<div class="pb-block-image">${coverImg(img, "pb-block-image__img" + pbImgShapeClass(d.imageShape))}</div>`;
   }
   // Security Auditor-funn (BLOCKER, 2026-08-12): button() sin `cls`-streng
   // (bygd av `variant`) vert ALDRI esc()-a -- kvar ANNAN eksisterande

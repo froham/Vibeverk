@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.136.0 — 2026-08-12
+
+**Sidebygger: valfri biletform (avrunda/kvadratisk/sirkel) på alle stadar bilete kan leggjast inn, unntatt hero.** Brukerønske: portrettbilete av personar (tilsette, referansar) kan sjå finare ut i sirkelform enn standard avrunda-hjørne-handsaminga.
+
+- Ny «Biletform»-veljar (avrunda hjørne/standard, kvadratisk, sirkel) i **bilde+tekst**, **stort bilete**, **rutenett** (eitt val for HEILE rutenettet, ikkje per rute -- typisk bruk som eit tilsettkort-rutenett vil ha same form på alle portretta) og **bilde-blokka** inni «Blokker»-seksjonar.
+- **Medvite utelate frå hero**: hero sitt bilete er ein full-bleed, absolutt-posisjonert BAKGRUNN attom teksten, eit strukturelt anna bruksmønster enn eit sjølvstendig "innramma" bilete -- ei sirkel-forming ville ikkje fungert fornuftig med den eksisterande arkitekturen (heile hero-boksen sitt eige `border-radius` styrer klippinga i dag, ikkje biletet sjølv).
+- Delt CSS-modifikator-par (`.pb-img-shape--square`/`--circle`) brukt på tvers av alle fire kontekstane, i staden for éin klasse per kontekst -- verdiane er identiske uansett kva slags bilete det gjeld.
+- Bakoverkompatibelt: manglande `imageShape`-felt (alt eksisterande, lagra innhald) fell trygt attende til «avrunda hjørne», den EKSISTERANDE, uendra standardhandsaminga -- ingen ny CSS-klasse vert lagt til, ingen visuell endring for innhald som ikkje eksplisitt vel noko anna.
+- Ingen Security Auditor-runde (eit lukka enum-val → ein fast CSS-modifikatorklasse, same mønster som variant/kind/level-felta alt bruker andre stadar i denne fila). UX/Mobile Reviewer-runde vart kjørt gitt ny UI-flate i 4 felt-editorar -- fann og fiksa tre funn før merge, alle manglande forklarande hint-tekst (ingen strukturelle problem): sirkel-valet manglar fokuspunktkontroll og skjer alltid til eit SENTRERT kvadrat (Sidebygger sitt eige biletfelt har ingen slik kontroll) -- lagt til hint under alle 4 biletform-veljarane; rutenett sitt biletform-val er den einaste ikkje-per-rute-innstillinga på den seksjonstypen -- lagt til eige hint; hero sitt fråvær av biletform hadde ingen forklaring på skjermen, risikerte å lese som ein mangel heller enn eit medvite val -- lagt til éi hint-linje.
+- **Broker-redeploy** (operasjonelt, ingen kodeendring): `broker`-funksjonen til `vibeverk-control` vart redeploya i dag (versjon 16→17) -- han hadde ikkje vore redeploya sidan FØR 0.133.6 (PNG-komprimeringsfiksen) merga, stadfesta direkte via `updated_at`-tidsstempel (13:41 UTC, før 0.133.6 sin merge kl. 16:34 UTC). Den PNG-relaterte "kunne ikkje komprimerast nok"-feilen kom difor attende identisk på den nye bilde-blokka, sjølv om fiksen hadde lege ubrukt i `main` sidan då.
+
 ## 0.135.0 — 2026-08-12
 
 **Sidebygger: ramme inn heile kolonner, og dupliser seksjonar/blokker/kolonner.** Brukertilbakemelding rett etter 0.134.1, med skjermbilde: `frame`-avkryssinga per blokk gir separate ramma bokser med mellomrom mellom, ikke ÉN samanhengande boks rundt heile kolonnens innhold slik brukeren ønska.

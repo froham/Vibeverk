@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.135.0";
+  var VIBEVERK_VERSION = "0.136.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2414,9 +2414,23 @@ window.VwConsole = (function () {
     return { src: srcEl.value, alt: altEl ? altEl.value.trim() : "" };
   }
 
+  // Brukarønske 2026-08-12: valfri biletform, delt på tvers av alle stadar
+  // bilete kan leggjast inn (IKKJE hero -- sjå grunngjeving i components.js
+  // sin pbImgShapeClass()).
+  var PB_IMG_SHAPE_OPTIONS = [["rounded", "Avrunda hjørne (standard)"], ["square", "Kvadratisk"], ["circle", "Sirkel/rund"]];
+  // UX-funn 2026-08-12: Sidebygger sitt eige biletfelt (pbImageFieldHtml,
+  // sjå der) har ingen fokuspunkt-/beskjeringskontroll -- "Sirkel/rund"
+  // skjer difor ALLTID til eit sentrert kvadrat. Utan denne hintteksten
+  // ville ein operatør som vel sirkel på eit bilete med eit ikkje-sentrert
+  // motiv (t.d. eit ansikt langt til venstre i biletet) fått eit dårleg
+  // beskore resultat utan noka åtvaring om KVIFOR, berre forhåndsvisinga
+  // sjølv (som riktignok oppdaterer seg live) å oppdage det på.
+  var PB_IMG_SHAPE_HINT = '<p class="field__hint">Sirkel skjer biletet til eit sentrert kvadrat. Sjekk forhåndsvisinga for å sjå korleis det ser ut.</p>';
+
   function pbSectionDataFieldsHtml(type, d) {
     if (type === "hero") {
       return pbImageFieldHtml("pb-sec-img", "Bilde (valgfritt)", d.image) +
+        '<p class="field__hint">Hero-biletet er ein bakgrunn bak teksten, difor er det ingen eiga biletform her.</p>' +
         C.field({ id: "pb-sec-heading", label: "Overskrift", value: d.heading || "" }) +
         C.field({ id: "pb-sec-text", label: "Tekst", value: d.text || "", multiline: true, rows: 3 }) +
         '<div class="pbc-field-grid">' +
@@ -2431,11 +2445,13 @@ window.VwConsole = (function () {
     if (type === "image-text") {
       return pbImageFieldHtml("pb-sec-img", "Bilde", d.image) +
         pbSelectField("pb-sec-imgpos", "Biletplassering", [["left", "Venstre"], ["right", "Høgre"]], d.imagePosition || "left") +
+        pbSelectField("pb-sec-imgshape", "Biletform", PB_IMG_SHAPE_OPTIONS, d.imageShape || "rounded") + PB_IMG_SHAPE_HINT +
         C.field({ id: "pb-sec-heading", label: "Overskrift (valgfritt)", value: d.heading || "" }) +
         C.richTextField({ id: "pb-sec-text-rt", label: "Tekst", value: d.text || "" });
     }
     if (type === "big-image") {
       return pbImageFieldHtml("pb-sec-img", "Bilde", d.image) +
+        pbSelectField("pb-sec-imgshape", "Biletform", PB_IMG_SHAPE_OPTIONS, d.imageShape || "rounded") + PB_IMG_SHAPE_HINT +
         C.field({ id: "pb-sec-caption", label: "Bildetekst (valgfritt)", value: d.caption || "" });
     }
     if (type === "quote") {
@@ -2446,7 +2462,15 @@ window.VwConsole = (function () {
         '</div>';
     }
     if (type === "grid") {
+      // Biletform gjeld for HEILE rutenettet (alle ruter sine bilete), ikkje
+      // per rute -- same grunngjeving som i components.js sin pbGrid().
+      // UX-funn 2026-08-12: dette er det EINASTE feltet på rutenettet som
+      // ikkje er per-rute (bilete/overskrift/tekst/knapp er det), difor
+      // eit eige hint her -- parentesen i etiketten åleine er lett å
+      // rulle forbi når ein sit inne i sjølve rute-redigeringa seinare.
       return pbSelectField("pb-sec-cols", "Antall kolonner", [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]], String(d.columns || 3)) +
+        pbSelectField("pb-sec-imgshape", "Biletform (gjeld alle ruter)", PB_IMG_SHAPE_OPTIONS, d.imageShape || "rounded") +
+        '<p class="field__hint">Gjeld alle rutene i rutenettet -- kan ikkje setjast per rute.</p>' + PB_IMG_SHAPE_HINT +
         '<div class="pbc-grid-items" id="pb-grid-items"></div>' +
         '<button type="button" class="btn btn--ghost btn--sm" id="pb-grid-add-item"><i class="ti ti-plus"></i> Legg til rute</button>';
     }
@@ -2484,7 +2508,8 @@ window.VwConsole = (function () {
     } else if (type === "richtext") {
       fields = C.richTextField({ id: idp + "-text-rt", label: "Tekst", value: d.text || "" });
     } else if (type === "image") {
-      fields = pbImageFieldHtml(idp + "-img", "Bilde", d.image);
+      fields = pbImageFieldHtml(idp + "-img", "Bilde", d.image) +
+        pbSelectField(idp + "-imgshape", "Biletform", PB_IMG_SHAPE_OPTIONS, d.imageShape || "rounded") + PB_IMG_SHAPE_HINT;
     } else if (type === "button") {
       fields = '<div class="pbc-field-grid">' +
           C.field({ id: idp + "-label", label: "Knapptekst", value: d.label || "" }) +
@@ -2516,7 +2541,7 @@ window.VwConsole = (function () {
     } else if (type === "richtext") {
       out = { text: App.ui.readRichTextField(root, idp + "-text-rt") };
     } else if (type === "image") {
-      out = { image: pbReadImageField(root, idp + "-img") };
+      out = { image: pbReadImageField(root, idp + "-img"), imageShape: root.querySelector("#" + idp + "-imgshape").value };
     } else if (type === "button") {
       out = {
         label: root.querySelector("#" + idp + "-label").value.trim(),
@@ -2537,7 +2562,7 @@ window.VwConsole = (function () {
     return out;
   }
   var PB_BLOCK_DEFAULTS = {
-    heading: { level: "h2", text: "", frame: false }, richtext: { text: "", frame: false }, image: { image: null, frame: false },
+    heading: { level: "h2", text: "", frame: false }, richtext: { text: "", frame: false }, image: { image: null, imageShape: "rounded", frame: false },
     button: { label: "", url: "", variant: "primary", frame: false }, "contact-item": { kind: "phone", label: "", value: "", frame: false }, spacer: {}
   };
 
@@ -2562,6 +2587,7 @@ window.VwConsole = (function () {
       return {
         image: pbReadImageField(ed, "pb-sec-img"),
         imagePosition: ed.querySelector("#pb-sec-imgpos").value,
+        imageShape: ed.querySelector("#pb-sec-imgshape").value,
         heading: ed.querySelector("#pb-sec-heading").value.trim(),
         text: App.ui.readRichTextField(ed, "pb-sec-text-rt")
       };
@@ -2569,6 +2595,7 @@ window.VwConsole = (function () {
     if (type === "big-image") {
       return {
         image: pbReadImageField(ed, "pb-sec-img"),
+        imageShape: ed.querySelector("#pb-sec-imgshape").value,
         caption: ed.querySelector("#pb-sec-caption").value.trim()
       };
     }
@@ -2745,6 +2772,10 @@ window.VwConsole = (function () {
       ".pb-block-spacer{height:1px}",
       ".pb-block--framed{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:1.2rem}",
       ".pb-blocks__slot--framed{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:1.2rem}",
+      // Biletform -- MÅ haldast synk med den identiske kopien i
+      // module-page-builder.js sin injectStyles().
+      ".pb-img-shape--square{border-radius:0}",
+      ".pb-img-shape--circle{border-radius:50%;aspect-ratio:1/1}",
       "@media(max-width:900px){.pb-blocks--3col,.pb-blocks--4col{grid-template-columns:1fr 1fr}}",
       "@media(max-width:600px){.pb-blocks{grid-template-columns:1fr!important}}"
     ].join("");
@@ -2829,6 +2860,7 @@ window.VwConsole = (function () {
       if (section.type === "grid") {
         section.data = section.data || {};
         section.data.columns = parseInt(ed.querySelector("#pb-sec-cols").value, 10) || 3;
+        section.data.imageShape = ed.querySelector("#pb-sec-imgshape").value;
       } else if (section.type === "blocks") {
         section.data = section.data || {};
         section.data.layout = ed.querySelector("#pb-sec-blocks-layout").value;
@@ -3427,10 +3459,10 @@ window.VwConsole = (function () {
           var defaults = {
             hero: { image: null, heading: "Ny overskrift", text: "", button: null },
             text: { heading: "", text: "" },
-            "image-text": { image: null, imagePosition: "left", heading: "", text: "" },
-            "big-image": { image: null, caption: "" },
+            "image-text": { image: null, imagePosition: "left", imageShape: "rounded", heading: "", text: "" },
+            "big-image": { image: null, imageShape: "rounded", caption: "" },
             quote: { text: "", author: "", role: "" },
-            grid: { columns: 3, items: [] },
+            grid: { columns: 3, imageShape: "rounded", items: [] },
             cta: { heading: "Ny overskrift", text: "", button: null },
             spacer: {},
             blocks: { layout: "1col", blocks: [] }
