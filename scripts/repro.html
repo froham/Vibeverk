@@ -1,35 +1,8 @@
 <!DOCTYPE html>
 <html lang="nb">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Statisk, IKKJE per-tenant -- Console er Vibeverk sitt eige interne
-       operatørverktøy, aldri kunde-merkevarebygd, uansett kva hostname han
-       vert nådd via. -->
-  <link rel="manifest" href="manifest.json">
-  <title>Console — Vibeverk</title>
-
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'self';
-    script-src  'self' 'unsafe-inline'
-                https://cdn.jsdelivr.net;
-    connect-src 'self'
-                https://cdn.jsdelivr.net
-                https://*.supabase.co
-                wss://*.supabase.co;
-    style-src   'self' 'unsafe-inline'
-                https://fonts.googleapis.com
-                https://cdn.jsdelivr.net;
-    font-src    'self'
-                https://fonts.gstatic.com
-                https://cdn.jsdelivr.net
-                data:;
-    img-src     'self' data: https:;
-  ">
-
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.0.0/dist/tabler-icons.min.css">
-
-  <style>
+<meta charset="UTF-8">
+<style>
     /* =========================================================================
        KONSOLL-GRUNNSTIL — nøytralt Vibeverk-internt tema.
        console-core.js overrider CSS-vars etter at core.js har sett kundefargane.
@@ -366,15 +339,6 @@
     .cs-nav__item:hover { background: rgba(255,255,255,.05); color: #e2e8f0; }
     .cs-nav__item.is-active { background: rgba(96,165,250,.1); color: #60a5fa; border-left-color: #2563eb; }
     .cs-nav__item .ti { font-size: 1.1rem; }
-    /* Kundedrift/Vibeverk-internt-gruppering (2026-08-12) -- reint visuelt,
-       .cs-nav__item held fram uendra, berre pakka inn i éin ekstra div per
-       gruppe. display:flex/column vidarefører .cs-nav sin eigen stabling. */
-    .cs-nav__group { display: flex; flex-direction: column; }
-    .cs-nav__group-label {
-      padding: .9rem 1.2rem .3rem; font-size: .7rem; font-weight: 600;
-      letter-spacing: .04em; text-transform: uppercase; color: #64748b;
-    }
-    .cs-sidebar.is-collapsed .cs-nav__group-label { display: none; }
 
     .cs-sidebar__foot {
       padding: .8rem 1.2rem;
@@ -394,86 +358,13 @@
 
     .cs-main { flex: 1; overflow-y: auto; background: var(--color-bg); display: flex; flex-direction: column; }
     .cs-content { max-width: 720px; width: 100%; padding: 2rem 2rem 4rem; margin: 0 auto; }
-    /* Priser og AI Lab si eksplisitte samanlikningsflate treng meir enn
-       lesebreidde -- edit-layout/compare-grid
+    /* Berre Priser-fana treng meir enn lesebreidde -- edit-layout/compare-grid
        sine fleire-kolonner-rutenett vart klemt til éin-og-ein-halv kolonne
        innanfor 720px (brukarfunn 2026-08-04). Dei andre fanene (Produkt,
        Personvern osb.) er enkle tekst-/skjemasider som framleis les betre
        smalt -- difor eit eige, section-spesifikt modifikatortillegg i
        staden for å utvide .cs-content globalt. Sett/fjerna i renderSection(). */
     .cs-content.cs-content--wide { max-width: 1400px; }
-
-    /* Delt varselboks-klasse -- brukt fleire stader i Console (m.a. AI Lab
-       under). Dei eldre kallstadene sette same visuelle verdiar via inline
-       style; denne regelen gjer det til éin definisjon i staden. */
-    .i-notice {
-      margin-bottom: 1rem; padding: .8rem 1rem; border-radius: 8px; font-size: .88rem;
-    }
-    .i-notice--warn {
-      border: 1.5px solid #E8833A;
-      background: color-mix(in srgb, #E8833A 10%, transparent);
-    }
-
-    /* --- AI Lab: isolert lokal utviklingsflate -------------------------- */
-    .ai-lab-banner,
-    .ai-lab-config,
-    .ai-lab-result,
-    .ai-lab-evaluation {
-      border: 1px solid var(--color-border);
-      border-radius: 12px;
-      background: var(--color-surface);
-      padding: 1.2rem;
-      margin-bottom: 1rem;
-    }
-    .ai-lab-banner { border-color: #7c3aed; background: #f5f3ff; }
-    .ai-lab-banner h2 { margin: .55rem 0 .35rem; }
-    .ai-lab-banner p { margin: .3rem 0; }
-    .ai-lab-banner__badge {
-      display: inline-block; padding: .25rem .65rem; border-radius: 999px;
-      color: #fff; background: #6d28d9; font-size: .72rem;
-      font-weight: 800; letter-spacing: .04em;
-    }
-    .ai-lab-sources { display: grid; gap: .55rem; margin-top: .55rem; }
-    .ai-lab-source { display: grid; grid-template-columns: auto 1fr; gap: 0 .55rem; align-items: start; min-height: 44px; }
-    .ai-lab-source input { margin-top: .2rem; }
-    .ai-lab-source small { display: block; color: var(--color-muted); overflow-wrap: anywhere; }
-    .ai-lab-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
-    .ai-lab-external-note { margin: .8rem 0 0; font-size: .82rem; }
-    .ai-lab-compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
-    .ai-lab-result { min-width: 0; }
-    .ai-lab-result > h2,
-    .ai-lab-evaluation > h2 { margin: 0 0 1rem; font-size: 1.05rem; }
-    .ai-lab-result__title { font-size: 1.15rem; margin: .8rem 0; }
-    .ai-lab-result__heading { font-size: .95rem; margin: 1rem 0 .35rem; }
-    .ai-lab-result__text,
-    .ai-lab-result__questions { white-space: pre-wrap; overflow-wrap: anywhere; }
-    .ai-lab-result__meta,
-    .ai-lab-result__refs,
-    .ai-lab-empty { color: var(--color-muted); font-size: .8rem; overflow-wrap: anywhere; }
-    .ai-lab-result__refs { margin-top: .25rem; }
-    .ai-lab-draft-badge,
-    .ai-lab-review-decision {
-      display: inline-block; padding: .2rem .55rem; border-radius: 999px;
-      background: var(--color-tint); font-size: .72rem; font-weight: 700;
-    }
-    .ai-lab-review-decision--godkjent { color: #166534; background: #dcfce7; }
-    .ai-lab-review-decision--må-rettes { color: #92400e; background: #fef3c7; }
-    .ai-lab-review-decision--mangler-kilde { color: #991b1b; background: #fee2e2; }
-    .ai-lab-not-documented,
-    .ai-lab-review-findings { padding-left: 1.2rem; }
-    .ai-lab-review-findings p { overflow-wrap: anywhere; }
-    .ai-lab-review-section { margin-top: 1.1rem; padding-top: .9rem; border-top: 1px solid var(--color-border); }
-    .ai-lab-review-section:first-of-type { margin-top: 1.4rem; }
-    .ai-lab-raw { margin-top: 1rem; }
-    .ai-lab-raw summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; }
-    .ai-lab-raw pre {
-      max-height: 28rem; overflow: auto; padding: .8rem; border-radius: 8px;
-      background: #0f172a; color: #e2e8f0; font-size: .75rem;
-      white-space: pre-wrap; overflow-wrap: anywhere;
-    }
-    @media (max-width: 850px) {
-      .ai-lab-compare { grid-template-columns: 1fr; }
-    }
 
     .cs-page-head { margin-bottom: 1.6rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
     .cs-page-title { font-size: 1.45rem; font-weight: 700; }
@@ -508,12 +399,9 @@
         position: fixed; top: 0; left: 0; bottom: 0;
         z-index: 50; transform: translateX(-100%);
         transition: transform .22s ease;
-        box-shadow: none;
+        box-shadow: 4px 0 24px rgba(0,0,0,.35);
       }
-      /* Skuggen skal berre finnast medan panelet er ope. På eit lukka,
-         -100%-transformert panel stakk den gamle 24px-skuggen fram frå
-         venstrekanten og la eit mørkt slør over mobilinnhaldet. */
-      .cs-sidebar.is-open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.35); }
+      .cs-sidebar.is-open { transform: translateX(0); }
       .cs-sidebar-overlay.is-open { display: block; }
       .cs-content { padding: 1.2rem 1rem 3rem; }
       /* Ein "minimert"-preferanse sett på skrivebord (localStorage
@@ -806,273 +694,50 @@
     .compare-card li .addon-tag { font-size:.6rem; font-weight:700; text-transform:uppercase; color: var(--color-secondary); margin-left:auto; }
     .compare-card__group-title { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color: var(--color-muted); margin:.7rem 0 .2rem; text-align:left; }
     .compare-card__group-title:first-of-type { margin-top:0; }
-    @media(max-width:560px) { .compare-grid { grid-template-columns: 1fr; } }
 
-    /* Kundeanalyse -- intern arbeidsflate, isolert fra kundevisningene. */
-    .ka-toolbar { display:flex; flex-wrap:wrap; gap:.7rem; align-items:center; justify-content:space-between; margin-bottom:1rem; }
-    .ka-toolbar__filters { display:flex; flex:1 1 420px; gap:.6rem; }
-    .ka-toolbar input, .ka-toolbar select { font:inherit; min-height:44px; padding:.6rem .75rem; border:1.5px solid var(--color-border); border-radius:9px; background:var(--color-surface); color:var(--color-text); }
-    .ka-toolbar input { flex:1; min-width:160px; }
-    .ka-table-wrap { overflow-x:auto; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); }
-    .ka-table { width:100%; border-collapse:collapse; font-size:.86rem; }
-    .ka-table th, .ka-table td { padding:.72rem .85rem; text-align:left; border-bottom:1px solid var(--color-border); vertical-align:middle; }
-    .ka-table th { color:var(--color-muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; background:var(--color-alt); }
-    .ka-table tr:last-child td { border-bottom:0; }
-    .ka-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
-    .ka-status, .ka-badge { display:inline-flex; align-items:center; padding:.2rem .55rem; border-radius:999px; font-size:.7rem; font-weight:700; background:var(--color-tint); color:var(--color-primary); }
-    .ka-status--failed, .ka-badge--high { background:#fee2e2; color:#991b1b; }
-    .ka-status--reviewed, .ka-badge--approved, .ka-badge--edited { background:#dcfce7; color:#166534; }
-    .ka-status--analyzing { background:#fef3c7; color:#92400e; }
-    .ka-badge--removed { background:#e2e8f0; color:#475569; }
-    .ka-badge--ai { background:#ede9fe; color:#5b21b6; }
-    .ka-badge--manual { background:#dbeafe; color:#1e40af; }
-    /* UX-review-funn (BLOCKER, 2026-08-10): utan desse fall automatisk/ikkje-
-       vurdert -- den viktigaste tilstanden å skilje ut, sidan ho betyr
-       "framleis ukontrollert AI-utdata" -- attende til same nøytrale
-       standardfarge som alt anna, umogleg å skilje frå kvarandre. */
-    .ka-badge--automatic { background:#e2e8f0; color:#334155; }
-    .ka-badge--unreviewed { background:#fef3c7; color:#92400e; }
-    .ka-badge--medium { background:#fef3c7; color:#92400e; }
-    .ka-badge--low { background:#e2e8f0; color:#475569; }
-    .ka-hero { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:1rem; align-items:start; padding:1.2rem; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); margin-bottom:1rem; }
-    .ka-hero h2 { margin:0 0 .3rem; }
-    .ka-hero p { margin:.2rem 0; color:var(--color-muted); }
-    .ka-score { width:84px; height:84px; border-radius:50%; display:grid; place-items:center; background:var(--color-tint); color:var(--color-primary); font-size:1.55rem; font-weight:800; }
-    .ka-tabs { display:flex; gap:.35rem; overflow-x:auto; padding-bottom:.35rem; margin-bottom:1rem; }
-    .ka-tab { border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-muted); border-radius:999px; padding:.55rem .8rem; min-height:42px; font:inherit; font-size:.78rem; font-weight:650; white-space:nowrap; cursor:pointer; }
-    .ka-tab.is-active { background:var(--color-primary); border-color:var(--color-primary); color:#fff; }
-    .ka-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:.8rem; }
-    .ka-card { border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); padding:1rem; }
-    .ka-card.is-removed { opacity:.62; }
-    .ka-card__meta { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.65rem; }
-    .ka-card h3 { font-size:1rem; margin:0 0 .45rem; }
-    .ka-card p { font-size:.84rem; line-height:1.5; margin:.35rem 0; }
-    .ka-card__source { display:block; font-size:.75rem; color:var(--color-primary); overflow-wrap:anywhere; margin:.55rem 0; }
-    .ka-card__buttons { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.8rem; padding-top:.7rem; border-top:1px solid var(--color-border); }
-    .ka-form { max-width:760px; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); padding:1.2rem; }
-    .ka-form__row { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
-    .ka-notice { border-left:4px solid var(--color-primary); background:var(--color-tint); border-radius:8px; padding:.8rem 1rem; font-size:.84rem; margin-bottom:1rem; }
-    .ka-error { border-left-color:#c0392b; background:#fee2e2; color:#7f1d1d; }
-    .ka-empty { text-align:center; padding:2.5rem 1rem; border:1.5px dashed var(--color-border); border-radius:var(--radius); color:var(--color-muted); }
-    .ka-loading { display:flex; align-items:center; gap:.6rem; padding:1.5rem; color:var(--color-muted); }
-    .ka-loading .ti { animation:ka-spin 1s linear infinite; }
-    @keyframes ka-spin { to { transform:rotate(360deg); } }
-    .ka-page-list { display:grid; gap:.5rem; }
-    .ka-page { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.7rem; padding:.7rem .8rem; border:1px solid var(--color-border); border-radius:9px; background:var(--color-surface); font-size:.8rem; }
-    .ka-page strong, .ka-page span { overflow-wrap:anywhere; }
-    .ka-edit { display:grid; gap:.65rem; }
-    .ka-edit label { font-size:.75rem; font-weight:650; color:var(--color-muted); }
-    .ka-edit input, .ka-edit textarea, .ka-edit select { width:100%; font:inherit; padding:.6rem .7rem; border:1px solid var(--color-border); border-radius:8px; background:var(--color-bg); color:var(--color-text); }
-    .ka-service-list { display:grid; gap:.7rem; }
-    .ka-service { border:1px solid var(--color-border); border-radius:10px; background:var(--color-surface); padding:.9rem; }
-    .ka-brief ul { margin:.4rem 0 1rem 1.2rem; }
-    @media(max-width:700px) { .ka-form__row { grid-template-columns:1fr; } .ka-hero { grid-template-columns:1fr; } .ka-score { width:68px; height:68px; } .ka-toolbar__filters { flex-direction:column; } }
-
-    /* =========================================================================
-       SIDEBYGGER — SIDEREDIGERING (redesign 2026-08-11, jf. brukartilbakemelding
-       "tungvint", "vanskeleg å forholde seg til" etter fyrste faktiske bruk).
-       Prefiks "pbc-" (page builder console) -- skil klårt frå "pb-"-klassane
-       INNI førehandsvisings-iframen (module-page-builder.js sine ekte,
-       publiserte klassar -- same namn ville elles vore forvirrande sjølv om
-       dei aldri kolliderer i praksis, sidan iframen er ein eigen dokument-
-       kontekst). Sjå console-core.js sin PB_PREVIEW_CSS-konstant for CSS-en
-       SOM FAKTISK går inn i iframen -- den må haldast i synk med
-       module-page-builder.js sin injectStyles() manuelt (ingen delt fil). ---- */
-    .pbc-live-pill {
-      display:inline-flex; align-items:center; gap:.4rem; font-size:.76rem; font-weight:700;
-      padding:.32rem .7rem .32rem .55rem; border-radius:999px;
-      background:#fef3e2; color:#7c4a12; border:1px solid rgba(232,131,58,.45);
-    }
-    .pbc-live-pill__dot { width:7px; height:7px; border-radius:50%; background:#e8833a; box-shadow:0 0 0 3px rgba(232,131,58,.25); }
-    @media(prefers-reduced-motion:no-preference) { .pbc-live-pill__dot { animation:pbc-pulse 2.2s ease-in-out infinite; } }
-    @keyframes pbc-pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
-
-    .pbc-editor-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
-    .pbc-title-input {
-      font:inherit; font-family:var(--font-display,inherit); font-size:1.25rem; font-weight:700;
-      border:1.5px solid transparent; background:transparent; padding:.2rem .4rem; border-radius:8px; color:var(--color-text);
-      min-width:12ch;
-    }
-    .pbc-title-input:hover { border-color:var(--color-border); }
-    .pbc-title-input:focus { border-color:var(--color-primary); background:var(--color-surface); outline:none; }
-    .pbc-editor-sub { font-size:.8rem; color:var(--color-muted); display:flex; align-items:center; gap:.9rem; margin-top:.25rem; flex-wrap:wrap; }
-    .pbc-editor-sub label { display:inline-flex; align-items:center; gap:.35rem; cursor:pointer; }
-    .pbc-editor-actions { display:flex; align-items:center; gap:.6rem; }
-    .pbc-save-status { font-size:.8rem; color:var(--color-muted); }
-    .pbc-save-status.is-ok { color:#16a34a; }
-    /* UX-funn 2026-08-11: ei feila autolagring viste tidlegare same nøytrale
-       grå tekst som "Lagrar …" -- utan ein eigen feil-klasse var det ingen
-       visuell skilnad å leggje merke til, spesielt sidan det ikkje lenger
-       finst nokon eksplisitt lagre-knapp som kunne fanga eit andre blikk. */
-    .pbc-save-status.is-error { color:#c0392b; font-weight:600; }
-
-    /* UX-tilbakemelding 2026-08-11: det tidlegare sidestilte to-kolonne-
-       oppsettet let sjølve KOLONNEBREIDDA stå urørt sjølv når
-       forhåndsvisinga vart minimert -- berre innhaldet vart skjult, så
-       minimering skapte berre tomt, ubrukt rom til høgre ("veldig
-       tullete", ordrett tilbakemelding). Bytt heilt til eit ENKELT,
-       alltid stabla oppsett i staden: forhåndsvisinga (minimert som
-       standard, sjå #pbc-preview-panel sin markup) heilt øvst i full
-       breidde, seksjonsredigeringa under -- ingen grid-kolonnar, ingen
-       "order"-triks, ingen breiddeavhengig særtilfelle i det heile.
-       Løyser samstundes det tidlegare biletet sitt (0.133.1) problem
-       heilt anna veg: forhåndsvisinga TEK ALDRI opp plass frå
-       redigeringa lenger, sidan ho er skjult som standard. */
-    .pbc-workspace { display:flex; flex-direction:column; gap:1.2rem; }
-    .pbc-panel { background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius); }
-    .pbc-panel__head { padding:.85rem 1rem .7rem; border-bottom:1px solid var(--color-border); display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
-    .pbc-panel__head h4 { margin:0; font-size:.92rem; }
-    .pbc-panel__head-hint { font-size:.76rem; color:var(--color-muted); }
-
-    .pbc-section-list { padding:.65rem; display:flex; flex-direction:column; gap:.5rem; min-height:50px; }
-    .pbc-section-card { border:1.5px solid var(--color-border); border-radius:10px; background:var(--color-surface); overflow:hidden; transition:border-color .15s,box-shadow .15s; }
-    .pbc-section-card.is-open { border-color:var(--color-primary); box-shadow:0 0 0 3px var(--color-tint); }
-    .pbc-section-card.is-dragging { opacity:.4; }
-    .pbc-section-card.drop-before { box-shadow:inset 0 3px 0 var(--color-primary); }
-    .pbc-section-card.drop-after { box-shadow:inset 0 -3px 0 var(--color-primary); }
-    .pbc-section-row { display:flex; align-items:center; gap:.55rem; padding:.55rem .65rem; }
-    .pbc-drag-handle { cursor:grab; color:var(--color-muted); display:flex; padding:.5rem; margin:-.2rem; border-radius:6px; flex-shrink:0; touch-action:none; background:none; border:none; }
-    .pbc-drag-handle:hover { background:var(--color-tint); color:var(--color-text); }
-    .pbc-drag-handle:active { cursor:grabbing; }
-    .pbc-section-icon { width:32px; height:32px; border-radius:9px; background:var(--color-tint); color:var(--color-primary); display:grid; place-items:center; flex-shrink:0; font-size:.95rem; }
-    .pbc-section-meta { flex:1; min-width:0; cursor:pointer; background:none; border:none; text-align:left; padding:0; font:inherit; color:inherit; }
-    .pbc-section-meta__type { font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--color-muted); }
-    .pbc-section-meta__summary { font-size:.86rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .pbc-mini-actions { display:flex; align-items:center; gap:.1rem; flex-shrink:0; }
-    /* UX-funn 2026-08-11: 28x28px er under det vanlege 44px-trykkmålet --
-       aukast her sidan Console også brukast frå nettbrett i praksis, ikkje
-       berre mus. Drag-handtaket sitt eigentlege klikkbare areal (padding)
-       aukast tilsvarande rett under. */
-    .pbc-icon-btn { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:8px; border:none; background:transparent; color:var(--color-muted); cursor:pointer; }
-    .pbc-icon-btn:hover { background:var(--color-tint); color:var(--color-text); }
-    .pbc-icon-btn:disabled { opacity:.3; cursor:not-allowed; }
-    .pbc-icon-btn.danger:hover { background:rgba(192,57,43,.1); color:#c0392b; }
-    /* UX-funn 2026-08-12: "Dupliser" (ny knapp) hamna rett attmed det no
-       4-ikon-brei rada sin destruktive "Fjern"/"Slett"-knapp -- litt meir
-       luft framfor faresknappen gjer mistrykk mindre sannsynleg utan å
-       endre sjølve stadfestingsmønsteret (framleis ingen confirm() for
-       blokk-nivå fjerning, same som rutenett-ruter alt har). */
-    .pbc-icon-btn.danger { margin-left:.35rem; }
-
-    /* UX-tilbakemelding 2026-08-12: den tidlegare 50vh-høgdgrensa (delt
-       fram og attende med .pbc-section-list sin eigen 72vh-grense, fjerna
-       same runde) var kalibrert mot DEN GAMLE to-kolonne-layouten, der
-       begge grensene skulle matche førehandsvisinga sin høgd. No som
-       arbeidsområdet er éin enkelt stabla kolonne (0.133.4) og
-       førehandsvisinga er skjult som standard, tener ikkje grensa lenger
-       noko føremål -- ho berre klipte av eit rikteksfelt (m.m.) midt i og
-       tvinga fram ei vesle, lett-å-gløyme lokal rulling ("vanskeleg å få
-       tak i botnen"). Sidan-nivå rulling handterer no veksten naturleg. */
-    .pbc-section-editor { border-top:1px solid var(--color-border); padding:.9rem 1rem 1rem; background:var(--color-bg); display:flex; flex-direction:column; gap:.75rem; }
-    .pbc-variant-row { display:grid; grid-template-columns:repeat(4,1fr); gap:.5rem; }
-    @media(max-width:520px) { .pbc-variant-row { grid-template-columns:1fr 1fr; } }
-    .pbc-field-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
-    @media(max-width:460px) { .pbc-field-grid { grid-template-columns:1fr; } }
-
-    .pbc-img-upload { border:1.5px dashed var(--color-border); border-radius:10px; padding:.75rem; display:flex; flex-direction:column; gap:.5rem; }
-    .pbc-img-upload__row { display:flex; align-items:center; gap:.7rem; }
-    .pbc-img-upload__thumb { width:48px; height:48px; border-radius:8px; background:var(--color-tint); flex-shrink:0; display:grid; place-items:center; color:var(--color-primary); overflow:hidden; background-size:cover; background-position:center; }
-
-    /* UX-funn 2026-08-11: kvar rute (bilete+overskrift+tekst+knapp) vart
-       alltid vist heilt utvida -- ei rutenett-seksjon med 6-8 ruter skapte
-       ei svært lang rulling inni eit allereie 44%-breitt panel. Eige
-       rullefelt her held det handterleg utan å måtte bygge om til eit
-       kollaps-per-rute-mønster (større omfang, kan gjerast seinare om
-       behovet melder seg). */
-    .pbc-grid-items { display:flex; flex-direction:column; gap:.55rem; max-height:360px; overflow-y:auto; padding-right:.3rem; }
-    .pbc-grid-item-row { display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:.55rem; padding:.5rem .55rem; border:1px solid var(--color-border); border-radius:9px; background:var(--color-surface); }
-    .pbc-grid-item-row__thumb { width:38px; height:38px; border-radius:7px; background:var(--color-tint); background-size:cover; background-position:center; display:grid; place-items:center; color:var(--color-primary); font-size:.72rem; font-weight:700; }
-    .pbc-grid-item-row__text { min-width:0; }
-    .pbc-grid-item-row__text strong { display:block; font-size:.82rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .pbc-grid-item-row__text span { font-size:.73rem; color:var(--color-muted); }
-    .pbc-grid-item-fields { display:flex; flex-direction:column; gap:.5rem; padding:.6rem; border:1px solid var(--color-border); border-radius:9px; margin-bottom:.5rem; }
-
-    /* Blokk-redigering inni ei "blocks"-seksjon -- modellert på
-       .pbc-grid-item-fields over, med ein eigen kort-topp for type-namn +
-       flytt/fjern-knappar (gjenbruker .pbc-icon-btn/.pbc-mini-actions,
-       alt definert lenger opp for seksjon-nivå reorder). */
-    .pbc-blocks-items { display:flex; flex-direction:column; gap:.9rem; }
-    .pbc-block-card { display:flex; flex-direction:column; gap:.5rem; padding:.6rem; border:1px solid var(--color-border); border-radius:9px; margin-bottom:.5rem; background:var(--color-surface); }
-    .pbc-block-card__head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
-    .pbc-block-card__type { font-size:.8rem; font-weight:700; display:flex; align-items:center; gap:.35rem; }
-    /* UX-tilbakemelding 2026-08-12: éi flat liste + éin generisk "Legg til
-       blokk"-knapp gjorde det uklårt korleis ein skulle fylle FLEIRE
-       kolonnar -- kvar kolonne får no sin eigen, tydeleg avgrensa boks med
-       overskrift og si eiga "Legg til blokk"-knapp. */
-    .pbc-blocks-col { border:1px dashed var(--color-border); border-radius:10px; padding:.7rem; }
-    .pbc-blocks-col__head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--color-muted); margin-bottom:.5rem; }
-    /* Brukarønske 2026-08-12 (oppfølging): valfri ramme rundt HEILE
-       kolonna (ikkje berre kvar enkelt blokk, sjå .pb-block--framed) --
-       same enkle avkryssingsmønster som resten av Sidebygger. */
-    .pbc-blocks-col__frame { display:flex; align-items:center; gap:.4rem; font-size:.82rem; margin-bottom:.5rem; }
-    .pbc-blocks-col__list { display:flex; flex-direction:column; gap:.5rem; }
-    .pbc-blocks-col__empty { font-size:.82rem; color:var(--color-muted); font-style:italic; margin:0 0 .5rem; }
-    .pbc-blocks-add-trigger { margin-top:.5rem; width:100%; }
-    .pbc-add-block { margin-top:.4rem; }
-
-    .pbc-add-section { padding:.8rem 1rem 1rem; border-top:1px solid var(--color-border); }
-    .pbc-add-trigger { width:100%; padding:.65rem; border-radius:10px; border:1.5px dashed var(--color-border-strong,var(--color-border)); background:transparent; color:var(--color-muted); font-weight:600; font-size:.84rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.4rem; }
-    .pbc-add-trigger:hover { border-color:var(--color-primary); color:var(--color-primary); background:var(--color-tint); }
-    .pbc-type-picker { margin-top:.65rem; display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
-    @media(max-width:420px) { .pbc-type-picker { grid-template-columns:1fr; } }
-    .pbc-type-card { display:flex; gap:.55rem; align-items:flex-start; text-align:left; padding:.6rem .65rem; border:1.5px solid var(--color-border); border-radius:10px; background:var(--color-surface); cursor:pointer; font:inherit; color:inherit; }
-    .pbc-type-card:hover { border-color:var(--color-primary); background:var(--color-tint); }
-    .pbc-type-card__icon { width:28px; height:28px; border-radius:8px; background:var(--color-tint); color:var(--color-primary); display:grid; place-items:center; flex-shrink:0; }
-    .pbc-type-card__title { font-size:.82rem; font-weight:700; display:block; }
-    .pbc-type-card__desc { font-size:.72rem; color:var(--color-muted); margin-top:.1rem; line-height:1.3; }
-
-    .pbc-empty-sections { padding:1.5rem 1rem; text-align:center; color:var(--color-muted); font-size:.84rem; }
-
-    .pbc-preview-toolbar { display:flex; align-items:center; gap:.5rem; }
-    .pbc-preview-toolbar button { width:32px; height:32px; border-radius:8px; border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-muted); display:grid; place-items:center; cursor:pointer; }
-    .pbc-preview-toolbar button.is-active { border-color:var(--color-primary); color:var(--color-primary); background:var(--color-tint); }
-    /* UX-funn 2026-08-11: verktøyknappane åleine (skjerm-/mobilikon) sa ikkje
-       KVA breidde "mobil" faktisk simulerer -- ei operatør kan ikkje vite om
-       380px svarar til deira eiga telefon eller ikkje. */
-    .pbc-preview-width-label { font-size:.72rem; color:var(--color-muted); }
-    .pbc-preview-frame-wrap { padding:.9rem; background:var(--color-bg); border-radius:0 0 var(--radius) var(--radius); }
-    /* "Minimere forhåndsvisning" -- MINIMERT SOM STANDARD (sjå markup) sidan
-       0.133.4-runda gjorde heile arbeidsområdet til éin stabla kolonne --
-       skjuler sjølve ramma (og reduserer verktøylinja til berre utvid-
-       knappen) medan panelet sjølv held fram i full breidde. */
-    .pbc-preview-panel.is-minimized .pbc-preview-frame-wrap { display:none; }
-    .pbc-preview-panel.is-minimized .pbc-preview-width-label,
-    .pbc-preview-panel.is-minimized #pbc-pv-desktop,
-    .pbc-preview-panel.is-minimized #pbc-pv-mobile { display:none; }
-    .pbc-preview-frame { border:none; background:#fff; border-radius:10px; box-shadow:0 0 0 1px var(--color-border); width:100%; height:min(72vh,720px); transition:max-width .2s ease; display:block; margin:0 auto; }
-    .pbc-preview-frame.w-mobile { max-width:380px; }
-
-    .pbc-page-card__types { display:flex; gap:.3rem; margin-top:.35rem; }
-    .pbc-page-card__types span { width:22px; height:22px; border-radius:6px; background:var(--color-tint); color:var(--color-primary); display:grid; place-items:center; font-size:.65rem; }
-  </style>
+</style>
 </head>
 <body>
-  <!-- core.js rendrar inn her, men heile #app er skjult —
-       konsollen brukar #console-app som eige monteringspunkt -->
-  <div id="app" style="display:none"></div>
-  <div id="console-app"></div>
+<div class="cs-wrap">
+  <div class="cs-mobile-bar">
+    <button class="cs-hamburger">&#9776;</button>
+    <span class="cs-mobile-bar__brand">Console</span>
+  </div>
+  <aside class="cs-sidebar">
+    <div class="cs-brand"><span class="cs-brand__label">Vibeverk Console</span></div>
+    <nav class="cs-nav">
+      <button class="cs-nav__item is-active"><span class="cs-nav__item-label">Personvern</span></button>
+    </nav>
+  </aside>
+  <main class="cs-main">
+    <div class="cs-content" id="cs-content">
+      <div class="cs-page-head"><div class="cs-page-title">Personvern</div></div>
 
-  <!-- Skriptkjede: same rekkefølgje som index.html, men berre kjernefiler.
-       Modular er ikkje nødvendig sidan konsollen berre les/skriv config-data.
-       console-core.js kjem sist og overrider CSS-vars + monterer UI-et. -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8/dist/umd/supabase.js"></script>
-  <!-- marked: minimal markdown->HTML for the "Læring"-seksjonen sin visning av
-       docs/onboarding/*.md -- same CDN-avhengig-mønster som Tabler Icons over,
-       pinna til éin major versjon for stabilitet. -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-  <!-- html2canvas: rendrar eit DOM-utsnitt til eit <canvas> for "Last ned
-       som bilde" i Priser sin Forhåndsvisning (brukarønske 2026-08-04, ekte
-       PNG-nedlasting valgt eksplisitt framfor ei enklare utskrift-til-PDF-
-       løysing). Same pinna-versjon-disiplin som resten av CDN-avhengigheitene
-       her -- sjekk data.jsdelivr.com sitt resolved-endepunkt før oppgradering,
-       aldri ein major-berre-spesifikator. -->
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="../config.js?v=15"></script>
-  <script src="../components.js?v=26"></script>
-  <script src="../core.js?v=92"></script>
-  <script src="../template-klassisk.js?v=1"></script>
-  <script src="../template-panorama.js?v=1"></script>
-  <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=254"></script>
+      <h3 id="variant-a-label">Variant A: with drift pill (Bor sjekkast)</h3>
+      <fieldset class="admin-group" id="variant-a"><legend>Personvernerklæring — <span class="kd-pill kd-pill--active">Publisert</span> <span class="kd-pill kd-pill--provisioning">Bør sjekkast</span></legend>
+        <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Publisert 5. aug. 2026, 14:02. Ei publisert versjon kan ikkje redigerast direkte — trykk "Rediger" for å opprette eit nytt utkast basert på henne. Historikken held fram uendra.</p>
+        <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Sidan denne teksten vart publisert kan desse avsnitta ha endra seg: <strong>Booking, Cookies/analyse</strong>. Teksten er ikkje endra automatisk — opprett eit nytt utkast for å sjå eit oppdatert forslag.</p>
+        <div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem"><p>Eksempelinnhald i den publiserte teksten.</p></div>
+      </fieldset>
+      <div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">
+        <button class="btn btn--primary" type="button">Rediger (opprett nytt utkast)</button>
+        <button class="btn btn--ghost" type="button">Last ned som HTML</button>
+      </div>
+
+      <h3 style="margin-top:2rem" id="variant-b-label">Variant B: no drift (single pill, pre-existing)</h3>
+      <fieldset class="admin-group" id="variant-b"><legend>Personvernerklæring — <span class="kd-pill kd-pill--active">Publisert</span></legend>
+        <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Publisert 5. aug. 2026, 14:02. Ei publisert versjon kan ikkje redigerast direkte — trykk "Rediger" for å opprette eit nytt utkast basert på henne. Historikken held fram uendra.</p>
+        <div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem"><p>Eksempelinnhald i den publiserte teksten.</p></div>
+      </fieldset>
+
+      <h3 style="margin-top:2rem">Variant C: single affected module (Booking only)</h3>
+      <fieldset class="admin-group" id="variant-c"><legend>Personvernerklæring — <span class="kd-pill kd-pill--active">Publisert</span> <span class="kd-pill kd-pill--provisioning">Bør sjekkast</span></legend>
+        <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Publisert 5. aug. 2026, 14:02. Ei publisert versjon kan ikkje redigerast direkte — trykk "Rediger" for å opprette eit nytt utkast basert på henne. Historikken held fram uendra.</p>
+        <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Sidan denne teksten vart publisert kan desse avsnitta ha endra seg: <strong>Booking</strong>. Teksten er ikkje endra automatisk — opprett eit nytt utkast for å sjå eit oppdatert forslag.</p>
+        <div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem"><p>Eksempelinnhald i den publiserte teksten.</p></div>
+      </fieldset>
+    </div>
+  </main>
+</div>
 </body>
 </html>

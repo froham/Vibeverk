@@ -14,8 +14,9 @@
         enabled: true, position: "right",
         welcomeMsg: "Hei! Korleis kan vi hjelpe deg?",
         operatorName: "Oss", askName: true,
-        termsText: "Eg godtek at denne samtalen lagrast",
-        termsUrl: ""   // valgfri lenke til personvernsside
+        termsText: "Jeg har lest og godtar personvernerklæringen",
+        termsUrl: ""   // valgfri lenke til personvernsside -- tom = bruk den delte
+                       // popupen ("footer-privacy"/"ws-privacy") om ho finst på sida
       }
    4. Deploy som vanleg — ingen andre avhengigheiter
    ========================================================================== */
@@ -52,7 +53,7 @@
     offlineMsg:   "Vi er ikke tilgjengelig akkurat nå. Legg igjen en melding, så svarer vi så snart vi kan.",
     operatorName: "Oss",
     askName:      true,
-    termsText:    "Eg godtek at denne samtalen lagrast",
+    termsText:    "Jeg har lest og godtar personvernerklæringen",
     termsUrl:     "",
     pollInterval: 5000
   }, CFG_CHAT, _storedCfg);
@@ -660,8 +661,17 @@
           '<div class="vw-msg-ts">' + Chat.ts(Date.now()) + '</div>' +
         '</div>';
 
+      // Delt personvern-popup (footer på nettsida / Workspace sin sidemeny,
+      // sjå C.footer()/workspace-core.js sin "ws-privacy") -- attbrukt her i
+      // staden for å krevje ein manuelt innlima termsUrl. Fell trygt attende
+      // til rein tekst i standalone-oppsett utan nokon av desse modalane i
+      // DOM-et (sjå fil-hovudet -- denne fila skal kunne fungere utan
+      // core.js/App i det heile).
+      var sharedTermsModal = document.querySelector('[data-terms-modal="footer-privacy"]') || document.querySelector('[data-terms-modal="ws-privacy"]');
       var termsHtml = OPT.termsUrl
         ? '<a href="' + Chat.esc(OPT.termsUrl) + '" target="_blank" style="color:'+color+'">' + Chat.esc(OPT.termsText) + '</a>'
+        : sharedTermsModal
+        ? '<button type="button" id="vw-terms-open" style="background:none;border:0;padding:0;font:inherit;text-decoration:underline;cursor:pointer;color:'+color+'">' + Chat.esc(OPT.termsText) + '</button>'
         : Chat.esc(OPT.termsText);
 
       bottom.innerHTML =
@@ -683,6 +693,10 @@
       var termsCb  = bottom.querySelector("#vw-terms-cb");
       var startBtn = bottom.querySelector("#vw-start-btn");
       var nameInp  = bottom.querySelector("#vw-name-inp");
+      var termsOpenBtn = bottom.querySelector("#vw-terms-open");
+      if (termsOpenBtn && sharedTermsModal) {
+        termsOpenBtn.addEventListener("click", function () { sharedTermsModal.style.display = ""; });
+      }
 
       function checkReady() {
         var emailOk = emailInp && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInp.value.trim());

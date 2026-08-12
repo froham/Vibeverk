@@ -220,7 +220,7 @@ window.SITE_CONFIG = {
     welcomeMsg:   "Hei! Korleis kan vi hjelpe deg?",
     operatorName: "Oss",
     askName:      true,
-    termsText:    "Eg godtek at denne samtalen lagrast",
+    termsText:    "Jeg har lest og godtar personvernerklæringen",
     termsUrl:     ""
   },
 
