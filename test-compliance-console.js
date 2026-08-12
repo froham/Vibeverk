@@ -30,10 +30,13 @@ function query(result) {
   return value;
 }
 
-var COMPLIANCE_RECORD_SEED = [
-  { id:"kontakt", label:"Kontaktskjema", formaal:"", kategori_registrerte:"", kategori_data:"", behandlingsgrunnlag:"", mottakere:"", lagringstid:"", sikkerhetstiltak:"" },
-  { id:"tilbud", label:"Tilbudsforespørsel", formaal:"", kategori_registrerte:"", kategori_data:"", behandlingsgrunnlag:"", mottakere:"", lagringstid:"", sikkerhetstiltak:"" }
-];
+// Same 8 aktivitetar som den ekte seed-migrasjonen (20260812170000). Alle
+// felt bortsett frå id/label tomme, akkurat som i produksjon før nokon har
+// fylt ut noko.
+var COMPLIANCE_RECORD_SEED = ["kontakt","tilbud","booking","chat","crm","ansatte","sidetelling","ai"].map(function (id) {
+  var labels = { kontakt:"Kontaktskjema", tilbud:"Tilbudsforespørsel", booking:"Booking", chat:"Chat", crm:"CRM", ansatte:"Ansatte (Workspace)", sidetelling:"Sidetelling (internt)", ai:"AI-moduler (Oversikt/Smart årshjul)" };
+  return { id:id, label:labels[id], formaal:"", kategori_registrerte:"", kategori_data:"", behandlingsgrunnlag:"", mottakere:"", lagringstid:"", sikkerhetstiltak:"" };
+});
 var VENDOR_REGISTRY_SEED = [
   { id:"supabase", name:"Supabase", what_it_does:"Database", country:"eu", transfer_mechanism:"none", dpa_status:"tba", dpa_note:"" }
 ];
@@ -50,8 +53,13 @@ async function mount() {
     from:function (table) {
       if (table === "operators") return query({ data:{ status:"active" }, error:null });
       if (table === "tenants") return query({ data:[{ id:"t1", slug:"tenant", status:"active", data_plane_url:"https://tenant.example", data_plane_anon_key:"anon", data_plane_storage_key:"nordpunkt" }], error:null });
-      if (table === "compliance_record") return query({ data:COMPLIANCE_RECORD_SEED, error:null });
-      if (table === "vendor_registry") return query({ data:VENDOR_REGISTRY_SEED, error:null });
+      // Djupklone -- desse seeda vert MUTERT direkte av console-core.js sine
+      // eigne lagre-handterarar (same objektreferanse elles ville lekt
+      // mellom testar/mount()-kall, funne under skriving av Standardforslag-
+      // testane: eit tidlegare test sitt lagra innhald synte seg som
+      // "alt utfylt" i eit HEILT NYTT mount()-kall).
+      if (table === "compliance_record") return query({ data:JSON.parse(JSON.stringify(COMPLIANCE_RECORD_SEED)), error:null });
+      if (table === "vendor_registry") return query({ data:JSON.parse(JSON.stringify(VENDOR_REGISTRY_SEED)), error:null });
       throw new Error("Uventet tabell " + table);
     },
     functions:{ invoke:function (name, opts) {
@@ -123,4 +131,46 @@ test("Leverandørar-underfana lagrar via set_vendor med DPA-status frå det ekte
   assert.equal(call.body.action, "set_vendor");
   assert.equal(call.body.id, "supabase");
   assert.equal(call.body.dpa_status, "tba");
+});
+
+test("Standardforslag fyller inn felta men lagrar ikkje automatisk", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  assert.equal(dom.window.document.querySelector("#cr-kontakt-formaal").value, "", "tomt før Standardforslag");
+  dom.window.document.querySelector("#cp-standard").click();
+  assert.match(dom.window.document.querySelector("#cr-kontakt-formaal").value, /kontaktskjemaet/i, "Standardforslag fyller inn eit reelt forslag for kontakt-aktiviteten");
+  assert.match(dom.window.document.querySelector("#cr-ansatte-behandlingsgrunnlag").value, /arbeidsavtalen/i, "og for ansatte-aktiviteten");
+  assert.equal(m.invokeCalls.filter(function (c) { return c.name === "tenant-admin"; }).length, 0, "ingenting lagra automatisk -- berre felta er fylt inn");
+});
+
+test("Lagre alle lagrar kvar av dei 8 behandlingsaktivitetane via éin tenant-admin-kall per aktivitet", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  dom.window.document.querySelector("#cp-standard").click();
+  dom.window.document.querySelector("#cp-save-all").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  var calls = m.invokeCalls.filter(function (c) { return c.name === "tenant-admin" && c.body.action === "set_compliance_record"; });
+  assert.equal(calls.length, 8, "alle 8 behandlingsaktivitetar vart lagra");
+  assert.match(dom.window.document.querySelector("#cp-bulk-status").textContent, /8 aktivitetar lagra/);
+});
+
+test("Generer full tekstversjon viser ei samanhengande, lesbar visning av behandlingsprotokollen", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  dom.window.document.querySelector("#cr-kontakt-formaal").value = "Ein test-formålstekst.";
+  dom.window.document.querySelector("#cp-fulltext").click();
+  var modalText = dom.window.document.body.textContent;
+  assert.match(modalText, /Ein test-formålstekst\./, "fulltekstvisinga speglar live, ulagra feltverdiar");
+  assert.match(modalText, /Kontaktskjema/, "aktivitetsnamnet er med");
+  dom.window.document.querySelector("#cs-text-preview-close").click();
+  assert.equal(dom.window.document.querySelector("#cs-text-preview-close"), null, "modalen lukkar seg");
 });

@@ -172,6 +172,24 @@ test("Feil ved henting av vendor_registry fell trygt attende til VIBEVERK_VENDOR
   assert.doesNotMatch(text, /TILPASSA SKILDRING/, "ingen DB-tekst skal dukke opp når hentinga feila");
 });
 
+test("«Generer full tekstversjon» opnar ei lesbar førehandsvising og kan lukkast att (publisert visning)", async function (t) {
+  var m = await mount({});
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  // Framleis på Dokument-fana (standard) -- ein fersk v1 er alltid PUBLISERT
+  // (migratePrivacyVersions()), sjølv med tomt innhald.
+  var btn = m.dom.window.document.querySelector("#cs-priv-fulltext");
+  assert(btn, "«Generer full tekstversjon»-knappen finst i den publiserte visinga");
+  btn.click();
+  var modalText = m.dom.window.document.body.textContent;
+  assert.match(modalText, /Personvernerklæring — full tekst/, "modal-tittelen er sett");
+  assert.match(modalText, /Tomt innhald/, "eit tomt fersk utkast syner placeholder-teksten, ikkje ein feil/krasj");
+  var closeBtn = m.dom.window.document.querySelector("#cs-text-preview-close");
+  assert(closeBtn, "lukk-knappen finst");
+  closeBtn.click();
+  assert.equal(m.dom.window.document.querySelector("#cs-text-preview-close"), null, "modalen fjernar seg sjølv frå DOM-en ved lukking");
+});
+
 // MERK: "Standardforslag"-knappen (Dokument-fana, computeSupplierBlock() sin
 // faktiske kallar via computeTenantPrivacyBlocks()) er MEDVITE IKKJE testa
 // end-to-end her -- ho krev heile rik-tekst-editor-infrastrukturen
