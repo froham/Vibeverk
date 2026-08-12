@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.143.0";
+  var VIBEVERK_VERSION = "0.143.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -174,6 +174,12 @@ window.VwConsole = (function () {
     _sbControl.from("tenants")
       .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_ever_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path")
       .order("slug").then(function (r) {
+        // r.error vart tidlegare aldri sjekka -- ein manglande kolonne-grant
+        // (INCIDENT 2026-08-12, sjå 20260812235500-migrasjonen) fekk difor
+        // heile kundelista til å stille vise seg tom, utan feilmelding nokon
+        // stad. Logg alltid, slik at ein tilsvarande framtidig tilgangsfeil
+        // er synleg i konsollen i staden for å sjå ut som "ingen kundar".
+        if (r.error) console.error("[console] henting av kundeliste feila:", r.error);
         _tenants = r.data || [];
         // Ikkje default til ein arkivert tenant -- sidan sidepanel-veljaren
         // (buildShell()) no skjuler arkiverte, ville _activeTenant elles peike
