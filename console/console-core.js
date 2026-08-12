@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.138.0";
+  var VIBEVERK_VERSION = "0.138.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -7559,15 +7559,20 @@ window.VwConsole = (function () {
   }
 
   function renderComplianceProtokoll(pane) {
+    // <details>/<summary> (brukarønske 2026-08-12: "gardinmeny" per seksjon)
+    // -- same native kollaps-mønster som alt brukast andre stader i Console
+    // (t.d. AI Lab sin rå-JSON-visning, Kundar sitt manuelle nøkkel-felt).
+    // Alle startar LUKKA -- 8 rader × 7 tekstfelt kvar er mykje loddrett plass
+    // om alt er opna samstundes.
     pane.innerHTML = _complianceData.records.map(function (rec) {
-      return '<fieldset class="admin-group" style="margin-bottom:.8rem" data-compliance-record="' + C.esc(rec.id) + '">' +
-        '<legend>' + C.esc(rec.label) + '</legend>' +
+      return '<details class="admin-group" style="margin-bottom:.8rem" data-compliance-record="' + C.esc(rec.id) + '">' +
+        '<summary style="cursor:pointer;font-weight:700;font-size:.95rem">' + C.esc(rec.label) + '</summary>' +
         COMPLIANCE_RECORD_FIELDS.map(function (f) {
           return C.field({ id: "cr-" + rec.id + "-" + f[0], label: f[1], multiline: true, rows: 2, value: rec[f[0]] || "" });
         }).join("") +
         C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" class="compliance-record-save" data-id="' + C.esc(rec.id) + '"' }) +
         '<span class="cs-status" data-compliance-record-status="' + C.esc(rec.id) + '"></span>' +
-      '</fieldset>';
+      '</details>';
     }).join("");
 
     pane.querySelectorAll(".compliance-record-save").forEach(function (btn) {
@@ -7592,9 +7597,10 @@ window.VwConsole = (function () {
   }
 
   function renderComplianceLeverandorar(pane) {
+    // Same <details>/<summary>-kollaps som renderComplianceProtokoll() over.
     pane.innerHTML = _complianceData.vendors.map(function (v) {
-      return '<fieldset class="admin-group" style="margin-bottom:.8rem" data-compliance-vendor="' + C.esc(v.id) + '">' +
-        '<legend>' + C.esc(v.name) + '</legend>' +
+      return '<details class="admin-group" style="margin-bottom:.8rem" data-compliance-vendor="' + C.esc(v.id) + '">' +
+        '<summary style="cursor:pointer;font-weight:700;font-size:.95rem">' + C.esc(v.name) + '</summary>' +
         C.field({ id: "cv-" + v.id + "-name", label: "Namn", value: v.name || "" }) +
         C.field({ id: "cv-" + v.id + "-what", label: "Kva leverandøren gjer", multiline: true, rows: 2, value: v.what_it_does || "" }) +
         '<div class="field"><label for="cv-' + v.id + '-country">Land</label><select id="cv-' + v.id + '-country">' +
@@ -7616,7 +7622,7 @@ window.VwConsole = (function () {
           help: "Operatør-internt notat — lekk aldri direkte til kundevendt tekst." }) +
         C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" class="compliance-vendor-save" data-id="' + C.esc(v.id) + '"' }) +
         '<span class="cs-status" data-compliance-vendor-status="' + C.esc(v.id) + '"></span>' +
-      '</fieldset>';
+      '</details>';
     }).join("");
 
     pane.querySelectorAll(".compliance-vendor-save").forEach(function (btn) {

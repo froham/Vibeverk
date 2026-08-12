@@ -81,6 +81,9 @@ test("Compliance er en egen, ikkje-tenant-skopa Console-fane med to underfaner",
   assert.match(wrap.textContent, /Behandlingsprotokoll/);
   assert.match(wrap.textContent, /Kontaktskjema/, "seededa behandlingsprotokoll-rader vert vist");
   assert(wrap.querySelector('[data-compliance-view="leverandorar"]'), "Leverandørar-underfana finst");
+  var recordDetails = wrap.querySelector('[data-compliance-record="kontakt"]');
+  assert.equal(recordDetails.tagName, "DETAILS", "kvar behandlingsaktivitet er ein <details>-gardinmeny");
+  assert(!recordDetails.hasAttribute("open"), "gardinmenyen startar lukka");
 });
 
 test("Behandlingsprotokoll lagrar via set_compliance_record, ikkje direkte RLS-skriving", async function (t) {
@@ -109,6 +112,9 @@ test("Leverandørar-underfana lagrar via set_vendor med DPA-status frå det ekte
   dom.window.document.querySelector('[data-compliance-view="leverandorar"]').click();
   await new Promise(function (resolve) { setTimeout(resolve, 10); });
   assert.match(dom.window.document.querySelector("#cs-section-wrap").textContent, /Supabase/);
+  var vendorDetails = dom.window.document.querySelector('[data-compliance-vendor="supabase"]');
+  assert.equal(vendorDetails.tagName, "DETAILS", "kvar leverandør er òg ein <details>-gardinmeny");
+  assert(!vendorDetails.hasAttribute("open"), "gardinmenyen startar lukka");
   var statusSelect = dom.window.document.querySelector("#cv-supabase-dpastatus");
   assert.equal(statusSelect.value, "tba", "seeda DPA-status er tba, ikkje unconfirmed");
   dom.window.document.querySelector('.compliance-vendor-save[data-id="supabase"]').click();
