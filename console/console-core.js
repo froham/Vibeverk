@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.136.0";
+  var VIBEVERK_VERSION = "0.137.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -502,20 +502,34 @@ window.VwConsole = (function () {
   var PRISER_F_HELP   = Object.assign({}, PRICING_ONLY_F_HELP, FEAT_HELP);
   var PRISER_I_LABELS = Object.assign({}, PRICING_ONLY_I_LABELS, IFEAT_LABELS);
   var PRISER_I_HELP   = Object.assign({}, PRICING_ONLY_I_HELP, IFEAT_HELP);
+  // "group" (2026-08-12, brukarvedtak): skil kundespesifikke seksjonar
+  // (render(sc, wrap) med sc-avhengig innhald -- kva som helst nedanfor
+  // avhenger av kven som er valt i kundeveljaren) frå Vibeverk-interne
+  // seksjonar (same innhald uansett kven som er valt, eller ingen kunde
+  // valt i det heile). Verifisert direkte i kvar render-funksjon før denne
+  // gruppa vart sett, ikkje berre gjetta frå namnet -- t.d. "system" har eit
+  // generisk namn, men er faktisk kundespesifikk (viser den valde kunden sitt
+  // Supabase-prosjekt), medan "priser"/"kundeanalyse"/"laring" har eit
+  // usynt-brukt sc/_sc-parameter og ALDRI les den valde kunden. "kundar"
+  // (tenant-registeret sjølv) har ingen gruppe -- han er MEKANISMEN ein vel
+  // kunde gjennom, ikkje eit medlem av nokon av dei to datasetta. Reint ei
+  // rendering-/CSS-gruppering her -- NAV_ITEMS/RENDERERS/TITLES sine id-ar,
+  // renderSection()-dispatchen og data-cs-nav-attributta er alle urørte.
   var NAV_ITEMS = [
-    { id: "kundar",     icon: "building",    label: "Kundar" },
-    { id: "produkt",    icon: "package",     label: "Produkt" },
-    { id: "web",        icon: "world",       label: "Web" },
-    { id: "sidebygger-sider", icon: "files", label: "Sider" },
-    { id: "workspace",  icon: "briefcase",   label: "Workspace" },
-    { id: "modular",    icon: "puzzle",      label: "Modular" },
-    { id: "priser",     icon: "tag",         label: "Priser" },
-    { id: "kundeanalyse", icon: "zoom-check", label: "Kundeanalyse" },
-    { id: "analyse",    icon: "chart-bar",   label: "Analyse" },
-    { id: "personvern", icon: "shield-lock", label: "Personvern" },
-    { id: "laring",     icon: "book",        label: "Læring" },
-    { id: "system",     icon: "settings",    label: "System" }
+    { id: "kundar",     icon: "building",    label: "Kundar",     group: null },
+    { id: "produkt",    icon: "package",     label: "Produkt",    group: "kundedrift" },
+    { id: "web",        icon: "world",       label: "Web",        group: "kundedrift" },
+    { id: "sidebygger-sider", icon: "files", label: "Sider",      group: "kundedrift" },
+    { id: "workspace",  icon: "briefcase",   label: "Workspace",  group: "kundedrift" },
+    { id: "modular",    icon: "puzzle",      label: "Modular",    group: "kundedrift" },
+    { id: "priser",     icon: "tag",         label: "Priser",     group: "internt" },
+    { id: "kundeanalyse", icon: "zoom-check", label: "Kundeanalyse", group: "internt" },
+    { id: "analyse",    icon: "chart-bar",   label: "Analyse",    group: "kundedrift" },
+    { id: "personvern", icon: "shield-lock", label: "Personvern", group: "kundedrift" },
+    { id: "laring",     icon: "book",        label: "Læring",     group: "internt" },
+    { id: "system",     icon: "settings",    label: "System",     group: "kundedrift" }
   ];
+  var NAV_GROUP_LABEL = { kundedrift: "Kundedrift", internt: "Vibeverk internt" };
 
   // AI Lab er eit utviklingsverktøy, ikkje ein del av den vanlege Console-
   // flata og ikkje det same som Læring. På ikkje-lokal origin returnerer
@@ -532,9 +546,25 @@ window.VwConsole = (function () {
   function shellNavItems() {
     var items = NAV_ITEMS.slice();
     if (_aiLabConfig) {
-      items.splice(items.length - 1, 0, { id: "ai-lab", icon: "flask", label: "AI Lab" });
+      // AI Lab er lokalt-berre og les aldri ein vald kunde -- same "internt"-
+      // gruppe som Priser/Kundeanalyse/Læring.
+      items.push({ id: "ai-lab", icon: "flask", label: "AI Lab", group: "internt" });
     }
     return items;
+  }
+
+  // Grupperer shellNavItems() sitt flate resultat til sidemeny-rendering --
+  // "kundar" står for seg sjølv (ingen overskrift), deretter "kundedrift",
+  // deretter "internt", kvar med si eiga overskrift. Rekkefølgja INNANFOR
+  // kvar gruppe følgjer NAV_ITEMS sin eksisterande rekkefølgje uendra.
+  function shellNavGroups() {
+    var items = shellNavItems();
+    var ungrouped = items.filter(function (n) { return !n.group; });
+    var groupIds = ["kundedrift", "internt"];
+    var groups = groupIds.map(function (gid) {
+      return { id: gid, label: NAV_GROUP_LABEL[gid], items: items.filter(function (n) { return n.group === gid; }) };
+    }).filter(function (g) { return g.items.length; });
+    return { ungrouped: ungrouped, groups: groups };
   }
 
   /* =========================================================================
@@ -870,10 +900,20 @@ window.VwConsole = (function () {
             '</select>' +
           '</div>' +
           '<nav class="cs-nav">' +
-            shellNavItems().map(function (n) {
-              return '<button type="button" class="cs-nav__item" data-cs-nav="' + n.id + '" title="' + C.esc(n.label) + '">' +
-                '<span class="ti ti-' + n.icon + '"></span> <span class="cs-nav__item-label">' + C.esc(n.label) + '</span></button>';
-            }).join("") +
+            (function () {
+              function navBtn(n) {
+                return '<button type="button" class="cs-nav__item" data-cs-nav="' + n.id + '" title="' + C.esc(n.label) + '">' +
+                  '<span class="ti ti-' + n.icon + '"></span> <span class="cs-nav__item-label">' + C.esc(n.label) + '</span></button>';
+              }
+              var g = shellNavGroups();
+              return g.ungrouped.map(navBtn).join("") +
+                g.groups.map(function (grp) {
+                  return '<div class="cs-nav__group">' +
+                    '<div class="cs-nav__group-label">' + C.esc(grp.label) + '</div>' +
+                    grp.items.map(navBtn).join("") +
+                  '</div>';
+                }).join("");
+            })() +
           '</nav>' +
           '<div class="cs-sidebar__foot">' +
             '<button type="button" class="cs-logout-btn"><span class="ti ti-logout"></span> Logg ut</button>' +
@@ -1010,6 +1050,7 @@ window.VwConsole = (function () {
     var col = Object.assign({}, sc.colors  || {});
     var com = Object.assign({}, sc.company || {});
     var fnt = Object.assign({}, sc.fonts   || {});
+    var ftr = Object.assign({}, sc.footer  || {});
 
     // Design-modulen ("sidebygger") gjev no kunden sin EIGEN, direkte
     // skrivetilgang til farge/font (Web-admin sin nye "Design"-fane, same
@@ -1031,6 +1072,8 @@ window.VwConsole = (function () {
         sidebyggerWarning +
         '<fieldset class="admin-group"><legend>Firma</legend>' +
           C.field({ id:"cs-name",    label:"Firmanavn",  value: com.name    || "" }) +
+          C.field({ id:"cs-orgnr",   label:"Org.nr", value: ftr.orgNr || "", placeholder:"f.eks. 123 456 789",
+            help:"Brukast i personvernerklæringa sitt avsnitt om behandlingsansvarleg, og i footer på nettsida. Same felt som kunden sjølv kan redigere i sitt eige adminpanel." }) +
           C.field({ id:"cs-tagline", label:"Tagline",    value: com.tagline || "" }) +
           C.field({ id:"cs-logo",    label:"Logo-URL",   value: com.logoUrl || "", placeholder:"https://…",
             help:"Lim inn ei lenke til ein logo som alt er hosta ein annan stad, ELLER last opp ei fil under." }) +
@@ -1232,6 +1275,12 @@ window.VwConsole = (function () {
           ogImage:         wrap.querySelector("#cs-ogimage").value.trim(),
           favicon:         wrap.querySelector("#cs-favicon").value.trim()
         };
+        // Berre orgNr endra her -- resten av footer (invoiceEmail/invoiceAddress/
+        // extraLines/copyright) er kunden sitt eige felt via lokalt adminpanel,
+        // ikkje synleg i denne Console-fana. sc2 er nyleg henta av getSC() over,
+        // så sc2.footer har alt kunden sine eksisterande verdiar -- her held vi
+        // dei urørte og legg berre inn/overskriv orgNr.
+        sc2.footer = Object.assign({}, sc2.footer || {}, { orgNr: wrap.querySelector("#cs-orgnr").value.trim() });
         sc2.colors = {
           primary:    wrap.querySelector("#cs-primary").value,
           secondary:  wrap.querySelector("#cs-secondary").value,
@@ -4641,11 +4690,19 @@ window.VwConsole = (function () {
      consentPurposes) er reine Console-interne strukturar for redigering/
      historikk/skjematekster.
      ====================================================================== */
+  // "nyhetsbrev" fjerna herifrå 2026-08-12 -- var eit skjematype-felt utan
+  // noko faktisk skjema bak seg (ingen module-newsletter.js finst), synte
+  // difor ingen stad i det publiserte dokumentet (computeRetentionBlock()
+  // ekskluderte det alt eksplisitt). Det EKTE behovet (kunden vil bruke
+  // e-postar samla inn via kontakt/tilbod/booking til marknadsføring)
+  // dekkast av consentPurposes[] i staden -- eit eige, uavhuka samtykke-
+  // formål, sjå hint-teksten i renderPersonvernSamtykker(). Gamal, lagra
+  // sc.privacy.forms.nyhetsbrev-data for tenantar som måtte ha fylt ut noko
+  // her tidlegare vert ikkje sletta, berre ikkje lenger vist/redigert.
   var PRIVACY_FORM_TYPES = [
     { id: "kontakt",    label: "Kontaktskjema" },
     { id: "tilbud",     label: "Tilbudsskjema" },
-    { id: "booking",    label: "Booking" },
-    { id: "nyhetsbrev", label: "Nyhetsbrev" }
+    { id: "booking",    label: "Booking" }
   ];
   var PRIVACY_LEGAL_BASIS_OPTIONS = [
     ["", "Ikke fastsatt"],
@@ -4690,7 +4747,8 @@ window.VwConsole = (function () {
     baseline: "Generelt", contactForm: "Kontaktskjema", quote: "Tilbud",
     booking: "Booking", analytics: "Cookies/analyse", suppliers: "Leverandørar",
     intro: "Innledning", controller: "Behandlingsansvarlig",
-    retention: "Lagringstid", breach: "Avviksvarsling"
+    retention: "Lagringstid", breach: "Avviksvarsling", employees: "Tilsette (Workspace)",
+    chat: "Chat"
   };
 
   // Fase 3 (leverandørregister, 2026-08-06): Vibeverk-heile leverandørfakta
@@ -4713,34 +4771,36 @@ window.VwConsole = (function () {
   // hardkoda `v.id === "plausible"` i to ulike funksjonar, ei lett-å-gløyme
   // kopling om ein ny valfri leverandør nokon gong vert lagt til -- no finst
   // det berre EI sanning, her, per leverandør).
+  // DPA-status endra til "tba" for alle fire 2026-08-12 (brukarvedtak): Vibeverk
+  // AS er enno ikkje stifta som eige rettssubjekt, så INGEN av desse kan ha
+  // ei formelt signert databehandlaravtale endå -- det er ikkje ein feil/eit
+  // gløymt steg, berre venting på eit konkret, kjent administrativt steg.
+  // Brukar signerer sjølv når selskapet er registrert. IKKJE les "tba" som
+  // "ikkje undersøkt" -- dei tidlegare unconfirmed/likely_confirmed-funna
+  // (data-map-vibeverk.md) er framleis gyldige faktaopplysningar, berre
+  // omformulerte i dpaNote til å seie KVA som attstår, ikkje at det er uklart.
   var VIBEVERK_VENDORS = [
     { id: "supabase", name: "Supabase",
       whatItDoes: "Database, autentisering og fillagring — all persondata plattformen lagrer",
       isActive: function () { return true; }, country: "eu", transferMechanism: "none",
-      dpaStatus: "unconfirmed",
-      dpaNote: "Krev aktiv bestilling/signering via Supabase Dashboard — ikkje stadfesta gjort (data-map 2026-07-16)." },
+      dpaStatus: "tba",
+      dpaNote: "Signerast via Supabase Dashboard når Vibeverk AS er stifta og registrert som kontoeigar." },
     { id: "vercel", name: "Vercel",
       whatItDoes: "Hosting og tenant-ruting",
       isActive: function () { return true; }, country: "us", transferMechanism: "scc",
-      dpaStatus: "unconfirmed",
-      dpaNote: "DPA er automatisk kun på Pro/Enterprise-plan; Vibeverk sin konto er på Hobby-planen (data-map 2026-07-16)." },
+      dpaStatus: "tba",
+      dpaNote: "DPA er automatisk inkludert på Pro/Enterprise-plan (dagens konto er på Hobby-planen) -- ordnast saman med oppgradering når Vibeverk AS er stifta." },
     { id: "resend", name: "Resend",
       whatItDoes: "Utsending og mottak av e-post",
       isActive: function () { return true; }, country: "us", transferMechanism: "scc_or_dpf",
-      // "likely_confirmed", IKKJE "confirmed" -- Security Auditor-funn (Fase
-      // 3, LOW): data-map-vibeverk.md seier sjølv berre "Truleg alt i kraft"
-      // (avleia av at Resend ikkje let deg opprette konto utan å akseptere
-      // deira standardvilkår, IKKJE ei eigen, verifisert signering) -- eit
-      // flatt "confirmed" her ville påstått meir stadfesta enn kjelda faktisk
-      // seier, i ei fil som er offentleg lesbar for alle med tilgang til /console/.
-      dpaStatus: "likely_confirmed",
-      dpaNote: "Automatisk innlemma ved kontoopprettinga (godtatt ved å akseptere Resend sine standardvilkår) -- ikkje ei eiga, verifisert signering. Kva overføringsmekanisme (SCC/DPF) som gjeld er ikkje stadfesta (data-map 2026-07-19)." },
+      dpaStatus: "tba",
+      dpaNote: "Standardvilkåra er alt godteke ved kontoopprettinga, men ei formell databehandlaravtale under Vibeverk AS som eige rettssubjekt attstår til selskapet er stifta." },
     { id: "plausible", name: "Plausible Analytics",
       whatItDoes: "Cookiefri trafikkstatistikk",
       isActive: function (an) { return !!(an && (an.plausible || an.plausibleEmbed)); },
       country: "eu", transferMechanism: "none",
-      dpaStatus: "unconfirmed",
-      dpaNote: "Ingen stadfesta avtale, men leverandøren tilbyr standardvilkår." }
+      dpaStatus: "tba",
+      dpaNote: "Leverandøren tilbyr ei standard databehandlaravtale -- signerast under Vibeverk AS når selskapet er stifta." }
   ];
   var VENDOR_COUNTRY_LABEL = { eu: "EU/EØS", us: "USA" };
   var VENDOR_TRANSFER_LABEL = {
@@ -4748,7 +4808,7 @@ window.VwConsole = (function () {
     scc: "EUs standardavtaler (SCC)",
     scc_or_dpf: "SCC og/eller EU–US Data Privacy Framework (ikkje stadfesta kva)"
   };
-  var VENDOR_DPA_LABEL = { confirmed: "Stadfesta", likely_confirmed: "Truleg alt i kraft", unconfirmed: "Ikkje stadfesta" };
+  var VENDOR_DPA_LABEL = { confirmed: "Stadfesta", likely_confirmed: "Truleg alt i kraft", unconfirmed: "Ikkje stadfesta", tba: "TBA — Vibeverk AS ikkje stifta enno" };
   // Kundevendt (offentleg publisert) ordlyd for overføringsgrunnlag --
   // MEDVITE ULIK VENDOR_TRANSFER_LABEL over, som er skriven for OPERATØREN
   // (Leverandørar-fana) og difor hedgar ærleg ("ikkje stadfesta kva"). Den
@@ -4927,7 +4987,12 @@ window.VwConsole = (function () {
     // Fase "Standardforslag" (2026-08-06): faste juridiske standardavsnitt,
     // ikkje styrt av noko features.*-flagg -- same "alltid aktiv"-grunngjeving
     // som baseline/suppliers over.
-    if (moduleId === "intro" || moduleId === "controller" || moduleId === "retention" || moduleId === "breach") return true;
+    if (moduleId === "intro" || moduleId === "controller" || moduleId === "retention" || moduleId === "breach" || moduleId === "employees") return true;
+    // module-chat.js sin eigen standard er "på" med mindre eksplisitt skrudd
+    // av (same !== false-mønster som contactForm over) -- IKKJE eit "alltid
+    // aktiv"-modul slik baseline/suppliers er, sidan features.chat faktisk
+    // kan setjast til false.
+    if (moduleId === "chat") return ft.chat !== false;
     return false; // ukjend/fjerna modul-id -- tving ikkje inkludering
   }
 
@@ -4999,9 +5064,6 @@ window.VwConsole = (function () {
 
   function computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) {
     var forms = sc.privacy.forms || {};
-    // "nyhetsbrev" MEDVITE utelaten -- ingen features.*-flagg bak det i det
-    // heile (stadfesta: ingen module-newsletter.js, ingen features.newsletter),
-    // risiko for å skildre eit skjema som ikkje finst for denne kunden.
     var activeIds = [];
     if (hasContactForm) activeIds.push("kontakt");
     if (hasTilbud)       activeIds.push("tilbud");
@@ -5035,6 +5097,7 @@ window.VwConsole = (function () {
     var hasContactForm = ft.contactForm !== false;
     var hasTilbud       = !!ft.quote;
     var hasBooking       = !!ft.booking;
+    var hasChat          = ft.chat !== false;
     var hasAnalytics     = !!(an && (an.plausible || an.plausibleEmbed));
     var hasSidetelling   = !hasAnalytics && ft.sidetelling === true;
     // Konsolekrasj (2026-08-10, funne av brukar via reell testing på Vibeverk
@@ -5051,18 +5114,32 @@ window.VwConsole = (function () {
     var company = sc.company || {};
     var contact = sc.contact || {};
     var contactInfo = [contact.email, contact.phone, contact.address].filter(Boolean);
+    var orgNr = ((sc.footer || {}).orgNr || "").trim();
 
     var blocks = [];
     blocks.push({ id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Om denne personvernerklæringen\nDenne personvernerklæringen forteller deg hvilke personopplysninger vi samler inn gjennom denne nettsiden, hva vi bruker dem til, hvor lenge vi lagrer dem, og hvilke rettigheter du har. Den gjelder for alle som besøker nettsiden eller tar kontakt med oss via skjemaene her."
+      "# Om denne personvernerklæringen\nDenne personvernerklæringen forteller deg hvilke personopplysninger vi samler inn, hva vi bruker dem til, hvor lenge vi lagrer dem, og hvilke rettigheter du har. Den gjelder for alle som besøker nettsiden, tar kontakt med oss via skjemaene her, eller er ansatt og bruker våre interne arbeidsverktøy (Workspace)."
     ) });
     blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + " er behandlingsansvarlig for personopplysningene som samles inn gjennom denne nettsiden. Det betyr at det er " + (company.name || "vi") + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
+      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? " (org.nr " + orgNr + ")" : "") + " er behandlingsansvarlig for personopplysningene som samles inn gjennom denne nettsiden. Det betyr at det er " + (company.name || "vi") + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
       (contactInfo.length ? " Har du spørsmål om personvern, kan du kontakte oss på " + contactInfo.join(", ") + "." : "")
     ) });
     blocks.push({ id: "baseline", source: "module", moduleId: "baseline", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Hvor lagres opplysningene?\nNettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
+      "# Hvor lagres opplysningene?\nNettsiden driftes hos Vercel. Innsendte opplysninger lagres i en database hos Supabase, med servere i Irland (EU).\n\n" +
       "# Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold. Du har også rett til å klage til Datatilsynet dersom du mener vi behandler personopplysningene dine i strid med regelverket. Du finner informasjon om hvordan du klager på datatilsynet.no."
+    ) });
+    // Vedtak 2026-08-06 (sak 6, "byggjast med standardformulering") -- bygd
+    // 2026-08-12, ein månad forseinka (funne av begge agentane i den
+    // uavhengige revisjonen, ikkje av brukaren fyrst). Alltid inkludert,
+    // same "alltid aktiv"-grunngjeving som baseline/suppliers/intro/
+    // controller/retention/breach -- Workspace-brukarkontoar finst
+    // strukturelt for kvar einaste tenant (Supabase Auth), ikkje styrt av
+    // noko features.*-flagg. MERK: teksten finst no i det publiserte
+    // dokumentet, men ingen stad i Workspace lenkjer faktisk hit enno --
+    // reell oppfølging, ikkje del av denne minimale fiksen.
+    blocks.push({ id: "employees", source: "module", moduleId: "employees", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Personopplysninger om ansatte (Workspace)\nAnsatte som bruker vårt interne arbeidsverktøy (Workspace) får en brukerkonto med navn, e-postadresse og rolle. Opplysningene behandles for å administrere arbeidsforholdet og gi nødvendig tilgang til de interne verktøyene, med grunnlag i arbeidsforholdet og vår berettigede interesse i å drifte virksomheten. Kontoen og tilhørende opplysninger fjernes normalt når arbeidsforholdet opphører.\n" +
+      "# Brukerstøtte\nVed behov for direkte brukerstøtte kan vår leverandør av nettsideplattformen generere en tidsavgrenset innloggingslenke for å bistå en administrator i Workspace, uten å få kjennskap til passordet. Dette skjer kun etter avtale, lenken utløper raskt, og hver forespørsel logges."
     ) });
     if (hasContactForm) blocks.push({ id: "mod-kontakt", source: "module", moduleId: "contactForm", included: true, edited: false, body: privacyTextToRichHtml(
       "# Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, og deles ikke med tredjeparter for markedsføringsformål."
@@ -5079,6 +5156,9 @@ window.VwConsole = (function () {
       : hasSidetelling
       ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk, hvilke sider besøkende kommer fra/går til, og hvilken kampanje en lenke er merket med hvis du selv har lagt til dette i lenken, ofte kalt UTM). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
+    if (hasChat) blocks.push({ id: "mod-chat", source: "module", moduleId: "chat", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Chat\nNår du bruker chat-funksjonen på nettsiden, lagrer vi det du skriver, samt navn og e-postadresse dersom du oppgir dette. Vi lagrer også tekniske opplysninger som hvilken side du chattet fra, hvor du kom fra, og grunnleggende informasjon om nettleseren din. Opplysningene brukes til å besvare henvendelsen din."
+    ) });
     blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: privacyTextToRichHtml("# Bruker vi cookies?\n" + cookieText) });
     blocks.push({ id: "mod-suppliers", source: "module", moduleId: "suppliers", included: true, edited: false, body: computeSupplierBlock(sc, an) });
     blocks.push({ id: "breach", source: "module", moduleId: "breach", included: true, edited: false, body: privacyTextToRichHtml(
@@ -5771,6 +5851,9 @@ window.VwConsole = (function () {
     var hasAnalytics = !!(an.plausible || an.plausibleEmbed);
     var vendorRowsHtml = VIBEVERK_VENDORS.map(function (v) {
       if (!v.isActive(an)) return "";
+      // "tba" fell trygt inn i same nøytrale, grå fallback-klasse som
+      // "unconfirmed" tidlegare gjorde -- ikkje raud/åtvarande styling for
+      // noko som berre ventar på eit kjent, planlagt steg (selskapsregistrering).
       var dpaPillClass = v.dpaStatus === "confirmed" ? "kd-pill--active" : v.dpaStatus === "likely_confirmed" ? "kd-pill--provisioning" : "kd-pill--archived";
       return '<div class="admin-group" style="margin-bottom:.6rem">' +
         '<div style="font-weight:600">' + C.esc(v.name) + ' <span class="kd-pill ' + dpaPillClass + '">DPA: ' + C.esc(VENDOR_DPA_LABEL[v.dpaStatus]) + '</span></div>' +

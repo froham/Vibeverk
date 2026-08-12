@@ -5474,7 +5474,9 @@ window.App = (function () {
 
     return "Når du sender oss " + collectPhrase + ", lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen eller bestillingen din. Opplysningene brukes utelukkende til å besvare henvendelsen din eller behandle bestillingen, og deles ikke med tredjeparter for markedsføringsformål.\n\n" +
       "Hvor lagres opplysningene?\n" +
-      "Nettsiden er bygget som en statisk side og driftes via GitHub Pages. Innsendte opplysninger lagres i en database hos Supabase, med servere i EU.\n\n" +
+      "Nettsiden driftes hos Vercel. Innsendte opplysninger lagres i en database hos Supabase, med servere i Irland (EU).\n\n" +
+      "Personopplysninger om ansatte\n" +
+      "Ansatte som bruker vårt interne arbeidsverktøy (Workspace) får en brukerkonto med navn, e-postadresse og rolle. Opplysningene behandles for å administrere arbeidsforholdet og gi nødvendig tilgang til de interne verktøyene, med grunnlag i arbeidsforholdet og vår berettigede interesse i å drifte virksomheten. Kontoen og tilhørende opplysninger fjernes normalt når arbeidsforholdet opphører.\n\n" +
       "Bruker vi cookies?\n" + cookieText + "\n\n" +
       "Hvor lenge lagres opplysningene?\n" +
       "Vi oppbevarer " + storedPhrase + " så lenge det er nødvendig for å følge opp saken din. Du kan når som helst be om at opplysningene dine slettes.\n\n" +

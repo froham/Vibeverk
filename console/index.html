@@ -366,6 +366,15 @@
     .cs-nav__item:hover { background: rgba(255,255,255,.05); color: #e2e8f0; }
     .cs-nav__item.is-active { background: rgba(96,165,250,.1); color: #60a5fa; border-left-color: #2563eb; }
     .cs-nav__item .ti { font-size: 1.1rem; }
+    /* Kundedrift/Vibeverk-internt-gruppering (2026-08-12) -- reint visuelt,
+       .cs-nav__item held fram uendra, berre pakka inn i éin ekstra div per
+       gruppe. display:flex/column vidarefører .cs-nav sin eigen stabling. */
+    .cs-nav__group { display: flex; flex-direction: column; }
+    .cs-nav__group-label {
+      padding: .9rem 1.2rem .3rem; font-size: .7rem; font-weight: 600;
+      letter-spacing: .04em; text-transform: uppercase; color: #64748b;
+    }
+    .cs-sidebar.is-collapsed .cs-nav__group-label { display: none; }
 
     .cs-sidebar__foot {
       padding: .8rem 1.2rem;
@@ -1058,12 +1067,12 @@
        her -- sjekk data.jsdelivr.com sitt resolved-endepunkt før oppgradering,
        aldri ein major-berre-spesifikator. -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="../config.js?v=14"></script>
+  <script src="../config.js?v=15"></script>
   <script src="../components.js?v=26"></script>
-  <script src="../core.js?v=91"></script>
+  <script src="../core.js?v=92"></script>
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=252"></script>
+  <script src="console-core.js?v=254"></script>
 </body>
 </html>

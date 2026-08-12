@@ -30,6 +30,35 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.137.0 — 2026-08-12
+
+**Personvern «Bolk 1» + Console «Bolk 2» — resten av same dags Arkitekt+Personvern-revisjon (`docs/compliance/personvern-rammeverk-status-2026-08-12.md`), på brukar sitt eksplisitte ønske om å køyre begge bolkane direkte.**
+
+Bolk 1 (personvern-tekst, Vibeverk sitt eige leveranseansvar):
+- **Org.nr i behandlingsansvarlig-blokka.** Nytt felt i Console → Web → «Firma» (`sc.footer.orgNr`, delt med kunden sitt eige lokale adminpanel — ikkje eit duplikatfelt). Vises no som "[Firmanavn] (org.nr X)" i staden for berre "[Firmanavn]"/"Vi".
+- **Personvern-lenke reachability.** Oppdaga undervegs at det offentlege nettstedet FAKTISK alt har ein footer-lenke + read-only popup (`C.footer()`, `data-terms-open="footer-privacy"`) — tidlegare feilaktig rapportert som manglande i revisjonen. Det som faktisk mangla var Workspace: ny «Personvern»-lenke i sidemenyfoten (`workspace-core.js`, `App.ui.bindTerms()`), same delte, read-only popup-mønster, synleg berre når `CFG.privacy.text` faktisk er fylt ut.
+- **Intro-setninga** i det publiserte dokumentet nemner no eksplisitt at det gjeld tilsette i Workspace, ikkje berre nettsidebesøkjande.
+- **Ny «Chat»-blokk** i `computeTenantPrivacyBlocks()`, betinga på `features.chat !== false` (same mønster som kontaktskjema — retta undervegs frå eit feilaktig "chat har ingen feature-flagg"-funn i revisjonen). Chat-widgeten sin eigen samtykke-tekst (`module-chat.js`) bytt frå ein frikopla, nynorsk bokstav ("Eg godtek...") til bokmål-teksten som resten av plattforma bruker, og opnar no den delte popupen (footer/Workspace) i staden for å krevje ein manuelt innlima `termsUrl` — fell trygt attende til rein tekst i standalone-oppsett utan nokon slik popup i DOM-et.
+- **Fjerna det ubrukte `nyhetsbrev`-feltet** frå `PRIVACY_FORM_TYPES` (synte ingen stad i publisert tekst, ingen `module-newsletter.js` finst). Det reelle behovet (samtykke til å bruke innsamla e-postar til marknadsføring) dekkast av det eksisterande `consentPurposes[]`-systemet (Fase 2, 2026-08-06), ikkje av dette feltet.
+- **Ny «Brukerstøtte»-tekst** i tilsett-blokka, om den tidsavgrensa support-innloggingslenkja (`generate_support_access`) — kjend, tidlegare udekka hol frå ROADMAP.md.
+- **Vendor-DPA-status endra frå "unconfirmed"/"likely_confirmed" til ein ærleg "tba"** for alle fire leverandørar (Supabase/Vercel/Resend/Plausible), med forklarande note om at Vibeverk AS enno ikkje er stifta — brukarvedtak, ikkje eit funne avvik. Berre operatørvisinga i Leverandørar-fana er endra; kundeteksten (som alt aldri viste den interne statusen) er urørt.
+
+Bolk 2 (Console-navigasjon):
+- **Sidemenyen grupperer no eksplisitt «Kundedrift» vs. «Vibeverk internt».** Verifisert i kode (ikkje anteke) at Priser/Kundeanalyse/Læring/AI Lab alt var tenant-uavhengige i praksis (usynt `sc`-parameter/eige API), berre ikkje synleggjort som sådan — reint ei rendering-/CSS-gruppering (`NAV_ITEMS` sitt nye `group`-felt, `shellNavGroups()`), ingen `render*`-signaturar eller `data-cs-nav`-attributt endra. «System» er medvite verande i Kundedrift trass i det generiske namnet (viser faktisk den valde kunden sitt Supabase-prosjekt). «Kundar» står framleis for seg sjølv, utan gruppe.
+- Kjørte dei tre Console-testfilene som IKKJE er i CI manuelt (`test-ai-lab-console.js`, `test-customer-analysis-console.js`, `test-page-builder-console.js`) — fann og retta samtidig ein kvar sin **eksisterande, ikkje-relatert** feil (hardkoda `console-core.js?v=252`-sjekk, uendra sidan før dagens tidlegare 0.136.1-cache-bump til 253) i dei to sistnemnde.
+- Behandlingsprotokoll (Art. 30, kun Vibeverk AS) og leverandør-DPA-opplasting er planlagt (5 fasar) men **ikkje starta** — eige, seinare steg per brukar sitt eksplisitte scope-vedtak.
+
+Cache-bust: `core.js` uendra sidan 0.136.1 (v92), `config.js` 15→16 (offentleg sida/admin) og 14→15 (Workspace/Console), `module-chat.js` 22→23, `workspace-core.js` 28→29, `console-core.js` 253→254.
+
+## 0.136.1 — 2026-08-12
+
+**Personvern: to av funna frå den same dagens Arkitekt+Personvern/Compliance-revisjon (`docs/compliance/personvern-rammeverk-status-2026-08-12.md`) retta med det same, på brukar sitt eksplisitte ønske.**
+
+- **Utdatert lagringsstad-påstand retta.** Både `computeDefaultPrivacyText()` (`core.js`) og `computeTenantPrivacyBlocks()`/`baseline`-blokka (`console/console-core.js`) sa framleis "Nettsiden er bygget som en statisk side og driftes via GitHub Pages" — feil sidan Vercel+middleware-overgangen (ADR-0007). Retta til "Nettsiden driftes hos Vercel." "Med servere i EU"-påstanden for Supabase vart **verifisert, ikkje mjuka opp** — `docs/compliance/data-map-vibeverk.md` sin leverandørtabell stadfestar `eu-west-1` (Irland) for ALLE prosjekt, verifisert direkte 2026-07-16 via `supabase projects list`; teksten seier no eksplisitt "Irland (EU)".
+- **Ny standardtekst for tilsettdata i Workspace** — vedteke i beslutningsmøtet 2026-08-06 (sak 6, "byggjast med standardformulering, låg tvil"), men aldri faktisk skrive før begge agentane uavhengig fanga opp gapet i dagens revisjon. Ny alltid-inkludert blokk («Tilsette (Workspace)», `moduleId: "employees"`) i begge generatorane, same "alltid aktiv"-status som baseline/suppliers/breach (`privacyModuleActive()` utvida). Standard arbeidsforhold/berettiget-interesse-grunngjeving, ingen ny konfig, ingen migrasjon.
+- **Kjend, medvite utsett følgje**: alle publiserte personvernversjonar vil no vise Fase 5 sin "Bør sjekkast"-drift-pille (nytt modul-avsnitt som ikkje fanst då dei vart publiserte) — same forventa, reint informative åtferd som Standardforslag-utvidinga i 0.105.0. **Ny, ikkje del av denne fiksen**: ingen stad i Workspace lenkjer faktisk til den publiserte personvernteksten enno, så den nye tilsett-blokka finst i dokumentet, men er ikkje reelt oppdaga av ein tilsett utan at nokon fysisk deler lenkja/dokumentet — flagga som eige oppfølgingspunkt, ikkje løyst her.
+- Cache-bust: `core.js` 91→92 (alle fire HTML-flater), `console-core.js` 252→253.
+
 ## 0.136.0 — 2026-08-12
 
 **Sidebygger: valfri biletform (avrunda/kvadratisk/sirkel) på alle stadar bilete kan leggjast inn, unntatt hero.** Brukerønske: portrettbilete av personar (tilsette, referansar) kan sjå finare ut i sirkelform enn standard avrunda-hjørne-handsaminga.

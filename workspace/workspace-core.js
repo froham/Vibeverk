@@ -273,6 +273,27 @@ window.Intranet = (function () {
                      || (CFG.company && CFG.company.name)
                      || "Arbeidsområde";
 
+    // Personvern-lenke i sidemenyen (2026-08-12) -- før dette fanst det INGEN
+    // veg for ein tilsett til å faktisk lese personvernerklæringa (som no òg
+    // dekker Workspace-tilsette sjølv, sjå computeTenantPrivacyBlocks() sin
+    // "employees"-blokk) utan å opne det offentlege nettstedets footer.
+    // Same read-only modal-mønster som C.footer() alt bruker der (INGEN
+    // avhukingsboks -- berre visning), attbrukt her via bindTerms() (core.js).
+    var privCfg = CFG.privacy || {};
+    var hasPrivacyText = !!(privCfg.text || "");
+    var privacyLinkHtml = hasPrivacyText
+      ? '<button type="button" class="terms-link" style="background:none;border:0;padding:0;font:inherit;cursor:pointer;color:var(--color-muted);text-decoration:underline;font-size:.75rem" data-terms-open="ws-privacy">Personvern</button>'
+      : "";
+    var privacyModalHtml = hasPrivacyText
+      ? '<div class="terms-modal-back" data-terms-modal="ws-privacy" style="display:none">' +
+          '<div class="terms-modal">' +
+            '<h3>' + C.esc(privCfg.heading || "Personvern og databehandling") + '</h3>' +
+            '<div class="terms-modal-text">' + C.sanitizeRichHtml(privCfg.text || "") + '</div>' +
+            C.button({ label: "Lukk", variant: "ghost", class: "terms-modal-close", attrs: 'data-terms-close="ws-privacy"' }) +
+          '</div>' +
+        '</div>'
+      : "";
+
     root.innerHTML =
       '<aside class="i-sidebar" id="intranet-sidebar">' +
         '<button class="i-sidebar__collapse-btn" id="intranet-sidebar-collapse" title="Minimer sidemeny" aria-label="Minimer sidemeny">' +
@@ -288,8 +309,10 @@ window.Intranet = (function () {
             '<span style="font-size:.78rem;color:var(--color-muted)">' + C.esc(ctx.role) + '</span>' +
             '<button id="intranet-logout" style="background:none;border:0;cursor:pointer;font-size:.75rem;color:var(--color-muted);padding:.2rem .4rem;border-radius:4px" title="Logg ut">Logg ut</button>' +
           '</div>' +
+          (privacyLinkHtml ? '<div style="margin-top:.4rem">' + privacyLinkHtml + '</div>' : "") +
         '</div>' +
       '</aside>' +
+      privacyModalHtml +
       '<div class="i-sidebar-overlay" id="intranet-overlay"></div>' +
       '<div class="i-body">' +
         '<div class="i-topbar">' +
@@ -303,6 +326,7 @@ window.Intranet = (function () {
       '</div>';
 
     renderNav();
+    if (hasPrivacyText) App.ui.bindTerms(root, "ws-privacy");
 
     // Hamburgermeny (mobil)
     var sidebar  = document.getElementById("intranet-sidebar");
