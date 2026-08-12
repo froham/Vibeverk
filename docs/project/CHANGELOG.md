@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.142.0 — 2026-08-12
+
+**Compliance: rik-tekst-editor + konsekvent fet skrift på overskrifter for dei tre frie dokumenta.** Brukarønske same dag som Bolk 7/8/9/11 (0.141.0).
+
+- Kundeavtale (DPA)/Sikkerheitspolicy/Rettar-rutine bruker no `C.richTextField()` (verktøylinje: fet/kursiv/understrek/lister/lenke/farge) i staden for ein vanleg `<textarea>` — same infrastruktur Personvern-dokumentet alt brukar (`App.ui.bindRichTextFields/readRichTextField/setRichTextField`).
+- `COMPLIANCE_DOCUMENT_STANDARD_SUGGESTIONS` sine overskrifter ("1. Partar", "Formål" osv.) brukar no "# "-prefiks-konvensjonen som allereie fanst i `privacyTextToRichHtml()` (Personvern) -- attbrukt direkte i staden for å byggje ein duplikatfunksjon, gjev automatisk konsekvent FET skrift på kvar overskrift, uansett dokument.
+- Behandlingsprotokollen sine 8×7 korte enkeltfelt (formål/kategori/osv.) er MEDVITE urørt -- vanlege tekstboksar, sidan dei er enkeltverdiar utan interne overskrifter, ikkje samanhengande dokument.
+- Forsvar mot allereie-lagra rein-tekst-innhald (frå før denne omlegginga): konverterast via `App.ui.textToRichHtml()` ved fyrste opning, i staden for å vise seg som éin uformatert, samanpressa tekstblokk.
+- Ny, tru JS-kopi av rik-tekst-infrastrukturen i `test-compliance-console.js` (som ikkje lastar det ekte `core.js`), pluss ein ny påstand som stadfestar at overskrifter faktisk kjem ut som `<strong>`.
+- **Faktisk databaseoppdatering**: dei tre dokumenta sitt innhald i `compliance_document` er regenerert med rette overskrifter (var lagra som rein tekst frå Bolk 7/8/9/11) -- ingen skjemaendring, berre nytt innhald i det eksisterande `content`-feltet.
+
+Cache-bust: `console-core.js` 259→260.
+
 ## 0.141.0 — 2026-08-12
 
 **Personvern «Bolk 7/8/9/11»: kundeavtale (DPA), sikkerheitspolicy, rettar-rutine + «stempling» av reelt vurdert innhald.** Brukarønske same dag som Bolk 6 (0.140.0), etter ein strukturgjennomgang mot ei generell compliance-oversikt frå ChatGPT — det eine vesentlege hòlet oversikta avdekte var ein manglande databehandleravtale FRÅ Vibeverk TIL kvar kunde (ikkje det same som `vendor_registry`, som dekker retninga leverandør → Vibeverk).

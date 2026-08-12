@@ -136,5 +136,5 @@ test("operatøren kan velge Sonnet i stedet for standardmodellen Haiku før en k
 test("Console-CSS har en eksplisitt mobiltilpasning for Kundeanalyse", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
   assert.match(html, /@media\(max-width:700px\).*\.ka-form__row/s);
-  assert.match(html, /console-core\.js\?v=259/);
+  assert.match(html, /console-core\.js\?v=260/);
 });

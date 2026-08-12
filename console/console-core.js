@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.141.0";
+  var VIBEVERK_VERSION = "0.142.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -7740,43 +7740,47 @@ window.VwConsole = (function () {
   // ærleg om faktisk status (t.d. MFA IKKJE handheva i dag) i staden for å
   // overdrive kva som faktisk er på plass -- same "aldri påstå meir enn vi
   // veit"-prinsipp som resten av Standardforslag-teksten i denne fila.
+  // "# "-prefiks-konvensjon (brukarønske 2026-08-12: "konsekvent fet skrift
+  // på overskrifter") -- attbruker EKSAKT same konvensjon (og funksjon,
+  // privacyTextToRichHtml() under) som Personvern-dokumentet sine blokker
+  // alt brukar, i staden for å byggje ein duplikat konverteringsfunksjon.
   var COMPLIANCE_DOCUMENT_STANDARD_SUGGESTIONS = {
     kundeavtale:
-      "1. Partar\nDenne databehandleravtalen («Avtalen») er inngått mellom kunden («Behandlingsansvarleg») og Vibeverk AS («Databehandlar»), og gjeld behandling av personopplysningar Databehandlar utfører på vegner av Behandlingsansvarleg gjennom Vibeverk-plattformen (nettside, Web-admin og Workspace).\n\n" +
-      "2. Formål og varigheit\nAvtalen skal sikre at behandling av personopplysningar skjer i tråd med GDPR/personopplysningslova. Avtalen gjeld så lenge Databehandlar behandlar personopplysningar på vegner av Behandlingsansvarleg, og opphøyrer automatisk ved avslutning av kundeforholdet.\n\n" +
-      "3. Art og formål med behandlinga\nDatabehandlar behandlar personopplysningar for å drifte og vedlikehalde den avtalte løysinga (nettside/Web-admin/Workspace), inkludert lagring, sikkerheitskopiering og teknisk drift. Kategoriar av registrerte: besøkjande på Behandlingsansvarleg sin nettside, kundekontaktar registrert i CRM, og eventuelt tilsette hos Behandlingsansvarleg som brukar Workspace. Kategoriar av opplysningar: namn, e-postadresse, telefonnummer, meldingsinnhald og anna informasjon Behandlingsansvarleg eller dei registrerte sjølv legg inn.\n\n" +
-      "4. Instruksar frå Behandlingsansvarleg\nDatabehandlar skal berre behandle personopplysningar etter dokumenterte instruksar frå Behandlingsansvarleg, med mindre anna følgjer av lovpålagt plikt. Denne Avtalen, saman med den avtalte tenestebeskrivinga, utgjer slike instruksar.\n\n" +
-      "5. Konfidensialitet\nPersonar med tilgang til personopplysningane skal vere underlagt teieplikt, anten avtalefesta eller lovheimla.\n\n" +
-      "6. Tryggingstiltak\nDatabehandlar skal implementere eigna tekniske og organisatoriske tiltak for å sikre eit tryggingsnivå som svarer til risikoen, jf. GDPR art. 32 -- sjå Databehandlar sin eigen Sikkerheitspolicy for konkrete tiltak.\n\n" +
-      "7. Bruk av underleverandørar\nDatabehandlar brukar Supabase (database/autentisering/lagring), Vercel (hosting) og Resend (e-post) som underleverandørar, og eventuelt Plausible (analyse) dersom aktivert. Sjå Databehandlar sitt leverandørregister for oppdatert oversikt. Behandlingsansvarleg vert varsla ved vesentlege endringar i underleverandørar.\n\n" +
-      "8. Overføring til tredjeland\nEnkelte underleverandørar (Vercel, Resend) er etablerte i USA. Overføring skjer basert på EUs standardavtaler (SCC) og/eller tilsvarande godkjende overføringsmekanismar, sjå leverandørregisteret for detaljar per leverandør.\n\n" +
-      "9. Bistand til Behandlingsansvarleg\nDatabehandlar skal, så langt det er mogleg, bistå Behandlingsansvarleg med å svare på førespurnadar frå registrerte (innsyn, retting, sletting m.m.) og med eventuelle personvernkonsekvensvurderingar.\n\n" +
-      "10. Sletting/retur ved avtaleslutt\nVed avslutning av kundeforholdet skal personopplysningane slettast eller returnerast til Behandlingsansvarleg, etter Behandlingsansvarleg sitt val, med mindre lovpålagt lagringsplikt gjeld.\n\n" +
-      "11. Revisjon\nBehandlingsansvarleg kan be om dokumentasjon som stadfestar at Databehandlar oppfyller sine plikter etter denne Avtalen.\n\n" +
-      "12. Ansvar\nPartane sitt ansvar følgjer av GDPR art. 82 og gjeldande rett.\n\n" +
-      "13. Ikraftsetjing\nDenne Avtalen trer i kraft ved oppstart av kundeforholdet.",
+      "# 1. Partar\nDenne databehandleravtalen («Avtalen») er inngått mellom kunden («Behandlingsansvarleg») og Vibeverk AS («Databehandlar»), og gjeld behandling av personopplysningar Databehandlar utfører på vegner av Behandlingsansvarleg gjennom Vibeverk-plattformen (nettside, Web-admin og Workspace).\n\n" +
+      "# 2. Formål og varigheit\nAvtalen skal sikre at behandling av personopplysningar skjer i tråd med GDPR/personopplysningslova. Avtalen gjeld så lenge Databehandlar behandlar personopplysningar på vegner av Behandlingsansvarleg, og opphøyrer automatisk ved avslutning av kundeforholdet.\n\n" +
+      "# 3. Art og formål med behandlinga\nDatabehandlar behandlar personopplysningar for å drifte og vedlikehalde den avtalte løysinga (nettside/Web-admin/Workspace), inkludert lagring, sikkerheitskopiering og teknisk drift. Kategoriar av registrerte: besøkjande på Behandlingsansvarleg sin nettside, kundekontaktar registrert i CRM, og eventuelt tilsette hos Behandlingsansvarleg som brukar Workspace. Kategoriar av opplysningar: namn, e-postadresse, telefonnummer, meldingsinnhald og anna informasjon Behandlingsansvarleg eller dei registrerte sjølv legg inn.\n\n" +
+      "# 4. Instruksar frå Behandlingsansvarleg\nDatabehandlar skal berre behandle personopplysningar etter dokumenterte instruksar frå Behandlingsansvarleg, med mindre anna følgjer av lovpålagt plikt. Denne Avtalen, saman med den avtalte tenestebeskrivinga, utgjer slike instruksar.\n\n" +
+      "# 5. Konfidensialitet\nPersonar med tilgang til personopplysningane skal vere underlagt teieplikt, anten avtalefesta eller lovheimla.\n\n" +
+      "# 6. Tryggingstiltak\nDatabehandlar skal implementere eigna tekniske og organisatoriske tiltak for å sikre eit tryggingsnivå som svarer til risikoen, jf. GDPR art. 32 -- sjå Databehandlar sin eigen Sikkerheitspolicy for konkrete tiltak.\n\n" +
+      "# 7. Bruk av underleverandørar\nDatabehandlar brukar Supabase (database/autentisering/lagring), Vercel (hosting) og Resend (e-post) som underleverandørar, og eventuelt Plausible (analyse) dersom aktivert. Sjå Databehandlar sitt leverandørregister for oppdatert oversikt. Behandlingsansvarleg vert varsla ved vesentlege endringar i underleverandørar.\n\n" +
+      "# 8. Overføring til tredjeland\nEnkelte underleverandørar (Vercel, Resend) er etablerte i USA. Overføring skjer basert på EUs standardavtaler (SCC) og/eller tilsvarande godkjende overføringsmekanismar, sjå leverandørregisteret for detaljar per leverandør.\n\n" +
+      "# 9. Bistand til Behandlingsansvarleg\nDatabehandlar skal, så langt det er mogleg, bistå Behandlingsansvarleg med å svare på førespurnadar frå registrerte (innsyn, retting, sletting m.m.) og med eventuelle personvernkonsekvensvurderingar.\n\n" +
+      "# 10. Sletting/retur ved avtaleslutt\nVed avslutning av kundeforholdet skal personopplysningane slettast eller returnerast til Behandlingsansvarleg, etter Behandlingsansvarleg sitt val, med mindre lovpålagt lagringsplikt gjeld.\n\n" +
+      "# 11. Revisjon\nBehandlingsansvarleg kan be om dokumentasjon som stadfestar at Databehandlar oppfyller sine plikter etter denne Avtalen.\n\n" +
+      "# 12. Ansvar\nPartane sitt ansvar følgjer av GDPR art. 82 og gjeldande rett.\n\n" +
+      "# 13. Ikraftsetjing\nDenne Avtalen trer i kraft ved oppstart av kundeforholdet.",
     sikkerheitspolicy:
-      "Formål\nDenne policyen skildrar dei tekniske og organisatoriske tiltaka Vibeverk AS har på plass for å sikre personopplysningar som vert behandla gjennom plattformen.\n\n" +
-      "Tilgangsstyring\nTilgang til kundedata og internverktøy er avgrensa etter tenstleg behov. Console (operatørverktøyet) krev aktiv operatørstatus og rollesjekk (operatør/superadmin) for kvar handling. Workspace brukar rollestyrt tilgang (admin/editor/member). Databasetilgang er RLS-styrt (Row Level Security) i Supabase -- kvar handling er eksplisitt policy-gata, ikkje standard-open.\n\n" +
-      "Innlogging\nInnlogging skjer via Supabase Auth (Console: eingongskode/OTP på e-post). MFA er IKKJE eksplisitt handheva i dag utover dette -- eit reelt forbetringspunkt, ikkje noko som er på plass enno.\n\n" +
-      "Kryptert kommunikasjon\nAll trafikk går over HTTPS/TLS. Ingen personopplysningar vert sende ukryptert.\n\n" +
-      "Oppdateringar og avhengigheiter\nEksterne biblioteka (CDN-avhengigheiter) er versjonspinna eksplisitt -- oppgraderingar er ei medviten handling, aldri automatisk, og loggast i endringsloggen.\n\n" +
-      "Sikkerheitskopiar\nBackup/gjenoppretting finst som funksjon i plattforma. Sikkerheitskopiar (t.d. «Sikkerhetskopi»-eksporten) inneheld råe personopplysningar og må handterast deretter av den som lastar dei ned.\n\n" +
-      "Logging\nPrivilegerte handlingar i kontrollplanet (t.d. kundeadministrasjon) vert auditerte i ein eigen logg (broker_audit_log) med kven/kva/når.\n\n" +
-      "Av- og påmønstring\nNår ein tilsett hos Vibeverk eller ein kunde sluttar, kan tilgangen fjernast direkte gjennom brukaradministrasjonen (Workspace/Console). Rutine for å faktisk GJENNOMFØRE dette ved kvar avslutning ligg hos den ansvarlege operatøren -- ikkje automatisert i dag.\n\n" +
-      "Sikker utvikling og testing\nTestsuiter brukar mocka data, aldri reelle kundeopplysningar. Endringar testast mot eit separat staging-miljø før dei når produksjon.\n\n" +
-      "Cookies\nPlattforma er medvite bygd cookiefri der det er mogleg (Plausible-analyse og den interne sidetellinga brukar begge ingen cookies) -- eit medvite arkitekturval som gjer at dei fleste kundar ikkje treng cookie-samtykkebanner i det heile, ikkje berre eit tilfeldig fråvær.",
+      "# Formål\nDenne policyen skildrar dei tekniske og organisatoriske tiltaka Vibeverk AS har på plass for å sikre personopplysningar som vert behandla gjennom plattformen.\n\n" +
+      "# Tilgangsstyring\nTilgang til kundedata og internverktøy er avgrensa etter tenstleg behov. Console (operatørverktøyet) krev aktiv operatørstatus og rollesjekk (operatør/superadmin) for kvar handling. Workspace brukar rollestyrt tilgang (admin/editor/member). Databasetilgang er RLS-styrt (Row Level Security) i Supabase -- kvar handling er eksplisitt policy-gata, ikkje standard-open.\n\n" +
+      "# Innlogging\nInnlogging skjer via Supabase Auth (Console: eingongskode/OTP på e-post). MFA er IKKJE eksplisitt handheva i dag utover dette -- eit reelt forbetringspunkt, ikkje noko som er på plass enno.\n\n" +
+      "# Kryptert kommunikasjon\nAll trafikk går over HTTPS/TLS. Ingen personopplysningar vert sende ukryptert.\n\n" +
+      "# Oppdateringar og avhengigheiter\nEksterne biblioteka (CDN-avhengigheiter) er versjonspinna eksplisitt -- oppgraderingar er ei medviten handling, aldri automatisk, og loggast i endringsloggen.\n\n" +
+      "# Sikkerheitskopiar\nBackup/gjenoppretting finst som funksjon i plattforma. Sikkerheitskopiar (t.d. «Sikkerhetskopi»-eksporten) inneheld råe personopplysningar og må handterast deretter av den som lastar dei ned.\n\n" +
+      "# Logging\nPrivilegerte handlingar i kontrollplanet (t.d. kundeadministrasjon) vert auditerte i ein eigen logg (broker_audit_log) med kven/kva/når.\n\n" +
+      "# Av- og påmønstring\nNår ein tilsett hos Vibeverk eller ein kunde sluttar, kan tilgangen fjernast direkte gjennom brukaradministrasjonen (Workspace/Console). Rutine for å faktisk GJENNOMFØRE dette ved kvar avslutning ligg hos den ansvarlege operatøren -- ikkje automatisert i dag.\n\n" +
+      "# Sikker utvikling og testing\nTestsuiter brukar mocka data, aldri reelle kundeopplysningar. Endringar testast mot eit separat staging-miljø før dei når produksjon.\n\n" +
+      "# Cookies\nPlattforma er medvite bygd cookiefri der det er mogleg (Plausible-analyse og den interne sidetellinga brukar begge ingen cookies) -- eit medvite arkitekturval som gjer at dei fleste kundar ikkje treng cookie-samtykkebanner i det heile, ikkje berre eit tilfeldig fråvær.",
     rettar_rutine:
-      "Formål\nDenne rutinen skildrar korleis Vibeverk AS sjølv handterer førespurnadar frå registrerte som gjeld Vibeverk sine EIGNE data (t.d. ein tilsett, ein kundekontakt eller nokon som har teke kontakt med Vibeverk sjølv) -- IKKJE kundane sine eigne plikter overfor sine besøkjande, som er kunden sitt eige ansvar.\n\n" +
-      "Kven handterer førespurnadar\nFørespurnadar vert handterte av dagleg ansvarleg hos Vibeverk AS.\n\n" +
-      "Identitetskontroll\nFørespurnaden må kome frå (eller stadfestast via) den same e-postadressa/kontaktinformasjonen som ligg registrert, før noko utleverast eller endrast.\n\n" +
-      "Innsyn\nDen registrerte kan be om ei oversikt over kva opplysningar Vibeverk har lagra om dei. Nyttar det same GDPR-verktøyet som finst i CRM-modulen for å hente ut/vise relevante data.\n\n" +
-      "Retting\nFeilaktige opplysningar rettast direkte i det aktuelle systemet (CRM/Workspace) av den ansvarlege.\n\n" +
-      "Sletting\nSletting skjer via det eksisterande GDPR-verktøyet i CRM (slettar all kommunikasjon knytt til ei e-postadresse) eller manuell sletting av enkeltpostar (leads/bookingar/brukarkontoar).\n\n" +
-      "Dataportabilitet\nRelevant først og fremst der behandlinga byggjer på avtale/samtykke og skjer automatisert -- vurderast konkret frå sak til sak.\n\n" +
-      "Protest og tilbaketrekking av samtykke\nDen registrerte kan protestere mot behandling basert på berettiga interesse, eller trekkje tilbake eit samtykke. Vibeverk stoggar då den aktuelle behandlinga med mindre tvingande legitime grunnar ligg føre.\n\n" +
-      "Fristar\nFørespurnadar skal svarast på utan ugrunna opphald, og seinast innan éin månad. Fristen kan forlengjast med inntil to månader for kompliserte saker -- den registrerte skal i så fall informerast om dette innan den opphavlege fristen.\n\n" +
-      "Avvik/brot\nDersom ein førespurnad avdekkjer eller heng saman med eit moglege personopplysningsbrot, sjå den eigne hendingsguiden (docs/security/incident-and-escalation-guide.md)."
+      "# Formål\nDenne rutinen skildrar korleis Vibeverk AS sjølv handterer førespurnadar frå registrerte som gjeld Vibeverk sine EIGNE data (t.d. ein tilsett, ein kundekontakt eller nokon som har teke kontakt med Vibeverk sjølv) -- IKKJE kundane sine eigne plikter overfor sine besøkjande, som er kunden sitt eige ansvar.\n\n" +
+      "# Kven handterer førespurnadar\nFørespurnadar vert handterte av dagleg ansvarleg hos Vibeverk AS.\n\n" +
+      "# Identitetskontroll\nFørespurnaden må kome frå (eller stadfestast via) den same e-postadressa/kontaktinformasjonen som ligg registrert, før noko utleverast eller endrast.\n\n" +
+      "# Innsyn\nDen registrerte kan be om ei oversikt over kva opplysningar Vibeverk har lagra om dei. Nyttar det same GDPR-verktøyet som finst i CRM-modulen for å hente ut/vise relevante data.\n\n" +
+      "# Retting\nFeilaktige opplysningar rettast direkte i det aktuelle systemet (CRM/Workspace) av den ansvarlege.\n\n" +
+      "# Sletting\nSletting skjer via det eksisterande GDPR-verktøyet i CRM (slettar all kommunikasjon knytt til ei e-postadresse) eller manuell sletting av enkeltpostar (leads/bookingar/brukarkontoar).\n\n" +
+      "# Dataportabilitet\nRelevant først og fremst der behandlinga byggjer på avtale/samtykke og skjer automatisert -- vurderast konkret frå sak til sak.\n\n" +
+      "# Protest og tilbaketrekking av samtykke\nDen registrerte kan protestere mot behandling basert på berettiga interesse, eller trekkje tilbake eit samtykke. Vibeverk stoggar då den aktuelle behandlinga med mindre tvingande legitime grunnar ligg føre.\n\n" +
+      "# Fristar\nFørespurnadar skal svarast på utan ugrunna opphald, og seinast innan éin månad. Fristen kan forlengjast med inntil to månader for kompliserte saker -- den registrerte skal i så fall informerast om dette innan den opphavlege fristen.\n\n" +
+      "# Avvik/brot\nDersom ein førespurnad avdekkjer eller heng saman med eit moglege personopplysningsbrot, sjå den eigne hendingsguiden (docs/security/incident-and-escalation-guide.md)."
   };
 
   function complianceLoad(wrap) {
@@ -8006,29 +8010,45 @@ window.VwConsole = (function () {
   // "Generer full tekstversjon" (mest for konsistens -- innhaldet er alt
   // éin samanhengande tekst, men gjev likevel ei rein, skrivebeskytta
   // lesevising åtskilt frå redigeringsboksen).
+  // Brukarønske 2026-08-12: rik-tekst-editor + konsekvent fet skrift på
+  // overskrifter for dei tre frie compliance-dokumenta -- desse er
+  // samanhengande, fleire-avsnitts DOKUMENT med reelle overskrifter, ulikt
+  // behandlingsprotokollen sine 7 korte enkeltverdifelt (som difor framleis
+  // er vanlege tekstboksar, ikkje rik-tekst). Same C.richTextField()/
+  // App.ui.bindRichTextFields()-infrastruktur som Personvern-dokumentet alt
+  // brukar for sine blokker.
   function renderComplianceDocument(pane, docId) {
     var doc = _complianceData.documents.filter(function (d) { return d.id === docId; })[0];
     if (!doc) { pane.innerHTML = '<p style="color:#c0392b">Fann ikkje dokumentet.</p>'; return; }
+    // Forsvar mot gamalt, framleis rein-tekst-lagra innhald (før denne
+    // omlegginga) -- ei rå streng utan nokon HTML-tag ville elles vist seg
+    // som éin uformatert, samanpressa blokk i rik-tekst-editoren, sidan HTML
+    // kollapsar linjeskift. App.ui.textToRichHtml() er same trygge
+    // avsnitt-konvertering Personvern alt brukar for akkurat dette.
+    var initialHtml = doc.content && doc.content.indexOf("<") !== -1 ? doc.content : App.ui.textToRichHtml(doc.content || "");
     pane.innerHTML =
       '<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">' +
         C.button({ label: "Standardforslag", variant: "ghost", attrs: 'type="button" id="cd-standard"' }) +
         C.button({ label: "Lagre", variant: "primary", attrs: 'type="button" id="cd-save"' }) +
         C.button({ label: "Generer full tekstversjon", variant: "ghost", attrs: 'type="button" id="cd-fulltext"' }) +
       '</div>' +
-      C.field({ id: "cd-content", label: doc.title, multiline: true, rows: 16, value: doc.content || "" }) +
+      C.richTextField({ id: "cd-content", label: doc.title, value: initialHtml }) +
       '<p class="form__status" id="cd-status" style="margin:.4rem 0 0"></p>' +
       reviewStampHtml("cd", doc.reviewed_at, doc.reviewed_by);
 
+    App.ui.bindRichTextFields(pane);
+
     pane.querySelector("#cd-standard").addEventListener("click", function () {
-      var current = pane.querySelector("#cd-content").value.trim();
+      var current = App.ui.readRichTextField(pane, "cd-content").trim();
       if (current && !confirm("Dette overskriv innhaldet i tekstboksen med standardforslaget. Ingenting vert lagra automatisk -- du må framleis trykke Lagre. Fortsette?")) return;
-      pane.querySelector("#cd-content").value = COMPLIANCE_DOCUMENT_STANDARD_SUGGESTIONS[docId] || "";
+      var suggestionHtml = privacyTextToRichHtml(COMPLIANCE_DOCUMENT_STANDARD_SUGGESTIONS[docId] || "");
+      App.ui.setRichTextField(pane, "cd-content", suggestionHtml);
       statusMsg(pane.querySelector("#cd-status"), "Standardforslag fylt inn -- hugs å trykke Lagre.", true);
     });
 
     pane.querySelector("#cd-save").addEventListener("click", function () {
       var btn = pane.querySelector("#cd-save");
-      var content = pane.querySelector("#cd-content").value;
+      var content = App.ui.readRichTextField(pane, "cd-content");
       btn.disabled = true;
       statusMsg(pane.querySelector("#cd-status"), "Lagrar…", true);
       tenantAdminCall("set_compliance_document", { id: docId, content: content }, function (r) {
@@ -8040,7 +8060,7 @@ window.VwConsole = (function () {
     });
 
     pane.querySelector("#cd-fulltext").addEventListener("click", function () {
-      showTextPreviewModal(doc.title, pane.querySelector("#cd-content").value || "(Tomt innhald)", false);
+      showTextPreviewModal(doc.title, App.ui.readRichTextField(pane, "cd-content") || "<p>(Tomt innhald)</p>", true);
     });
 
     bindReviewStamp(pane, "cd", docId, "mark_compliance_document_reviewed", doc, function () {

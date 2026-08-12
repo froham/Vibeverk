@@ -995,5 +995,5 @@ test("mobil-/skrivebord-brytaren viser ei tydeleg breiddeetikett (ikkje berre ei
 test("Console-CSS/skript er cache-busta for Sidebygger-endringane", function () {
   var html = fs.readFileSync("console/index.html", "utf8");
   assert.match(html, /components\.js\?v=26/);
-  assert.match(html, /console-core\.js\?v=259/);
+  assert.match(html, /console-core\.js\?v=260/);
 });
