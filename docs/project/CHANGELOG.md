@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.138.0 — 2026-08-12
+
+**Personvern «Bolk 3» + «Bolk 4»: ny Console-fane «Compliance» — behandlingsprotokoll (Art. 30) + leverandør-/DPA-register.** Same dags fortsetjing av Bolk 1/2 (#246), Arkitekt-planlagt før bygging (`docs/compliance/personvern-rammeverk-status-2026-08-12.md` del 3, Arkitekten sin fulle plan i sesjonen). **Reint internt for Vibeverk AS — ALDRI ein per-kunde-funksjon**, brukarvedtak.
+
+- Ny, GLOBAL (ikkje tenant-skopa) Console-fane «Compliance» i «Vibeverk internt»-nav-gruppa, to underfaner:
+  - **Behandlingsprotokoll**: éi rad per Vibeverk-eigen behandlingsaktivitet (kontakt/tilbod/booking/chat/CRM/tilsette/sidetelling/AI-modular), felt for formål/kategori registrerte/kategori data/behandlingsgrunnlag/mottakarar/lagringstid/sikkerheitstiltak — rein direkte redigering, ingen versjonering/godkjenning-ceremoni (ulikt det kundevendte Personvern-dokumentet, som treng det for eit heilt anna formål).
+  - **Leverandørar**: ny, redigerbar `vendor_registry`-tabell — same fire leverandørar som `VIBEVERK_VENDORS` (Supabase/Vercel/Resend/Plausible), no inkludert det ekte `"tba"`-statusalternativet frå Bolk 1. **`VIBEVERK_VENDORS`-konstanten sjølv er IKKJE rørt** — Personvern-fana sin kundevendte Leverandørar-tab les framleis derifrå, med vilje isolert til det nye registeret er operatør-verifisert (eige, seinare steg — "Bolk 5").
+- Ny migrasjon `supabase-control/supabase/migrations/20260812170000_add_compliance_and_vendor_registry.sql`: `compliance_record` (8 sådde rader) + `vendor_registry` (4 sådde rader, seeda med same fakta som `VIBEVERK_VENDORS` hadde etter Bolk 1). Følgjer nøyaktig same RLS-mønster som `pricing_config` (SELECT-RLS for authenticated via `is_control_plane_operator()`, ALL skriving via tenant-admin, aldri direkte RLS-CRUD).
+- To nye `tenant-admin`-handlingar (`set_compliance_record`, `set_vendor`) i `supabase-control/supabase/functions/tenant-admin/index.ts`, plassert saman med det eksisterande `set_pricing_config` (før tenant_id-krav-sperra som resten av funksjonen har) — **same blanke superadmin-sperre som heile tenant-admin alt krev**. Skriving avgrensa til ei lukka liste kjende id-ar (ingen nye rader kan opprettast frå Console).
+- Ny `test-compliance-console.js` (ikkje i CI, same status som dei tre andre Console-testfilene — sjå Bolk 2 sin eigen note om det) — 3 testar, nav/rendering/lagring end-to-end mot ein mocka kontrollplan-klient.
+- **Ikkje deploya til noko ekte Supabase-prosjekt enno** — migrasjonen og funksjonsendringa krev eksplisitt godkjenning per den standande deployment-safeguarden, venta separat frå denne kodeendringa.
+
+Cache-bust: `console-core.js` 254→255.
+
 ## 0.137.0 — 2026-08-12
 
 **Personvern «Bolk 1» + Console «Bolk 2» — resten av same dags Arkitekt+Personvern-revisjon (`docs/compliance/personvern-rammeverk-status-2026-08-12.md`), på brukar sitt eksplisitte ønske om å køyre begge bolkane direkte.**

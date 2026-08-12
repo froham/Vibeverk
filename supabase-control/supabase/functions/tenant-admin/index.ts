@@ -597,6 +597,106 @@ serve(async (req: Request) => {
     return json({ success: true });
   }
 
+  // ── set_compliance_record ────────────────────────────────────────────────
+  // Bolk 3 (2026-08-12): Console "Compliance"-fane, behandlingsprotokoll
+  // (GDPR art. 30) -- KUN for Vibeverk AS sjølv, aldri ein per-kunde-funksjon
+  // (eksplisitt brukarvedtak, sjå migrasjonen 20260812170000 sin eigen
+  // kommentar). Global, ikkje tenant-skopa, same "høyrer heime her, ikkje i
+  // broker.ts"-grunngjeving som set_pricing_config over. Rein UPDATE mot ei
+  // av dei 8 førehandssådde radene -- ingen ny rad kan opprettast herifrå
+  // (COMPLIANCE_RECORD_IDS er ei lukka liste, med vilje strengare enn eit
+  // fritt tekstfelt for id ville vore).
+  if (action === "set_compliance_record") {
+    const COMPLIANCE_RECORD_IDS = ["kontakt", "tilbud", "booking", "chat", "crm", "ansatte", "sidetelling", "ai"];
+    const recordId = typeof body.id === "string" ? body.id : "";
+    if (!COMPLIANCE_RECORD_IDS.includes(recordId)) {
+      return json({ error: "Ukjend behandlingsaktivitet: «" + recordId + "»" }, 400);
+    }
+    const TEXT_FIELDS = ["formaal", "kategori_registrerte", "kategori_data", "behandlingsgrunnlag", "mottakere", "lagringstid", "sikkerhetstiltak"] as const;
+    const MAX_FIELD_LEN = 4000;
+    const update: Record<string, string> = {};
+    for (const f of TEXT_FIELDS) {
+      const v = (body as Record<string, unknown>)[f];
+      if (v === undefined) continue;
+      if (typeof v !== "string" || v.length > MAX_FIELD_LEN) {
+        return json({ error: "Ugyldig verdi for «" + f + "» (maks " + MAX_FIELD_LEN + " teikn)" }, 400);
+      }
+      update[f] = v;
+    }
+    const auditId = await auditStart(null, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb
+      .from("compliance_record")
+      .update({ ...update, updated_at: new Date().toISOString(), updated_by: user.id })
+      .eq("id", recordId);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", "behandlingsaktivitet «" + recordId + "» oppdatert");
+    return json({ success: true });
+  }
+
+  // ── set_vendor ────────────────────────────────────────────────────────────
+  // Bolk 4 (2026-08-12): Console "Compliance"-fane, leverandør-/DPA-register
+  // -- erstattar den hardkoda VIBEVERK_VENDORS-konstanten (console-core.js)
+  // som kjelde til sanning. Same global/superadmin/auditert mønster som
+  // set_compliance_record over. Rein UPDATE mot éi av dei 4 førehandssådde
+  // radene -- ingen ny leverandør kan leggjast til herifrå (krev ein ny
+  // migrasjon, same disiplin som å leggje til ein ny leverandør i
+  // VIBEVERK_VENDORS gjorde tidlegare -- eit medvite, sjeldan steg).
+  // dpa_document_path er MEDVITE IKKJE eit felt her -- ingen opplastingsveg
+  // finst enno (Arkitekten sin fase 5, eksplisitt utsett).
+  if (action === "set_vendor") {
+    const VENDOR_IDS = ["supabase", "vercel", "resend", "plausible"];
+    const vendorId = typeof body.id === "string" ? body.id : "";
+    if (!VENDOR_IDS.includes(vendorId)) {
+      return json({ error: "Ukjend leverandør: «" + vendorId + "»" }, 400);
+    }
+    const COUNTRY_VALUES = ["eu", "us"];
+    const TRANSFER_VALUES = ["none", "scc", "scc_or_dpf"];
+    const DPA_STATUS_VALUES = ["confirmed", "likely_confirmed", "unconfirmed", "tba"];
+    const MAX_FIELD_LEN = 2000;
+    const update: Record<string, unknown> = {};
+    const b = body as Record<string, unknown>;
+    if (b.name !== undefined) {
+      if (typeof b.name !== "string" || !b.name.trim() || b.name.length > 200) return json({ error: "Ugyldig namn" }, 400);
+      update.name = b.name;
+    }
+    if (b.what_it_does !== undefined) {
+      if (typeof b.what_it_does !== "string" || b.what_it_does.length > MAX_FIELD_LEN) return json({ error: "Ugyldig skildring" }, 400);
+      update.what_it_does = b.what_it_does;
+    }
+    if (b.country !== undefined) {
+      if (typeof b.country !== "string" || !COUNTRY_VALUES.includes(b.country)) return json({ error: "Ugyldig land" }, 400);
+      update.country = b.country;
+    }
+    if (b.transfer_mechanism !== undefined) {
+      if (typeof b.transfer_mechanism !== "string" || !TRANSFER_VALUES.includes(b.transfer_mechanism)) return json({ error: "Ugyldig overføringsmekanisme" }, 400);
+      update.transfer_mechanism = b.transfer_mechanism;
+    }
+    if (b.dpa_status !== undefined) {
+      if (typeof b.dpa_status !== "string" || !DPA_STATUS_VALUES.includes(b.dpa_status)) return json({ error: "Ugyldig DPA-status" }, 400);
+      update.dpa_status = b.dpa_status;
+    }
+    if (b.dpa_note !== undefined) {
+      if (typeof b.dpa_note !== "string" || b.dpa_note.length > MAX_FIELD_LEN) return json({ error: "Ugyldig DPA-notat" }, 400);
+      update.dpa_note = b.dpa_note;
+    }
+    const auditId = await auditStart(null, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { error } = await controlSrvSb
+      .from("vendor_registry")
+      .update({ ...update, updated_at: new Date().toISOString(), updated_by: user.id })
+      .eq("id", vendorId);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", "leverandør «" + vendorId + "» oppdatert");
+    return json({ success: true });
+  }
+
   // Every action below operates on an existing tenant (tenant_id already
   // destructured above, alongside action, for the auth-failure audit path).
   if (!tenant_id) return json({ error: "tenant_id er påkrevd" }, 400);
