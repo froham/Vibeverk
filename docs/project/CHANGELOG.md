@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.143.0 — 2026-08-12
+
+**DPA-arbeidet "ferdiggjort": signerings-sporing per kunde (Kundar) + lett versjonshistorikk på Compliance-dokumenta.** Følgjer opp brukaravklaringane frå same dag (signering skjer heilt utanfor systemet -- Word→PDF sendt manuelt, signert avtale lastast opp i etterkant; sporing i kontrollplanet/Console, ikkje nokon Workspace; lett historikk, ikkje det fulle draft/publiser-maskineriet).
+
+- **Ny `.kd-card` i Kundar-sjekklista**: "Databehandleravtale (DPA)" -- viser status (ikkje sendt/sendt/signert), "Marker som sendt", opplasting av signert PDF, nedlasting (kortvarig signert URL, 300s), og ein reversibel "Fjern signert-status".
+- **Nye `tenants`-kolonner**: `dpa_sent_at`/`dpa_signed_at`/`dpa_document_path`. **Ny privat Storage-bøtte** `customer-dpa-documents` i kontrollplanet (IKKJE kunden sitt eige data-plane-prosjekt) -- ingen `storage.objects`-RLS-policy for `authenticated` i det heile, nedlasting går alltid via eit kortvarig signert URL.
+- **Fire nye `tenant-admin`-handlingar**: `mark_tenant_dpa_sent`, `upload_tenant_dpa_signed` (base64, storleikstak FØR dekoding, `%PDF-`-magic-byte-sjekk), `get_tenant_dpa_document_url`, `clear_tenant_dpa_signed`.
+- **Lett versjonshistorikk** (`compliance_document.history jsonb`, kappa til siste 20): kvar lagring snapshottar det FORRIGE innhaldet om det faktisk var utfylt og faktisk endra seg. Ny "Historikk"-liste i Compliance-fana, kvar rad opnar den gamle versjonen i den delte fulltekst-modalen.
+- **Uavhengig Security Auditor-gjennomgang (før commit)** fann to LOW-funn: (1) TOCTOU-race på best-effort Storage-sletting ved samtidige DPA-endringar for same kunde -- retta med same optimistisk-samtidigheit-vakt (`.eq()`/`.is()` gjenteke på sjølve UPDATE-en) som `update_tenant_hostnames`/`activate_tenant` alt bruker andre stader i fila, no returnerer 409 ved reell kollisjon; (2) PDF-opplasting validerer berre magic bytes, ingen skanning av innebygd JavaScript/OpenAction -- vurdert akseptabelt sidan både opplasting og nedlasting er avgrensa til superadmin-operatørar, aldri kundar eller offentlege lenker -- ikkje retta, dokumentert som kjend avgrensing.
+- Ny test for versjonshistorikken (11 totalt i `test-compliance-console.js`). **Ingen ny automatisert test for Kundar-fana sitt DPA-kort** -- Kundar har inga eksisterande testfil frå før (kompleks 11-stegs sjekkliste), og å byggje eit heilt nytt testoppsett berre for 4 knappar vart vurdert uforholdsmessig -- dekt av kodegjennomgang og at mønsteret speglar allereie fungerande, testa kode (`upload_logo`, `mark_compliance_record_reviewed`) direkte.
+
+Bygd i isolert `git worktree` (Codex sitt Arctic-arbeid framleis i gang parallelt).
+
+Cache-bust: `console-core.js` 260→261.
+
 ## 0.142.0 — 2026-08-12
 
 **Compliance: rik-tekst-editor + konsekvent fet skrift på overskrifter for dei tre frie dokumenta.** Brukarønske same dag som Bolk 7/8/9/11 (0.141.0).
