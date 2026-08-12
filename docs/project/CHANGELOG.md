@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.139.0 — 2026-08-12
+
+**Personvern «Bolk 5»: kundevendt Leverandørar-tekst les no frå vendor_registry, ikkje lenger berre den hardkoda VIBEVERK_VENDORS-konstanten.** Siste steget i planen frå `docs/compliance/personvern-rammeverk-status-2026-08-12.md` — flagga då som "den mest risikable enkeltendringa i heile planen" sidan ho endrar ein live, kundevendt tekstgenerator.
+
+- `computeSupplierBlock()` og `renderPersonvernLeverandorer(Loaded)` les no `sc._vendorRegistry` (cacha, henta frå kontrollplanet) med `VIBEVERK_VENDORS` som synkron bootstrap-fallback — konstanten er MEDVITE IKKJE fjerna.
+- Ny `vendorIsActive(v, an)`/`VENDOR_ACTIVITY_PREDICATES` — `isActive(an)`-logikken (t.d. Plausible sin aktivitetssjekk) kan ikkje flyttast reint inn i ein databaserad, held fram som eiga kodelogikk.
+- Ny `normalizeVendorRow()` bygger om databaseradene sine snake_case-felt til same camelCase-form koden alt brukte.
+- **Security Auditor-gjennomgang (uavhengig, før commit) fann éin reell CONFIRMED feil**, retta før merge: vendor_registry vart fyrste utkastet berre henta LAT inni Leverandørar-fana -- ein operatør som opna Dokument-fana (standardfana) og trykte "Standardforslag" FØR nokon nokon gong hadde besøkt Leverandørar i same økt, ville stille fått den hardkoda fallback-teksten, ikkje det faktiske registeret. Retta ved å hente vendor_registry proaktivt i `renderPersonvern()`, parallelt med den eksisterande `get_private_config`-hentinga, FØR nokon underfane vert vist.
+- Ny `test-privacy-console.js` (ikkje i CI, same status som dei andre Console-testfilene): 4 testar, inkludert éin som eksplisitt stadfestar at vendor_registry vert henta nøyaktig éin gong, proaktivt, uavhengig av kva underfane som opnast fyrst.
+- **Ikkje endra denne runda**: sjølve `vendor_registry`-tabellen/RLS (deploya og verifisert i Bolk 3/4, PR #247) -- dette er ein rein lesekjelde-endring i Console, ingen ny databaseendring.
+
+Cache-bust: `console-core.js` 256→257.
+
 ## 0.138.1 — 2026-08-12
 
 **Compliance-fana: kvar seksjon (behandlingsprotokoll-rad/leverandør) er no ein `<details>`-gardinmeny, lukka som standard.** Brukarønske same dag, rett etter at Bolk 3/4 (0.138.0) gjekk live — 8 rader × 7 tekstfelt kvar vart mykje loddrett plass når alt var opna samstundes. Same native kollaps-mønster som alt brukast andre stader i Console (AI Lab sin rå-JSON-visning, Kundar sitt manuelle nøkkel-felt) — ingen ny JS-logikk for sjølve av/på-tilstanden, berre `<fieldset>/<legend>` → `<details>/<summary>`. To nye testpåstandar i `test-compliance-console.js` (tag er faktisk DETAILS, `open`-attributtet er faktisk fråverande).

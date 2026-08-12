@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.138.1";
+  var VIBEVERK_VERSION = "0.139.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -4819,6 +4819,44 @@ window.VwConsole = (function () {
     scc_or_dpf: "overføringen er dekket av EUs standardavtaler og/eller tilsvarende godkjente overføringsmekanismer"
   };
 
+  // "Bolk 5" (2026-08-12): kundevendt Leverandørar-tekst byrjar no lese frå
+  // vendor_registry (kontrollplanet, redigerbar via Compliance-fana) i staden
+  // for BERRE denne hardkoda VIBEVERK_VENDORS-konstanten. VIBEVERK_VENDORS
+  // sjølv er MEDVITE IKKJE fjerna -- ho står att som synkron
+  // bootstrap-fallback for aller fyrste rendering (sc._vendorRegistry er
+  // berre sett etter ei vellykka async henting, same "kan vere fråverande på
+  // fyrste rendering, sjølv-lækande neste"-mønster som sc._privacyAn alt
+  // brukar for "analytics").
+  //
+  // isActive(an)-funksjonar (t.d. Plausible sin an.plausible-sjekk) kan ikkje
+  // flyttast reint inn i ein databaserad -- VENDOR_ACTIVITY_PREDICATES held
+  // fram som den EINASTE sanninga for "er denne leverandøren aktiv", uansett
+  // om vendor-objektet kom frå VIBEVERK_VENDORS (har framleis sin eigen
+  // isActive-metode, no ubrukt) eller frå ein normalisert vendor_registry-rad
+  // (reint dataobjekt, ingen metodar i det heile).
+  var VENDOR_ACTIVITY_PREDICATES = {
+    supabase: function () { return true; },
+    vercel: function () { return true; },
+    resend: function () { return true; },
+    plausible: function (an) { return !!(an && (an.plausible || an.plausibleEmbed)); }
+  };
+  function vendorIsActive(v, an) {
+    var pred = VENDOR_ACTIVITY_PREDICATES[v.id];
+    return pred ? pred(an) : true;
+  }
+
+  // Bygger om ein rå vendor_registry-databaserad (snake_case-kolonnenamn) til
+  // nøyaktig same camelCase-forma VIBEVERK_VENDORS alt har -- held
+  // computeSupplierBlock()/renderPersonvernLeverandorerLoaded() heilt uendra
+  // bortsett frå kva array dei les frå.
+  function normalizeVendorRow(row) {
+    return {
+      id: row.id, name: row.name, whatItDoes: row.what_it_does,
+      country: row.country, transferMechanism: row.transfer_mechanism,
+      dpaStatus: row.dpa_status, dpaNote: row.dpa_note
+    };
+  }
+
   function privacyNewId(prefix) {
     return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
   }
@@ -5186,8 +5224,8 @@ window.VwConsole = (function () {
     var region = (sc.privacy.suppliers && sc.privacy.suppliers.supabaseRegion) || "";
     var lines = ["# Hvilke leverandører behandler opplysningene dine?"];
     var transferLines = [];
-    VIBEVERK_VENDORS.forEach(function (v) {
-      if (!v.isActive(an)) return;
+    (sc._vendorRegistry || VIBEVERK_VENDORS).forEach(function (v) {
+      if (!vendorIsActive(v, an)) return;
       var whereText = v.id === "supabase"
         ? (region ? "Data er plassert i " + region + "." : "Data er plassert i EU.")
         : (VENDOR_COUNTRY_LABEL[v.country] === "USA" ? "Leverandøren er etablert i USA." : "Leverandøren er etablert i EU/EØS.");
@@ -5845,13 +5883,33 @@ window.VwConsole = (function () {
         pane.querySelector("#sup-retry-load").addEventListener("click", function () { renderPersonvernLeverandorer(sc, pane, wrap); });
         return;
       }
-      renderPersonvernLeverandorerLoaded(sc, pane, wrap, suppliers, an || {});
+      // "Bolk 5" (2026-08-12): vendor_registry er GLOBAL kontrollplan-data,
+      // ikkje tenant-skopa -- henta éin gong per Console-økt (ikkje per
+      // kundebyte, sidan innhaldet er identisk uansett kva kunde er vald) og
+      // cacha på sc._vendorRegistry, same "hent lat, fell trygt attende viss
+      // ikkje alt i minnet"-mønster som sc._privacyAn. Feil ved henting fell
+      // stille attende til VIBEVERK_VENDORS-fallbacken i staden for å blokkere
+      // heile fana -- konsistent med at fallbacken uansett har identisk
+      // innhald til nokon faktisk redigerer i Compliance-fana.
+      if (sc._vendorRegistry) {
+        renderPersonvernLeverandorerLoaded(sc, pane, wrap, suppliers, an || {});
+        return;
+      }
+      _sbControl.from("vendor_registry").select("*").order("sort_order").then(function (r) {
+        if (_privacyView !== myView) return;
+        if (r.error || !r.data || !r.data.length) {
+          if (r.error) console.error("[console] kunne ikkje hente vendor_registry, fell attende til VIBEVERK_VENDORS:", r.error);
+        } else {
+          sc._vendorRegistry = r.data.map(normalizeVendorRow);
+        }
+        renderPersonvernLeverandorerLoaded(sc, pane, wrap, suppliers, an || {});
+      });
     });
   }
   function renderPersonvernLeverandorerLoaded(sc, pane, wrap, suppliers, an) {
     var hasAnalytics = !!(an.plausible || an.plausibleEmbed);
-    var vendorRowsHtml = VIBEVERK_VENDORS.map(function (v) {
-      if (!v.isActive(an)) return "";
+    var vendorRowsHtml = (sc._vendorRegistry || VIBEVERK_VENDORS).map(function (v) {
+      if (!vendorIsActive(v, an)) return "";
       // "tba" fell trygt inn i same nøytrale, grå fallback-klasse som
       // "unconfirmed" tidlegare gjorde -- ikkje raud/åtvarande styling for
       // noko som berre ventar på eit kjent, planlagt steg (selskapsregistrering).
@@ -5994,15 +6052,30 @@ window.VwConsole = (function () {
       : null;
     sc.privacy = migratePrivacyPublicPart(rawPublicPriv);
     wrap.innerHTML = '<p style="color:var(--color-muted)">Laster personvern…</p>';
-    brokerCall("get_private_config", {}, function (r) {
-      if (r.error) {
-        wrap.innerHTML = '<p style="color:#c0392b">Kunne ikkje laste versjonshistorikk (' + C.esc(r.error) + ').</p>' +
-          C.button({ label: "Prøv igjen", variant: "ghost", attrs: 'type="button" id="cs-priv-retry-load"' });
-        var retryBtn = wrap.querySelector("#cs-priv-retry-load");
-        if (retryBtn) retryBtn.addEventListener("click", function () { renderPersonvern(sc, wrap); });
-        return;
-      }
-      var versionsPart = migratePrivacyVersions((r.value || {}).privacy, sc.privacy, stalePublicVersions);
+
+    // "Bolk 5" (2026-08-12, Security Auditor-funn CONFIRMED under gjennomgang
+    // av vendor_registry-byttet): vendor_registry vert no henta HER, proaktivt,
+    // FØR nokon underfane vert vist -- IKKJE berre lat inni Leverandørar-fana
+    // slik fyrste utkastet av byttet gjorde. Utan dette kunne ein operatør opne
+    // Personvern (standardfana er Dokument) og trykke "Standardforslag" der
+    // FØR nokon nokon gong hadde besøkt Leverandørar-fana i same økt --
+    // computeSupplierBlock() ville då stille brukt den hardkoda
+    // VIBEVERK_VENDORS-fallbacken i staden for det faktiske, operatør-
+    // redigerte registeret, og undergrave heile poenget med byttet. Berre
+    // henta om ikkje alt cacha (éin gong per Console-økt, sidan innhaldet er
+    // globalt/kontrollplan-data, ikkje tenant-skopa -- byte av kunde i
+    // veljaren skal ikkje trigge ei ny henting).
+    //
+    // get_private_config sin feilhandtering er MEDVITE ikkje kopla til denne
+    // sameiningsvakta -- ein reell backend-feil skal visast med det same,
+    // ikkje vente på at vendor_registry-hentinga (uavhengig, kan aldri feile
+    // på ein måte brukaren treng varslast om) òg er ferdig.
+    var vendorRegistryReady = !!sc._vendorRegistry;
+    var privateConfigReady = false;
+    var privateConfigResult = null;
+    function afterBothLoaded() {
+      if (!privateConfigReady || !vendorRegistryReady) return;
+      var versionsPart = migratePrivacyVersions((privateConfigResult.value || {}).privacy, sc.privacy, stalePublicVersions);
       sc.privacy.activeVersionId = versionsPart.activeVersionId;
       sc.privacy.versions = versionsPart.versions;
       if (stalePublicVersions) {
@@ -6020,7 +6093,27 @@ window.VwConsole = (function () {
         });
       }
       renderPersonvernShell(sc, wrap);
+    }
+    brokerCall("get_private_config", {}, function (r) {
+      if (r.error) {
+        wrap.innerHTML = '<p style="color:#c0392b">Kunne ikkje laste versjonshistorikk (' + C.esc(r.error) + ').</p>' +
+          C.button({ label: "Prøv igjen", variant: "ghost", attrs: 'type="button" id="cs-priv-retry-load"' });
+        var retryBtn = wrap.querySelector("#cs-priv-retry-load");
+        if (retryBtn) retryBtn.addEventListener("click", function () { renderPersonvern(sc, wrap); });
+        return;
+      }
+      privateConfigResult = r;
+      privateConfigReady = true;
+      afterBothLoaded();
     });
+    if (!vendorRegistryReady) {
+      _sbControl.from("vendor_registry").select("*").order("sort_order").then(function (r) {
+        if (!r.error && r.data && r.data.length) sc._vendorRegistry = r.data.map(normalizeVendorRow);
+        else if (r.error) console.error("[console] kunne ikkje hente vendor_registry, fell attende til VIBEVERK_VENDORS:", r.error);
+        vendorRegistryReady = true;
+        afterBothLoaded();
+      });
+    }
   }
 
   function renderPersonvernShell(sc, wrap) {
