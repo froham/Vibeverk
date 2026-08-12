@@ -35,13 +35,13 @@ window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([
       { id: "s2", type: "text", variant: { background: "light", width: "narrow", spacing: "normal", align: "left" },
         data: { heading: "Om dette", text: "<p>Brødtekst</p>" } },
       { id: "s3", type: "image-text", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
-        data: { image: { src: "https://example.test/it.jpg" }, imagePosition: "right", heading: "Bilde og tekst", text: "<p>Tekst</p>" } },
+        data: { image: { src: "https://example.test/it.jpg" }, imagePosition: "right", imageShape: "circle", heading: "Bilde og tekst", text: "<p>Tekst</p>" } },
       { id: "s4", type: "big-image", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
-        data: { image: { src: "https://example.test/big.jpg" }, caption: "Bildetekst" } },
+        data: { image: { src: "https://example.test/big.jpg" }, imageShape: "square", caption: "Bildetekst" } },
       { id: "s5", type: "quote", variant: { background: "branded", width: "narrow", spacing: "normal", align: "left" },
         data: { text: "Et sitat", author: "Ola Nordmann", role: "Dagleg leiar" } },
       { id: "s6", type: "grid", variant: { background: "light", width: "wide", spacing: "normal", align: "left" },
-        data: { columns: 3, items: [{ heading: "Rute 1", text: "Tekst 1" }, { heading: "Rute 2", text: "Tekst 2" }] } },
+        data: { columns: 3, imageShape: "circle", items: [{ image: { src: "https://example.test/rute1.jpg" }, heading: "Rute 1", text: "Tekst 1" }, { image: { src: "https://example.test/rute2.jpg" }, heading: "Rute 2", text: "Tekst 2" }] } },
       // button.url er MEDVITE ein javascript:-nyttelast her -- testar
       // Security Auditor-funnet (MEDIUM, 2026-08-11) sin fiks direkte:
       // button() i components.js skal ALDRI rendre ein slik URL som eit
@@ -60,7 +60,7 @@ window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([
         data: { layout: "2col-2-1", blocks: [
           { id: "b1", type: "heading", slot: 0, data: { level: "h2", text: "Blokk-overskrift" } },
           { id: "b2", type: "richtext", slot: 0, data: { text: "<script>alert(1)</script><p>Blokk-tekst</p>" } },
-          { id: "b3", type: "image", slot: 0, data: { image: { src: "https://example.test/block.jpg" }, frame: true } },
+          { id: "b3", type: "image", slot: 0, data: { image: { src: "https://example.test/block.jpg" }, imageShape: "square", frame: true } },
           // url er MEDVITE ein javascript:-nyttelast -- button-blokka MÅ gå
           // via components.js sin delte button(), som ALDRI skal rendre
           // dette som eit ekte href (same fareklasse som s7 sin CTA-test).
@@ -2722,10 +2722,14 @@ const __asyncTests = (async () => {
     assert(!!pbMain.querySelector(".pb-hero__img"), "sidebygger: hero-seksjonen sitt bilete rendra");
     assert(!!pbMain.querySelector(".pb-text"), "sidebygger: tekst-seksjon rendra");
     assert(!!pbMain.querySelector(".pb-imgtext.pb-imgtext--right"), "sidebygger: bilde+tekst-seksjon rendra med rett biletplassering");
+    assert(!!pbMain.querySelector(".pb-imgtext__img.pb-img-shape--circle"), "sidebygger: bilde+tekst sitt imageShape:'circle' gjev sirkel-modifikatorklassen");
     assert(!!pbMain.querySelector(".pb-bigimage"), "sidebygger: stort bilde-seksjon rendra");
+    assert(!!pbMain.querySelector(".pb-bigimage__img.pb-img-shape--square"), "sidebygger: stort bilete sitt imageShape:'square' gjev kvadrat-modifikatorklassen");
     assert(!!pbMain.querySelector(".pb-quote"), "sidebygger: sitat-seksjon rendra");
     assert(!!pbMain.querySelector(".pb-grid.pb-grid--cols-3"), "sidebygger: rutenett-seksjon rendra med rett kolonnetal");
     assert(pbMain.querySelectorAll(".pb-grid__item").length === 2, "sidebygger: rutenett har rett tal ruter: " + pbMain.querySelectorAll(".pb-grid__item").length);
+    assert(pbMain.querySelectorAll(".pb-grid__img.pb-img-shape--circle").length === 2, "sidebygger: rutenett sitt imageShape:'circle' gjeld ALLE ruter (seksjonsnivå-val, ikkje per rute)");
+    assert(!pbMain.querySelector(".pb-hero__img.pb-img-shape--circle") && !pbMain.querySelector(".pb-hero__img.pb-img-shape--square"), "sidebygger: hero sitt bilete får ALDRI ein biletform-modifikator (fullbleed bakgrunn, ikkje eit sjølvstendig innramma bilete -- medvite utelate frå biletform-valet)");
     assert(!!pbMain.querySelector(".pb-cta"), "sidebygger: CTA-seksjon rendra");
     assert(!pbMain.querySelector(".pb-cta a[href*='javascript:']"), "sidebygger: ein javascript:-knapplenke vert ALDRI rendra som eit ekte href (Security Auditor-funn, retta i components.js sin button())");
     assert(/Kontakt oss/.test(pbMain.querySelector(".pb-cta").textContent), "sidebygger: knappeteksten vert framleis vist sjølv om lenka vart nekta (fell attende til ein vanleg <button>, ikkje heile knappen fjerna)");
@@ -2740,6 +2744,7 @@ const __asyncTests = (async () => {
     assert(pbBlocks.textContent.indexOf("alert(1)") === -1 && pbMain.innerHTML.indexOf("<script>alert(1)</script>") === -1, "sidebygger/blokker: rikttekst-blokka sin <script>-tag vert sanert (går via same sanitizeRichHtml())");
     assert(!!pbBlocks.querySelector(".pb-block-image__img"), "sidebygger/blokker: bilde-blokk rendra");
     assert(!!pbBlocks.querySelector(".pb-block--framed .pb-block-image__img"), "sidebygger/blokker: bilde-blokka sitt frame:true gjev ein synleg ramme-innpakking (bakgrunn+kant, same handsaming som .pb-grid__item)");
+    assert(!!pbBlocks.querySelector(".pb-block-image__img.pb-img-shape--square"), "sidebygger/blokker: bilde-blokka sitt imageShape:'square' gjev kvadrat-modifikatorklassen, uavhengig av ramme-valet");
     assert(!pbBlocks.querySelector(".pb-block-heading").closest(".pb-block--framed"), "sidebygger/blokker: overskrift-blokka (frame ikkje sett) er IKKJE ramma inn -- ramme er opt-in per blokk, ikkje standard");
     // colFrame:[false,true] -- kolonne 2 (slot 1: knapp+kontaktinfo+mellomrom)
     // skal vere EIN samanhengande ramma boks, ikkje tre separate.
