@@ -812,7 +812,7 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, site_lock_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path")
+    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, site_lock_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path, retention_policy")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
@@ -1145,6 +1145,49 @@ serve(async (req: Request) => {
     }
     await controlSrvSb.storage.from("customer-dpa-documents").remove([oldPath]);
     await auditFinish(auditId, "success", "signert DPA-status fjerna");
+    return json({ success: true });
+  }
+
+  // ── set_tenant_retention_policy ──────────────────────────────────────────
+  // Fase 2 av retention-sweep (Console-synlegheit, sjå PR-skildringa for
+  // Fase 1): let ein operatør skru PÅ/AV automatisk dry-run-teljing av gamle
+  // kontaktskjema-leads for éin kunde om gongen, i staden for å måtte redigere
+  // tenants.retention_policy direkte i databasen. Rører ALDRI sjølve
+  // slettinga -- retention-sweep Edge Function (Fase 1) tel framleis berre,
+  // uansett kva denne brytaren er sett til; det finst ingen kodeveg for
+  // faktisk sletting enno (Fase 3, eigen Security Auditor-pass). Difor same
+  // opne tilgangsnivå som DPA-handlingane over (kvar aktiv operatør), ikkje
+  // superadmin-avgrensa som Compliance-skrivingane.
+  if (action === "set_tenant_retention_policy") {
+    const { category, enabled, months } = body;
+    if (category !== "leads") {
+      await auditReject(tenant.id, action, "ukjend kategori: " + category);
+      return json({ error: "Ukjend kategori" }, 400);
+    }
+    if (typeof enabled !== "boolean") {
+      await auditReject(tenant.id, action, "enabled må vere boolsk");
+      return json({ error: "enabled må vere boolsk" }, 400);
+    }
+    const monthsNum = Number(months);
+    if (!Number.isInteger(monthsNum) || monthsNum < 1 || monthsNum > 120) {
+      await auditReject(tenant.id, action, "ugyldig månadstal: " + months);
+      return json({ error: "Månader må vere eit heiltal mellom 1 og 120" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const currentPolicy = (tenant.retention_policy as Record<string, unknown>) || {};
+    const newPolicy = Object.assign({}, currentPolicy, {
+      [category]: { enabled, months: monthsNum },
+    });
+    const { error } = await controlSrvSb
+      .from("tenants")
+      .update({ retention_policy: newPolicy })
+      .eq("id", tenant_id);
+    if (error) {
+      await auditFinish(auditId, "error", error.message);
+      return json({ error: "Lagring feila" }, 500);
+    }
+    await auditFinish(auditId, "success", category + ": enabled=" + enabled + " months=" + monthsNum);
     return json({ success: true });
   }
 

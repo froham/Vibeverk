@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.144.0";
+  var VIBEVERK_VERSION = "0.145.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -172,7 +172,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_ever_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_ever_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path, retention_policy")
       .order("slug").then(function (r) {
         // r.error vart tidlegare aldri sjekka -- ein manglande kolonne-grant
         // (INCIDENT 2026-08-12, sjå 20260812235500-migrasjonen) fekk difor
@@ -7270,12 +7270,18 @@ window.VwConsole = (function () {
   }
 
   function renderKdDetail(tenant, wrap, fullWrap, _sc) {
+    // Same _renderGen-vaktmønster som Web sin Nettsidehelse-seksjon (sjå
+    // notatet ved webRenderGen) -- hindrar at eit seint retention_runs-svar
+    // skriv seg inn i eit #kd-retention-lastrun som no høyrer til ein annan
+    // kunde/fane (operatøren rakk å byte før svaret kom).
+    var retentionRenderGen = _renderGen;
     var hasConnection = !!(tenant.data_plane_url);
     var schemaOk = !!tenant.schema_verified_at;
     var routingOk = !!tenant.routing_verified_at;
     var hasHostnames = !!(tenant.hostnames && tenant.hostnames.length);
     var adminInvitedOk = !!tenant.first_admin_invited_at;
     var smtpOk = !!tenant.smtp_configured_at;
+    var retentionLeads = (tenant.retention_policy && tenant.retention_policy.leads) || { enabled: false, months: 12 };
 
     wrap.innerHTML =
       '<div class="admin-group">' +
@@ -7423,6 +7429,20 @@ window.VwConsole = (function () {
               : "") +
           '</div>' +
           '<p id="kd-dpa-status" class="field__hint" style="margin-top:.4rem"></p>' +
+        '</div>' +
+
+        '<div class="kd-card"><strong>Automatisert sletting av gamle kontaktskjema-leads</strong>' +
+          '<p class="field__hint">Tel kvar natt, automatisk, kor mange kontaktskjema-/tilbudsførespurnadar som er eldre enn talet på månader under. <strong>Reint informativt i denne fasen — INGEN rader vert nokon gong sletta</strong>, uansett kva som er sett her eller kor mange kandidatar som vert funne. Køyrer sentralt (kontrollplanet), ikkje i kunden sitt eige prosjekt.</p>' +
+          (tenant.status === "provisioning" || tenant.status === "active"
+            ? '<form id="kd-retention-form" style="margin-top:.6rem">' +
+                '<label style="display:flex;align-items:center;gap:.4rem;margin-bottom:.6rem"><input type="checkbox" id="kd-retention-enabled"' + (retentionLeads.enabled ? " checked" : "") + '> Tel kandidatar automatisk (dry-run)</label>' +
+                C.field({ id: "kd-retention-months", label: "Månader før ein lead reknast som gamal", type: "number", value: String(retentionLeads.months || 12) }) +
+                '<button type="submit" class="btn btn--ghost btn--sm">Lagre</button>' +
+                '<p class="form__status" id="kd-retention-status" style="margin-top:.4rem"></p>' +
+              '</form>'
+            : '<p class="field__hint">Kan ikkje endrast i denne statusen.</p>'
+          ) +
+          '<p class="field__hint" id="kd-retention-lastrun" style="margin-top:.6rem">Hentar siste køyring…</p>' +
         '</div>' +
 
         (tenant.status !== "archived"
@@ -7674,6 +7694,45 @@ window.VwConsole = (function () {
         dpaClearBtn.disabled = true;
         tenantAdminCall("clear_tenant_dpa_signed", { tenant_id: tenant.id }, function (r) {
           dpaClearBtn.disabled = false;
+          if (r.error) { statusMsg(out, r.error, false); return; }
+          loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
+
+    if (_sbControl) {
+      _sbControl.from("retention_runs")
+        .select("run_at, dry_run, candidates_found, rows_deleted, error")
+        .eq("tenant_id", tenant.id)
+        .eq("category", "leads")
+        .order("run_at", { ascending: false })
+        .limit(1)
+        .then(function (r) {
+          if (retentionRenderGen !== _renderGen) return; // sjå notatet ved retentionRenderGen over
+          var target = wrap.querySelector("#kd-retention-lastrun");
+          if (!target) return;
+          if (r.error) { target.textContent = "Kunne ikkje hente siste køyring: " + r.error.message; return; }
+          var row = r.data && r.data[0];
+          if (!row) { target.textContent = "Ingen køyring registrert enno for denne kunden."; return; }
+          var when = new Date(row.run_at).toLocaleString("nb-NO");
+          var text = "Sist kjørt: " + when + " (" + (row.dry_run ? "dry-run" : "LIVE") + ") — " +
+            row.candidates_found + " kandidat" + (row.candidates_found === 1 ? "" : "ar") + " funne";
+          if (row.rows_deleted > 0) text += ", " + row.rows_deleted + " sletta";
+          if (row.error) text += ". Feil: " + row.error;
+          target.textContent = text;
+        });
+    }
+
+    var retentionForm = wrap.querySelector("#kd-retention-form");
+    if (retentionForm) {
+      retentionForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var out = wrap.querySelector("#kd-retention-status");
+        var enabled = wrap.querySelector("#kd-retention-enabled").checked;
+        var months = parseInt(wrap.querySelector("#kd-retention-months").value, 10);
+        if (!months || months < 1 || months > 120) { statusMsg(out, "Månader må vere eit tal mellom 1 og 120", false); return; }
+        statusMsg(out, "Lagrar…", true);
+        tenantAdminCall("set_tenant_retention_policy", { tenant_id: tenant.id, category: "leads", enabled: enabled, months: months }, function (r) {
           if (r.error) { statusMsg(out, r.error, false); return; }
           loadTenants(function () { renderKundar(_sc, fullWrap); });
         });
