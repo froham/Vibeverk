@@ -87,14 +87,13 @@ Leverandørblokka (`computeSupplierBlock()`) les frå `sc._vendorRegistry` (cach
 **Ope:**
 - Per-skjema `legalBasis`/`retention`/`recipients`/`blurbHtml`-felta i `sc.privacy.forms{}` er framleis tomme for alle kundar (Skjematekster-fana viser no konkrete forslag som plasshaldar, men ingen operatør har godkjent/lagra noko enno) — retensjonsblokka fell difor framleis tilbake til éi generisk setning i praksis.
 - `Anthropic` (AI-modular i Workspace) er medvite utelaten frå `VIBEVERK_VENDORS`/kundevendt leverandørtekst ("framleis trial-fase, ikkje tilbydd nokon reell kunde enno") — men er ført opp internt i `COMPLIANCE_STANDARD_SUGGESTIONS.ai.mottakere`. Om/når AI-modular vert tilbydd ein reell kunde, må leverandørblokka utvidast FØR lansering.
-- Ingen stad i Workspace lenkjer i dag til det publiserte personvernvedtaket for tilsett-blokka — teksten finst, men ein tilsett oppdagar ho ikkje utan at nokon fysisk deler lenkja.
 - `sidetelling`-cookievarianten sin ekomlov §3-15-status er framleis ikkje avklart (sjå punkt 6).
 
 ## 2. Behandlingsprotokoll (Art. 30-register, `compliance_record`)
 
 Global (ikkje tenant-skopa) tabell `compliance_record` i `vibeverk-control`, éi rad per **Vibeverk sin eigen** behandlingsaktivitet — 8 rader: `kontakt`, `tilbud`, `booking`, `chat`, `crm`, `ansatte`, `sidetelling`, `ai`. Sju felt per rad (formål/kategori registrerte/kategori data/behandlingsgrunnlag/mottakarar/lagringstid/sikkerheitstiltak), rein direkte redigering — ingen versjonering, ingen godkjenning-ceremoni, ulikt det kundevendte dokumentet. `reviewed_at`/`reviewed_by`-stempel er ei eiga, medviten "Merk som vurdert"-handling, aldri implisitt sett av eit Lagre-klikk. Standardforslag er lagt inn i produksjonstabellen for alle 8 aktivitetar, ikkje berre koda som eit ubrukt forslag.
 
-**Kvifor «kun Vibeverk», ikkje per kunde:** eksplisitt, stadfesta brukarvedtak — behandlingsprotokollen er KUN for Vibeverk AS sjølv, aldri ein per-kunde-funksjon. GDPR art. 30 pålegg BÅDE den behandlingsansvarlege OG databehandlaren å føre eit register. Vibeverk opptrer som databehandlar for dei fleste av desse 8 aktivitetane sett frå EIN KUNDE sitt perspektiv, men registeret er bygd for Vibeverk sitt EIGE forhold til sine EIGNE kontaktar/tilsette/AI-bruk — ikkje eit register over Vibeverk sine plikter som databehandlar for kvar kunde sine data. Det spørsmålet er i staden dokumentert INDIREKTE, via kundeavtale-malen og leverandørregisteret (sjå DEL 3, P1).
+**Kvifor «kun Vibeverk», ikkje per kunde:** eksplisitt, stadfesta brukarvedtak — behandlingsprotokollen er KUN for Vibeverk AS sjølv, aldri ein per-kunde-funksjon. GDPR art. 30 pålegg BÅDE den behandlingsansvarlege OG databehandlaren å føre eit register. Vibeverk opptrer som databehandlar for dei fleste av desse 8 aktivitetane sett frå EIN KUNDE sitt perspektiv, men registeret er bygd for Vibeverk sitt EIGE forhold til sine EIGNE kontaktar/tilsette/AI-bruk — ikkje eit register over Vibeverk sine plikter som databehandlar for kvar kunde sine data. Denne rolleavgrensinga er no forklart direkte i Console-UI-et (Compliance → Behandlingsprotokoll), ikkje berre i migrasjonskommentarar. Det underliggande spørsmålet — databehandlar-plikta — er dokumentert INDIREKTE, via kundeavtale-malen og leverandørregisteret, sjå DEL 3.
 
 **Ope:**
 - Ingen automatisert kryssjekk mellom `compliance_record` og den kundevendte teksten — to sjølvstendige tekstkjelder som kan drive frå kvarandre utan varsel.
@@ -142,7 +141,7 @@ Fase-delinga (1 = teljing, 2 = synleggjering, 3 = faktisk sletting) er medvite �
 
 **Ope:**
 - Ingen kode i heile systemet kan i dag slette éi einaste rad basert på retensjon.
-- Kandidat-teljinga brukar `created_at` (lead-opprettinga), ikkje siste aktivitet — `leads`-tabellen manglar ein `updated_at`-kolonne, så "12 md. etter siste aktivitet" (formuleringa i retensjonsblokka og `COMPLIANCE_STANDARD_SUGGESTIONS`) stemmer strengt tatt ikkje overeins med korleis sweep-en faktisk måler alder i dag.
+- Kandidat-teljinga brukar `created_at` (lead-opprettinga), ikkje siste aktivitet — `leads`-tabellen manglar ein `updated_at`-kolonne. Sjølve ordlyden er retta (kontaktskjema sitt Standardforslag seier no "etter opprettelse", matchar det som faktisk vert målt) — det attverande spørsmålet er reint arkitektonisk: bør `leads` få eit ekte `updated_at`-felt, om "siste aktivitet" nokon gong skal bli meir enn eit teoretisk omgrep?
 
 ## 6. Kjende, framleis opne gap
 
@@ -176,7 +175,7 @@ Alle 12 blokker er henta direkte frå `computeTenantPrivacyBlocks(sc, an)` i `co
 (Fell tilbake til "Vi"/"vi" om `company.name` er tom; org.nr-setninga fell heilt bort om `sc.footer.orgNr` er tom; kontaktsetninga fell heilt bort om `sc.contact` er tomt.)
 
 **Lovheimel:** GDPR art. 13(1)(a) — identiteten og kontaktopplysningane til den behandlingsansvarlege skal opplysast ved innsamling.
-**Status: Tynn.** Sjølve strukturen er rett, men innhaldet er heilt avhengig av at kunden faktisk har fylt ut `company.name`/`sc.footer.orgNr`/`sc.contact`. Ingen kodemessig sperre hindrar publisering av ei ufullstendig utgåve utan namn/kontakt.
+**Status: Tynn, men no verna.** Sjølve strukturen er rett, men innhaldet er heilt avhengig av at kunden faktisk har fylt ut `company.name`/`sc.footer.orgNr`/`sc.contact`. "Publiser" i Dokument-fana blokkerer no eksplisitt (med forklarande melding) dersom firmanavn eller kontaktinfo manglar.
 
 ---
 
@@ -206,7 +205,7 @@ Alle 12 blokker er henta direkte frå `computeTenantPrivacyBlocks(sc, an)` i `co
 
 **Lovheimel:** GDPR art. 13, art. 6(1)(b) og 6(1)(f) — i dag stabla som dobbelt grunnlag.
 
-**Status: Tynn.** Ingen stad i Workspace lenkjer faktisk til det publiserte personvernvedtaket — ein tilsett oppdagar difor ikkje denne teksten utan at nokon fysisk deler lenkja. Å stable art. 6(1)(b) OG 6(1)(f) samstundes bør erstattast med EITT konkret grunnlag per aktivitet, vurdert av jurist.
+**Status: Tynn.** Workspace-sidemenyen har ei fungerande "Personvern"-lenke (footer, `workspace-core.js`, stadfesta direkte i koden) som opnar same read-only-modal som den offentlege sida sin footer — ein tilsett kan altså faktisk finne teksten. Det attverande gapet er reint juridisk: å stable art. 6(1)(b) OG 6(1)(f) samstundes bør erstattast med EITT konkret grunnlag per aktivitet, vurdert av jurist.
 
 ---
 
@@ -247,7 +246,7 @@ Alle 12 blokker er henta direkte frå `computeTenantPrivacyBlocks(sc, an)` i `co
 > Tilbudsskjema: [operatørens tekst]
 > Booking: [operatørens tekst]
 
-Skjematekster-fana viser no `PRIVACY_FORM_RETENTION_SUGGESTION`-plasshaldarar (t.d. «Inntil 12 måneder etter siste aktivitet» for kontakt) — ein operatør må framleis sjølv godkjenne/skrive inn per kunde, aldri auto-fylt stille.
+Skjematekster-fana viser no `PRIVACY_FORM_RETENTION_SUGGESTION`-plasshaldarar (t.d. «Inntil 12 måneder etter opprettelse» for kontakt, matchar det retention-sweep faktisk måler) — ein operatør må framleis sjølv godkjenne/skrive inn per kunde, aldri auto-fylt stille.
 
 **Lovheimel:** GDPR art. 13(2)(a) — lagringsperioden, eller kriteria brukt for å fastsetje ho. Den vage "så lenge det er nødvendig"-formuleringa er IKKJE ulovleg (art. 13(2)(a) opnar for "kriteria" som alternativ til eit konkret tal), men er den svakaste akseptable varianten.
 
@@ -323,7 +322,7 @@ Chat-widgeten sitt eige samtykke-checkbox opnar den delte popup-en (footer/Works
 | 1 | Intro | Solid |
 | 2 | Behandlingsansvarleg | Tynn (avhengig av utfylt company/org.nr/kontakt) |
 | 3 | Lagringsstad + Rettar | Solid rettar-liste / heng saman med Vercel-gapet |
-| 4 | Tilsette (Workspace) | Tynn (ikkje reelt oppdaga av tilsette, dobbelt grunnlag bør avklarast) |
+| 4 | Tilsette (Workspace) | Tynn (dobbelt behandlingsgrunnlag bør avklarast med jurist) |
 | 5 | Kontaktskjema | Tynn → forbetra (grunnlag lagt til, treng jurist-stadfesting) |
 | 6 | Tilbudsforespørsel | Tynn → forbetra |
 | 7 | Booking | Tynn → forbetra |
@@ -349,12 +348,8 @@ Kvart punkt merka etter KVEM som må gjere noko: kode/tekst (kan byggjast av Cla
 | 1 | **Vercel-DPA:** oppgrader Vercel-kontoen til Pro/Enterprise, eller avklar forholdet på anna vis — teksten er alt ærleg formulert, men det underliggande gapet (ingen DPA på Hobby-plan) står att | **Forretning** |
 | 2 | Bygg éin samla "aktivitet → formål → datakategoriar → behandlingsgrunnlag → mottakarar → retensjon"-datamodell (`sc.privacy.activities{}`) som både `compliance_record` og kundeteksten kan generere frå — fjernar drift-risikoen mellom dei to | Kode (større arbeidsstykke, bør Arkitekt-planleggjast) |
 | 3 | Fullfør `vendor_registry.dpa_status` → to separate felt (`dpa_status` + `transfer_status`), pluss "sist kontrollert"-dato og kjelde-URL per leverandør | Kode |
-| 4 | Skriv om Art. 30-formuleringa: Vibeverk manglar ein eksplisitt protokoll for si eiga rolle som DATABEHANDLAR (kvar kunde + kategoriar behandla på deira vegne) | Kode/tekst |
-| 5 | Gjer firmanamn + reell kontaktinfo til ein hard publiserings-sperre (kan i dag publiserast tomt) | Kode |
-| 6 | Innfør `updated_at`/`last_activity_at` på `leads`, ELLER endre retensjonsteksten frå "siste aktivitet" til "opprettinga" slik at teksten matchar det retention-sweep faktisk måler | Kode — låg kostnad |
-| 7 | Lag reell tilgang til tilsett-personvernteksten frå Workspace | Kode |
-| 8 | Hent og legg ved dei FAKTISKE, fullstendige DPA-dokumenta (ikkje berre skildringar) frå Supabase/Resend/Plausible sine kundeportalar, slik at juristen kan lese dei direkte | Deg |
-| 9 | Vurder full samanslåing av `core.js` sin fallback-generator og `console-core.js` sin hovudgenerator til éin delt funksjon | Kode (arkitekturarbeid) |
+| 4 | Hent og legg ved dei FAKTISKE, fullstendige DPA-dokumenta (ikkje berre skildringar) frå Supabase/Resend/Plausible sine kundeportalar, slik at juristen kan lese dei direkte | Deg |
+| 5 | Vurder full samanslåing av `core.js` sin fallback-generator og `console-core.js` sin hovudgenerator til éin delt funksjon | Kode (arkitekturarbeid) |
 
 ## Spørsmål som må TIL juristen
 
