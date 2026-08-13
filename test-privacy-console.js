@@ -21,6 +21,46 @@ function button(options) {
   return '<button ' + (o.attrs || "") + '>' + esc(o.label || "") + '</button>';
 }
 
+// Minimal, tru kopi av richTextField()/App.ui-funksjonane (same mønster som
+// test-compliance-console.js alt brukar) -- naudsynt her for at "Rediger
+// (opprett nytt utkast)" (renderPersonvernDokument sin draft-gren) skal
+// kunne rendrast utan å krasje på App.ui.bindRichTextFields.
+function sanitizeRichHtml(html) { return String(html || ""); }
+function richTextField(o) {
+  o = o || {};
+  return '<div class="field rtfield" data-rtfield><label>' + esc(o.label) + '</label>' +
+    '<div class="rtfield__editor" contenteditable="true" data-rt-editor></div>' +
+    '<input type="hidden" id="' + esc(o.id) + '" value="' + esc(sanitizeRichHtml(o.value || "")) + '"></div>';
+}
+function bindRichTextFields(scope) {
+  scope.querySelectorAll("[data-rtfield]").forEach(function (wrap) {
+    var editor = wrap.querySelector("[data-rt-editor]");
+    var hidden = wrap.querySelector('input[type="hidden"]');
+    editor.innerHTML = hidden.value || "";
+    function sync() { hidden.value = sanitizeRichHtml(editor.innerHTML); }
+    editor.addEventListener("input", sync);
+    editor.addEventListener("blur", sync);
+  });
+}
+function readRichTextField(scope, id) {
+  var el = scope.querySelector("#" + id);
+  return el ? sanitizeRichHtml(el.value) : "";
+}
+function setRichTextField(scope, id, html) {
+  var hidden = scope.querySelector("#" + id);
+  if (!hidden) return;
+  var wrap = hidden.closest("[data-rtfield]");
+  var editor = wrap && wrap.querySelector("[data-rt-editor]");
+  var sanitized = sanitizeRichHtml(html || "");
+  hidden.value = sanitized;
+  if (editor) editor.innerHTML = sanitized;
+}
+function textToRichHtml(text) {
+  return String(text || "").split(/\n\n+/).map(function (para) {
+    return "<p>" + esc(para).replace(/\n/g, "<br>") + "</p>";
+  }).join("");
+}
+
 // Ei generisk kontrollplan-tabellspørring (operators/tenants osv.) -- same
 // "same svar uansett kjede"-mønster som dei andre Console-testfilene alt
 // brukar (test-customer-analysis-console.js sin query()).
@@ -79,8 +119,8 @@ async function mount(opts) {
   var dom = new JSDOM('<!doctype html><html><body><div id="console-app"></div></body></html>', { runScripts: "outside-only", pretendToBeVisual: true, url: "https://vibeverk.no/console/" });
   var window = dom.window;
   window.SITE_CONFIG = { storageKey: "nordpunkt", company: { name: "Vibeverk" } };
-  window.App = { ready: function (callback) { callback(window.SITE_CONFIG); } };
-  window.Components = { esc: esc, field: field, button: button, helpIcon: function () { return ""; } };
+  window.App = { ready: function (callback) { callback(window.SITE_CONFIG); }, ui: { bindRichTextFields: bindRichTextFields, readRichTextField: readRichTextField, setRichTextField: setRichTextField, textToRichHtml: textToRichHtml } };
+  window.Components = { esc: esc, field: field, button: button, richTextField: richTextField, sanitizeRichHtml: sanitizeRichHtml, helpIcon: function () { return ""; } };
   var vendorRegistryFetchCount = 0;
   var control = {
     auth: { onAuthStateChange: function () {}, getSession: function () { return Promise.resolve({ data: { session: { access_token: "operator-token", user: { id: "op-1" }, expires_at: 4102444800 } } }); }, signOut: function () {} },
@@ -107,7 +147,19 @@ async function mount(opts) {
   var scSeedClone = JSON.parse(JSON.stringify(SC_SEED));
   var tenant = {
     from: function (table) {
-      if (table === "store") return storeQuery({ superconfig: scSeedClone, analytics: opts.analytics || {} });
+      // "content" (2026-08-13-brukarfunn): kunden sitt eige Web-admin-
+      // innhald (kontaktinfo m.m.) -- ei HEILT ANNA lagringsnøkkel enn
+      // superconfig, sjå notatet ved computeTenantPrivacyBlocks().
+      //
+      // superconfig: MÅ vere ein FRISK klone kvar gong (ikkje scSeedClone
+      // direkte) -- getSC() (Publiser-handteraren sin avsluttande
+      // "hent fersk, skriv attende"-runde) ville elles fått sc2 === sc
+      // (same objekt-referanse), og sc2.privacy = privacyPublicProjection(sc)
+      // ville då stille RIVE VEKK sc.privacy.versions/activeVersionId frå
+      // operatøren sin eigen, framleis-i-bruk in-memory-tilstand (funne under
+      // skriving av denne testen -- ekte produksjon hentar alltid eit
+      // separat, deserialisert objekt frå databasen, aldri same JS-referanse).
+      if (table === "store") return storeQuery({ superconfig: JSON.parse(JSON.stringify(scSeedClone)), analytics: opts.analytics || {}, content: opts.content || {} });
       throw new Error("Uventa tenant-tabell " + table);
     }
   };
@@ -201,6 +253,44 @@ test("«Generer full tekstversjon» opnar ei lesbar førehandsvising og kan lukk
   assert(closeBtn, "lukk-knappen finst");
   closeBtn.click();
   assert.equal(m.dom.window.document.querySelector("#cs-text-preview-close"), null, "modalen fjernar seg sjølv frå DOM-en ved lukking");
+});
+
+// Ein fersk v1 er alltid PUBLISERT (migratePrivacyVersions()) -- «Publiser»-
+// knappen finst berre i eit UTKAST, difor "Rediger (opprett nytt utkast)"
+// fyrst i begge testane under, same steg ein ekte operatør må gjennom.
+async function openNewDraft(m) {
+  m.dom.window.document.querySelector("#cs-priv-new-draft").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+}
+
+test("Publiser-sperra sjekkar kunden sitt eige 'content' (Web-admin-kontaktinfo), IKKJE sc.contact som aldri eksisterer (2026-08-13-brukarfunn)", async function (t) {
+  var m = await mount({ content: {} }); // content.contact heilt fråverande -- akkurat scenarioet brukaren trefte
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  await openNewDraft(m);
+  var capturedAlert = null;
+  m.dom.window.alert = function (msg) { capturedAlert = msg; };
+  var btn = m.dom.window.document.querySelector("#cs-priv-publish");
+  assert(btn, "«Publiser»-knappen finst i utkast-visinga");
+  btn.click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); }); // ventar på getStoreKeyOrError("content", ...)
+  assert(capturedAlert, "sperra utløyser eit varsel når kontaktinfo manglar");
+  assert.match(capturedAlert, /kontaktinformasjon/, "varselet nemner kontaktinformasjon");
+  assert.match(capturedAlert, /Web-admin-panel.*Innhald.*Kontaktinfo/, "varselet peikar til den FAKTISKE staden (kunden sitt eige Web-admin, Innhald -> Kontaktinfo) -- IKKJE Console sin eigen 'Web -> Firma'-fane, som aldri har hatt desse felta");
+});
+
+test("Publiser går gjennom når kunden faktisk har fylt ut kontaktinfo i sitt eige Web-admin-panel", async function (t) {
+  var m = await mount({ content: { contact: { email: "post@kunden.no", phone: "", address: "" } } });
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  await openNewDraft(m);
+  var capturedAlert = null;
+  m.dom.window.alert = function (msg) { capturedAlert = msg; };
+  var btn = m.dom.window.document.querySelector("#cs-priv-publish");
+  btn.click();
+  await new Promise(function (resolve) { setTimeout(resolve, 30); }); // ventar på content- OG analytics-hentinga, deretter sjølve lagringa
+  assert.equal(capturedAlert, null, "ingen publiseringssperre-varsel når content.contact faktisk har ein verdi: " + capturedAlert);
+  assert.match(sectionText(m), /Publisert/, "publiseringa gjekk faktisk gjennom");
 });
 
 // MERK: "Standardforslag"-knappen (Dokument-fana, computeSupplierBlock() sin
