@@ -812,7 +812,7 @@ serve(async (req: Request) => {
 
   const { data: tenant, error: tenantErr } = await controlSrvSb
     .from("tenants")
-    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, site_lock_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path, retention_policy")
+    .select("id, slug, hostnames, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, status, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, site_lock_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path, retention_policy, oauth_microsoft_configured_at, oauth_google_configured_at")
     .eq("id", tenant_id)
     .single();
   if (tenantErr || !tenant) {
@@ -1573,7 +1573,15 @@ serve(async (req: Request) => {
         body: JSON.stringify(authPatch),
       });
       if (!patchResp.ok) {
-        const bodyText = await patchResp.text().catch(() => "");
+        // Security Auditor finding (2026-08-13, MEDIUM, found while reviewing
+        // configure_tenant_oauth below): broker_audit_log is readable by any
+        // ACTIVE operator, not just superadmins (see its own migration
+        // comment: "never store secret VALUES here"). A validation error
+        // from the Management API could echo the offending field's value
+        // back in its body -- redact the known secret before it's ever
+        // written to detail, not just here but for the raw request the
+        // caller supplied.
+        const bodyText = (await patchResp.text().catch(() => "")).split(resendKey).join("[REDACTED]");
         const detail = "Management API PATCH HTTP " + patchResp.status + (bodyText ? ": " + bodyText : "");
         await auditFinish(auditId, "error", detail);
         return json({ error: "Kunne ikkje setje SMTP-oppsett (HTTP " + patchResp.status + ")" }, 500);
@@ -1612,6 +1620,145 @@ serve(async (req: Request) => {
       return json({ error: "SMTP vart sett opp, men kunne ikkje lagre stadfestinga — prøv å trykk igjen" }, 500);
     }
     await auditFinish(auditId, "success");
+    return json({ success: true });
+  }
+
+  // ── configure_tenant_oauth ───────────────────────────────────────────────
+  // Console feature (2026-08-13, Architect-designed): lets a superadmin wire
+  // up Microsoft/Google OAuth login (see core.js/workspace-core.js's
+  // signInWithOAuth() buttons, 0.147.0) for a customer's own project without
+  // ever touching the Supabase Dashboard. Mirrors configure_tenant_smtp's
+  // use of the platform-wide Management API token (same self-target guard,
+  // same "never trust the PATCH response alone, GET-confirm afterward"
+  // discipline) rather than inventing a new pattern -- see the Architect's
+  // 2026-08-13 design note: this is a new ACTION on an already-audited
+  // surface, not a new credential-handling surface.
+  //
+  // Deliberately does NOT store client_secret anywhere in the control plane
+  // (no Vault write, unlike set_tenant_service_role_key) -- it is forwarded
+  // once to the customer's own Supabase project (where GoTrue persists it)
+  // and then discarded from memory. Re-submitting the form is the update
+  // path if a customer ever rotates their app secret.
+  //
+  // Confirms only `enabled`/client_id equality after the PATCH, deliberately
+  // NOT secret equality: whether the Management API's GET masks or omits
+  // external_*_secret once set is unverified, and asserting on it blind
+  // risks a false failure on an otherwise-successful write.
+  if (action === "configure_tenant_oauth") {
+    if (tenant.status === "archived") {
+      await auditReject(tenant.id, action, "tenant er arkivert");
+      return json({ error: "Kan ikkje setje opp innlogging for ein arkivert kunde" }, 403);
+    }
+    if (!tenant.data_plane_url) {
+      await auditReject(tenant.id, action, "kopling (steg 3) manglar");
+      return json({ error: "Kopling (steg 3) må vera sett opp først" }, 400);
+    }
+    const { provider, client_id, client_secret, azure_tenant_id } = body;
+    if (provider !== "microsoft" && provider !== "google") {
+      return json({ error: "provider må vera 'microsoft' eller 'google'" }, 400);
+    }
+    const clientId = typeof client_id === "string" ? client_id.trim() : "";
+    const clientSecret = typeof client_secret === "string" ? client_secret.trim() : "";
+    if (!clientId || !clientSecret) {
+      return json({ error: "Client ID og Client Secret er begge påkrevd" }, 400);
+    }
+    // Security Auditor finding (2026-08-13, LOW): azureTenantId was
+    // concatenated straight into external_azure_url with no shape check --
+    // not an injection/SSRF vector (stored as a JSON field value on the
+    // CUSTOMER's own project, never fetched by the control plane itself),
+    // but a copy-paste mistake here would produce a silently malformed Auth
+    // config with a confusing failure for the customer. Reject rather than
+    // accept anything: a real Azure tenant/directory GUID, or one of
+    // Microsoft's own named multi-tenant endpoints.
+    const azureTenantIdRaw = typeof azure_tenant_id === "string" ? azure_tenant_id.trim() : "";
+    if (provider === "microsoft" && azureTenantIdRaw && !/^([0-9a-fA-F-]{36}|common|organizations|consumers)$/.test(azureTenantIdRaw)) {
+      return json({ error: "Azure Tenant/Directory-ID må vera ein GUID (t.d. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) eller 'common'/'organizations'/'consumers'" }, 400);
+    }
+    const mgmtToken = Deno.env.get("TENANT_MGMT_API_TOKEN");
+    if (!mgmtToken) {
+      await auditReject(tenant.id, action, "Management API-token manglar på server");
+      return json({ error: "Management API-token manglar på server (kontakt utviklar)" }, 500);
+    }
+    // data_plane_url is already validated (SUPABASE_PROJECT_URL_RE) as
+    // https://<ref>.supabase.co -- extracting the ref here is safe given
+    // that existing write-time guard.
+    const ref = tenant.data_plane_url.replace(/^https:\/\//, "").split(".")[0];
+    // Same platform-wide-token self-target guard as configure_tenant_smtp /
+    // fetch_tenant_project_keys -- nothing else would stop a mistaken or
+    // malicious data_plane_url from reconfiguring the control plane's own
+    // Auth provider settings.
+    const CONTROL_PLANE_PROJECT_REF = "jxoglthrnshabqmdmnui";
+    if (ref === CONTROL_PLANE_PROJECT_REF) {
+      await auditReject(tenant.id, action, "data_plane_url peikar på kontrollplanet sjølv");
+      return json({ error: "Ugyldig data_plane_url — peikar på kontrollplanet sjølv" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const mgmtHeaders = { "Authorization": "Bearer " + mgmtToken, "Content-Type": "application/json" };
+    const authPatch: Record<string, unknown> = provider === "microsoft"
+      ? {
+          external_azure_enabled: true,
+          external_azure_client_id: clientId,
+          external_azure_secret: clientSecret,
+          // Left unset (Supabase falls back to the "common" multi-tenant
+          // Microsoft endpoint) when the operator doesn't supply a tenant
+          // ID -- a valid choice for a customer who wants any Microsoft
+          // account to be able to sign in, not just their own org's.
+          ...(azureTenantIdRaw ? { external_azure_url: "https://login.microsoftonline.com/" + azureTenantIdRaw } : {}),
+        }
+      : {
+          external_google_enabled: true,
+          external_google_client_id: clientId,
+          external_google_secret: clientSecret,
+        };
+    try {
+      const patchResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
+        method: "PATCH",
+        headers: mgmtHeaders,
+        body: JSON.stringify(authPatch),
+      });
+      if (!patchResp.ok) {
+        // Security Auditor finding (2026-08-13, MEDIUM): broker_audit_log is
+        // readable by any ACTIVE operator, not just superadmins -- a
+        // validation error from the Management API could echo clientSecret
+        // (a genuinely customer-secret value, unlike SMTP's shared
+        // credential) back in its body. Redact before it's ever stored.
+        const bodyText = (await patchResp.text().catch(() => "")).split(clientSecret).join("[REDACTED]");
+        const detail = "Management API PATCH HTTP " + patchResp.status + (bodyText ? ": " + bodyText : "");
+        await auditFinish(auditId, "error", detail);
+        return json({ error: "Kunne ikkje setje opp innlogging (HTTP " + patchResp.status + ")" }, 500);
+      }
+      // Confirm it actually landed rather than trusting the PATCH alone.
+      const getResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
+        method: "GET",
+        headers: mgmtHeaders,
+      });
+      if (!getResp.ok) {
+        await auditFinish(auditId, "error", "stadfesting feila: GET HTTP " + getResp.status);
+        return json({ error: "Klarte ikkje stadfeste innloggingsoppsettet etterpå" }, 500);
+      }
+      const confirmed = await getResp.json();
+      const enabledOk = provider === "microsoft" ? confirmed.external_azure_enabled === true : confirmed.external_google_enabled === true;
+      const clientIdOk = provider === "microsoft" ? confirmed.external_azure_client_id === clientId : confirmed.external_google_client_id === clientId;
+      if (!enabledOk || !clientIdOk) {
+        await auditFinish(auditId, "error", "stadfesting feila: verdiane matcha ikkje etter lagring");
+        return json({ error: "Oppsettet vart ikkje lagra korrekt — prøv igjen" }, 500);
+      }
+    } catch (e) {
+      // Never include clientSecret/mgmtToken in any error surfaced or logged.
+      await auditFinish(auditId, "error", e instanceof Error ? e.message : "nettverksfeil");
+      return json({ error: "Kunne ikkje nå Supabase Management API" }, 500);
+    }
+    const column = provider === "microsoft" ? "oauth_microsoft_configured_at" : "oauth_google_configured_at";
+    const { error: bookkeepingErr } = await controlSrvSb
+      .from("tenants")
+      .update({ [column]: new Date().toISOString() })
+      .eq("id", tenant_id);
+    if (bookkeepingErr) {
+      await auditFinish(auditId, "error", "Innlogging sett opp hjå leverandøren, men kunne ikkje lagre stadfestinga: " + bookkeepingErr.message);
+      return json({ error: "Oppsettet vart lagra hjå leverandøren, men stadfestinga feila — prøv å trykk igjen" }, 500);
+    }
+    await auditFinish(auditId, "success", provider);
     return json({ success: true });
   }
 
