@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.147.0 — 2026-08-13
+
+**Microsoft-/Google-innlogging (OAuth) for Workspace + Web-admin, pluss ein reell sjølvregistrering-sperre.** Arkitekt-gjennomgått før bygging (sikkerheitssensitivt, kryssar to modular). Nye "Logg inn med Microsoft"/"Logg inn med Google"-knappar i begge innloggingsskjema, bak nye opt-in-flagg `features.oauthMicrosoft`/`features.oauthGoogle` (default AV, styrast i Console → Modular) -- knappane vises berre når kunden faktisk har konfigurert leverandøren i sitt eige Supabase-prosjekt (Authentication → Providers), aldri antatt på.
+
+**Reelt sikkerheitsfunn undervegs, retta før noko gjekk live:** Supabase sin `signInWithOAuth()` opprettar automatisk ein NY, uinvitert brukarkonto for kven som helst med ein gyldig Microsoft-/Google-konto -- utan fiks ville dette vore ein reell sjølvregistrering-veg forbi det eksisterande invitasjonssystemet. To lag med fiks:
+1. **Databasetrigger** (`handle_new_user()`, migrasjon `20260813180000`): oppretter no ALDRI ein `public.users`-rad for nokon som ikkje faktisk vart invitert av ein admin (`invited_at IS NOT NULL`), same kva vegen dei kom inn. Fyrste utkast av denne fiksen vart fanga som SJØLV FEIL av ein Arkitekt-gjennomgang før commit -- ville ha øydelagt heile den eksisterande invitasjonsflyten (GoTrue sin to-stegs INSERT+UPDATE-prosess). Retta ved å gjere UPDATE-tilfellet om til ein ekte UPSERT. Testa direkte mot `vibeverk-staging` (simulert både ein ekte invitasjon og ein sjølvregistrert brukar, stadfesta rett utfall for begge før deploy til fleire prosjekt).
+2. **Klientkode** (`core.js`, `workspace/workspace-core.js`): alle fire stadene som slo opp rolle etter innlogging hadde eit "fail-closed til role='member'" fallback når oppslaget fann ingen rad -- trygt for passord (uråd å nå fram utan ein ekte invitasjon), men IKKJE for OAuth. Endra universelt til avvisning (signOut + tydeleg melding), ikkje eit OAuth-spesifikt unntak.
+
+Web-admin fekk i tillegg ein `sessionStorage`-basert mekanisme for å opne admin-panelet att etter OAuth-redirect-runddansen (hash-en, t.d. `#admin`, overlever ikkje returen frå Microsoft/Google -- Supabase sin eigen access_token-hash overskriv han).
+
+**Kjend, akseptert dekningsgap:** verken `test.js` eller `test-workspace.js` mockar ein ekte Supabase-klient i det heile -- heile `useSupabase`-innloggingsstien (passord OG no OAuth) er utanfor jsdom-dekninga deira frå før, ikkje noko denne runda innfører. Å byggje ny mock-infrastruktur for dette var vurdert uforholdsmessig for denne runda; verifisert i staden direkte mot staging (databasetrigger) og ved kodelesing (klientlogikken), same presedens som andre kostbare-å-mocke stiar i Console-testfilene.
+
 ## 0.146.1 — 2026-08-13
 
 **Tre av dei attverande P1-punkta i `docs/compliance/personvern-full-argumentasjon-2026-08-13.md` sin sjekkliste lukka:**
