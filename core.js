@@ -5466,8 +5466,11 @@ window.App = (function () {
       ? storedBits.slice(0, -1).join(", ") + " og " + storedBits[storedBits.length - 1]
       : storedBits[0];
 
+    // Plausible-ordlyd RETTA 2026-08-13, same fiks som console-core.js sin
+    // computeTenantPrivacyBlocks() -- unngår at teksten sjølv avseier ein
+    // juridisk konklusjon om kva som er "personidentifiserbart".
     const cookieText = hasAnalytics
-      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
+      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy som ikke bruker informasjonskapsler eller vedvarende identifikatorer, og som ikke lagrer besøkendes IP-adresser."
       : hasSidetelling
       ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk, hvilke sider besøkende kommer fra/går til, og hvilken kampanje en lenke er merket med hvis du selv har lagt til dette i lenken, ofte kalt UTM). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
@@ -5480,10 +5483,23 @@ window.App = (function () {
       "Bruker vi cookies?\n" + cookieText + "\n\n" +
       "Hvor lenge lagres opplysningene?\n" +
       "Vi oppbevarer " + storedPhrase + " så lenge det er nødvendig for å følge opp saken din. Du kan når som helst be om at opplysningene dine slettes.\n\n" +
+      // Rettar-avsnittet RETTA + "Samtykke"-avsnittet FJERNA 2026-08-13
+      // (P0-1-fiks, personvern-full-argumentasjon del 1, gap 4): denne
+      // fallback-generatoren hadde framleis ei "samtykke er grunnlaget"-
+      // formulering som vart medvite fjerna frå hovudgeneratoren
+      // (computeTenantPrivacyBlocks() i console-core.js) 2026-08-06 --
+      // Datatilsynet sin eigen rettleiing peikar på at samtykke sannsynlegvis
+      // IKKJE er rett grunnlag for eit vanleg skjema. Denne funksjonen er
+      // berre brukt som EIN GONG-fallback for ein heilt fersk kunde FØR
+      // nokon har opna Personvern-fana i Console -- men teksten var likevel
+      // reelt feil medan ho stod, verifisert av ekstern (GPT) gjennomgang.
+      // Framleis ein separat, enklare generator by design (synkron, ingen
+      // nettverkskall) -- IKKJE full samanslåing med hovudgeneratoren i
+      // denne runda (større arkitekturarbeid, sjå personvern-full-
+      // argumentasjon del 3, P1-1), berre retta til å ikkje lenger PÅSTÅ
+      // noko feil.
       "Dine rettigheter\n" +
-      "Du har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold.\n\n" +
-      "Samtykke\n" +
-      "Ved å sende inn dette skjemaet samtykker du til at vi behandler opplysningene dine slik beskrevet over.";
+      "Du har rett til innsyn i hvilke opplysninger vi har lagret om deg, og rett til å få disse korrigert, slettet eller begrenset, i tråd med personopplysningsloven/GDPR. Du kan også protestere mot behandlingen, og be om å få opplysningene utlevert i et strukturert format (dataportabilitet) der det er relevant. For å be om innsyn, retting, sletting eller andre rettigheter, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern» — vi behandler slike forespørsler uten ugrunnet opphold og normalt innen én måned. Opplysninger slettes eller begrenses når vilkårene for dette etter personvernregelverket er oppfylt.";
   }
 
   function getSuperConfig() { return Store.get(SUPER_KEY, {}) || {}; }
