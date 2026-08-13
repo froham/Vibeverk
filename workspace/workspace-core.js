@@ -670,7 +670,7 @@ window.Intranet = (function () {
   /* =========================================================================
      10) INIT / INNLOGGING
      ====================================================================== */
-  function renderLogin() {
+  function renderLogin(errorMessage) {
     var root = document.getElementById("intranet");
     if (!root) return;
 
@@ -691,6 +691,19 @@ window.Intranet = (function () {
       return;
     }
 
+    // OAuth-innlogging (Microsoft/Google, 2026-08-13) -- same features.*-
+    // flagg som Web-admin sin renderAdminLogin() (delt config, sidan begge
+    // flatene autentiserer mot same Supabase-prosjekt/users-tabell for ein
+    // gjeven kunde). Kun vist når kunden faktisk har konfigurert
+    // leverandøren sjølv, aldri antatt på.
+    var ft = CFG.features || {};
+    var oauthButtons = _sb
+      ? [
+          ft.oauthMicrosoft ? { provider: "azure", label: "Logg inn med Microsoft" } : null,
+          ft.oauthGoogle    ? { provider: "google", label: "Logg inn med Google" } : null
+        ].filter(Boolean)
+      : [];
+
     root.innerHTML =
       '<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--color-bg);padding:1.5rem">' +
         '<div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:2.5rem;width:min(460px,100%);box-shadow:0 8px 40px rgba(0,0,0,.12)">' +
@@ -700,6 +713,14 @@ window.Intranet = (function () {
             '</div>' +
             '<div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--color-muted)">Logg inn på arbeidsområdet</div>' +
           '</div>' +
+          (oauthButtons.length
+            ? '<div style="display:grid;gap:.5rem;margin-bottom:1rem">' +
+                oauthButtons.map(function (o) {
+                  return '<button type="button" class="btn btn--ghost" data-login-oauth="' + o.provider + '" style="width:100%">' + C.esc(o.label) + '</button>';
+                }).join("") +
+              '</div>' +
+              '<p style="text-align:center;color:var(--color-muted);font-size:.85rem;margin:0 0 1rem">— eller —</p>'
+            : "") +
           '<div style="display:grid;gap:1rem">' +
             (_sb
               ? '<div style="display:grid;gap:.35rem"><label for="intranet-email" style="font-size:.85rem;font-weight:600">E-post</label>' +
@@ -720,7 +741,7 @@ window.Intranet = (function () {
               'Husk meg' +
             '</label>' +
             '<button id="intranet-login-btn" class="btn btn--primary" style="width:100%;padding:.8rem;font-size:.95rem;margin-top:.25rem">Logg inn</button>' +
-            '<p id="intranet-login-err" style="font-size:.85rem;color:#c0392b;margin:0;min-height:1.2rem;text-align:center"></p>' +
+            '<p id="intranet-login-err" style="font-size:.85rem;color:#c0392b;margin:0;min-height:1.2rem;text-align:center">' + (errorMessage ? C.esc(errorMessage) : "") + '</p>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -744,9 +765,21 @@ window.Intranet = (function () {
             return;
           }
           _sb.from("users").select("role, display_name").eq("id", result.data.user.id).single().then(function(r) {
-            var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
+            // RETTA 2026-08-13: manglande rolleoppslag skal ALDRI gje
+            // tilgang som "member" -- sjå tilsvarande notat i boot() sin
+            // eigen versjon av denne sjekken, og core.js sin
+            // onAuthStateChange, for full grunngjeving (delt prinsipp på
+            // tvers av alle fire innloggingsstiane, ikkje eit OAuth-
+            // spesifikt unntak).
+            if (!r.data) {
+              _sb.auth.signOut();
+              err.style.color = "#c0392b";
+              err.textContent = "Denne kontoen er ikke registrert her. Ta kontakt med en administrator.";
+              return;
+            }
+            var role = r.data.role;
             context.userId      = result.data.user.id;
-            context.displayName = (r.data && r.data.display_name) || result.data.user.email;
+            context.displayName = r.data.display_name || result.data.user.email;
             context.role        = role;
             sessionStorage.setItem(NS + ":admin", role);
             err.style.color = "var(--color-muted)";
@@ -768,6 +801,19 @@ window.Intranet = (function () {
         }
       }
     }
+
+    root.querySelectorAll("[data-login-oauth]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        // Ingen sessionStorage-"opne att X"-mekanisme trengst her, ulikt
+        // Web-admin sin renderAdminLogin() -- Workspace sin boot() opnar
+        // uansett heile appen (init()) så snart ein gyldig, invitert
+        // session vert oppdaga, same kva veg brukaren kom dit frå.
+        _sb.auth.signInWithOAuth({
+          provider: btn.getAttribute("data-login-oauth"),
+          options: { redirectTo: window.location.origin + window.location.pathname }
+        });
+      });
+    });
 
     root.querySelector("#intranet-login-btn").addEventListener("click", attempt);
     root.querySelector("#intranet-pass").addEventListener("keydown", function(e) {
@@ -956,13 +1002,27 @@ window.Intranet = (function () {
     }
 
     if (_sb) {
+      // Dette er OGSÅ landingspunktet for OAuth-innlogging (Microsoft/
+      // Google, 2026-08-13): etter redirect-runddansen til leverandøren og
+      // attende, oppdagar getSession() den ferske sesjonen her på nøyaktig
+      // same måte som ein alt-innlogga brukar som lastar sida på nytt.
       _sb.auth.getSession().then(function(result) {
         var session = result.data && result.data.session;
         if (session) {
           _sb.from("users").select("role, display_name").eq("id", session.user.id).single().then(function(r) {
-            var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
+            // RETTA 2026-08-13: manglande rolleoppslag skal ALDRI gje
+            // tilgang som "member". Kritisk for OAuth spesielt -- Supabase
+            // opprettar automatisk ein NY, uinvitert brukar for kven som
+            // helst med ein gyldig Microsoft-/Google-konto som logger inn,
+            // og utan denne sperra ville dei likevel fått "member"-tilgang.
+            // Sjå 20260813180000-migrasjonen for tilhøyrande database-fiks.
+            if (!r.data) {
+              _sb.auth.signOut().then(function () { renderLogin("Denne kontoen er ikke registrert her. Ta kontakt med en administrator."); });
+              return;
+            }
+            var role = r.data.role;
             context.userId      = session.user.id;
-            context.displayName = (r.data && r.data.display_name) || session.user.email;
+            context.displayName = r.data.display_name || session.user.email;
             context.role        = role;
             sessionStorage.setItem(NS + ":admin", role);
             if (isSupportAccess) renderSupportBanner();

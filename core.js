@@ -207,14 +207,43 @@ window.App = (function () {
   // Auth-status — oppdaterast av onAuthStateChange, brukast av _flushSync
   var _isAuthed = false;
 
-  // Synk Supabase-session til sessionStorage slik at getAuthRole() alltid er oppdatert
+  // Synk Supabase-session til sessionStorage slik at getAuthRole() alltid er oppdatert.
+  // Dette er OGSÅ landingspunktet for OAuth-innlogging (Microsoft/Google,
+  // 2026-08-13) -- ein full sideredirect kan ikkje fange opp eit lokalt
+  // .then()-kall slik passordinnlogginga gjer, så Supabase sin eigen
+  // onAuthStateChange (fyrer med SIGNED_IN så snart klienten oppdagar
+  // access_token-hashen frå OAuth-returen) er einaste naturlege stad å
+  // handtere OAuth-resultatet i det heile.
   if (_sb) {
     _sb.auth.onAuthStateChange(function (event, session) {
       _isAuthed = !!session;
       if (session && session.user) {
+        var wasOAuthPending = sessionStorage.getItem(NS + ":oauth-pending") === "admin";
         _sb.from("users").select("role").eq("id", session.user.id).single().then(function (r) {
-          var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
-          sessionStorage.setItem(NS + ":admin", role);
+          if (wasOAuthPending) sessionStorage.removeItem(NS + ":oauth-pending");
+          if (!r.data) {
+            // RETTA 2026-08-13: eit manglande rolleoppslag skal ALDRI gje
+            // tilgang som "member" -- det tidlegare fail-closed-fallbacket
+            // var trygt for passordinnlogging (uråd å nå fram utan ein ekte
+            // invitasjon), men IKKJE for OAuth (Microsoft/Google), der
+            // Supabase automatisk opprettar ein NY, uinvitert brukar for
+            // kven som helst med ein gyldig konto. Sjå
+            // 20260813180000-migrasjonen for tilhøyrande database-fiks
+            // (handle_new_user() oppretter no ALDRI ein users-rad for ein
+            // uinvitert person i det heile).
+            _isAuthed = false;
+            sessionStorage.removeItem(NS + ":admin");
+            _sb.auth.signOut();
+            if (wasOAuthPending) alert("Denne kontoen er ikke invitert til dette arbeidsområdet. Ta kontakt med en administrator.");
+            return;
+          }
+          sessionStorage.setItem(NS + ":admin", r.data.role);
+          // Reopnar admin-panelet etter ein fullført OAuth-runddans --
+          // hash-en (t.d. #admin) overlever ALDRI redirect-turen til
+          // Microsoft/Google og attende (Supabase sin eigen access_token-
+          // hash frå returen overskriv han). sessionStorage vart difor sett
+          // rett før signInWithOAuth() vart kalla, sjå renderAdminLogin().
+          if (wasOAuthPending && typeof openAdmin === "function") openAdmin();
         });
         // Lastar leads-cachen proaktivt så snart me veit brukaren er innlogga
         // (dekker både fersk innlogging og ein alt-innlogga sesjon ved
@@ -1705,10 +1734,31 @@ window.App = (function () {
       return;
     }
 
+    // OAuth-innlogging (Microsoft/Google, 2026-08-13) -- kun vist når
+    // kunden faktisk har konfigurert leverandøren i sitt eige Supabase-
+    // prosjekt (styrt via features.oauthMicrosoft/oauthGoogle i Console,
+    // ALDRI antatt på -- ei uverifisert knapp ville berre gitt ei kryptisk
+    // Supabase-feilmelding om leverandøren ikkje er sett opp).
+    const ft = CFG.features || {};
+    const oauthButtons = useSupabase
+      ? [
+          ft.oauthMicrosoft ? { provider: "azure", label: "Logg inn med Microsoft" } : null,
+          ft.oauthGoogle    ? { provider: "google", label: "Logg inn med Google" } : null
+        ].filter(Boolean)
+      : [];
+
     root.innerHTML = C.modal({
       title: "Logg inn",
       label: "Admin innlogging",
       body:
+        (oauthButtons.length
+          ? '<div style="display:grid;gap:.5rem;margin-bottom:1rem">' +
+              oauthButtons.map(function (o) {
+                return C.button({ label: o.label, type: "button", variant: "ghost", attrs: 'data-login-oauth="' + o.provider + '" style="width:100%"' });
+              }).join("") +
+            '</div>' +
+            '<p class="prose prose--muted" style="text-align:center;margin:0 0 1rem">— eller —</p>'
+          : "") +
         '<form data-login class="admin-form">' +
           '<p class="prose prose--muted">' + (useSupabase ? "Logg inn med e-post og passord." : "Skriv inn admin-passordet for å redigere innhold.") + '</p>' +
           (useSupabase ? C.field({ id: "admin-email", label: "E-post", type: "email", required: true }) : "") +
@@ -1720,6 +1770,22 @@ window.App = (function () {
     bindModalClose(root);
     const form = root.querySelector("[data-login]");
     const statusEl = root.querySelector("[data-login-status]");
+
+    root.querySelectorAll("[data-login-oauth]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        // sessionStorage (ikkje ein hash/variabel) -- ein full sideredirect
+        // til Microsoft/Google og attende TØMMER heile URL-hash-en (Supabase
+        // sin eigen access_token-hash frå returen overskriv alt som stod
+        // der før, t.d. #admin), så dette er einaste måten å hugse "opne
+        // admin-panelet att" over redirect-runddansen. Lesast/ryddast i den
+        // globale onAuthStateChange-handteraren, sjå notatet der.
+        sessionStorage.setItem(NS + ":oauth-pending", "admin");
+        _sb.auth.signInWithOAuth({
+          provider: btn.getAttribute("data-login-oauth"),
+          options: { redirectTo: window.location.origin + window.location.pathname }
+        });
+      });
+    });
 
     form.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -1734,7 +1800,16 @@ window.App = (function () {
             return;
           }
           _sb.from("users").select("role").eq("id", result.data.user.id).single().then(function (r) {
-            const role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
+            // RETTA 2026-08-13: manglande rolleoppslag skal ALDRI gje
+            // tilgang som "member" -- sjå notatet ved onAuthStateChange
+            // over for full grunngjeving (delt prinsipp, ikkje berre eit
+            // OAuth-spesifikt unntak).
+            if (!r.data) {
+              _sb.auth.signOut();
+              setStatus(statusEl, "Denne kontoen er ikke registrert her. Ta kontakt med en administrator.", "error");
+              return;
+            }
+            const role = r.data.role;
             setAuthed(role);
             hydrateFromSupabase(function () {
               if (role === "member") activeCategory = "henvendelser";

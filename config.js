@@ -173,7 +173,7 @@ window.SITE_CONFIG = {
                           //   Alternativ til Plausible -- MÅ vere eksplisitt false som standard (nytt/
                           //   uprøvd, ikkje aktiver for alle kundar automatisk). Kjører kun når
                           //   analytics.plausible under er tom (kunden vel eitt av dei to, aldri begge).
-    sidebygger:    false  // ← Design-modul ("sidebygger"): kunden vel sjølv designmal i Web-admin sin
+    sidebygger:    false, // ← Design-modul ("sidebygger"): kunden vel sjølv designmal i Web-admin sin
                           //   nye "Design"-fane. Betalt tillegg -- MÅ vere eksplisitt false som standard
                           //   (feat() sitt "sant med mindre eksplisitt false"-mønster ville elles vist
                           //   fana for alle). Berre Console/superconfig skal kunne skru denne på.
@@ -181,6 +181,12 @@ window.SITE_CONFIG = {
                           //   (module-carousel.js) -- begge ligg under Design-modulen, ikkje bak eigne
                           //   separate brytarar (2026-07-20). Sjå dei to modulfilene sine eigne
                           //   feature-flag-kommentarar.
+    oauthMicrosoft: false, // ← "Logg inn med Microsoft" i Web-admin + Workspace (2026-08-13). MÅ vere
+                          //   eksplisitt false -- krev at leverandøren faktisk er sett opp i kundens
+                          //   eige Supabase-prosjekt fyrst (Authentication → Providers), elles gjev
+                          //   knappen berre ei kryptisk Supabase-feilmelding. Skru på i Console →
+                          //   Modular ETTER at oppsettet er gjort, ikkje før.
+    oauthGoogle:    false  // ← "Logg inn med Google", same føresetnad som oauthMicrosoft over.
   },
 
   /* --- Workspace-funksjoner (skru av/på) ------------------------------------

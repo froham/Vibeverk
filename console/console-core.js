@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.146.1";
+  var VIBEVERK_VERSION = "0.147.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -425,7 +425,13 @@ window.VwConsole = (function () {
     social:"Sosiale lenker", contactForm:"Kontaktskjema", booking:"Booking", quote:"Tilbud",
     references:"Referansar", faq:"FAQ", siteSearch:"Søk i toppmeny",
     crm:"Kunder", crmFull:"Native e-post", mediabank:"Mediebank", chat:"Chat",
-    sidebygger:"Design", sidetelling:"Innsikt"
+    sidebygger:"Design", sidetelling:"Innsikt",
+    // oauthMicrosoft/oauthGoogle (2026-08-13): styrer BÅDE Web-admin OG
+    // Workspace sine innloggingsskjema (delt Supabase-prosjekt/users-tabell
+    // for ein gjeven kunde, sjå renderAdminLogin()/renderLogin()) -- difor
+    // plassert her i "Nettside"-fana sitt delte features-objekt, sjølv om
+    // effekten ikkje er avgrensa til sjølve nettsida.
+    oauthMicrosoft:"Innlogging med Microsoft", oauthGoogle:"Innlogging med Google"
   };
   // Opt-in-brytarar -- MÅ defaulte til AV for ein kunde som aldri har lagra
   // features eksplisitt, i motsetnad til alle andre brytarar over (som er
@@ -436,7 +442,7 @@ window.VwConsole = (function () {
   // lagra verdien er av. Det ville i tillegg lagra "true" stille inn viss
   // operatøren trykte "Lagra" av ein heilt annan grunn (t.d. skrudde på
   // FAQ), sidan skjemaet skriv HEILE features-objektet på nytt kvar gong.
-  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true };
+  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true, oauthMicrosoft: true, oauthGoogle: true };
   // Kva kvar bryter faktisk gjer -- rendrast som ein helpIcon() ved sida av
   // kvar checkbox (copy-clarity-initiativet, fase 4, 2026-07-13). Vald i
   // staden for å gjette meining frå den korte labelen åleine, sidan fleire
@@ -457,7 +463,9 @@ window.VwConsole = (function () {
     mediabank:   "Aktiverer eit bildegalleri synleg for besøkjande på nettsida.",
     chat:        "Aktiverer live chat-widgeten for besøkjande.",
     sidebygger:  "Gjev kunden ein eigen «Design»-fane i Web-admin, der dei sjølv kan velje mellom fleire designmalar for heile nettsida, i tillegg til Banner- og Karusell-seksjonar — eit betalt tillegg.",
-    sidetelling: "Aktiverer Vibeverk sin eigen, cookiefrie analyse (sidevisningar, henvisningar og klikk på knappar), synleg for kunden i den eigne Innsikt-fana i Web-admin (var underfane under Innstillinger, no ei eiga fane i adminpanelet). Kan ikkje brukast saman med eit eksternt verktøy (t.d. Plausible) sett opp i Analyse-fana her i Console — er begge slått på, vinn Plausible automatisk, og denne interne analysen samlar ikkje inn noko."
+    sidetelling: "Aktiverer Vibeverk sin eigen, cookiefrie analyse (sidevisningar, henvisningar og klikk på knappar), synleg for kunden i den eigne Innsikt-fana i Web-admin (var underfane under Innstillinger, no ei eiga fane i adminpanelet). Kan ikkje brukast saman med eit eksternt verktøy (t.d. Plausible) sett opp i Analyse-fana her i Console — er begge slått på, vinn Plausible automatisk, og denne interne analysen samlar ikkje inn noko.",
+    oauthMicrosoft: "Viser «Logg inn med Microsoft» i BÅDE Web-admin og Workspace sine innloggingsskjema. Krev at kunden (eller Vibeverk på deira vegne) har registrert ein app i Azure/Entra ID og lagt inn klient-ID/-hemmelegheit i kundens eige Supabase-prosjekt (Authentication → Providers) FØRST — denne brytaren viser berre knappen, ho set ikkje opp sjølve leverandøren. Fungerer kun for e-postar som alt er invitert som brukar frå før — kan ikkje brukast til å opprette nye kontoar.",
+    oauthGoogle: "Same som «Innlogging med Microsoft», men for Google. Krev tilsvarande oppsett i Google Cloud Console + kundens Supabase-prosjekt."
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
