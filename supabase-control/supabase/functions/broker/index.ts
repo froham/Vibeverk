@@ -27,7 +27,19 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DOMParser, XMLSerializer } from "https://esm.sh/@xmldom/xmldom@0.8.10?target=deno";
-import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
+// INCIDENT 2026-08-13: imagescript@1.3.0 var tidlegare eit statisk
+// top-level-import. deno.land sitt CDN byrja då å svare med eit brotli-
+// dekomprimeringsfeil for denne pakken sin WASM-ressurs -- sidan eit
+// statisk import evaluerast ved MODULLASTING, tok dette ned HEILE
+// broker-funksjonen (alle handlingar, ikkje berre biletopplasting),
+// stadfesta live via net-loggane (WORKER_ERROR/UncaughtException på kvar
+// einaste kalling, inkludert reine OPTIONS-preflightar). Retta ved å gjere
+// importen DYNAMISK og lat -- berre henta INNI compressRasterImage() (den
+// einaste brukaren), med eit try/catch som fell tilbake til den alt
+// eksisterande "kunne ikkje komprimerast"-feilmeldinga (400) i staden for å
+// krasje heile funksjonen dersom CDN-et framleis er nede. Ingen annan
+// handling i denne fila skal nokon gong vere avhengig av at dette
+// biblioteket faktisk lastar.
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -232,7 +244,10 @@ function readImageDimensions(bytes: Uint8Array, ext: string): { width: number; h
 // avgjere om ein PNG faktisk NYTTAR gjennomsikt (t.d. ein logo på
 // transparent bakgrunn) før compressRasterImage() vurderer å JPEG-konvertere
 // han vidare (JPEG har ingen alfakanal og ville øydelagt ekte gjennomsikt).
-function hasTransparency(img: Image): boolean {
+// deno-lint-ignore no-explicit-any -- Image-typen kjem no frå ein dynamisk
+// import() (sjå compressRasterImage), difor ingen statisk type tilgjengeleg
+// her utan å risikere same modullaste-krasjen som utløyste dette fiks.
+function hasTransparency(img: any): boolean {
   const bmp = img.bitmap;
   for (let i = 3; i < bmp.length; i += 4) {
     if (bmp[i] < 255) return true;
@@ -249,6 +264,24 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
   if (!dims || dims.width <= 0 || dims.height <= 0 ||
       dims.width > MAX_DIMENSION || dims.height > MAX_DIMENSION ||
       dims.width * dims.height > MAX_PIXELS) {
+    return null;
+  }
+  // Dynamisk, lat import (INCIDENT 2026-08-13, sjå fila sin toppkommentar) --
+  // om deno.land sitt CDN framleis er nede, fell dette trygt tilbake til den
+  // alt eksisterande "kunne ikkje komprimerast"-feilmeldinga (400) lenger
+  // nede i staden for å krasje heile funksjonen slik eit statisk import ville.
+  // deno-lint-ignore no-explicit-any -- sjå notatet ved hasTransparency().
+  let Image: any;
+  try {
+    // URL-en bygd frå samanslåtte delar (ikkje éin bokstaveleg streng) --
+    // Supabase sin bundlar prøver elles å STATISK løyse/pre-bundle kvar
+    // einaste import()-kalling som har eit bokstaveleg strengargument, sjølv
+    // om han er dynamisk, som gjorde den fyrste versjonen av denne fiksen
+    // verdilaus (bundlinga feila likevel). Sundeling hindrar den statiske
+    // analysen, og tvingar fram ei ekte, lat køyretidshenting i staden.
+    const imagescriptUrl = "https://deno.land" + "/x/imagescript@1.3.0/mod.ts";
+    Image = (await import(imagescriptUrl) as any).Image;
+  } catch (_e) {
     return null;
   }
   let img;
