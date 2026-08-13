@@ -1745,6 +1745,47 @@ window.App = (function () {
   // (eksplisitt brukarønske, sjå CHANGELOG) -- fail-closed like fullt: viss
   // sjølve AAL-oppslaget feilar (nettverksfeil), vert brukaren IKKJE sleppt
   // gjennom stille, dei ser ei feilmelding og må prøve på nytt.
+  // Seks enkeltsifra-bokser (i staden for eitt fritekstfelt) -- vanleg,
+  // gjenkjenneleg OTP-mønster. autoFocusNext hoppar til neste boks ved
+  // siffer, backspace på ein tom boks hoppar attende, og eit lima 6-sifra
+  // innhald fyller alle boksane med éin gong (uansett kva for ein boks det
+  // vart lima inn i). Kallar doSubmit() automatisk med éin gong alle seks
+  // er fylt ut -- ingen grunn til å tvinge eit ekstra klikk når koden alt
+  // er komplett -- men "Bekreft"-knappen finst framleis for tastatur-/
+  // skjermlesar-brukarar som heller vil trykke eksplisitt.
+  function mfaCodeBoxesHtml() {
+    var boxes = "";
+    for (var i = 0; i < 6; i++) {
+      boxes += '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Siffer ' + (i + 1) + ' av 6" data-mfa-digit style="width:2.6rem;height:3.1rem;text-align:center;font-size:1.35rem;font-weight:700;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:inherit">';
+    }
+    return '<div style="display:flex;gap:.5rem;justify-content:center;margin:.2rem 0 1rem">' + boxes + '</div>';
+  }
+  function wireMfaCodeBoxes(container, doSubmit) {
+    const boxes = Array.prototype.slice.call(container.querySelectorAll("[data-mfa-digit]"));
+    function currentCode() { return boxes.map(function (b) { return b.value; }).join(""); }
+    boxes.forEach(function (box, i) {
+      box.addEventListener("input", function () {
+        box.value = box.value.replace(/[^0-9]/g, "").slice(-1);
+        if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+        if (currentCode().length === boxes.length) doSubmit();
+      });
+      box.addEventListener("keydown", function (e) {
+        if (e.key === "Backspace" && !box.value && i > 0) { boxes[i - 1].focus(); boxes[i - 1].value = ""; }
+      });
+      box.addEventListener("paste", function (e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData("text").replace(/[^0-9]/g, "");
+        if (!text) return;
+        boxes.forEach(function (b, j) { b.value = text[j] || ""; });
+        const lastFilled = Math.min(text.length, boxes.length) - 1;
+        if (lastFilled >= 0) boxes[lastFilled].focus();
+        if (currentCode().length === boxes.length) doSubmit();
+      });
+    });
+    if (boxes[0]) setTimeout(function () { boxes[0].focus(); }, 50);
+    return currentCode;
+  }
+
   function mfaChallengeThenProceed(root, onPass) {
     _sb.auth.mfa.getAuthenticatorAssuranceLevel().then(function (r) {
       if (r.error) {
@@ -1759,20 +1800,18 @@ window.App = (function () {
       root.innerHTML = C.modal({
         title: "Logg inn", label: "To-faktor-innlogging",
         body:
-          '<p class="prose prose--muted">Skriv inn koden fra autentiseringsappen din.</p>' +
+          '<p class="prose prose--muted" style="text-align:center">Skriv inn koden fra autentiseringsappen din (f.eks. Google Authenticator).</p>' +
           '<form data-mfa-form class="admin-form">' +
-            C.field({ id: "mfa-code", label: "Kode (6 siffer)", type: "text", required: true }) +
-            C.button({ label: "Bekreft", type: "submit", variant: "primary" }) +
-            '<p class="form__status" data-mfa-status role="status" aria-live="polite"></p>' +
+            mfaCodeBoxesHtml() +
+            C.button({ label: "Bekreft", type: "submit", variant: "primary", attrs: 'style="width:100%"' }) +
+            '<p class="form__status" data-mfa-status role="status" aria-live="polite" style="text-align:center"></p>' +
           '</form>'
       });
       bindModalClose(root);
       const mfaForm = root.querySelector("[data-mfa-form]");
       const mfaStatus = root.querySelector("[data-mfa-status]");
-      mfaForm.addEventListener("submit", function (e) {
-        e.preventDefault();
-        const code = root.querySelector("#mfa-code").value.trim();
-        if (!code) return;
+      function submitCode(code) {
+        if (!code || code.length !== 6) return;
         setStatus(mfaStatus, "Sjekker…", "");
         _sb.auth.mfa.listFactors().then(function (lf) {
           const factor = lf.data && lf.data.totp && lf.data.totp[0];
@@ -1785,6 +1824,11 @@ window.App = (function () {
             });
           });
         });
+      }
+      const getCode = wireMfaCodeBoxes(mfaForm, function () { submitCode(getCode()); });
+      mfaForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        submitCode(getCode());
       });
     });
   }

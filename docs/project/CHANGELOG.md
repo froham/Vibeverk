@@ -30,6 +30,12 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.149.1 — 2026-08-13
+
+**To-faktor-innloggingsskjermane (0.149.0) fekk seks enkeltsifra-bokser i staden for eitt fritekstfelt for koden** — vanleg, gjenkjenneleg OTP-mønster (autofokus til neste boks per siffer, backspace hoppar attende, ein lima 6-sifra kode fyller alle boksane med éin gong, automatisk innsending når alle seks er fylt ut). Gjeld alle tre stadene koden vert bedt om: sjølve innloggingsutfordringa (`core.js`/`workspace-core.js`) OG stadfestingssteget ved fyrste oppsett (`module-settings.js`). Same hjelpefunksjonar (`mfaCodeBoxesHtml()`/`wireMfaCodeBoxes()`) duplisert i alle tre filene, same mønster som resten av MFA-koden alt følgjer (kvar fil eig sin eigen kopi, ikkje delt på tvers).
+
+Kopien nemner no eksplisitt Google Authenticator som eksempel-app (i staden for berre "autentiseringsappen din") — same, alt-etablert namngjeving som hint-teksten på sjølve "Skru på"-knappen alt brukte.
+
 ## 0.149.0 — 2026-08-13
 
 **Tre uavhengige rettingar/tillegg, funne under brukaren si eiga live-testing av OAuth-funksjonen (0.147.0-0.148.0):**

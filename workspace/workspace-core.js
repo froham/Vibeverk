@@ -678,6 +678,42 @@ window.Intranet = (function () {
   // (eksplisitt brukarønske, sjå CHANGELOG) -- fail-closed like fullt: viss
   // sjølve AAL-oppslaget feilar (nettverksfeil), vert brukaren IKKJE sleppt
   // gjennom stille.
+  // Seks enkeltsifra-bokser (i staden for eitt fritekstfelt) -- vanleg,
+  // gjenkjenneleg OTP-mønster. Sjå fullt notat ved core.js sin eigen versjon
+  // av desse to hjelpefunksjonane (identisk åtferd, ulikt modal-system).
+  function mfaCodeBoxesHtml() {
+    var boxes = "";
+    for (var i = 0; i < 6; i++) {
+      boxes += '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Siffer ' + (i + 1) + ' av 6" data-mfa-digit style="width:2.6rem;height:3.1rem;text-align:center;font-size:1.35rem;font-weight:700;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:inherit">';
+    }
+    return '<div style="display:flex;gap:.5rem;justify-content:center;margin:.2rem 0 .9rem">' + boxes + '</div>';
+  }
+  function wireMfaCodeBoxes(container, doSubmit) {
+    var boxes = Array.prototype.slice.call(container.querySelectorAll("[data-mfa-digit]"));
+    function currentCode() { return boxes.map(function (b) { return b.value; }).join(""); }
+    boxes.forEach(function (box, i) {
+      box.addEventListener("input", function () {
+        box.value = box.value.replace(/[^0-9]/g, "").slice(-1);
+        if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+        if (currentCode().length === boxes.length) doSubmit();
+      });
+      box.addEventListener("keydown", function (e) {
+        if (e.key === "Backspace" && !box.value && i > 0) { boxes[i - 1].focus(); boxes[i - 1].value = ""; }
+      });
+      box.addEventListener("paste", function (e) {
+        e.preventDefault();
+        var text = (e.clipboardData || window.clipboardData).getData("text").replace(/[^0-9]/g, "");
+        if (!text) return;
+        boxes.forEach(function (b, j) { b.value = text[j] || ""; });
+        var lastFilled = Math.min(text.length, boxes.length) - 1;
+        if (lastFilled >= 0) boxes[lastFilled].focus();
+        if (currentCode().length === boxes.length) doSubmit();
+      });
+    });
+    if (boxes[0]) setTimeout(function () { boxes[0].focus(); }, 50);
+    return currentCode;
+  }
+
   function mfaChallengeThenProceed(onPass) {
     _sb.auth.mfa.getAuthenticatorAssuranceLevel().then(function (r) {
       if (r.error) {
@@ -692,17 +728,15 @@ window.Intranet = (function () {
       openModal({
         title: "To-faktor-innlogging",
         bodyHtml:
-          '<p style="color:var(--color-muted);margin:0 0 .8rem">Skriv inn koden fra autentiseringsappen din.</p>' +
-          '<div class="i-field"><label for="mfa-code">Kode (6 siffer)</label><input id="mfa-code" type="text" autocomplete="one-time-code"></div>' +
-          '<p class="form__status" id="mfa-status" style="margin-top:.6rem"></p>',
-        footHtml: '<button type="button" class="btn btn--primary btn--sm" id="mfa-submit">Bekreft</button>',
+          '<p style="color:var(--color-muted);margin:0 0 .8rem;text-align:center">Skriv inn koden fra autentiseringsappen din (f.eks. Google Authenticator).</p>' +
+          mfaCodeBoxesHtml() +
+          '<p class="form__status" id="mfa-status" style="margin-top:.6rem;text-align:center"></p>',
+        footHtml: '<button type="button" class="btn btn--primary btn--sm" id="mfa-submit" style="width:100%">Bekreft</button>',
         size: "sm",
         onMount: function (modalEl) {
-          var codeInput = modalEl.querySelector("#mfa-code");
           var statusEl = modalEl.querySelector("#mfa-status");
-          function submit() {
-            var code = codeInput.value.trim();
-            if (!code) return;
+          function submitCode(code) {
+            if (!code || code.length !== 6) return;
             statusEl.style.color = "var(--color-muted)";
             statusEl.textContent = "Sjekker…";
             _sb.auth.mfa.listFactors().then(function (lf) {
@@ -718,9 +752,8 @@ window.Intranet = (function () {
               });
             });
           }
-          modalEl.querySelector("#mfa-submit").addEventListener("click", submit);
-          codeInput.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
-          setTimeout(function () { codeInput.focus(); }, 50);
+          var getCode = wireMfaCodeBoxes(modalEl, function () { submitCode(getCode()); });
+          modalEl.querySelector("#mfa-submit").addEventListener("click", function () { submitCode(getCode()); });
         }
       });
     });
