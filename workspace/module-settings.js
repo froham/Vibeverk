@@ -140,6 +140,20 @@
           '</div>'
         : '') +
 
+      /* --- To-faktor-innlogging (TOTP, 2026-08-13) ---------------------------
+         Valfri, sjølvmeldt av kvar brukar -- ikkje avhengig av rolle, alle
+         som har ein ekte Supabase-konto (App.supabase) kan skru han på for
+         seg sjølv. Faktoren gjeld same auth.users-rad på tvers av Web-admin
+         og Workspace (delt Supabase-prosjekt), så innlogging på BEGGE
+         flatene krev koden når fyrst skrudd på (sjå mfaChallengeThenProceed()
+         i core.js/workspace-core.js). ------------------------------------- */
+      (App.supabase
+        ? '<div class="i-card" style="margin-bottom:1rem">' +
+            '<p class="i-section-label">To-faktor-innlogging</p>' +
+            '<div id="settings-mfa-body"><p style="color:var(--color-muted);font-size:.85rem">Sjekker status…</p></div>' +
+          '</div>'
+        : '') +
+
       /* --- Farlig sone — berre admin ----------------------------------------- */
       (isAdmin
         ? '<div class="i-card" style="border-color:color-mix(in srgb,#c0392b 35%,transparent)">' +
@@ -272,6 +286,92 @@
       st.textContent = "Nullstilt."; st.className = "form__status is-ok";
       Intranet.refresh();
       setTimeout(function () { renderSettings(root, role); }, 500);
+    });
+
+    if (App.supabase) renderMfaCard(root);
+  }
+
+  /* =========================================================================
+     TO-FAKTOR-INNLOGGING (TOTP)-KORT
+     ====================================================================== */
+  function renderMfaCard(root) {
+    var body = root.querySelector("#settings-mfa-body");
+    if (!body) return;
+    App.supabase.auth.mfa.listFactors().then(function (lf) {
+      if (lf.error) {
+        body.innerHTML = '<p style="color:#c0392b;font-size:.85rem">Kunne ikkje hente status. Prøv å laste sida på nytt.</p>';
+        return;
+      }
+      var factor = lf.data && lf.data.totp && lf.data.totp[0];
+      if (factor) { renderMfaOn(body, factor); return; }
+      renderMfaOff(body);
+    });
+  }
+
+  function renderMfaOff(body) {
+    body.innerHTML =
+      '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .7rem">Krev en kode fra en autentiseringsapp (f.eks. Google Authenticator) i tillegg til passord ved innlogging. Gjelder både Web-admin og Workspace.</p>' +
+      '<button type="button" class="btn btn--ghost btn--sm" id="settings-mfa-enroll-btn">Skru på to-faktor-innlogging</button>' +
+      '<p class="form__status" id="settings-mfa-enroll-status"></p>';
+    body.querySelector("#settings-mfa-enroll-btn").addEventListener("click", function () {
+      var statusEl = body.querySelector("#settings-mfa-enroll-status");
+      statusEl.className = ""; statusEl.textContent = "Setter opp…";
+      App.supabase.auth.mfa.enroll({ factorType: "totp" }).then(function (r) {
+        if (r.error) { statusEl.className = "form__status is-error"; statusEl.textContent = r.error.message; return; }
+        renderMfaEnrollStep(body, r.data);
+      });
+    });
+  }
+
+  function renderMfaEnrollStep(body, enrollData) {
+    body.innerHTML =
+      '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .7rem">Skann koden under med autentiseringsappen din, eller skriv inn nøkkelen manuelt. Skriv så inn koden appen viser, for å bekrefte.</p>' +
+      '<div style="max-width:200px;margin:0 0 .7rem">' + enrollData.totp.qr_code + '</div>' +
+      '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 .9rem;word-break:break-all">Manuell nøkkel: <code>' + C.esc(enrollData.totp.secret) + '</code></p>' +
+      '<div style="display:grid;gap:.6rem;max-width:280px">' +
+        field("settings-mfa-verify-code", "Kode fra appen (6 siffer)", "", "text", "123456") +
+        '<div style="display:flex;align-items:center;gap:.7rem">' +
+          '<button type="button" class="btn btn--primary btn--sm" id="settings-mfa-verify-btn">Bekreft</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="settings-mfa-cancel-btn">Avbryt</button>' +
+          '<span class="form__status" id="settings-mfa-verify-status"></span>' +
+        '</div>' +
+      '</div>';
+    body.querySelector("#settings-mfa-cancel-btn").addEventListener("click", function () {
+      // Sjølve enroll()-kallet oppretter alt eit "unverified"-faktor -- fjern
+      // det att viss brukaren avbryt, elles hopar det seg opp som daude,
+      // aldri-stadfesta faktor ved kvart avbrotne forsøk.
+      App.supabase.auth.mfa.unenroll({ factorId: enrollData.id }).then(function () { renderMfaOff(body); });
+    });
+    body.querySelector("#settings-mfa-verify-btn").addEventListener("click", function () {
+      var code = body.querySelector("#settings-mfa-verify-code").value.trim();
+      var statusEl = body.querySelector("#settings-mfa-verify-status");
+      if (!code) return;
+      statusEl.className = ""; statusEl.textContent = "Sjekker…";
+      App.supabase.auth.mfa.challenge({ factorId: enrollData.id }).then(function (ch) {
+        if (ch.error) { statusEl.className = "form__status is-error"; statusEl.textContent = ch.error.message; return; }
+        App.supabase.auth.mfa.verify({ factorId: enrollData.id, challengeId: ch.data.id, code: code }).then(function (v) {
+          if (v.error) { statusEl.className = "form__status is-error"; statusEl.textContent = "Feil kode. Prøv igjen."; return; }
+          renderMfaOn(body, { id: enrollData.id });
+        });
+      });
+    });
+  }
+
+  function renderMfaOn(body, factor) {
+    body.innerHTML =
+      '<p style="font-size:.85rem;margin:0 0 .7rem"><i class="ti ti-circle-check" style="color:#16a34a"></i> Skrudd på.</p>' +
+      '<button type="button" class="btn btn--ghost btn--sm" id="settings-mfa-off-btn" style="color:#c0392b;border-color:#c0392b">Skru av to-faktor-innlogging</button>' +
+      '<p class="form__status" id="settings-mfa-off-status"></p>';
+    body.querySelector("#settings-mfa-off-btn").addEventListener("click", function () {
+      // Tier B-varsel (destruktivt, svekker tryggleiken på kontoen): tydeleg
+      // om KVA som skjer, ikkje berre "er du sikker".
+      if (!confirm("Skrur av to-faktor-innlogging for kontoen din. Etter dette held passord åleine fram med å vere nok til å logge inn. Vil du fortsette?")) return;
+      var statusEl = body.querySelector("#settings-mfa-off-status");
+      statusEl.className = ""; statusEl.textContent = "Skrur av…";
+      App.supabase.auth.mfa.unenroll({ factorId: factor.id }).then(function (r) {
+        if (r.error) { statusEl.className = "form__status is-error"; statusEl.textContent = r.error.message; return; }
+        renderMfaOff(body);
+      });
     });
   }
 

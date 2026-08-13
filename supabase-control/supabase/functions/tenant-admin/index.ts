@@ -317,6 +317,31 @@ serve(async (req: Request) => {
   // { ok: true } stille) viss tenanten ikkje har noko live data_plane_url
   // enno (provisioning-steg der configure_tenant_smtp uansett vil setje rett
   // verdi seinare, når han faktisk køyrer).
+  // Security-funn (2026-08-13, live brukartesting på Vibeverk sin eigen
+  // tenant): uri_allow_list vart tidlegare bygd BERRE av det bare registrerte
+  // hostnamnet (t.d. "vibeverk.no"), aldri underdomena workspace.<domene>/
+  // console.<domene> som middleware.js sin eigen kommentar seier same
+  // tenanten faktisk svarer på (sjå "samstundes vibeverk.no,
+  // console.vibeverk.no, workspace.vibeverk.no"). Ein invitasjon sendt FRÅ
+  // Workspace sin EIGEN "Brukere"-fane (module-users.js) byggjer redirectTo
+  // frå window.location.href -- altså workspace.<domene> sjølv, IKKJE ein
+  // sti under rot-domenet. GoTrue feilar ikkje synleg når redirectTo ikkje
+  // er i allow-lista -- han fell stille tilbake til site_url (rot-domenet),
+  // som ikkje har noko "set passord"-steg i det heile. Resultatet: ein
+  // reelt invitert tilsett enda opp innlogga direkte på det offentlege
+  // nettstedet, utan å nokon gong bli bedt om å setje passord. Retta ved å
+  // alltid inkludere workspace./console.-underdomena i allow-lista for KVART
+  // registrert hostname, ikkje berre det bare domenet.
+  function authAllowedUrisFor(hostnames: string[]): string[] {
+    const uris: string[] = [];
+    for (const h of hostnames) {
+      uris.push("https://" + h + "/**");
+      uris.push("https://workspace." + h + "/**");
+      uris.push("https://console." + h + "/**");
+    }
+    return uris;
+  }
+
   async function patchTenantAuthConfig(tenant: { data_plane_url?: string | null; hostnames?: string[] | null }): Promise<{ ok: true } | { ok: false; detail: string }> {
     if (!tenant.data_plane_url) return { ok: true };
     const mgmtToken = Deno.env.get("TENANT_MGMT_API_TOKEN");
@@ -327,7 +352,7 @@ serve(async (req: Request) => {
     const mgmtHeaders = { "Authorization": "Bearer " + mgmtToken, "Content-Type": "application/json" };
     const authPatch: Record<string, unknown> = {
       site_url: "https://" + hostnames[0],
-      uri_allow_list: hostnames.map((h) => "https://" + h + "/**").join(","),
+      uri_allow_list: authAllowedUrisFor(hostnames).join(","),
     };
     try {
       const patchResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {
@@ -1564,7 +1589,12 @@ serve(async (req: Request) => {
     };
     if (hostnames.length > 0) {
       authPatch.site_url = "https://" + hostnames[0];
-      authPatch.uri_allow_list = hostnames.map((h) => "https://" + h + "/**").join(",");
+      // Security-funn 2026-08-13 -- sjå authAllowedUrisFor() sin eigen
+      // kommentar for full grunngjeving (workspace./console.-underdomene
+      // manglande i allow-lista fekk invitasjonar sendt frå Workspace sin
+      // eigen "Brukere"-fane til å stille falle attende til rot-sida, utan
+      // "set passord"-steg).
+      authPatch.uri_allow_list = authAllowedUrisFor(hostnames).join(",");
     }
     try {
       const patchResp = await fetch("https://api.supabase.com/v1/projects/" + ref + "/config/auth", {

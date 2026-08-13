@@ -274,24 +274,29 @@ window.Intranet = (function () {
                      || "Arbeidsområde";
 
     // Personvern-lenke i sidemenyen (2026-08-12) -- før dette fanst det INGEN
-    // veg for ein tilsett til å faktisk lese personvernerklæringa (som no òg
-    // dekker Workspace-tilsette sjølv, sjå computeTenantPrivacyBlocks() sin
-    // "employees"-blokk) utan å opne det offentlege nettstedets footer.
-    // Same read-only modal-mønster som C.footer() alt bruker der (INGEN
-    // avhukingsboks -- berre visning), attbrukt her via bindTerms() (core.js).
+    // veg for ein tilsett til å faktisk lese kva som er lagra om dei sjølve
+    // utan å opne det offentlege nettstedets footer.
+    //
+    // RETTA 2026-08-13 (UX-gjennomgang, to funn):
+    // 1. Synte tidlegare CFG.privacy.text -- HEILE den kundevendte policyen
+    //    (cookies, leads, kontaktskjema osv.), ikkje berre det som faktisk
+    //    gjeld ein tilsett. Byter til CFG.privacy.employeeText, ein eigen,
+    //    avgrensa versjon Console no publiserer parallelt (sjå
+    //    privacyPublicProjection() i console-core.js). MERK: ein tenant som
+    //    publiserte FØR denne endringa har ikkje employeeText enno -- lenka
+    //    forsvinn stille (same "hasPrivacyText"-vakt som før) til neste
+    //    publisering, i staden for å vise noko feil.
+    // 2. Brukte terms-modal-back/terms-modal (public-site-mønsteret,
+    //    bindTerms() i core.js) -- CSS for desse klassane finst BERRE i rot-
+    //    sida sin index.html, aldri kopiert til workspace/index.html. Utan
+    //    matchande CSS vart modalen ein ustila flex-unge klemt inn ved sida
+    //    av sidemenyen, ikkje eit sentrert, dimma overlegg. Byter til
+    //    Workspace sin eigen, alt riktige openModal() (Escape-handtering,
+    //    fokus-felle, scroll -- sjå MODAL-HJELPER-notatet lenger oppe i fila).
     var privCfg = CFG.privacy || {};
-    var hasPrivacyText = !!(privCfg.text || "");
+    var hasPrivacyText = !!(privCfg.employeeText || "");
     var privacyLinkHtml = hasPrivacyText
-      ? '<button type="button" class="terms-link" style="background:none;border:0;padding:0;font:inherit;cursor:pointer;color:var(--color-muted);text-decoration:underline;font-size:.75rem" data-terms-open="ws-privacy">Personvern</button>'
-      : "";
-    var privacyModalHtml = hasPrivacyText
-      ? '<div class="terms-modal-back" data-terms-modal="ws-privacy" style="display:none">' +
-          '<div class="terms-modal">' +
-            '<h3>' + C.esc(privCfg.heading || "Personvern og databehandling") + '</h3>' +
-            '<div class="terms-modal-text">' + C.sanitizeRichHtml(privCfg.text || "") + '</div>' +
-            C.button({ label: "Lukk", variant: "ghost", class: "terms-modal-close", attrs: 'data-terms-close="ws-privacy"' }) +
-          '</div>' +
-        '</div>'
+      ? '<button type="button" id="ws-privacy-link" style="background:none;border:0;padding:0;font:inherit;cursor:pointer;color:var(--color-muted);text-decoration:underline;font-size:.75rem">Personvern</button>'
       : "";
 
     root.innerHTML =
@@ -312,7 +317,6 @@ window.Intranet = (function () {
           (privacyLinkHtml ? '<div style="margin-top:.4rem">' + privacyLinkHtml + '</div>' : "") +
         '</div>' +
       '</aside>' +
-      privacyModalHtml +
       '<div class="i-sidebar-overlay" id="intranet-overlay"></div>' +
       '<div class="i-body">' +
         '<div class="i-topbar">' +
@@ -326,7 +330,18 @@ window.Intranet = (function () {
       '</div>';
 
     renderNav();
-    if (hasPrivacyText) App.ui.bindTerms(root, "ws-privacy");
+    if (hasPrivacyText) {
+      var privacyLinkEl = document.getElementById("ws-privacy-link");
+      if (privacyLinkEl) {
+        privacyLinkEl.addEventListener("click", function () {
+          openModal({
+            title: "Personvern for ansatte",
+            bodyHtml: C.sanitizeRichHtml(privCfg.employeeText || ""),
+            size: "md"
+          });
+        });
+      }
+    }
 
     // Hamburgermeny (mobil)
     var sidebar  = document.getElementById("intranet-sidebar");
@@ -650,6 +665,67 @@ window.Intranet = (function () {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
+  // To-faktor-innlogging (TOTP, 2026-08-13) -- valfri, sjølvmeldt av kvar
+  // brukar (registrert i Innstillinger, module-settings.js -- einaste
+  // registreringsstaden, men faktoren gjeld same auth.users-rad på tvers av
+  // Web-admin og Workspace, sidan begge autentiserer mot same Supabase-
+  // prosjekt). Kalla FØR nokon vert rekna som ferdig innlogga, frå alle tre
+  // grantingsstadene i denne fila (passord, boot()/OAuth-retur,
+  // invitasjon/gjenoppretting) -- har brukaren eit stadfesta TOTP-faktor, må
+  // dei skrive inn ein kode FØR tilgang vert gjeve.
+  //
+  // Bygd direkte denne runda, utan eiga Arkitekt-/Sikkerheitsrevisjon-runde
+  // (eksplisitt brukarønske, sjå CHANGELOG) -- fail-closed like fullt: viss
+  // sjølve AAL-oppslaget feilar (nettverksfeil), vert brukaren IKKJE sleppt
+  // gjennom stille.
+  function mfaChallengeThenProceed(onPass) {
+    _sb.auth.mfa.getAuthenticatorAssuranceLevel().then(function (r) {
+      if (r.error) {
+        openModal({
+          title: "To-faktor-innlogging",
+          bodyHtml: '<p style="color:var(--color-muted)">Kunne ikkje sjekke om to-faktor-innlogging er påkrevd. Prøv å laste sida på nytt.</p>',
+          size: "sm"
+        });
+        return;
+      }
+      if (r.data.nextLevel === r.data.currentLevel) { onPass(); return; }
+      openModal({
+        title: "To-faktor-innlogging",
+        bodyHtml:
+          '<p style="color:var(--color-muted);margin:0 0 .8rem">Skriv inn koden fra autentiseringsappen din.</p>' +
+          '<div class="i-field"><label for="mfa-code">Kode (6 siffer)</label><input id="mfa-code" type="text" autocomplete="one-time-code"></div>' +
+          '<p class="form__status" id="mfa-status" style="margin-top:.6rem"></p>',
+        footHtml: '<button type="button" class="btn btn--primary btn--sm" id="mfa-submit">Bekreft</button>',
+        size: "sm",
+        onMount: function (modalEl) {
+          var codeInput = modalEl.querySelector("#mfa-code");
+          var statusEl = modalEl.querySelector("#mfa-status");
+          function submit() {
+            var code = codeInput.value.trim();
+            if (!code) return;
+            statusEl.style.color = "var(--color-muted)";
+            statusEl.textContent = "Sjekker…";
+            _sb.auth.mfa.listFactors().then(function (lf) {
+              var factor = lf.data && lf.data.totp && lf.data.totp[0];
+              if (!factor) { statusEl.style.color = "#c0392b"; statusEl.textContent = "Fant ikke noe to-faktor-oppsett. Kontakt en administrator."; return; }
+              _sb.auth.mfa.challenge({ factorId: factor.id }).then(function (ch) {
+                if (ch.error) { statusEl.style.color = "#c0392b"; statusEl.textContent = ch.error.message; return; }
+                _sb.auth.mfa.verify({ factorId: factor.id, challengeId: ch.data.id, code: code }).then(function (v) {
+                  if (v.error) { statusEl.style.color = "#c0392b"; statusEl.textContent = "Feil kode. Prøv igjen."; return; }
+                  closeModal({ skipOnClose: true });
+                  onPass();
+                });
+              });
+            });
+          }
+          modalEl.querySelector("#mfa-submit").addEventListener("click", submit);
+          codeInput.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+          setTimeout(function () { codeInput.focus(); }, 50);
+        }
+      });
+    });
+  }
+
   /* =========================================================================
      9) REFRESH-HJELPER (moduler kaller denne etter data-endring for re-render)
      ====================================================================== */
@@ -778,13 +854,15 @@ window.Intranet = (function () {
               return;
             }
             var role = r.data.role;
-            context.userId      = result.data.user.id;
-            context.displayName = r.data.display_name || result.data.user.email;
-            context.role        = role;
-            sessionStorage.setItem(NS + ":admin", role);
-            err.style.color = "var(--color-muted)";
-            err.textContent = "Henter dataene dine…";
-            App.ui.hydrateFromSupabase(init);
+            mfaChallengeThenProceed(function () {
+              context.userId      = result.data.user.id;
+              context.displayName = r.data.display_name || result.data.user.email;
+              context.role        = role;
+              sessionStorage.setItem(NS + ":admin", role);
+              err.style.color = "var(--color-muted)";
+              err.textContent = "Henter dataene dine…";
+              App.ui.hydrateFromSupabase(init);
+            });
           });
         });
       } else {
@@ -917,11 +995,19 @@ window.Intranet = (function () {
         history.replaceState(null, "", location.pathname + location.search);
         _sb.from("users").select("role, display_name").eq("id", result.data.user.id).single().then(function(r) {
           var role = (r.data && r.data.role) || "member"; // fail-closed: lågaste tillit viss rolleoppslag feilar
-          context.userId      = result.data.user.id;
-          context.displayName = (r.data && r.data.display_name) || result.data.user.email;
-          context.role        = role;
-          sessionStorage.setItem(NS + ":admin", role);
-          App.ui.hydrateFromSupabase(init);
+          // To-faktor-innlogging (2026-08-13): relevant her sjølv om dette er
+          // invitasjon/gjenoppretting-flyten -- ei PASSORD-GJENOPPRETTING
+          // (ikkje berre ein splitter ny invitasjon) kan gjelde ein brukar
+          // som alt har eit stadfesta TOTP-faktor frå før. Nesten alltid ein
+          // no-op for ein FYRSTE-gongs-invitasjon (ingen faktor enno), men
+          // lukker gapet for gjenoppretting.
+          mfaChallengeThenProceed(function () {
+            context.userId      = result.data.user.id;
+            context.displayName = (r.data && r.data.display_name) || result.data.user.email;
+            context.role        = role;
+            sessionStorage.setItem(NS + ":admin", role);
+            App.ui.hydrateFromSupabase(init);
+          });
         });
       });
     });
@@ -1021,12 +1107,21 @@ window.Intranet = (function () {
               return;
             }
             var role = r.data.role;
-            context.userId      = session.user.id;
-            context.displayName = r.data.display_name || session.user.email;
-            context.role        = role;
-            sessionStorage.setItem(NS + ":admin", role);
-            if (isSupportAccess) renderSupportBanner();
-            App.ui.hydrateFromSupabase(init);
+            // To-faktor-innlogging (2026-08-13): dette ER landingspunktet
+            // for OAuth-innlogging (sjå kommentaren over) OG for ein ekte
+            // sideoppfrisking av ein alt-innlogga brukar -- begge må gatast.
+            // Ein sesjon som alt nådde aal2 tidlegare (t.d. same nettlesar-
+            // sesjon, berre ei sideoppfrisking) passerer stille gjennom att,
+            // sidan AAL-tilstanden ligg i sjølve JWT-en, ikkje noko denne
+            // koden må hugse separat.
+            mfaChallengeThenProceed(function () {
+              context.userId      = session.user.id;
+              context.displayName = r.data.display_name || session.user.email;
+              context.role        = role;
+              sessionStorage.setItem(NS + ":admin", role);
+              if (isSupportAccess) renderSupportBanner();
+              App.ui.hydrateFromSupabase(init);
+            });
           });
         } else {
           renderLogin();

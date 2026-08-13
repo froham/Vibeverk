@@ -1546,6 +1546,108 @@ nav("#/notes"); nav("#/dashboard");
     "af4: direkte lenke til #/orgdrift/eiendeler fell i staden attende til «Personer»-fana");
 })();
 
+/* --- AH) PERSONVERN FOR TILSETTE I WORKSPACE-SIDEMENYEN (UX-funn 2026-08-13)
+   Retta to feil same runda: (1) lenka synte tidlegare CFG.privacy.text --
+   HEILE den kundevendte personvernerklæringa -- i staden for berre
+   CFG.privacy.employeeText, den nye, avgrensa versjonen Console publiserer
+   parallelt; (2) modalen brukte terms-modal-back/terms-modal (public-site-
+   CSS-en, som aldri fanst i workspace/index.html sin eigen <style>-blokk,
+   difor ein ustila, feilplassert modal) -- byta til Workspace sin eigen,
+   alt-korrekte openModal(). Eigen DOM av same grunn som Z/AF over: sjekker
+   faktisk rendra sidemeny-tilstand ved boot, ikkje noko som kan re-triggerast
+   seinare i ein alt-lasta kontekst. --------------------------------------- */
+(function () {
+  const dom8 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window8 = dom8.window;
+  window8.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window8.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window8.scrollTo = () => {};
+  window8.HTMLElement.prototype.scrollIntoView = () => {};
+  window8.URL.createObjectURL = window8.URL.createObjectURL || (() => "blob:mock");
+  window8.URL.revokeObjectURL = window8.URL.revokeObjectURL || (() => {});
+  window8.confirm = () => true;
+
+  window8.eval(fs.readFileSync("config.js", "utf8"));
+  // Same shape som privacyPublicProjection() (console-core.js) sender til
+  // superconfig -- ".text" (full kundevendt policy) skal IKKJE dukke opp i
+  // Workspace-lenka, kun ".employeeText".
+  window8.eval('window.SITE_CONFIG.privacy = { heading: "Personvernerklæring", text: "IKKJE-VIS-DETTE-kundevendt-tekst-om-cookies-og-leads", employeeText: "<p>Test: dette er lagra om deg som tilsett.</p>" };');
+  [
+    "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js"
+  ].forEach(f => window8.eval(fs.readFileSync(f, "utf8")));
+
+  const _NS8 = window8.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window8.eval(`sessionStorage.setItem("${_NS8}:admin","admin")`);
+  window8.document.dispatchEvent(new window8.Event("DOMContentLoaded", { bubbles: true }));
+  const doc8 = window8.document;
+
+  const privacyLink8 = doc8.getElementById("ws-privacy-link");
+  assert(!!privacyLink8, "ah1: «Personvern»-lenke finst i sidemenyen når employeeText er sett");
+  assert(!doc8.querySelector(".terms-modal-back"),
+    "ah2: modalen bruker IKKJE lenger public-site sin terms-modal-back/terms-modal (manglande CSS i workspace/index.html gjorde han ustila)");
+  privacyLink8.dispatchEvent(new window8.Event("click", { bubbles: true }));
+  const modal8 = doc8.querySelector(".i-modal-backdrop");
+  assert(!!modal8, "ah3: klikk opnar Workspace sin eigen, delte openModal() (.i-modal-backdrop)");
+  const modalText8 = modal8.textContent;
+  assert(modalText8.indexOf("dette er lagra om deg som tilsett") > -1,
+    "ah4: modalen viser employeeText-innhaldet");
+  assert(modalText8.indexOf("IKKJE-VIS-DETTE-kundevendt-tekst") === -1,
+    "ah5: modalen viser IKKJE den fulle kundevendte personvernerklæringa (.text), berre employeeText");
+  assert(modal8.querySelector(".i-modal__title").textContent === "Personvern for ansatte",
+    "ah6: modalen har ein eigen, fast tittel for tilsette-visinga (ikkje det kundevendte dokumentet sin heading)");
+})();
+
+/* --- AI) PERSONVERN FOR TILSETTE: LENKA SKJULES NÅR employeeText MANGLAR
+   (t.d. ein tenant som publiserte FØR denne funksjonen fanst -- ingen
+   employeeText er lagra enno). Same "hasPrivacyText"-vakt som CFG.privacy.text
+   alltid har hatt -- skal forsvinne stille, ikkje krasje eller vise tomt
+   innhald. --------------------------------------------------------------- */
+(function () {
+  const dom9 = new JSDOM(html, {
+    runScripts: "outside-only", pretendToBeVisual: true,
+    url: "https://example.test/workspace/"
+  });
+  const window9 = dom9.window;
+  window9.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
+    unobserve() {} disconnect() {}
+  };
+  window9.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
+  window9.scrollTo = () => {};
+  window9.HTMLElement.prototype.scrollIntoView = () => {};
+  window9.URL.createObjectURL = window9.URL.createObjectURL || (() => "blob:mock");
+  window9.URL.revokeObjectURL = window9.URL.revokeObjectURL || (() => {});
+  window9.confirm = () => true;
+
+  window9.eval(fs.readFileSync("config.js", "utf8"));
+  // Simulerer ein tenant som publiserte FØR employeeText fanst -- .text sett,
+  // .employeeText manglar heilt (ikkje berre tom streng).
+  window9.eval('window.SITE_CONFIG.privacy = { heading: "Personvernerklæring", text: "Gamal, fullstendig kundevendt tekst frå før 2026-08-13" };');
+  [
+    "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js",
+    "workspace/workspace-core.js",
+    "workspace/module-dashboard.js"
+  ].forEach(f => window9.eval(fs.readFileSync(f, "utf8")));
+
+  const _NS9 = window9.eval('(window.SITE_CONFIG&&window.SITE_CONFIG.storageKey)||"site"');
+  window9.eval(`sessionStorage.setItem("${_NS9}:admin","admin")`);
+  window9.document.dispatchEvent(new window9.Event("DOMContentLoaded", { bubbles: true }));
+  const doc9 = window9.document;
+
+  assert(!doc9.getElementById("ws-privacy-link"),
+    "ai1: «Personvern»-lenke vert IKKJE vist når employeeText manglar, sjølv om .text (den gamle, no ubrukte kjelda) er sett");
+})();
+
 /* --- AG) EIENDELER: EXCEL-IMPORT + OCR (Fase 5, 2026-08-10) ---------------
    xlsx og tesseract.js er lasta lazy via ein injisert <script>-tag (sjå
    eiLoadScriptOnce() i module-orgdrift.js) -- jsdom (runScripts:
