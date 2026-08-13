@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.147.0";
+  var VIBEVERK_VERSION = "0.148.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -172,7 +172,7 @@ window.VwConsole = (function () {
     // Elles vil sjekklista alltid vise "ikkje kopla"/tom status sjølv når
     // databasen faktisk har rette verdiar.
     _sbControl.from("tenants")
-      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_ever_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path, retention_policy")
+      .select("id, slug, hostnames, status, data_plane_url, data_plane_anon_key, data_plane_storage_key, data_plane_service_role_secret_id, schema_verified_at, routing_verified_at, first_admin_invited_at, smtp_configured_at, custom_modules_manifest, site_lock_enabled, site_lock_ever_enabled, site_lock_updated_at, dpa_sent_at, dpa_signed_at, dpa_document_path, retention_policy, oauth_microsoft_configured_at, oauth_google_configured_at")
       .order("slug").then(function (r) {
         // r.error vart tidlegare aldri sjekka -- ein manglande kolonne-grant
         // (INCIDENT 2026-08-12, sjå 20260812235500-migrasjonen) fekk difor
@@ -7376,6 +7376,11 @@ window.VwConsole = (function () {
     var adminInvitedOk = !!tenant.first_admin_invited_at;
     var smtpOk = !!tenant.smtp_configured_at;
     var retentionLeads = (tenant.retention_policy && tenant.retention_policy.leads) || { enabled: false, months: 12 };
+    // Rein klientside-utrekning, same regel som backend'en sin eigen ref-
+    // utleiing (tenant-admin/index.ts) -- berre til å vise fram, ikkje til
+    // å avgjere noko.
+    var oauthRef = tenant.data_plane_url ? tenant.data_plane_url.replace(/^https:\/\//, "").split(".")[0] : "";
+    var oauthCallbackUrl = oauthRef ? "https://" + oauthRef + ".supabase.co/auth/v1/callback" : "";
 
     wrap.innerHTML =
       '<div class="admin-group">' +
@@ -7539,6 +7544,33 @@ window.VwConsole = (function () {
           '<p class="field__hint" id="kd-retention-lastrun" style="margin-top:.6rem">Hentar siste køyring…</p>' +
         '</div>' +
 
+        '<div class="kd-card"><strong>Innlogging med Microsoft/Google (OAuth)</strong>' +
+          '<p class="field__hint">Set opp Microsoft- eller Google-innlogging for denne kunden sin Workspace/Web-admin, direkte her — ingen grunn til å opne Supabase Dashboard. Kunden må fyrst registrere ein app i sitt eige Azure-/Google-konsoll (kan ikkje automatiserast — det er deira eigen identitet, ikkje vår), med callback-URL-en under limt inn som redirect-URI der. Lim så inn Client ID/Secret her, og skru til slutt på funksjonen i «Modular»-fana.</p>' +
+          (oauthCallbackUrl
+            ? '<p class="field__hint"><strong>Callback-URL (lim inn i Azure/Google):</strong> <code style="word-break:break-all">' + C.esc(oauthCallbackUrl) + '</code></p>'
+            : '<p class="field__hint">Kopling (steg 3) må vera sett opp fyrst for å vise callback-URL-en.</p>') +
+          (tenant.status !== "archived" && tenant.data_plane_url
+            ? '<details style="margin-top:.6rem"><summary style="cursor:pointer;font-size:.85rem;color:#2563eb">Microsoft — ' + (tenant.oauth_microsoft_configured_at ? "✓ sett opp " + C.esc(new Date(tenant.oauth_microsoft_configured_at).toLocaleDateString("nb-NO")) : "ikkje sett opp") + '</summary>' +
+                '<form id="kd-oauth-microsoft-form" style="margin-top:.6rem">' +
+                  C.field({ id: "kd-oauth-ms-clientid", label: "Client ID (Application ID)", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }) +
+                  C.field({ id: "kd-oauth-ms-secret", label: "Client Secret", type: "password", placeholder: "…" }) +
+                  C.field({ id: "kd-oauth-ms-tenant", label: "Azure Tenant/Directory-ID (valfritt — tomt tillèt alle Microsoft-kontoar)", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }) +
+                  '<button type="submit" class="btn btn--ghost btn--sm">Lagre Microsoft-oppsett</button>' +
+                  '<p class="form__status" id="kd-oauth-microsoft-status" style="margin-top:.4rem"></p>' +
+                '</form>' +
+              '</details>' +
+              '<details style="margin-top:.6rem"><summary style="cursor:pointer;font-size:.85rem;color:#2563eb">Google — ' + (tenant.oauth_google_configured_at ? "✓ sett opp " + C.esc(new Date(tenant.oauth_google_configured_at).toLocaleDateString("nb-NO")) : "ikkje sett opp") + '</summary>' +
+                '<form id="kd-oauth-google-form" style="margin-top:.6rem">' +
+                  C.field({ id: "kd-oauth-google-clientid", label: "Client ID", placeholder: "xxxxxxxx.apps.googleusercontent.com" }) +
+                  C.field({ id: "kd-oauth-google-secret", label: "Client Secret", type: "password", placeholder: "…" }) +
+                  '<button type="submit" class="btn btn--ghost btn--sm">Lagre Google-oppsett</button>' +
+                  '<p class="form__status" id="kd-oauth-google-status" style="margin-top:.4rem"></p>' +
+                '</form>' +
+              '</details>'
+            : '<p class="field__hint">Kopling (steg 3) må vera sett opp, og kunden kan ikkje vera arkivert.</p>'
+          ) +
+        '</div>' +
+
         (tenant.status !== "archived"
           ? '<div class="kd-card"><strong>Support-tilgang</strong>' +
               '<p class="field__hint">Lagar ei mellombels innloggingslenke for ein eksisterande admin-brukar, slik at du kan hjelpe kunden direkte utan å kjenne passordet deira. Lenka går berre til DEG (ikkje til kunden) og går ut av seg sjølv. Kunden ser ei tydeleg melding i Workspace mens ho er i bruk.</p>' +
@@ -7659,6 +7691,39 @@ window.VwConsole = (function () {
         if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
       });
     });
+
+    var oauthMsForm = wrap.querySelector("#kd-oauth-microsoft-form");
+    if (oauthMsForm) {
+      oauthMsForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var clientId = wrap.querySelector("#kd-oauth-ms-clientid").value.trim();
+        var clientSecret = wrap.querySelector("#kd-oauth-ms-secret").value.trim();
+        var azureTenantId = wrap.querySelector("#kd-oauth-ms-tenant").value.trim();
+        var out = wrap.querySelector("#kd-oauth-microsoft-status");
+        if (!clientId || !clientSecret) { statusMsg(out, "Client ID og Client Secret er begge påkrevd", false); return; }
+        out.textContent = "Set opp…";
+        tenantAdminCall("configure_tenant_oauth", { tenant_id: tenant.id, provider: "microsoft", client_id: clientId, client_secret: clientSecret, azure_tenant_id: azureTenantId || undefined }, function (r) {
+          statusMsg(out, r.error || "✓ Microsoft-innlogging sett opp", !r.error);
+          if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
+
+    var oauthGoogleForm = wrap.querySelector("#kd-oauth-google-form");
+    if (oauthGoogleForm) {
+      oauthGoogleForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var clientId = wrap.querySelector("#kd-oauth-google-clientid").value.trim();
+        var clientSecret = wrap.querySelector("#kd-oauth-google-secret").value.trim();
+        var out = wrap.querySelector("#kd-oauth-google-status");
+        if (!clientId || !clientSecret) { statusMsg(out, "Client ID og Client Secret er begge påkrevd", false); return; }
+        out.textContent = "Set opp…";
+        tenantAdminCall("configure_tenant_oauth", { tenant_id: tenant.id, provider: "google", client_id: clientId, client_secret: clientSecret }, function (r) {
+          statusMsg(out, r.error || "✓ Google-innlogging sett opp", !r.error);
+          if (!r.error) loadTenants(function () { renderKundar(_sc, fullWrap); });
+        });
+      });
+    }
 
     var inviteForm = wrap.querySelector("#kd-invite-form");
     if (inviteForm) {
