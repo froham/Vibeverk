@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.145.1";
+  var VIBEVERK_VERSION = "0.146.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -4740,6 +4740,19 @@ window.VwConsole = (function () {
     { id: "tilbud",     label: "Tilbudsskjema" },
     { id: "booking",    label: "Booking" }
   ];
+  // Lagt til 2026-08-13 (P0-5-fiks): konkrete lagringstider som ALT finst i
+  // COMPLIANCE_STANDARD_SUGGESTIONS (Vibeverk sitt eige, interne Art. 30-
+  // register), attbrukt her som PLASSHALDAR (ikkje eit auto-utfylt verdi) i
+  // Skjematekster-fanen sitt Lagringstid-felt -- ei operatøropna fane skal
+  // no vise eit konkret, klar-til-godkjenning forslag i staden for berre
+  // "Ikke fastsatt". Fyller ALDRI feltet stille -- operatøren må sjølv
+  // skrive/godkjenne, same "aldri automatisk skriv publisert tekst"-prinsipp
+  // som resten av denne fila.
+  var PRIVACY_FORM_RETENTION_SUGGESTION = {
+    kontakt: "Inntil 12 måneder etter siste aktivitet, med mindre kundeforhold etableres.",
+    tilbud:  "Inntil 12 måneder etter at tilbudet er avsluttet/utgått, med mindre kundeforhold etableres.",
+    booking: "Inntil 12-24 måneder etter avtalt dato."
+  };
   var PRIVACY_LEGAL_BASIS_OPTIONS = [
     ["", "Ikke fastsatt"],
     ["avtale", "Avtale / oppfyllelse før avtale"],
@@ -4807,36 +4820,47 @@ window.VwConsole = (function () {
   // hardkoda `v.id === "plausible"` i to ulike funksjonar, ei lett-å-gløyme
   // kopling om ein ny valfri leverandør nokon gong vert lagt til -- no finst
   // det berre EI sanning, her, per leverandør).
-  // DPA-status endra til "tba" for alle fire 2026-08-12 (brukarvedtak): Vibeverk
-  // AS er enno ikkje stifta som eige rettssubjekt, så INGEN av desse kan ha
-  // ei formelt signert databehandlaravtale endå -- det er ikkje ein feil/eit
-  // gløymt steg, berre venting på eit konkret, kjent administrativt steg.
-  // Brukar signerer sjølv når selskapet er registrert. IKKJE les "tba" som
-  // "ikkje undersøkt" -- dei tidlegare unconfirmed/likely_confirmed-funna
-  // (data-map-vibeverk.md) er framleis gyldige faktaopplysningar, berre
-  // omformulerte i dpaNote til å seie KVA som attstår, ikkje at det er uklart.
+  // RETTA 2026-08-13 (P0-fiks, "personvern-full-argumentasjon"-dokumentet
+  // del 1.3): "tba"-modellen frå 2026-08-12 ("Vibeverk AS ikkje stifta,
+  // difor ingen DPA") var FEIL for tre av fire leverandørar -- stadfesta
+  // ved å hente kvar leverandør sin eigen, publiserte DPA-side direkte
+  // 2026-08-13. Å akseptere eit tenestevilkår krev ikkje eit stifta
+  // aksjeselskap; Supabase/Resend/Plausible sine DPA-ar trer i kraft
+  // AUTOMATISK ved bruk av tenesta, heilt uavhengig av selskapsform:
+  //   - supabase.com/legal/dpa: "acceptance of the Agreement shall have
+  //     the same effect as signing the SCCs" -- ingen plan-avgrensing funnen.
+  //   - resend.com/legal/dpa: "no separate signing event is required".
+  //   - plausible.io/dpa: "Use of the service constitutes acceptance of
+  //     this DPA. No separate signature is required" -- gjeld alle kundar.
+  // Vercel er derimot eit REELT, stadfesta gap, av ein heilt annan grunn:
+  // vercel.com/legal/dpa seier eksplisitt "This Addendum applies... for
+  // Customers who are on Enterprise and Pro plans" -- Vibeverk sin konto er
+  // stadfesta Hobby (data-map-vibeverk.md, 2026-07-16, via ekte
+  // VERCEL_OIDC_TOKEN-JWT). Ny status "blocked" innført for nettopp dette
+  // tilfellet (ikkje "tba" -- det er ikkje eit spørsmål om tid, det er
+  // aktivt utelukka på noverande plan).
   var VIBEVERK_VENDORS = [
     { id: "supabase", name: "Supabase",
       whatItDoes: "Database, autentisering og fillagring — all persondata plattformen lagrer",
       isActive: function () { return true; }, country: "eu", transferMechanism: "none",
-      dpaStatus: "tba",
-      dpaNote: "Signerast via Supabase Dashboard når Vibeverk AS er stifta og registrert som kontoeigar." },
+      dpaStatus: "confirmed",
+      dpaNote: "DPA trer i kraft automatisk ved aksept av Supabase sine Vilkår for tenesta (supabase.com/legal/dpa, stadfesta 2026-08-13), uavhengig av om Vibeverk AS er stifta." },
     { id: "vercel", name: "Vercel",
       whatItDoes: "Hosting og tenant-ruting",
       isActive: function () { return true; }, country: "us", transferMechanism: "scc",
-      dpaStatus: "tba",
-      dpaNote: "DPA er automatisk inkludert på Pro/Enterprise-plan (dagens konto er på Hobby-planen) -- ordnast saman med oppgradering når Vibeverk AS er stifta." },
+      dpaStatus: "blocked",
+      dpaNote: "Vercel sin DPA gjeld stadfesta KUN Pro/Enterprise-plan (vercel.com/legal/dpa, stadfesta 2026-08-13) -- Vibeverk sin konto er på Hobby-planen, difor INGEN DPA i kraft i dag, uavhengig av selskapsform. Krev planoppgradering (forretningsavgjerd) for å løysast." },
     { id: "resend", name: "Resend",
       whatItDoes: "Utsending og mottak av e-post",
       isActive: function () { return true; }, country: "us", transferMechanism: "scc_or_dpf",
-      dpaStatus: "tba",
-      dpaNote: "Standardvilkåra er alt godteke ved kontoopprettinga, men ei formell databehandlaravtale under Vibeverk AS som eige rettssubjekt attstår til selskapet er stifta." },
+      dpaStatus: "confirmed",
+      dpaNote: "DPA trer i kraft automatisk ved aksept av Resend sine Vilkår for tenesta (resend.com/legal/dpa, stadfesta 2026-08-13). Konkret overføringsmekanisme (SCC/DPF) ikkje sjølvstendig verifisert utover at DPA-en finst." },
     { id: "plausible", name: "Plausible Analytics",
       whatItDoes: "Cookiefri trafikkstatistikk",
       isActive: function (an) { return !!(an && (an.plausible || an.plausibleEmbed)); },
       country: "eu", transferMechanism: "none",
-      dpaStatus: "tba",
-      dpaNote: "Leverandøren tilbyr ei standard databehandlaravtale -- signerast under Vibeverk AS når selskapet er stifta." }
+      dpaStatus: "confirmed",
+      dpaNote: "DPA trer i kraft automatisk ved bruk av tenesta, gjeld alle kundar (plausible.io/dpa, stadfesta 2026-08-13)." }
   ];
   var VENDOR_COUNTRY_LABEL = { eu: "EU/EØS", us: "USA" };
   var VENDOR_TRANSFER_LABEL = {
@@ -4844,15 +4868,21 @@ window.VwConsole = (function () {
     scc: "EUs standardavtaler (SCC)",
     scc_or_dpf: "SCC og/eller EU–US Data Privacy Framework (ikkje stadfesta kva)"
   };
-  var VENDOR_DPA_LABEL = { confirmed: "Stadfesta", likely_confirmed: "Truleg alt i kraft", unconfirmed: "Ikkje stadfesta", tba: "TBA — Vibeverk AS ikkje stifta enno" };
-  // Kundevendt (offentleg publisert) ordlyd for overføringsgrunnlag --
-  // MEDVITE ULIK VENDOR_TRANSFER_LABEL over, som er skriven for OPERATØREN
-  // (Leverandørar-fana) og difor hedgar ærleg ("ikkje stadfesta kva"). Den
-  // hedginga skal ALDRI lekke rått til ein besøkjande -- sjå computeSupplierBlock().
+  var VENDOR_DPA_LABEL = { confirmed: "Stadfesta i kraft", likely_confirmed: "Truleg alt i kraft", unconfirmed: "Ikkje stadfesta", tba: "TBA", blocked: "Blokkert (feil plan/vilkår hos leverandøren)" };
+  // Kundevendt (offentleg publisert) ordlyd for overføringsgrunnlag.
+  // RETTA 2026-08-13: computeSupplierBlock() nedanfor gatar no denne på
+  // v.dpaStatus, ikkje berre v.transferMechanism -- ein "blocked"-leverandør
+  // (Vercel) skal ALDRI få den ubetinga "dekket av SCC"-formuleringa her,
+  // sjølv om transferMechanism er sett. Regelen er: kundeviss <= intern
+  // stadfesta viss, aldri omvendt (GPT-funn, personvern-full-argumentasjon
+  // del 1.3).
   var VENDOR_TRANSFER_CUSTOMER_LABEL = {
     scc: "overføringen er dekket av EUs standardavtaler (SCC)",
     scc_or_dpf: "overføringen er dekket av EUs standardavtaler og/eller tilsvarende godkjente overføringsmekanismer"
   };
+  // Vises i staden for VENDOR_TRANSFER_CUSTOMER_LABEL når dpaStatus er
+  // "blocked" -- ærleg, ikkje-alarmerande, men aldri ei falsk stadfesting.
+  var VENDOR_TRANSFER_CUSTOMER_LABEL_BLOCKED = "vi arbeider med å sikre at overføringen skjer i tråd med personvernregelverket";
 
   // "Bolk 5" (2026-08-12): kundevendt Leverandørar-tekst byrjar no lese frå
   // vendor_registry (kontrollplanet, redigerbar via Compliance-fana) i staden
@@ -5195,12 +5225,23 @@ window.VwConsole = (function () {
       "# Om denne personvernerklæringen\nDenne personvernerklæringen forteller deg hvilke personopplysninger vi samler inn, hva vi bruker dem til, hvor lenge vi lagrer dem, og hvilke rettigheter du har. Den gjelder for alle som besøker nettsiden, tar kontakt med oss via skjemaene her, eller er ansatt og bruker våre interne arbeidsverktøy (Workspace)."
     ) });
     blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? " (org.nr " + orgNr + ")" : "") + " er behandlingsansvarlig for personopplysningene som samles inn gjennom denne nettsiden. Det betyr at det er " + (company.name || "vi") + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
+      // RETTA 2026-08-13: "...gjennom denne nettsiden" dekte ikkje
+      // Workspace/tilsette-avsnittet under -- GPT-funn, personvern-full-
+      // argumentasjon del 2, blokk 2.
+      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? " (org.nr " + orgNr + ")" : "") + " er behandlingsansvarlig for personopplysningene som er beskrevet i denne personvernerklæringen. Det betyr at det er " + (company.name || "vi") + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
       (contactInfo.length ? " Har du spørsmål om personvern, kan du kontakte oss på " + contactInfo.join(", ") + "." : "")
     ) });
+    // Rettar-avsnittet RETTA 2026-08-13 (GPT-funn, personvern-full-
+    // argumentasjon del 2, blokk 3): v1 nemnde berre innsyn/retting/
+    // sletting/klage -- art. 13 krev også begrensning (art. 18), protest
+    // (art. 21) og dataportabilitet (art. 20). Det ubetinga "vi sletter...
+    // uten ugrunnet opphold"-løftet er mjuka opp til å reflektere at
+    // sletting/begrensning er BETINGA av GDPR sine eigne vilkår (art. 17
+    // har unntak), ikkje eit automatisk løfte. Svarfrist-tilvisinga følgjer
+    // EDPB sin eigen praksis (normalt éin månad).
     blocks.push({ id: "baseline", source: "module", moduleId: "baseline", included: true, edited: false, body: privacyTextToRichHtml(
       "# Hvor lagres opplysningene?\nNettsiden driftes hos Vercel. Innsendte opplysninger lagres i en database hos Supabase, med servere i Irland (EU).\n\n" +
-      "# Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, samt rett til å få disse korrigert eller slettet, i tråd med personopplysningsloven/GDPR. For å be om innsyn eller sletting, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern». Vi sletter opplysningene dine uten ugrunnet opphold. Du har også rett til å klage til Datatilsynet dersom du mener vi behandler personopplysningene dine i strid med regelverket. Du finner informasjon om hvordan du klager på datatilsynet.no."
+      "# Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, og rett til å få disse korrigert, slettet eller begrenset, i tråd med personopplysningsloven/GDPR. Du kan også protestere mot behandlingen, og be om å få opplysningene utlevert i et strukturert format (dataportabilitet) der det er relevant. For å be om innsyn, retting, sletting eller andre rettigheter, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern» — vi behandler slike forespørsler uten ugrunnet opphold og normalt innen én måned. Opplysninger slettes eller begrenses når vilkårene for dette etter personvernregelverket er oppfylt. Du har også rett til å klage til Datatilsynet dersom du mener vi behandler personopplysningene dine i strid med regelverket. Du finner informasjon om hvordan du klager på datatilsynet.no."
     ) });
     // Vedtak 2026-08-06 (sak 6, "byggjast med standardformulering") -- bygd
     // 2026-08-12, ein månad forseinka (funne av begge agentane i den
@@ -5215,23 +5256,37 @@ window.VwConsole = (function () {
       "# Personopplysninger om ansatte (Workspace)\nAnsatte som bruker vårt interne arbeidsverktøy (Workspace) får en brukerkonto med navn, e-postadresse og rolle. Opplysningene behandles for å administrere arbeidsforholdet og gi nødvendig tilgang til de interne verktøyene, med grunnlag i arbeidsforholdet og vår berettigede interesse i å drifte virksomheten. Kontoen og tilhørende opplysninger fjernes normalt når arbeidsforholdet opphører.\n" +
       "# Brukerstøtte\nVed behov for direkte brukerstøtte kan vår leverandør av nettsideplattformen generere en tidsavgrenset innloggingslenke for å bistå en administrator i Workspace, uten å få kjennskap til passordet. Dette skjer kun etter avtale, lenken utløper raskt, og hver forespørsel logges."
     ) });
+    // Behandlingsgrunnlag lagt til 2026-08-13 (P0-fiks, GPT-funn): art.
+    // 13(1)(c) krev BÅDE formål OG behandlingsgrunnlag, ikkje berre formål.
+    // Grunnlaga under er ei rimeleg standard-vurdering (kontakt/chat:
+    // berettiga interesse i å kunne følgje opp ei henvendelse retta til oss;
+    // tilbud/booking: nødvendig for å oppfylle/inngå ei avtale) -- IKKJE eit
+    // ferdig juridisk svar, sjå personvern-full-argumentasjon del 3, P2
+    // punkt 1. Ein jurist bør stadfeste/justere per aktivitet.
     if (hasContactForm) blocks.push({ id: "mod-kontakt", source: "module", moduleId: "contactForm", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, og deles ikke med tredjeparter for markedsføringsformål."
+      "# Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, med grunnlag i vår berettigede interesse i å kunne besvare henvendelser rettet til oss, og deles ikke med tredjeparter for markedsføringsformål."
     ) });
     if (hasTilbud) blocks.push({ id: "mod-tilbud", source: "module", moduleId: "quote", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Tilbudsforespørsel\nNår du ber om tilbud, lagrer vi navn, e-postadresse, telefonnummer, innholdet i forespørselen og eventuelle vedlegg du laster opp. Opplysningene brukes til å utarbeide og sende deg et tilbud."
+      "# Tilbudsforespørsel\nNår du ber om tilbud, lagrer vi navn, e-postadresse, telefonnummer, innholdet i forespørselen og eventuelle vedlegg du laster opp, med grunnlag i at behandlingen er nødvendig for å oppfylle en avtale du selv har bedt om, eller for å gjennomføre tiltak på din anmodning før en slik avtale inngås. Opplysningene brukes til å utarbeide og sende deg et tilbud."
     ) });
     if (hasBooking) blocks.push({ id: "mod-booking", source: "module", moduleId: "booking", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Booking\nNår du reserverer en time/booking, lagrer vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding. Opplysningene brukes til å gjennomføre avtalen."
+      "# Booking\nNår du reserverer en time/booking, lagrer vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding, med grunnlag i at behandlingen er nødvendig for å gjennomføre avtalen. Opplysningene brukes til å gjennomføre avtalen."
     ) });
     blocks.push({ id: "retention", source: "module", moduleId: "retention", included: true, edited: false, body: computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) });
+    // Plausible-linja RETTA 2026-08-13 (GPT-funn): "ikke samler inn
+    // personidentifiserbar informasjon" var teksten sjølv som avsa ein
+    // juridisk konklusjon om kva som ER/ikkje er personidentifiserbart --
+    // no ei rein teknisk skildring (ingen cookies, ingen vedvarande
+    // identifikatorar, IP ikkje lagra), verifisert mot Plausible sin eigen
+    // DPA/dokumentasjon 2026-08-13, som lèt lesaren/juristen sjølv trekkje
+    // konklusjonen.
     var cookieText = hasAnalytics
-      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy uten sporingscookies, som ikke samler inn personidentifiserbar informasjon om besøkende."
+      ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy som ikke bruker informasjonskapsler eller vedvarende identifikatorer, og som ikke lagrer besøkendes IP-adresser."
       : hasSidetelling
       ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk, hvilke sider besøkende kommer fra/går til, og hvilken kampanje en lenke er merket med hvis du selv har lagt til dette i lenken, ofte kalt UTM). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
     if (hasChat) blocks.push({ id: "mod-chat", source: "module", moduleId: "chat", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Chat\nNår du bruker chat-funksjonen på nettsiden, lagrer vi det du skriver, samt navn og e-postadresse dersom du oppgir dette. Vi lagrer også tekniske opplysninger som hvilken side du chattet fra, hvor du kom fra, og grunnleggende informasjon om nettleseren din. Opplysningene brukes til å besvare henvendelsen din."
+      "# Chat\nNår du bruker chat-funksjonen på nettsiden, lagrer vi det du skriver, samt navn og e-postadresse dersom du oppgir dette, med grunnlag i vår berettigede interesse i å kunne besvare henvendelser sendt via chat. Vi lagrer også tekniske opplysninger som hvilken side du chattet fra, hvor du kom fra, og grunnleggende informasjon om nettleseren din. Opplysningene brukes til å besvare henvendelsen din."
     ) });
     blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: privacyTextToRichHtml("# Bruker vi cookies?\n" + cookieText) });
     blocks.push({ id: "mod-suppliers", source: "module", moduleId: "suppliers", included: true, edited: false, body: computeSupplierBlock(sc, an) });
@@ -5268,8 +5323,17 @@ window.VwConsole = (function () {
       // "Standardforslag": VENDOR_TRANSFER_CUSTOMER_LABEL, ALDRI VENDOR_TRANSFER_LABEL
       // -- sistnemnde sin operatør-vende hedge ("ikkje stadfesta kva") skal
       // aldri lekke rått til ein besøkjande, sjå notatet ved definisjonen.
-      if (v.transferMechanism && v.transferMechanism !== "none" && VENDOR_TRANSFER_CUSTOMER_LABEL[v.transferMechanism]) {
-        transferLines.push(v.name + ": " + VENDOR_TRANSFER_CUSTOMER_LABEL[v.transferMechanism] + ".");
+      // RETTA 2026-08-13: gata no OGSÅ på v.dpaStatus, ikkje berre
+      // v.transferMechanism -- ein "blocked"-leverandør (t.d. Vercel på feil
+      // plan) fekk tidlegare den same ubetinga "dekket av SCC"-formuleringa
+      // som ein leverandør med stadfesta DPA, sjølv om det var kjent internt
+      // at ingen DPA faktisk gjaldt. Sjå VENDOR_TRANSFER_CUSTOMER_LABEL_BLOCKED.
+      if (v.transferMechanism && v.transferMechanism !== "none") {
+        if (v.dpaStatus === "blocked") {
+          transferLines.push(v.name + ": " + VENDOR_TRANSFER_CUSTOMER_LABEL_BLOCKED + ".");
+        } else if (VENDOR_TRANSFER_CUSTOMER_LABEL[v.transferMechanism]) {
+          transferLines.push(v.name + ": " + VENDOR_TRANSFER_CUSTOMER_LABEL[v.transferMechanism] + ".");
+        }
       }
     });
     if (transferLines.length) {
@@ -5766,7 +5830,7 @@ window.VwConsole = (function () {
               '<select id="priv-form-' + f.id + '-legalbasis">' +
                 PRIVACY_LEGAL_BASIS_OPTIONS.map(function (o) { return '<option value="' + o[0] + '"' + (form.legalBasis === o[0] ? " selected" : "") + '>' + o[1] + '</option>'; }).join("") +
               '</select></div>' +
-            C.field({ id: "priv-form-" + f.id + "-retention", label: "Lagringstid", value: form.retention || "", placeholder: "Ikke fastsatt", hint: "Hvor lenge opplysningene beholdes, f.eks. «12 måneder etter avsluttet dialog»." }) +
+            C.field({ id: "priv-form-" + f.id + "-retention", label: "Lagringstid", value: form.retention || "", placeholder: PRIVACY_FORM_RETENTION_SUGGESTION[f.id] || "Ikke fastsatt", hint: "Hvor lenge opplysningene beholdes. Forslag vist som plassholder er hentet fra Compliance sitt behandlingsprotokoll-forslag -- vurder om det passer, og skriv det inn." }) +
             C.field({ id: "priv-form-" + f.id + "-recipients", label: "Mottakere", value: form.recipients || "", hint: "Andre som mottar disse opplysningene, f.eks. et bookingsystem eller regnskapsfører. La stå tomt om ingen." }) +
             '<div style="margin:.4rem 0 .3rem">' + C.button({ label: "Foreslå tekst", variant: "ghost", attrs: 'type="button" data-priv-form-suggest="' + C.esc(f.id) + '"' }) + '</div>' +
             C.richTextField({ id: "priv-form-" + f.id + "-blurb", label: "Korttekst ved skjemaet", value: form.blurbHtml || "" }) +
@@ -7779,11 +7843,16 @@ window.VwConsole = (function () {
   var _complianceView = "protokoll"; // "protokoll" | "leverandorar"
   var COMPLIANCE_COUNTRY_LABEL = { eu: "EU/EØS", us: "USA" };
   var COMPLIANCE_TRANSFER_LABEL = { none: "Ikkje relevant (ingen overføring ut av EU/EØS)", scc: "EUs standardavtaler (SCC)", scc_or_dpf: "SCC og/eller DPF" };
+  // RETTA 2026-08-13: "blocked" lagt til (Vercel-tilfellet -- DPA aktivt
+  // utelukka på noverande plan, ikkje eit spørsmål om tid/stifting). "tba"
+  // sin gamle "Vibeverk AS ikkje stifta"-forklaring FJERNA -- stadfesta feil
+  // for supabase/resend/plausible, sjå VIBEVERK_VENDORS sin eigen kommentar.
   var COMPLIANCE_DPA_STATUS_OPTIONS = [
-    ["tba", "TBA — Vibeverk AS ikkje stifta enno"],
+    ["tba", "TBA"],
     ["unconfirmed", "Ikkje stadfesta"],
     ["likely_confirmed", "Truleg alt i kraft"],
-    ["confirmed", "Stadfesta"]
+    ["confirmed", "Stadfesta i kraft"],
+    ["blocked", "Blokkert (feil plan/vilkår hos leverandøren)"]
   ];
   var COMPLIANCE_RECORD_FIELDS = [
     ["formaal", "Formål"],

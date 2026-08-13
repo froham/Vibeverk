@@ -56,11 +56,15 @@ var SC_SEED = {
   privacy: { heading: "Personvern", text: "", forms: {}, consentPurposes: [], suppliers: { supabaseRegion: "" } }
 };
 
+// dpa_status-verdiane her matchar no den RETTA modellen (2026-08-13, sjå
+// migrasjon 20260813120000): supabase/resend/plausible "confirmed" (DPA
+// stadfesta i kraft automatisk via kvar leverandør sin eigen ToS), vercel
+// "blocked" (DPA gjeld stadfesta berre Pro/Enterprise, kontoen er Hobby).
 var VENDOR_REGISTRY_SEED = [
   { id: "supabase", name: "Supabase", what_it_does: "TILPASSA SKILDRING FRÅ DATABASEN, IKKJE HARDKODA", country: "eu", transfer_mechanism: "none", dpa_status: "confirmed", dpa_note: "Signert av ekte Vibeverk AS.", sort_order: 1 },
-  { id: "vercel", name: "Vercel", what_it_does: "Hosting og tenant-ruting", country: "us", transfer_mechanism: "scc", dpa_status: "tba", dpa_note: "", sort_order: 2 },
-  { id: "resend", name: "Resend", what_it_does: "Utsending og mottak av e-post", country: "us", transfer_mechanism: "scc_or_dpf", dpa_status: "tba", dpa_note: "", sort_order: 3 },
-  { id: "plausible", name: "Plausible Analytics", what_it_does: "Cookiefri trafikkstatistikk", country: "eu", transfer_mechanism: "none", dpa_status: "tba", dpa_note: "", sort_order: 4 }
+  { id: "vercel", name: "Vercel", what_it_does: "Hosting og tenant-ruting", country: "us", transfer_mechanism: "scc", dpa_status: "blocked", dpa_note: "", sort_order: 2 },
+  { id: "resend", name: "Resend", what_it_does: "Utsending og mottak av e-post", country: "us", transfer_mechanism: "scc_or_dpf", dpa_status: "confirmed", dpa_note: "", sort_order: 3 },
+  { id: "plausible", name: "Plausible Analytics", what_it_does: "Cookiefri trafikkstatistikk", country: "eu", transfer_mechanism: "none", dpa_status: "confirmed", dpa_note: "", sort_order: 4 }
 ];
 
 // Returnerer { dom, vendorRegistryFetchCount() } -- teljaren let testane
@@ -135,6 +139,15 @@ test("Leverandørar-fana viser vendor_registry sitt innhald, ikkje lenger berre 
   var text = sectionText(m);
   assert.match(text, /TILPASSA SKILDRING FRÅ DATABASEN, IKKJE HARDKODA/, "vendor_registry-innhaldet er faktisk det som vert vist");
   assert.match(text, /Stadfesta/, "DPA-status frå databasen (confirmed) vert vist, ikkje ein hardkoda 'tba'");
+});
+
+test("«blocked» DPA-status (Vercel-tilfellet, P0-fiks 2026-08-13) vises som Blokkert, ikkje som TBA/Stadfesta", async function (t) {
+  var m = await mount({});
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  await switchToLeverandorerTab(m);
+  var text = sectionText(m);
+  assert.match(text, /Blokkert/, "den nye 'blocked'-statusen (feil plan hos leverandøren) har eit eige, synleg operatørspråk");
 });
 
 test("vendor_registry vert henta proaktivt ved Personvern-opning (Dokument er standardfana), ikkje berre lat inni Leverandørar", async function (t) {
