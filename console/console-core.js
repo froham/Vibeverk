@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.146.0";
+  var VIBEVERK_VERSION = "0.146.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -4748,8 +4748,15 @@ window.VwConsole = (function () {
   // "Ikke fastsatt". Fyller ALDRI feltet stille -- operatøren må sjølv
   // skrive/godkjenne, same "aldri automatisk skriv publisert tekst"-prinsipp
   // som resten av denne fila.
+  // "kontakt" sin ordlyd retta 2026-08-13 (personvern-full-argumentasjon-
+  // 2026-08-13.md, del 3): retention-sweep-mekanismen (Edge Function
+  // retention-sweep) måler faktisk kandidatalder frå `created_at`
+  // (leads-tabellen manglar ein updated_at-kolonne) -- "etter siste
+  // aktivitet" var difor eit løfte teksten ikkje kunne innfri teknisk.
+  // Retta til "etter opprettelse" slik at forslaget matchar det som
+  // faktisk vert handheva, i staden for å innføre eit nytt tidsstempel-felt.
   var PRIVACY_FORM_RETENTION_SUGGESTION = {
-    kontakt: "Inntil 12 måneder etter siste aktivitet, med mindre kundeforhold etableres.",
+    kontakt: "Inntil 12 måneder etter opprettelse, med mindre kundeforhold etableres.",
     tilbud:  "Inntil 12 måneder etter at tilbudet er avsluttet/utgått, med mindre kundeforhold etableres.",
     booking: "Inntil 12-24 måneder etter avtalt dato."
   };
@@ -5769,6 +5776,21 @@ window.VwConsole = (function () {
 
     pane.querySelector("#cs-priv-publish").addEventListener("click", function () {
       captureFieldEdits();
+      // Hard publiserings-sperre lagt til 2026-08-13 (personvern-full-
+      // argumentasjon-2026-08-13.md, del 3): behandlingsansvarleg-blokka
+      // (controller) fell tilbake til "Vi er behandlingsansvarlig" utan namn/
+      // kontakt om desse felta er tomme -- GDPR art. 13(1)(a) krev at
+      // identiteten og kontaktopplysningane til den behandlingsansvarlege
+      // vert opplyst. Tidlegare kunne dette publiserast utan varsel; no ei
+      // eksplisitt, forklarande sperre FØR sjølve publiseringssteget, same
+      // mønster som privacyGuardBlockedBlocks() sin modul-sperre nedanfor.
+      var companyForGuard = sc.company || {};
+      var contactForGuard = sc.contact || {};
+      var hasContactInfoForGuard = !!(contactForGuard.email || contactForGuard.phone || contactForGuard.address);
+      if (!companyForGuard.name || !hasContactInfoForGuard) {
+        alert('Kan ikkje publisere: personvernerklæringa manglar ' + (!companyForGuard.name ? "firmanavn" : "") + (!companyForGuard.name && !hasContactInfoForGuard ? " og " : "") + (!hasContactInfoForGuard ? "kontaktinformasjon (e-post, telefon eller adresse)" : "") + '. Fyll ut i Web → Firma-fana fyrst -- personvernlova krev at den behandlingsansvarlege sitt namn og kontaktinfo er oppgitt.');
+        return;
+      }
       // UX-review-funn 2026-08-06 (HIGH): brukar getStoreKeyOrError(), ikkje
       // getStoreKey(), for nettopp DENNE sjekken -- ein forbigåande
       // nettverksfeil skal ALDRI stille tolkast som "ingen analyseverktøy
@@ -7880,7 +7902,9 @@ window.VwConsole = (function () {
       kategori_data: "Navn, e-postadresse, telefonnummer (hvis oppgitt), innholdet i meldingen.",
       behandlingsgrunnlag: "Berettiget interesse i å kunne besvare henvendelser rettet til oss (GDPR art. 6(1)(f)), evt. tiltak før avtaleinngåelse (art. 6(1)(b)) dersom henvendelsen gjelder et konkret oppdrag.",
       mottakere: "Ingen eksterne mottakere. Lagres hos Supabase (databehandler, EU).",
-      lagringstid: "Inntil 12 måneder etter siste aktivitet, med mindre kundeforhold etableres.",
+      // Retta 2026-08-13: sjå notatet ved PRIVACY_FORM_RETENTION_SUGGESTION.kontakt
+      // -- retention-sweep måler faktisk frå created_at, ikkje siste aktivitet.
+      lagringstid: "Inntil 12 måneder etter opprettelse, med mindre kundeforhold etableres.",
       sikkerhetstiltak: "Tilgang begrenset til autoriserte Vibeverk-ansatte via rollestyrt pålogging (RLS). Data overføres kryptert (TLS)."
     },
     tilbud: {
@@ -8130,7 +8154,16 @@ window.VwConsole = (function () {
     // (t.d. AI Lab sin rå-JSON-visning, Kundar sitt manuelle nøkkel-felt).
     // Alle startar LUKKA -- 8 rader × 7 tekstfelt kvar er mykje loddrett plass
     // om alt er opna samstundes.
+    // Presisering lagt til 2026-08-13 (personvern-full-argumentasjon-2026-08-13.md,
+    // del 3): dette registeret dokumenterer Vibeverk AS i rolla som
+    // BEHANDLINGSANSVARLEG for eigne kontaktar/tilsette/AI-bruk -- IKKJE
+    // Vibeverk sine plikter som DATABEHANDLAR for kvar kunde sine data (den
+    // rolla er i staden dokumentert indirekte, via kundeavtale-malen og
+    // leverandørregisteret i Leverandørar-fana). Tidlegare berre forklart i
+    // migrasjonskommentarar -- no synleg direkte der ein operatør faktisk
+    // ser registeret.
     pane.innerHTML =
+      '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 1rem">Dette er Vibeverk AS sitt eige Art. 30-register, i rolla som <strong>behandlingsansvarleg for eigne data</strong> (kontaktar, tilsette, AI-bruk osv.) -- éin protokoll for heile selskapet, ikkje éin per kunde. Vibeverk sine plikter som <strong>databehandlar</strong> for kvar kunde sine data er dekt separat, via kundeavtalen (Compliance → Kundeavtale) og leverandørregisteret (Compliance → Leverandørar).</p>' +
       '<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">' +
         C.button({ label: "Standardforslag", variant: "ghost", attrs: 'type="button" id="cp-standard"' }) +
         C.button({ label: "Lagre alle", variant: "primary", attrs: 'type="button" id="cp-save-all"' }) +

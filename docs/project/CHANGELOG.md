@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.146.1 — 2026-08-13
+
+**Tre av dei attverande P1-punkta i `docs/compliance/personvern-full-argumentasjon-2026-08-13.md` sin sjekkliste lukka:**
+
+- **Hard publiserings-sperre**: Personvern → Dokument → «Publiser» blokkerer no eksplisitt (med forklarande melding) dersom firmanavn eller kontaktinformasjon manglar i Web → Firma. Tidlegare kunne ei ufullstendig behandlingsansvarleg-blokk ("Vi er behandlingsansvarlig", utan namn/kontakt) publiserast utan varsel — GDPR art. 13(1)(a) krev at dette er oppgitt.
+- **Retensjonstekst retta til å matche det som faktisk vert handheva**: "Inntil 12 måneder etter siste aktivitet" (kontakt) er endra til "etter opprettelse" i `PRIVACY_FORM_RETENTION_SUGGESTION`, `COMPLIANCE_STANDARD_SUGGESTIONS`, og den alt seeda `compliance_record`-raden (migrasjon `20260813150000`) — retention-sweep måler `created_at`, ikkje siste aktivitet, sidan `leads`-tabellen manglar ein `updated_at`-kolonne.
+- **Art. 30-rolle presisert direkte i UI-et**: Compliance → Behandlingsprotokoll viser no ei forklarande linje om at registeret dekker Vibeverk som behandlingsansvarleg for eigne data, ikkje som databehandlar for kundedata (tidlegare berre forklart i migrasjonskommentarar, usynleg for ein operatør som faktisk brukar fana).
+
+**Retta ein reell dokumentasjonsfeil same runda**: `personvern-full-argumentasjon-2026-08-13.md` hevda at ingen stad i Workspace lenkjer til den publiserte personvernerklæringa for tilsette. Direkte kodesjekk (`workspace/workspace-core.js`) stadfestar at denne lenkja alt vart bygd i Bolk 1 (0.137.0, 2026-08-12) — dokumentpåstanden var feil, no retta.
+
+Dei tre attverande punkta som eksplisitt krev Arkitekt-planlegging før dei byggjast (samla behandlingsgrunnlag-datamodell, full to-felts `dpa_status`/`transfer_status`-ombygging, samanslåing av dei to personvern-tekst-generatorane) er ikkje del av denne runda.
+
 ## 0.146.0 — 2026-08-13
 
 **Personvern-tekst — P0-fiksar frå `docs/compliance/personvern-full-argumentasjon-2026-08-13.md` sin sjekkliste, del 3.** Følgjer opp den eksterne (GPT) gjennomgangen av personvernutkastet + brukaren si eiga republisering av Vibeverk sin personvernerklæring same dag. Fem av sju P0-punkt lukka (dei to attverande, Vercel-planoppgradering og republisering, er forretnings-/brukarhandlingar, ikkje kode):
