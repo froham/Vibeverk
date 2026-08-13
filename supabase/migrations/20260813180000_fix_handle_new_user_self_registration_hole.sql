@@ -71,3 +71,32 @@ END;
 $$;
 
 NOTIFY pgrst, 'reload schema';
+
+-- Security Auditor-pass (2026-08-13, PROCEED, ingen BLOCKER/HIGH) fann to
+-- attverande, avgrensa (PLAUSIBLE) tilfelle -- dokumentert her medvite,
+-- ikkje bygd rundt i denne runda:
+--
+-- 1. Rekkjefølgja "nokon prøver OAuth-innlogging på ein e-post FØR ho
+--    nokon gong er invitert, deretter vert same e-post FAKTISK invitert
+--    seinare" er ikkje testa empirisk mot GoTrue sitt ekte
+--    admin.inviteUserByEmail()-endepunkt (kun simulert via direkte SQL i
+--    denne runda). Kva GoTrue faktisk gjer når han inviterer ein e-post
+--    som alt har ein (uinvitert, orphan) auth.users-rad frå eit tidlegare
+--    sjølvregistreringsforsøk -- feilar han, eller finn/oppdaterer han den
+--    eksisterande rada -- er ikkje stadfesta. Avgrensa eksponering sidan
+--    OAuth-knappane er av som standard og krev eksplisitt kundeoppsett.
+--
+-- 2. Om ein FAKTISK invitert tilsett prøver "Logg inn med Microsoft/
+--    Google" FØR dei nokon gong har sett eit passord (altså aldri fullført
+--    den vanlege invitasjonsflyten sitt fyrste steg), avheng det av
+--    Supabase-prosjektet sitt eige "automatic account linking"-oppsett om
+--    OAuth-innlogginga faktisk koplar seg til DEN EKSISTERANDE, inviterte
+--    auth.users-rada (same id, denne fiksen fungerer som tiltenkt) eller
+--    om han opprettar ei HEILT NY rad (som ville bli avvist av denne
+--    fiksen som "ikkje invitert", trass i at personen faktisk vart det).
+--    Ikkje stadfesta empirisk (krev ein ekte OAuth-runde med ein ekte
+--    Microsoft-/Google-konto, ikkje noko som kan simulerast via SQL).
+--    Tilrådd: fyrste gong OAuth-innlogging vert teken i bruk for ein ekte
+--    kunde, test eksplisitt at ein NYLEG invitert (men aldri passord-
+--    innlogga) tilsett faktisk kjem inn via OAuth-knappen, ikkje berre at
+--    ein alt-innlogga/alt-passord-sett brukar gjer det.
