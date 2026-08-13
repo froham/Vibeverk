@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.149.1";
+  var VIBEVERK_VERSION = "0.149.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -5217,7 +5217,7 @@ window.VwConsole = (function () {
     return privacyTextToRichHtml(lines.join("\n"));
   }
 
-  function computeTenantPrivacyBlocks(sc, an) {
+  function computeTenantPrivacyBlocks(sc, an, content) {
     var ft = sc.features || {};
     var hasContactForm = ft.contactForm !== false;
     var hasTilbud       = !!ft.quote;
@@ -5236,8 +5236,22 @@ window.VwConsole = (function () {
     // pane.innerHTML vart sett, sidan begge stadene skjer FØR sjølve HTML-en
     // vert bygd). Same forsvarsmønster som resten av fila alt bruker andre
     // stader (t.d. sc.company || {} i renderSystem()).
+    //
+    // RETTA 2026-08-13 (brukarfunn, live testing): 2026-08-10-fiksen over
+    // løyste berre KRASJEN -- ho stilte spørsmålet "kvifor er sc.contact
+    // alltid tom?" aldri. Svaret: sc.contact eksisterer IKKJE, uansett kva
+    // kunden fyller ut. Kontaktinfo (e-post/telefon/adresse) vert redigert
+    // av KUNDEN sjølv i deira eige Web-admin-panel ("Innhald ->
+    // Kontaktinfo"), som lagrar til ein HEILT ANNA lagringsnøkkel
+    // ("content"), aldri "superconfig" (sc). Firmanamn (sc.company.name)
+    // ER derimot korrekt henta frå superconfig -- det er operatør-redigert
+    // via Console sin eigen "Web -> Firma"-fane. To ulike datakjelder for
+    // to ulike felt, ikkje éin. `content` er difor no ein eigen, valfri
+    // tredje parameter -- kallarane må hente tenanten sin eigen "content"-
+    // nøkkel (getStoreKey("content", ...), same mønster som Nettsidehelse-
+    // seksjonen i Web-fana alt gjer riktig) og sende han inn.
     var company = sc.company || {};
-    var contact = sc.contact || {};
+    var contact = (content && content.contact) || {};
     var contactInfo = [contact.email, contact.phone, contact.address].filter(Boolean);
     var orgNr = ((sc.footer || {}).orgNr || "").trim();
 
@@ -5422,8 +5436,8 @@ window.VwConsole = (function () {
   //  - `included:false` i det heile -- strukturelt uråd på ein publisert
   //    versjon, sidan privacyGuardBlockedBlocks() alt nekta publisering av
   //    ein ekskludert-men-aktiv modul-blokk i utgangspunktet.
-  function privacyPublishedDrift(sc, an, version) {
-    var fresh = computeTenantPrivacyBlocks(sc, an);
+  function privacyPublishedDrift(sc, an, version, content) {
+    var fresh = computeTenantPrivacyBlocks(sc, an, content);
     var freshById = {};
     fresh.forEach(function (f) { freshById[f.id] = f; });
     var published = (version.bodyBlocks || []).filter(function (b) { return b.source === "module"; });
@@ -5508,7 +5522,7 @@ window.VwConsole = (function () {
       // svaret kjem attende og paneet vert bedt om å rendre seg sjølv på
       // nytt éin gong.
       var an = sc._privacyAn || null;
-      var drift = an ? privacyPublishedDrift(sc, an, version) : [];
+      var drift = an ? privacyPublishedDrift(sc, an, version, sc._privacyContent) : [];
       var driftLabels = drift.map(function (id) { return PRIVACY_MODULE_LABEL[id] || id; });
       // UX-funn (Fase 5, MEDIUM): pilla flytta UT av <legend> og inn i
       // avsnittet under -- to piller i sjølve overskrifta stabla til 3 rader
@@ -5568,6 +5582,19 @@ window.VwConsole = (function () {
           if (_privacyView !== "dokument") return; // same navigert-vekk-vakt som resten av fila
           if (err) { console.error("[console] kunne ikkje hente analytics for endringsvarsling:", err); return; }
           sc._privacyAn = fetchedAn || {};
+          renderPersonvernDokument(sc, pane, wrap);
+        });
+      }
+      // Same lat, sjølv-lækande mønster som "an" over, retta 2026-08-13:
+      // drift-sjekken (privacyPublishedDrift() -> computeTenantPrivacyBlocks())
+      // treng no OGSÅ kunden sitt eige "content"-innhald (kontaktinfo), ikkje
+      // berre superconfig -- sjå notatet ved computeTenantPrivacyBlocks() for
+      // kvifor sc.contact aldri var rett kjelde.
+      if (!sc._privacyContent) {
+        getStoreKeyOrError("content", function (fetchedContent, err) {
+          if (_privacyView !== "dokument") return;
+          if (err) { console.error("[console] kunne ikkje hente content for endringsvarsling:", err); return; }
+          sc._privacyContent = fetchedContent || {};
           renderPersonvernDokument(sc, pane, wrap);
         });
       }
@@ -5745,15 +5772,23 @@ window.VwConsole = (function () {
       var hasEditedModuleBlocks = (blocks || []).some(function (b) { return b.source === "module" && b.edited; });
       if (hasEditedModuleBlocks && !confirm("Dette vil overskrive alle avsnitt du har redigert bort fra Vibeverk sitt standardforslag, med fersk standardtekst. Egne, manuelt tilføyde avsnitt blir ikke rørt. Fortsette?")) return;
       getStoreKey("analytics", function (an) {
-        // UX-review-funn 2026-08-06 (HIGH): fangar felta PÅ NYTT etter det
-        // asynkrone spranget -- ein operatør kan ha rokke å skrive meir i eit
-        // ANNA avsnitt medan nettverkskallet var undervegs, og den fyrste
-        // captureFieldEdits()-en over fangar ikkje det.
-        captureFieldEdits();
-        sc._privacyAn = an;
-        var fresh = computeTenantPrivacyBlocks(sc, an);
-        version.bodyBlocks = mergePrivacyBlocks(version.bodyBlocks, fresh, true);
-        renderPersonvernDokument(sc, pane, wrap);
+        // RETTA 2026-08-13: hentar no OGSÅ kunden sitt eige "content"
+        // (kontaktinfo) -- sjå notatet ved computeTenantPrivacyBlocks() for
+        // kvifor sc.contact aldri var rett kjelde. Utan dette mangla den
+        // genererte "Har du spørsmål om personvern..."-setninga stille,
+        // uansett kva kunden fylte ut i sitt eige Web-admin-panel.
+        getStoreKey("content", function (content) {
+          // UX-review-funn 2026-08-06 (HIGH): fangar felta PÅ NYTT etter det
+          // asynkrone spranget -- ein operatør kan ha rokke å skrive meir i eit
+          // ANNA avsnitt medan nettverkskallet var undervegs, og den fyrste
+          // captureFieldEdits()-en over fangar ikkje det.
+          captureFieldEdits();
+          sc._privacyAn = an;
+          sc._privacyContent = content;
+          var fresh = computeTenantPrivacyBlocks(sc, an, content);
+          version.bodyBlocks = mergePrivacyBlocks(version.bodyBlocks, fresh, true);
+          renderPersonvernDokument(sc, pane, wrap);
+        });
       });
     });
 
@@ -5798,63 +5833,78 @@ window.VwConsole = (function () {
       // vert opplyst. Tidlegare kunne dette publiserast utan varsel; no ei
       // eksplisitt, forklarande sperre FØR sjølve publiseringssteget, same
       // mønster som privacyGuardBlockedBlocks() sin modul-sperre nedanfor.
-      var companyForGuard = sc.company || {};
-      var contactForGuard = sc.contact || {};
-      var hasContactInfoForGuard = !!(contactForGuard.email || contactForGuard.phone || contactForGuard.address);
-      if (!companyForGuard.name || !hasContactInfoForGuard) {
-        alert('Kan ikkje publisere: personvernerklæringa manglar ' + (!companyForGuard.name ? "firmanavn" : "") + (!companyForGuard.name && !hasContactInfoForGuard ? " og " : "") + (!hasContactInfoForGuard ? "kontaktinformasjon (e-post, telefon eller adresse)" : "") + '. Fyll ut i Web → Firma-fana fyrst -- personvernlova krev at den behandlingsansvarlege sitt namn og kontaktinfo er oppgitt.');
-        return;
-      }
-      // UX-review-funn 2026-08-06 (HIGH): brukar getStoreKeyOrError(), ikkje
-      // getStoreKey(), for nettopp DENNE sjekken -- ein forbigåande
-      // nettverksfeil skal ALDRI stille tolkast som "ingen analyseverktøy
-      // aktivt" og la publiseringa gå gjennom uverifisert. Hybrid-vakta sitt
-      // heile føremål er å hindre nettopp dette.
-      getStoreKeyOrError("analytics", function (an, err) {
-        if (err) {
-          statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje verifisere kundens moduloppsett -- prøv igjen før du publiserer.", false);
+      //
+      // RETTA 2026-08-13 (brukarfunn, live testing på Vibeverk sin eigen
+      // tenant): sjekka tidlegare sc.contact, som ALDRI eksisterer -- sperra
+      // kunne difor ikkje ein gong opnast att, uansett kva kunden fylte ut
+      // i sitt eige Web-admin-panel ("Innhald -> Kontaktinfo", som lagrar
+      // til den heilt separate "content"-nøkkelen). Hentar no "content"
+      // FØRST, same "aldri stille cache ein nettverksfeil som tom"-disiplin
+      // som analytics-sjekken under alt bruker.
+      getStoreKeyOrError("content", function (content, contentErr) {
+        if (contentErr) {
+          statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje hente kundens kontaktinformasjon -- prøv igjen før du publiserer.", false);
           return;
         }
-        // UX-review-funn 2026-08-06 (HIGH): fangar felta PÅ NYTT etter det
-        // asynkrone spranget, av same grunn som i fetch-handteraren over.
-        captureFieldEdits();
-        var blocked = privacyGuardBlockedBlocks(sc, an, version.bodyBlocks);
-        if (blocked.length) {
-          alert('Kan ikkje publisere: ' + blocked.length + ' avsnitt knytt til ein aktiv modul er ekskludert (' + blocked.map(function (b) { return PRIVACY_MODULE_LABEL[b.moduleId] || b.moduleId; }).join(", ") + '). Inkluder dei att, eller fjern/deaktiver modulen for kunden fyrst i Modular-fana.');
+        sc._privacyContent = content;
+        var companyForGuard = sc.company || {};
+        var contactForGuard = (content && content.contact) || {};
+        var hasContactInfoForGuard = !!(contactForGuard.email || contactForGuard.phone || contactForGuard.address);
+        if (!companyForGuard.name || !hasContactInfoForGuard) {
+          alert('Kan ikkje publisere: personvernerklæringa manglar ' + (!companyForGuard.name ? "firmanavn" : "") + (!companyForGuard.name && !hasContactInfoForGuard ? " og " : "") + (!hasContactInfoForGuard ? "kontaktinformasjon (e-post, telefon eller adresse)" : "") + '. Firmanavn: Console -> Web -> Firma-fana. Kontaktinformasjon (e-post/telefon/adresse): kunden sitt eige Web-admin-panel -> Innhald -> Kontaktinfo -- ikkje redigerbart herfrå i Console.');
           return;
         }
-        if (!confirm("Publisere denne versjonen? Han vert synleg for besøkjande på nettsida med ein gong. Den nåverande publiserte teksten (om nokon) forsvinn ikkje -- ho held fram i Historikk, og du kan alltid rette opp ein feil ved å publisere ein ny versjon seinare.")) return;
-        version.status = "published";
-        version.publishedAt = Date.now();
-        priv.activeVersionId = version.id;
-        priv.heading = version.heading || "";
-        priv.text = privacyBlocksToFlatHtml(version.bodyBlocks);
-        // UX-review-funn 2026-08-13: Workspace sin eigen "Personvern"-lenke
-        // synte tidlegare heile priv.text (kundevendt policy -- cookies,
-        // leads, kontaktskjema osv.) til tilsette, sidan publisering
-        // tidlegare flata ALLE blokkene saman til éin streng med ingen veg
-        // attende til kva for eit avsnitt som kom kvar frå. Lagrar difor no
-        // OGSÅ ein eigen, avgrensa versjon med berre "employees"-blokka, slik
-        // at Workspace kan vise BERRE det som faktisk gjeld tilsette.
-        priv.employeeText = privacyBlocksToFlatHtml((version.bodyBlocks || []).filter(function (b) { return b.id === "employees"; }));
-        // Trygge, ufarlege peikarar til den offentlege nøkkelen (Fase 2) --
-        // sjå privacyPublicProjection() sitt notat for kvifor.
-        priv.publishedVersionId = version.id;
-        priv.publishedAt = version.publishedAt;
-        var savingTenantId = _activeTenant && _activeTenant.id;
-        // To skrivingar: FYRST versions/activeVersionId til superconfig-
-        // private (aldri anon-lesbar), DEREFTER den offentlege flate
-        // projeksjonen (heading/text/forms/consentPurposes) til superconfig
-        // -- i DEN rekkjefølgja, slik at eit feila privat-skriv aldri let ein
-        // NY, uverifisert versjon bli synt offentleg utan at han faktisk vart
-        // trygt lagra fyrst.
-        savePrivacyVersions(sc, savingTenantId, function (r1) {
-          if (r1 && r1.error) { statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje lagre versjonshistorikk: " + r1.error, false); return; }
-          getSC(function (sc2) {
-            sc2.privacy = privacyPublicProjection(sc);
-            saveSC(sc2, savingTenantId);
-            statusMsg(pane.querySelector("#cs-status"), "✓ Publisert!", true);
-            renderPersonvernDokument(sc, pane, wrap);
+        // UX-review-funn 2026-08-06 (HIGH): brukar getStoreKeyOrError(), ikkje
+        // getStoreKey(), for nettopp DENNE sjekken -- ein forbigåande
+        // nettverksfeil skal ALDRI stille tolkast som "ingen analyseverktøy
+        // aktivt" og la publiseringa gå gjennom uverifisert. Hybrid-vakta sitt
+        // heile føremål er å hindre nettopp dette.
+        getStoreKeyOrError("analytics", function (an, err) {
+          if (err) {
+            statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje verifisere kundens moduloppsett -- prøv igjen før du publiserer.", false);
+            return;
+          }
+          // UX-review-funn 2026-08-06 (HIGH): fangar felta PÅ NYTT etter det
+          // asynkrone spranget, av same grunn som i fetch-handteraren over.
+          captureFieldEdits();
+          var blocked = privacyGuardBlockedBlocks(sc, an, version.bodyBlocks);
+          if (blocked.length) {
+            alert('Kan ikkje publisere: ' + blocked.length + ' avsnitt knytt til ein aktiv modul er ekskludert (' + blocked.map(function (b) { return PRIVACY_MODULE_LABEL[b.moduleId] || b.moduleId; }).join(", ") + '). Inkluder dei att, eller fjern/deaktiver modulen for kunden fyrst i Modular-fana.');
+            return;
+          }
+          if (!confirm("Publisere denne versjonen? Han vert synleg for besøkjande på nettsida med ein gong. Den nåverande publiserte teksten (om nokon) forsvinn ikkje -- ho held fram i Historikk, og du kan alltid rette opp ein feil ved å publisere ein ny versjon seinare.")) return;
+          version.status = "published";
+          version.publishedAt = Date.now();
+          priv.activeVersionId = version.id;
+          priv.heading = version.heading || "";
+          priv.text = privacyBlocksToFlatHtml(version.bodyBlocks);
+          // UX-review-funn 2026-08-13: Workspace sin eigen "Personvern"-lenke
+          // synte tidlegare heile priv.text (kundevendt policy -- cookies,
+          // leads, kontaktskjema osv.) til tilsette, sidan publisering
+          // tidlegare flata ALLE blokkene saman til éin streng med ingen veg
+          // attende til kva for eit avsnitt som kom kvar frå. Lagrar difor no
+          // OGSÅ ein eigen, avgrensa versjon med berre "employees"-blokka, slik
+          // at Workspace kan vise BERRE det som faktisk gjeld tilsette.
+          priv.employeeText = privacyBlocksToFlatHtml((version.bodyBlocks || []).filter(function (b) { return b.id === "employees"; }));
+          // Trygge, ufarlege peikarar til den offentlege nøkkelen (Fase 2) --
+          // sjå privacyPublicProjection() sitt notat for kvifor.
+          priv.publishedVersionId = version.id;
+          priv.publishedAt = version.publishedAt;
+          var savingTenantId = _activeTenant && _activeTenant.id;
+          // To skrivingar: FYRST versions/activeVersionId til superconfig-
+          // private (aldri anon-lesbar), DEREFTER den offentlege flate
+          // projeksjonen (heading/text/forms/consentPurposes) til superconfig
+          // -- i DEN rekkjefølgja, slik at eit feila privat-skriv aldri let ein
+          // NY, uverifisert versjon bli synt offentleg utan at han faktisk vart
+          // trygt lagra fyrst.
+          savePrivacyVersions(sc, savingTenantId, function (r1) {
+            if (r1 && r1.error) { statusMsg(pane.querySelector("#cs-status"), "Kunne ikkje lagre versjonshistorikk: " + r1.error, false); return; }
+            getSC(function (sc2) {
+              sc2.privacy = privacyPublicProjection(sc);
+              saveSC(sc2, savingTenantId);
+              statusMsg(pane.querySelector("#cs-status"), "✓ Publisert!", true);
+              renderPersonvernDokument(sc, pane, wrap);
+            });
           });
         });
       });

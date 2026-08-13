@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.149.2 — 2026-08-13
+
+**Personvern-publisering var strukturelt umogleg å opne att for ALLE kundar** — funne av brukaren via live testing (fylte inn kontaktinfo som instruert, publisering feila likevel). Root cause: publiseringssperra (og sjølve tekstgeneratoren) sjekka `sc.contact` (superconfig, operatør-/Console-styrt), men kontaktinfo (e-post/telefon/adresse) vert redigert av KUNDEN sjølv i deira eige Web-admin-panel ("Innhald → Kontaktinfo"), som lagrar til ein HEILT ANNA lagringsnøkkel ("content"). `sc.contact` eksisterte difor ALDRI, uansett kva nokon fylte ut — sperra kunne strukturelt ikkje opnast att, og feilmeldinga peikte i tillegg til feil stad (Console sin eigen "Web → Firma"-fane, som aldri har hatt desse felta).
+
+- `computeTenantPrivacyBlocks()` tek no ein tredje `content`-parameter og les `content.contact` i staden for `sc.contact` — alle tre kallstadene (publiseringssperra, "Hent standardforslag på nytt", endringsvarsling/drift-sjekken) hentar no tenanten sin eigen `"content"`-nøkkel (`getStoreKey`/`getStoreKeyOrError`), same mønster som Nettsidehelse-seksjonen i Web-fana alt gjorde riktig.
+- Feilmeldinga ved manglande kontaktinfo peikar no til den FAKTISKE staden (kunden sitt eige Web-admin-panel → Innhald → Kontaktinfo), ikkje Console sin "Web → Firma"-fane.
+- Den genererte "Har du spørsmål om personvern, kan du kontakte oss på …"-setninga i sjølve personvernteksten var OGSÅ stille tom av same grunn — no korrekt utfylt når kunden faktisk har kontaktinfo registrert.
+- 2 nye jsdom-testar i `test-privacy-console.js` som eksplisitt reproduserer og stadfestar fiksen (blokkert-når-tom, går-gjennom-når-utfylt) — publiseringsflyten hadde INGEN testdekning før denne runda, sjølv om han vart lagt til som "hard sperre" i 0.146.1. Fann undervegs òg ein reell aliasing-feil i testen sin eigen mock (superconfig-oppslag returnerte same JS-objektreferanse som operatøren sin in-memory-tilstand, noko ein ekte databasehenting aldri ville gjort) — retta til ein frisk klone per henting.
+
+**Merknad:** 2026-08-10-kommentaren ved `computeTenantPrivacyBlocks()` dokumenterte alt at `sc.contact` var tom på Vibeverk sin eigen tenant og la til eit krasjvern (`|| {}`) — men stilte aldri spørsmålet KVIFOR han var tom. Denne runda svarar på det spørsmålet og rettar den faktiske datakjelda, ikkje berre symptomet.
+
 ## 0.149.1 — 2026-08-13
 
 **To-faktor-innloggingsskjermane (0.149.0) fekk seks enkeltsifra-bokser i staden for eitt fritekstfelt for koden** — vanleg, gjenkjenneleg OTP-mønster (autofokus til neste boks per siffer, backspace hoppar attende, ein lima 6-sifra kode fyller alle boksane med éin gong, automatisk innsending når alle seks er fylt ut). Gjeld alle tre stadene koden vert bedt om: sjølve innloggingsutfordringa (`core.js`/`workspace-core.js`) OG stadfestingssteget ved fyrste oppsett (`module-settings.js`). Same hjelpefunksjonar (`mfaCodeBoxesHtml()`/`wireMfaCodeBoxes()`) duplisert i alle tre filene, same mønster som resten av MFA-koden alt følgjer (kvar fil eig sin eigen kopi, ikkje delt på tvers).
