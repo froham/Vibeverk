@@ -28,7 +28,7 @@ When documentation and something else disagree, resolve in this order:
 | Folder | Purpose |
 |---|---|
 | [`STRATEGY.md`](STRATEGY.md) | Business strategy and non-negotiable principles — governs everything else below |
-| [`architecture/`](architecture/README.md) | How Vibeverk is actually built today (system overview, module conventions, storage/data flow, roles/tenancy) |
+| [`architecture/`](architecture/README.md) | How Vibeverk is actually built today (system overview, module conventions, storage/data flow, roles/tenancy, the internal [`Arctic`](architecture/arctic.md) seam and its localhost-only [`AI Lab`](architecture/ai-lab.md)) |
 | [`decisions/`](decisions/README.md) | ADRs — deliberate, long-lived decisions, with context and consequences |
 | [`project/`](project/CURRENT_STATE.md) | `CURRENT_STATE.md` (verified status) and `CHANGELOG.md` (dated log of meaningful changes) |
 | [`roadmap/`](roadmap/ROADMAP.md) | Planning material only — Current focus / Next / Later / Ideas |

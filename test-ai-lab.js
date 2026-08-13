@@ -11,6 +11,8 @@ var configModule = require("./scripts/ai-lab/config");
 var sourceModule = require("./scripts/ai-lab/sources");
 var schemaModule = require("./scripts/ai-lab/schemas");
 var promptModule = require("./scripts/ai-lab/prompts");
+var contextModule = require("./scripts/ai-lab/context");
+var sensitiveModule = require("./scripts/ai-lab/sensitive");
 var workflowModule = require("./scripts/ai-lab/workflow");
 var ollamaModule = require("./scripts/ai-lab/providers/ollama");
 var anthropicModule = require("./scripts/ai-lab/providers/anthropic");
@@ -27,6 +29,7 @@ function validEnv(overrides) {
     AI_LAB_ANTHROPIC_BASE_URL: "https://api.anthropic.com",
     AI_LAB_ANTHROPIC_MODEL: "claude-haiku-test",
     ANTHROPIC_API_KEY: "test-key",
+    AI_LAB_ANTHROPIC_PROCESSING_APPROVED: "true",
     AI_LAB_TIMEOUT_MS: "5000",
     AI_LAB_ANTHROPIC_CALLS_PER_HOUR: "10",
     AI_LAB_MAX_PROMPT_CHARS: "200000",
@@ -119,6 +122,10 @@ test("konfigurasjon er eksplisitt lokal og miljøstyrt", function () {
   assert.equal(config.host, "127.0.0.1");
   assert.equal(config.ollamaModel, "gemma4:26b");
   assert.equal(config.ollamaBaseUrl, "http://127.0.0.1:11434");
+  assert.equal(config.anthropicProcessingApproved, true);
+  assert.equal(config.bridgeAllowedOrigin, "");
+  assert.equal(configModule.readConfig(validEnv({ ARCTIC_BRIDGE_ALLOWED_ORIGIN: "https://vibeverk.no" })).bridgeAllowedOrigin, "https://vibeverk.no");
+  assert.equal(configModule.readConfig(validEnv({ AI_LAB_ANTHROPIC_PROCESSING_APPROVED: "false" })).anthropicProcessingApproved, false);
   assert.throws(function () { configModule.readConfig(validEnv({ NODE_ENV: "production" })); }, /sperra utanfor/);
   assert.throws(function () { configModule.readConfig(validEnv({ CI: "true" })); }, /CI eller Vercel/);
   assert.throws(function () { configModule.readConfig(validEnv({ VERCEL: "1" })); }, /CI eller Vercel/);
@@ -129,6 +136,8 @@ test("konfigurasjon er eksplisitt lokal og miljøstyrt", function () {
   assert.throws(function () { configModule.readConfig(validEnv({ AI_LAB_OLLAMA_BASE_URL: "http://localhost:11434" })); }, /bokstavleg/);
   assert.throws(function () { configModule.readConfig(validEnv({ AI_LAB_OLLAMA_BASE_URL: "http://127.0.0.1:11434?next=remote" })); }, /bokstavleg/);
   assert.throws(function () { configModule.readConfig(validEnv({ AI_LAB_ANTHROPIC_BASE_URL: "https://evil.example" })); }, /api\.anthropic\.com/);
+  assert.throws(function () { configModule.readConfig(validEnv({ ARCTIC_BRIDGE_ALLOWED_ORIGIN: "http://vibeverk.no" })); }, /eksakt HTTPS-origin/);
+  assert.throws(function () { configModule.readConfig(validEnv({ ARCTIC_BRIDGE_ALLOWED_ORIGIN: "https://vibeverk.no/console" })); }, /eksakt HTTPS-origin/);
 });
 
 test("kjelder bruker allowlist, grenser og stabile snapshot-hashar", function () {
@@ -136,6 +145,11 @@ test("kjelder bruker allowlist, grenser og stabile snapshot-hashar", function ()
   var second = sourceModule.createSnapshot(process.cwd(), "learning-module", ["safe-changes"], "Lag ei kort innføring.", false);
   assert.equal(first.hash, second.hash);
   assert.equal(first.sources[0].path, "docs/onboarding/safe-changes-guide.md");
+  assert.equal(first.sources[0].anthropicAllowed, true);
+  assert.ok(sourceModule.SOURCE_REGISTRY.every(function (source) {
+    return /^[a-f0-9]{64}$/.test(source.anthropicApprovedSha256) &&
+      sourceModule.approvedForAnthropic(process.cwd(), source);
+  }));
   assert.throws(function () {
     sourceModule.createSnapshot(process.cwd(), "learning-module", ["../../.env"], "Test", false);
   }, /Ukjend kjelde-ID/);
@@ -156,6 +170,88 @@ test("standardkjeldene passar innan AI Lab si eksplisitte Ollama-promptgrense", 
   var reviewPrompt = promptModule.buildReviewPrompt(snapshot, validDraft(snapshot));
   assert.ok((draftPrompt.system + "\n\n" + draftPrompt.user).length < config.maxPromptChars);
   assert.ok((reviewPrompt.system + "\n\n" + reviewPrompt.user).length < config.maxPromptChars);
+});
+
+test("generelle kontekster er typet, avgrenset og inneholder ingen vilkårlige filstier", function () {
+  var none = contextModule.createContext(process.cwd(), { kind: "none" });
+  assert.equal(none.kind, "none");
+  var pasted = contextModule.createContext(process.cwd(), { kind: "pasted-text", text: "  Kort tekst.  " });
+  assert.equal(pasted.text, "Kort tekst.");
+  var selected = contextModule.createContext(process.cwd(), { kind: "selected-sources", sourceIds: ["safe-changes"] });
+  assert.deepEqual(selected.sources.map(function (source) { return source.id; }), ["safe-changes"]);
+  assert.throws(function () { contextModule.createContext(process.cwd(), { kind: "none", path: "/etc/passwd" }); }, /ukjente felt/);
+  assert.throws(function () { contextModule.createContext(process.cwd(), { kind: "pasted-text", text: "x".repeat(20001) }); }, /for lang/);
+  assert.throws(function () { contextModule.createContext(process.cwd(), { kind: "selected-sources", sourceIds: ["../../etc/passwd"] }); }, /Ukjend kjelde-ID/);
+});
+
+test("generell Gemma-flyt bruker begrenset historikk, strømmer og kan tømme kontekst", async function () {
+  var captured;
+  var deltas = [];
+  var workflow = workflowModule.createWorkflow(configModule.readConfig(validEnv()), {
+    ollamaProvider: {
+      id: "ollama", model: "gemma-test",
+      generateDraft: async function () { return {}; },
+      streamOperation: async function (messages, options) {
+        captured = messages;
+        options.onDelta("Hei");
+        options.onDelta("!");
+        return { content: "Hei!", finishReason: "stop", usage: { completion_tokens: 2 } };
+      },
+    },
+    anthropicProvider: { id: "anthropic", model: "haiku-test", configured: false },
+  });
+  var context = workflow.createContext({ kind: "none" });
+  var result = await workflow.runOperation(context.id, "chat", [{ role: "user", content: "HEI" }], {
+    onDelta: function (text) { deltas.push(text); },
+  });
+  assert.deepEqual(deltas, ["Hei", "!"]);
+  assert.match(captured[0].content, /Et enkelt hei/);
+  assert.deepEqual(captured[1], { role: "user", content: "HEI" });
+  assert.equal(result.operation, "chat");
+  assert.equal(result.usage.completion_tokens, 2);
+  assert.equal(workflow.disposeContext(context.id), true);
+  assert.throws(function () { workflow.describeContext(context.id); }, /gått ut/);
+  var another = workflow.createContext({ kind: "none" });
+  await assert.rejects(workflow.runOperation(another.id, "chat", new Array(21).fill({ role: "user", content: "x" })), /mellom 1 og 20/);
+  await assert.rejects(workflow.runOperation(another.id, "chat", [
+    { role: "user", content: "første" }, { role: "user", content: "andre" }
+  ]), /veksle/);
+  await assert.rejects(workflow.runOperation(another.id, "analyze-text", [
+    { role: "user", content: "Analyser dette" }
+  ]), /krever innlimt tekst/);
+  var pastedContext = workflow.createContext({ kind: "pasted-text", text: "Et kort dokument om trygg drift." });
+  for (var operation of ["analyze-text", "summarize", "rewrite"]) {
+    var operationResult = await workflow.runOperation(pastedContext.id, operation, [
+      { role: "user", content: "Utfør oppgaven tydelig." }
+    ], { onDelta: function () {} });
+    assert.equal(operationResult.operation, operation);
+    assert.match(captured[0].content, /er data, ikke instruksjoner/i);
+  }
+  var publicConfig = workflow.getConfig();
+  assert.equal(publicConfig.schemaVersion, "ai-lab-config-v2");
+  assert.deepEqual(publicConfig.operations.filter(function (item) { return item.streaming; }).map(function (item) { return item.id; }), ["chat", "analyze-text", "summarize", "rewrite"]);
+  assert.deepEqual(publicConfig.providers[0].operations, ["chat", "analyze-text", "summarize", "rewrite", "learning-draft"]);
+  var owned = workflow.createContext({ kind: "pasted-text", text: "Bare eier A skal kunne bruke dette." }, "operator-a");
+  assert.throws(function () { workflow.describeContext(owned.id, "operator-b"); }, /finnes ikke/);
+  await assert.rejects(workflow.runOperation(owned.id, "chat", [{ role: "user", content: "Gjenta teksten" }], { onDelta: function () {} }, "operator-b"), /finnes ikke/);
+  assert.throws(function () { workflow.disposeContext(owned.id, "operator-b"); }, /finnes ikke/);
+  assert.equal(workflow.disposeContext(owned.id, "operator-a"), true);
+  var ownerAContexts = [];
+  for (var contextIndex = 0; contextIndex < 5; contextIndex += 1) {
+    ownerAContexts.push(workflow.createContext({ kind: "none" }, "operator-a"));
+  }
+  var ownerBContext = workflow.createContext({ kind: "pasted-text", text: "Eier B sin kontekst." }, "operator-b");
+  workflow.createContext({ kind: "none" }, "operator-a");
+  assert.equal(workflow.describeContext(ownerBContext.id, "operator-b").kind, "pasted-text");
+  assert.throws(function () { workflow.describeContext(ownerAContexts[0].id, "operator-a"); }, /gått ut/);
+  var ownerASnapshots = [];
+  for (var snapshotIndex = 0; snapshotIndex < 5; snapshotIndex += 1) {
+    ownerASnapshots.push(workflow.createSnapshot({ scenarioId: "learning-module", sourceIds: ["safe-changes"], instruction: "Eier A " + snapshotIndex }, "operator-a"));
+  }
+  var ownerBSnapshot = workflow.createSnapshot({ scenarioId: "learning-module", sourceIds: ["safe-changes"], instruction: "Eier B" }, "operator-b");
+  workflow.createSnapshot({ scenarioId: "learning-module", sourceIds: ["safe-changes"], instruction: "Eier A ny" }, "operator-a");
+  assert.equal(workflow.describeSnapshot(ownerBSnapshot.id, "operator-b").scenarioId, "learning-module");
+  assert.throws(function () { workflow.describeSnapshot(ownerASnapshots[0].id, "operator-a"); }, /gått ut/);
 });
 
 test("kildelesing avviser symlink og katalog", function (t) {
@@ -237,6 +333,36 @@ test("strukturvalidator avviser ekstra felt og falske kjeldereferansar", functio
   assert.throws(function () { schemaModule.learningReviewSchema(snapshot, null); }, /krev det tilhøyrande utkastet/);
 });
 
+test("kjente hemmelighetsformat blokkeres før ekstern behandling", async function () {
+  assert.equal(sensitiveModule.containsKnownSecret("vanlig dokumentasjon uten nøkkel"), false);
+  assert.equal(sensitiveModule.containsKnownSecret("ANTHROPIC_API_KEY=sk-ant-abcdefghijklmnopqrstuv"), true);
+  assert.equal(sensitiveModule.containsKnownSecret("-----BEGIN PRIVATE KEY-----\nabc"), true);
+  assert.equal(sensitiveModule.containsKnownSecret("API_KEY=abcdefghijklmnopqrstuv"), true);
+  assert.equal(sensitiveModule.containsKnownSecret("PASSWORD=correct-horse-battery-staple"), true);
+  assert.equal(sensitiveModule.containsKnownSecret("github_pat_abcdefghijklmnopqrstuvwx"), true);
+  assert.equal(sensitiveModule.containsKnownSecret("eyJabcdefghijk.abcdefghijklmnop.abcdefghijklmnop"), true);
+
+  var currentTime = 1000000;
+  var anthropicCalled = false;
+  var config = configModule.readConfig(validEnv());
+  var workflow = workflowModule.createWorkflow(config, {
+    now: function () { return currentTime; },
+    ollamaProvider: { id: "ollama", model: "gemma-test", generateDraft: async function () { return {}; } },
+    anthropicProvider: {
+      id: "anthropic", model: "haiku-test", configured: true,
+      generateDraft: async function () { anthropicCalled = true; return {}; },
+    },
+  });
+  var snapshot = workflow.createSnapshot({
+    scenarioId: "learning-module", sourceIds: ["safe-changes"],
+    instruction: "Oppsummer. ANTHROPIC_API_KEY=sk-ant-abcdefghijklmnopqrstuv",
+  });
+  await assert.rejects(workflow.runDraft(snapshot.id, "anthropic"), function (error) {
+    return error.statusCode === 422 && error.code === "AI_LAB_SENSITIVE_CONTENT" && !/sk-ant/.test(error.message);
+  });
+  assert.equal(anthropicCalled, false);
+});
+
 test("workflow bruker identisk snapshot for Gemma og Haiku og atomisk review", async function () {
   var calls = [];
   var currentSnapshot = { sources: [{ id: "safe-changes" }] };
@@ -278,6 +404,8 @@ test("workflow bruker identisk snapshot for Gemma og Haiku og atomisk review", a
 test("workflow avviser utgått snapshot før providerkall", async function () {
   var currentTime = 1000000;
   var called = false;
+  var expiryCallback;
+  var cleared = false;
   var provider = {
     id: "ollama", model: "gemma-test",
     generateDraft: async function () { called = true; return {}; },
@@ -285,14 +413,18 @@ test("workflow avviser utgått snapshot før providerkall", async function () {
   var config = configModule.readConfig(validEnv({ AI_LAB_SNAPSHOT_TTL_MS: "60000" }));
   var workflow = workflowModule.createWorkflow(config, {
     now: function () { return currentTime; },
+    setTimer: function (callback, delay) { assert.equal(delay, 60000); expiryCallback = callback; return 7; },
+    clearTimer: function (timer) { assert.equal(timer, 7); cleared = true; },
     ollamaProvider: provider,
     anthropicProvider: { id: "anthropic", model: "haiku-test", configured: true },
   });
   var snapshot = workflow.createSnapshot({ scenarioId: "learning-module", sourceIds: ["safe-changes"], instruction: "Test" });
-  currentTime += 60001;
+  assert.equal(typeof expiryCallback, "function");
+  expiryCallback();
   await assert.rejects(workflow.runDraft(snapshot.id, "ollama"), function (error) {
     return error.statusCode === 410 && error.code === "AI_LAB_SNAPSHOT_EXPIRED";
   });
+  assert.equal(cleared, false);
   assert.equal(called, false);
 });
 
@@ -321,6 +453,21 @@ test("Ollama-adapter avviser tomt/ugyldig JSON og handhever éin aktiv jobb", as
   assert.equal(observedOptions.responseFormat.json_schema.name, "learning_draft");
   assert.equal(observedOptions.responseFormat.json_schema.strict, true);
   assert.deepEqual(observedOptions.responseFormat.json_schema.schema, draftSchema);
+});
+
+test("Ollama-adapter bruker samme single-flight for læringsutkast og generell strøm", async function () {
+  var config = configModule.readConfig(validEnv());
+  var release;
+  var provider = ollamaModule.createOllamaProvider(config, {
+    sendMessagesStream: function () { return new Promise(function (resolve) { release = resolve; }); },
+    sendPrompt: async function () { return "{}"; },
+  });
+  var streaming = provider.streamOperation([{ role: "user", content: "Hei" }], { onDelta: function () {} });
+  await assert.rejects(provider.generateDraft({ system: "S", user: "U" }, {}), function (error) {
+    return error.statusCode === 429 && error.code === "AI_LAB_OLLAMA_BUSY";
+  });
+  release({ content: "Hei", finishReason: "stop", usage: null });
+  assert.equal((await streaming).content, "Hei");
 });
 
 test("Ollama-adapter gjer avkorta kontekstsvar tydeleg", async function () {
@@ -383,6 +530,17 @@ test("Anthropic-adapter sanitiserer providerfeil, ugyldig JSON og timeout", asyn
   });
 });
 
+test("Anthropic krever eksplisitt server-side godkjenning i tillegg til API-nøkkel", async function () {
+  var config = configModule.readConfig(validEnv({ AI_LAB_ANTHROPIC_PROCESSING_APPROVED: "false" }));
+  var provider = anthropicModule.createAnthropicProvider(config, {
+    fetchImpl: async function () { throw new Error("skal ikke kalles"); },
+  });
+  assert.equal(provider.configured, false);
+  await assert.rejects(provider.generateDraft({ system: "S", user: "U" }, {}), function (error) {
+    return error.statusCode === 503 && error.code === "AI_LAB_EXTERNAL_PROCESSING_NOT_APPROVED";
+  });
+});
+
 test("Anthropic-adapter handhever éin aktiv jobb og prosesslokal timekvote", async function () {
   var config = configModule.readConfig(validEnv({ AI_LAB_ANTHROPIC_CALLS_PER_HOUR: "1" }));
   var release;
@@ -403,57 +561,195 @@ test("Anthropic-adapter handhever éin aktiv jobb og prosesslokal timekvote", as
 });
 
 test("lokal HTTP-server krev korrekt Host, Origin, token og JSON", async function (t) {
-  var config = configModule.readConfig(validEnv({ AI_LAB_PORT: "0" }), { allowEphemeralPort: true, execArgv: [] });
+  var bridgeOrigin = "https://vibeverk.no";
+  var config = configModule.readConfig(validEnv({ AI_LAB_PORT: "0", ARCTIC_BRIDGE_ALLOWED_ORIGIN: bridgeOrigin }), { allowEphemeralPort: true, execArgv: [] });
+  var auditEvents = [];
   var workflow = {
-    getConfig: function () { return { apiVersion: "v1", scenarios: [], sources: [], providers: [] }; },
+    getConfig: function () { return { apiVersion: "v1", scenarios: [], sources: [], providers: [{ id: "ollama", model: "gemma-test", processing: "local" }] }; },
+    describeSnapshot: function () { return { snapshotHash: "a".repeat(64), sources: [{ id: "safe-changes" }] }; },
     createSnapshot: function () { return { id: "snapshot-test" }; },
+    disposeSnapshot: function () { return true; },
+    createContext: function (body) { return { id: "context-test", kind: body.kind, contextHash: "d".repeat(64), sources: [] }; },
+    describeContext: function () { return { id: "context-test", kind: "none", contextHash: "d".repeat(64), sources: [] }; },
+    disposeContext: function () { return true; },
+    runOperation: async function (contextId, operation, messages, options) {
+      assert.equal(auditEvents[auditEvents.length - 1].result, "requested");
+      options.onDelta("Hei");
+      return { finishReason: "stop", usage: { completion_tokens: 1 }, provider: { durationMs: 7 } };
+    },
     runDraft: async function () { return { ok: true }; },
     runGemmaReview: async function () { return { ok: true }; },
   };
-  var app = serverModule.createAiLabServer(config, { workflow: workflow, csrfToken: "csrf-test" });
+  var app = serverModule.createAiLabServer(config, {
+    workflow: workflow,
+    csrfToken: "csrf-test",
+    verifyArcticAccess: async function () { return { ok: true, userId: "superadmin-test", role: "superadmin" }; },
+    arcticRuntime: {
+      bootstrap: function () { return { schemaVersion: "arctic-bootstrap-v1", connection: { status: "connected" } }; },
+      overview: async function () { return { schemaVersion: "arctic-overview-v1", overallStatus: "ok" }; },
+      services: async function () { return { schemaVersion: "arctic-services-v1", items: [] }; },
+      sessions: function () { return { schemaVersion: "arctic-sessions-v1", items: [] }; },
+      executeCommand: async function (input, operatorId) {
+        return { schemaVersion: "arctic-command-result-v1", commandId: input, operatorId: operatorId, status: "completed" };
+      },
+      auditAiEvent: function (fields) { auditEvents.push(fields); },
+    },
+  });
   await new Promise(function (resolve) { app.server.listen(0, "127.0.0.1", resolve); });
   t.after(function () { app.server.close(); });
   config.port = app.server.address().port;
   var base = "http://127.0.0.1:" + config.port;
 
-  var response = await fetch(base + "/__ai-lab/v1/config", { headers: { Host: "127.0.0.1:" + config.port } });
+  var bridgeNonce = "n".repeat(43);
+  var response = await fetch(base + "/__arctic/v1/bridge-info", {
+    headers: { Host: "127.0.0.1:" + config.port, Origin: bridgeOrigin, "X-Arctic-Bridge-Nonce": bridgeNonce },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("access-control-allow-origin"), bridgeOrigin);
+  var bridgeInfo = await response.json();
+  assert.equal(bridgeInfo.schemaVersion, "arctic-bridge-info-v1");
+  assert.equal(bridgeInfo.proof, serverModule.bridgeProof(config.accessToken, bridgeOrigin, bridgeNonce));
+
+  response = await fetch(base + "/__arctic/v1/bridge-info", {
+    headers: { Host: "127.0.0.1:" + config.port, Origin: "https://evil.example", "X-Arctic-Bridge-Nonce": bridgeNonce },
+  });
+  assert.equal(response.status, 403);
+  assert.equal(response.headers.get("access-control-allow-origin"), null);
+
+  response = await fetch(base + "/__ai-lab/v1/config", {
+    method: "OPTIONS",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: bridgeOrigin, "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "authorization" },
+  });
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), bridgeOrigin);
+
+  response = await fetch(base + "/__arctic/v1/bootstrap", {
+    headers: { Host: "127.0.0.1:" + config.port, Origin: bridgeOrigin, Authorization: "Bearer console-jwt" },
+  });
+  assert.equal(response.status, 403);
+  assert.equal(response.headers.get("access-control-allow-origin"), null);
+
+  response = await fetch(base + "/__ai-lab/v1/config", { headers: { Host: "127.0.0.1:" + config.port } });
+  assert.equal(response.status, 401);
+
+  response = await fetch(base + "/__ai-lab/v1/config", {
+    headers: { Host: "127.0.0.1:" + config.port, Authorization: "Bearer console-jwt" },
+  });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).csrfToken, "csrf-test");
 
+  response = await fetch(base + "/__ai-lab/v1/config", {
+    headers: { Host: "127.0.0.1:" + config.port, Origin: bridgeOrigin, Authorization: "Bearer console-jwt" },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("access-control-allow-origin"), bridgeOrigin);
+
   response = await fetch(base + "/__ai-lab/v1/snapshots", {
     method: "POST",
-    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer " + config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
     body: "{}",
   });
   assert.equal(response.status, 201);
 
+  response = await fetch(base + "/__ai-lab/v1/contexts", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "none" }),
+  });
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).id, "context-test");
+
+  response = await fetch(base + "/__ai-lab/v1/contexts", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: bridgeOrigin, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "none" }),
+  });
+  assert.equal(response.status, 201);
+  assert.equal(response.headers.get("access-control-allow-origin"), bridgeOrigin);
+
+  response = await fetch(base + "/__ai-lab/v1/stream", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ operation: "chat", provider: "ollama", contextId: "context-test", messages: [{ role: "user", content: "Hei" }] }),
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /application\/x-ndjson/);
+  var frames = (await response.text()).trim().split("\n").map(JSON.parse);
+  assert.deepEqual(frames.map(function (frame) { return frame.type; }), ["meta", "delta", "complete"]);
+  assert.equal(Object.prototype.hasOwnProperty.call(frames[0].context, "id"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(frames[0].context, "contextHash"), false);
+  assert.equal(frames[1].text, "Hei");
+  assert.deepEqual(auditEvents.slice(-2).map(function (event) { return event.result; }), ["requested", "completed"]);
+
+  response = await fetch(base + "/__ai-lab/v1/contexts/dispose", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ contextId: "context-test" }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).disposed, true);
+
+  response = await fetch(base + "/__ai-lab/v1/snapshots/dispose", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ snapshotId: "snapshot-test" }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).disposed, true);
+
   response = await fetch(base + "/__ai-lab/v1/snapshots", {
     method: "POST",
-    headers: { Host: "127.0.0.1:" + config.port, Origin: base, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
     body: "{}",
   });
   assert.equal(response.status, 401);
 
   response = await fetch(base + "/__ai-lab/v1/snapshots", {
     method: "POST",
-    headers: { Host: "127.0.0.1:" + config.port, Authorization: "Bearer " + config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    headers: { Host: "127.0.0.1:" + config.port, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
     body: "{}",
   });
   assert.equal(response.status, 403);
 
   response = await fetch(base + "/__ai-lab/v1/snapshots", {
     method: "POST",
-    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer " + config.accessToken, "X-AI-Lab-Token": "feil", "Content-Type": "application/json" },
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "feil", "Content-Type": "application/json" },
     body: "{}",
   });
   assert.equal(response.status, 403);
 
   response = await fetch(base + "/__ai-lab/v1/snapshots", {
     method: "POST",
-    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer " + config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "text/plain" },
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "text/plain" },
     body: "{}",
   });
   assert.equal(response.status, 415);
+
+  response = await fetch(base + "/__arctic/v1/bootstrap", {
+    headers: { Host: "127.0.0.1:" + config.port },
+  });
+  assert.equal(response.status, 401);
+
+  response = await fetch(base + "/__arctic/v1/bootstrap", {
+    headers: { Host: "127.0.0.1:" + config.port, Authorization: "Bearer console-jwt" },
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).schemaVersion, "arctic-bootstrap-v1");
+
+  response = await fetch(base + "/__arctic/v1/commands", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ input: "health", extra: true }),
+  });
+  assert.equal(response.status, 400);
+
+  response = await fetch(base + "/__arctic/v1/commands", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ input: "health" }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).operatorId, "superadmin-test");
 
   assert.equal(await rawHttpStatus(config.port, "evil.example", "/__ai-lab/v1/config"), 403);
 });
@@ -465,11 +761,19 @@ test("HTTP-laget lek ikkje avkorta-kontekst-feilen som generisk intern feil", as
   truncatedError.code = "AI_LAB_TRUNCATED_RESPONSE";
   var workflow = {
     getConfig: function () { return { apiVersion: "v1", scenarios: [], sources: [], providers: [] }; },
+    describeSnapshot: function () { return { snapshotHash: "b".repeat(64), sources: [{ id: "safe-changes" }] }; },
     createSnapshot: function () { return { id: "snapshot-test" }; },
     runDraft: async function () { throw truncatedError; },
     runGemmaReview: async function () { return { ok: true }; },
   };
-  var app = serverModule.createAiLabServer(config, { workflow: workflow, csrfToken: "csrf-test" });
+  var app = serverModule.createAiLabServer(config, {
+    workflow: workflow,
+    csrfToken: "csrf-test",
+    verifyArcticAccess: async function () { return { ok: true, userId: "superadmin-test", role: "superadmin" }; },
+    arcticRuntime: {
+      auditAiEvent: function () {},
+    },
+  });
   await new Promise(function (resolve) { app.server.listen(0, "127.0.0.1", resolve); });
   t.after(function () { app.server.close(); });
   config.port = app.server.address().port;
@@ -477,7 +781,7 @@ test("HTTP-laget lek ikkje avkorta-kontekst-feilen som generisk intern feil", as
 
   var response = await fetch(base + "/__ai-lab/v1/run", {
     method: "POST",
-    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer " + config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
     body: JSON.stringify({ snapshotId: "snapshot-test", provider: "ollama" }),
   });
   var body = await response.json();

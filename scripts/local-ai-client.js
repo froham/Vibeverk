@@ -91,6 +91,159 @@ function responseTooLargeError() {
   return error;
 }
 
+function localAbortError(message) {
+  var error = new Error(message || "Ollama-kallet vart avbrote.");
+  error.code = "LOCAL_AI_ABORTED";
+  return error;
+}
+
+function normalizeUsage(usage) {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+  var safe = {};
+  ["prompt_tokens", "completion_tokens", "total_tokens"].forEach(function (key) {
+    var value = usage[key];
+    if (Number.isSafeInteger(value) && value >= 0 && value <= 100000000) safe[key] = value;
+  });
+  return Object.keys(safe).length ? safe : null;
+}
+
+function validateMessages(messages, maxLength) {
+  if (!Array.isArray(messages) || !messages.length || messages.length > 24) {
+    throw new Error("Meldingshistorikken må innehalde mellom 1 og 24 meldingar.");
+  }
+  var total = 0;
+  return messages.map(function (message) {
+    if (!message || typeof message !== "object" || Array.isArray(message) ||
+        ["system", "user", "assistant"].indexOf(message.role) === -1 ||
+        typeof message.content !== "string" || !message.content.trim()) {
+      throw new Error("Meldingshistorikken har ugyldig format.");
+    }
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(message.content)) {
+      throw new Error("Ei melding inneheld ugyldige kontrollteikn.");
+    }
+    total += message.content.length;
+    return { role: message.role, content: message.content.trim() };
+  }).map(function (message, index, normalized) {
+    if (total > maxLength) throw new Error("Meldingshistorikken er for lang (maks " + maxLength + " teikn).");
+    return message;
+  });
+}
+
+function parseSseEvent(raw, onDelta, state) {
+  var lines = raw.split(/\r?\n/);
+  var dataLines = lines.filter(function (line) { return line.indexOf("data:") === 0; })
+    .map(function (line) { return line.slice(5).trimStart(); });
+  if (!dataLines.length) return;
+  var payload = dataLines.join("\n");
+  if (payload === "[DONE]") { state.done = true; return; }
+  var parsed;
+  try { parsed = JSON.parse(payload); } catch (error) {
+    var invalid = new Error("Ollama gav ein ugyldig SSE-hending.");
+    invalid.code = "LOCAL_AI_INVALID_STREAM";
+    throw invalid;
+  }
+  var choice = parsed && parsed.choices && parsed.choices[0];
+  var text = choice && choice.delta && choice.delta.content;
+  if (typeof text === "string" && text) {
+    state.content += text;
+    onDelta(text);
+  }
+  if (choice && choice.finish_reason) state.finishReason = choice.finish_reason;
+  if (parsed && parsed.usage) state.usage = normalizeUsage(parsed.usage);
+}
+
+async function sendMessagesStream(messages, options) {
+  options = options || {};
+  var config = readConfig(options.env, options.execArgv);
+  var maxLength = Number.isInteger(options.maxPromptLength) ? options.maxPromptLength : MAX_PROMPT_LENGTH;
+  var normalizedMessages = validateMessages(messages, maxLength);
+  var fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== "function") throw new Error("Denne Node-versjonen manglar fetch; bruk Node 20 eller nyare.");
+  var onDelta = typeof options.onDelta === "function" ? options.onDelta : function () {};
+  var timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
+  var controller = new AbortController();
+  var externalSignal = options.signal;
+  var externallyAborted = false;
+  function abortFromCaller() { externallyAborted = true; controller.abort(); }
+  if (externalSignal) {
+    if (externalSignal.aborted) abortFromCaller();
+    else externalSignal.addEventListener("abort", abortFromCaller, { once: true });
+  }
+  var timedOut = false;
+  var timeout = setTimeout(function () { timedOut = true; controller.abort(); }, timeoutMs);
+  var response;
+  try {
+    try {
+      response = await fetchImpl(config.completionsUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({ model: config.model, messages: normalizedMessages, stream: true }),
+        redirect: "error",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (externallyAborted) throw localAbortError();
+      if (timedOut) throw new Error("Ollama svarte ikkje innan " + timeoutMs + " ms.");
+      throw new Error("Fekk ikkje kontakt med lokal Ollama. Kontroller at `ollama serve` køyrer og at modellen er lasta ned.");
+    }
+    if (!response.ok) {
+      if (response.body && typeof response.body.cancel === "function") response.body.cancel().catch(function () {});
+      throw new Error("Ollama API-feil (HTTP " + response.status + ").");
+    }
+    if (!response.body || typeof response.body.getReader !== "function") {
+      throw new Error("Ollama gav ikkje eit strømbart svar.");
+    }
+    var reader = response.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = "";
+    var bytes = 0;
+    var state = { content: "", done: false, finishReason: null, usage: null };
+    try {
+      while (!state.done) {
+        var chunk;
+        try { chunk = await reader.read(); } catch (error) {
+          if (externallyAborted) throw localAbortError();
+          if (timedOut) throw new Error("Ollama svarte ikkje innan " + timeoutMs + " ms.");
+          throw error;
+        }
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > MAX_RESPONSE_BYTES) {
+          controller.abort();
+          throw responseTooLargeError();
+        }
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var boundary;
+        while ((boundary = buffer.search(/\r?\n\r?\n/)) !== -1) {
+          var eventText = buffer.slice(0, boundary);
+          var delimiter = /^\r\n\r\n/.test(buffer.slice(boundary)) ? 4 : 2;
+          buffer = buffer.slice(boundary + delimiter);
+          parseSseEvent(eventText, onDelta, state);
+          if (externallyAborted) throw localAbortError();
+        }
+      }
+      buffer += decoder.decode();
+      if (buffer.trim() && !state.done) parseSseEvent(buffer, onDelta, state);
+      if (externallyAborted) throw localAbortError();
+    } finally { try { reader.releaseLock(); } catch (error) {} }
+    if (!state.content.trim()) throw new Error("Ollama gav ein tom svarstraum.");
+    if (state.finishReason === "length") {
+      var truncatedStream = new Error("Ollama-svaret vart avkorta av kontekstvinduet.");
+      truncatedStream.code = "LOCAL_AI_OUTPUT_TRUNCATED";
+      throw truncatedStream;
+    }
+    if (!state.done) {
+      var incompleteStream = new Error("Ollama avslutta svarstraumen utan ein fullføringsmarkør.");
+      incompleteStream.code = "LOCAL_AI_INCOMPLETE_STREAM";
+      throw incompleteStream;
+    }
+    return { content: state.content, finishReason: state.finishReason || "stop", usage: state.usage };
+  } finally {
+    clearTimeout(timeout);
+    if (externalSignal) externalSignal.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 async function readResponseText(response) {
   if (!response.body || typeof response.body.getReader !== "function") {
     var text = await response.text();
@@ -214,4 +367,6 @@ async function sendPrompt(prompt, options) {
 module.exports = {
   readConfig: readConfig,
   sendPrompt: sendPrompt,
+  sendMessagesStream: sendMessagesStream,
+  validateMessages: validateMessages,
 };

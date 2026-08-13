@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.150.0";
+  var VIBEVERK_VERSION = "0.151.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -74,6 +74,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   var _sbControl   = null;
   var _session     = null;
+  var _operatorRole = null;
   var _tenants     = [];
   var _activeTenant = null;
 
@@ -100,6 +101,7 @@ window.VwConsole = (function () {
   function logout() {
     if (_sbControl) _sbControl.auth.signOut();
     _session = null;
+    _operatorRole = null;
     _activeTenant = null;
     location.reload();
   }
@@ -160,8 +162,10 @@ window.VwConsole = (function () {
   // teorien bli brukt som eit "finst denne e-posten"-orakel).
   function checkOperatorActive(cb) {
     if (!_session) { cb(false); return; }
-    _sbControl.from("operators").select("status").eq("id", _session.user.id).single().then(function (r) {
-      cb(!r.error && r.data && r.data.status === "active");
+    _sbControl.from("operators").select("status, role").eq("id", _session.user.id).single().then(function (r) {
+      var isActive = !r.error && r.data && r.data.status === "active";
+      _operatorRole = isActive ? (r.data.role || null) : null;
+      cb(isActive);
     });
   }
 
@@ -539,6 +543,7 @@ window.VwConsole = (function () {
     { id: "priser",     icon: "tag",         label: "Priser",     group: "internt" },
     { id: "kundeanalyse", icon: "zoom-check", label: "Kundeanalyse", group: "internt" },
     { id: "compliance", icon: "clipboard-text", label: "Compliance", group: "internt" },
+    { id: "arctic",     icon: "snowflake",   label: "Arctic",     group: "internt", superadminOnly: true },
     { id: "analyse",    icon: "chart-bar",   label: "Analyse",    group: "kundedrift" },
     { id: "personvern", icon: "shield-lock", label: "Personvern", group: "kundedrift" },
     { id: "laring",     icon: "book",        label: "Læring",     group: "internt" },
@@ -546,11 +551,14 @@ window.VwConsole = (function () {
   ];
   var NAV_GROUP_LABEL = { kundedrift: "Kundedrift", internt: "Vibeverk internt" };
 
-  // AI Lab er eit utviklingsverktøy, ikkje ein del av den vanlege Console-
-  // flata og ikkje det same som Læring. På ikkje-lokal origin returnerer
-  // denne sjekken før eit einaste AI Lab-nettverkskall kan skje.
+  // AI Lab er framleis eit lokalt utviklingsverktøy, men vert montert som ei
+  // underfane i den superadmin-avgrensa Arctic-flata. På ikkje-lokal origin
+  // returnerer denne sjekken før eit einaste AI Lab-nettverkskall kan skje.
   var _aiLabConfig = null;
   var _aiLabProbeFinished = false;
+  var AI_LAB_BRIDGE_BASE = "http://127.0.0.1:8081";
+  var _aiLabApiBase = "";
+  var _aiLabBridgeBusy = false;
 
   function isAiLabLocalEnvironment() {
     var loc = window.location;
@@ -558,14 +566,22 @@ window.VwConsole = (function () {
       (loc.hostname === "127.0.0.1" || loc.hostname === "localhost");
   }
 
+  function aiLabUsesLocalApi() {
+    return isAiLabLocalEnvironment() || _aiLabApiBase === AI_LAB_BRIDGE_BASE;
+  }
+
+  function aiLabUrl(path) {
+    return _aiLabApiBase + "/__ai-lab/v1/" + path;
+  }
+
+  function validAiLabConfig(config) {
+    return !!config && config.apiVersion === "v1" && !!config.csrfToken && Array.isArray(config.sources);
+  }
+
   function shellNavItems() {
-    var items = NAV_ITEMS.slice();
-    if (_aiLabConfig) {
-      // AI Lab er lokalt-berre og les aldri ein vald kunde -- same "internt"-
-      // gruppe som Priser/Kundeanalyse/Læring.
-      items.push({ id: "ai-lab", icon: "flask", label: "AI Lab", group: "internt" });
-    }
-    return items;
+    return NAV_ITEMS.filter(function (item) {
+      return !item.superadminOnly || _operatorRole === "superadmin";
+    });
   }
 
   // Grupperer shellNavItems() sitt flate resultat til sidemeny-rendering --
@@ -596,11 +612,21 @@ window.VwConsole = (function () {
     // sin faktiske utløpstid, ikkje denne localStorage-tidsstempelen), men
     // UI-et såg ut til å framleis fungere normalt inntil ei skriving feila.
     if (!isAuthed()) { logout(); return; }
+    // UI-vakta er berre forsvar-i-djupna. Same rolle vert kontrollert på
+    // serveren for kvart Arctic-kall og kvart AI Lab-kall som utfører arbeid.
+    if ((id === "arctic" || id === "ai-lab") && _operatorRole !== "superadmin") return false;
+    if (id === "ai-lab") {
+      // Bakoverkompatibel inngang for lokale bokmerke og regresjonstestar.
+      _arcticTab = "ai-lab";
+      id = "arctic";
+    }
+    if (activeSection === "arctic" && id !== "arctic") stopArcticAutoRefresh();
     activeSection = id;
     document.querySelectorAll("[data-cs-nav]").forEach(function (el) {
       el.classList.toggle("is-active", el.getAttribute("data-cs-nav") === id);
     });
     renderSection(id);
+    return true;
   }
 
   /* =========================================================================
@@ -908,17 +934,20 @@ window.VwConsole = (function () {
      SHELL
      ====================================================================== */
   function buildShell() {
-    if (isAiLabLocalEnvironment() && !_aiLabProbeFinished) {
+    if (_operatorRole === "superadmin" && isAiLabLocalEnvironment() && !_aiLabProbeFinished) {
       _aiLabProbeFinished = true;
       var probeController = new AbortController();
       var probeTimeout = setTimeout(function () { probeController.abort(); }, 1500);
-      fetch("/__ai-lab/v1/config", { method: "GET", cache: "no-store", credentials: "omit", signal: probeController.signal })
+      fetch(aiLabUrl("config"), {
+        method: "GET", cache: "no-store", credentials: "omit", signal: probeController.signal,
+        headers: { Authorization: "Bearer " + ((_session && _session.access_token) || "") }
+      })
         .then(function (response) {
           if (!response.ok) throw new Error("AI Lab er ikkje tilgjengeleg");
           return response.json();
         })
         .then(function (config) {
-          if (!config || config.apiVersion !== "v1" || !config.csrfToken || !Array.isArray(config.sources)) {
+          if (!validAiLabConfig(config)) {
             throw new Error("Ugyldig AI Lab-konfigurasjon");
           }
           _aiLabConfig = config;
@@ -6540,17 +6569,353 @@ window.VwConsole = (function () {
      ====================================================================== */
   var _aiLabSnapshot = null;
   var _aiLabSnapshotKey = "";
-  var _aiLabInstruction = "Lag et kort, presist opplæringsutkast for Vibeverk-ansatte. Prioriter praktisk forståelse og skill tydelig mellom dokumenterte fakta og det kildene ikke dekker.";
+  var AI_LAB_DEFAULT_INSTRUCTION = "Lag et kort, presist opplæringsutkast for Vibeverk-ansatte. Prioriter praktisk forståelse og skill tydelig mellom dokumenterte fakta og det kildene ikke dekker.";
+  var _aiLabInstruction = AI_LAB_DEFAULT_INSTRUCTION;
   var _aiLabSelectedSources = ["safe-changes"];
   var _aiLabResults = { ollama: null, anthropic: null, review: null };
   var _aiLabPreference = "";
   var _aiLabComment = "";
   var _aiLabAccessToken = "";
   var _aiLabBusy = false;
+  var _aiLabMode = "chat";
+  var _aiLabAnalysisOperation = "analyze-text";
+  var _aiLabContextKind = "none";
+  var _aiLabPastedText = "";
+  var _aiLabGeneralSources = ["safe-changes"];
+  var _aiLabSessions = [];
+  var _aiLabActiveSessionId = "";
+  var _aiLabStreamController = null;
+  var _aiLabStreamContextId = "";
+
+  function aiLabNewSession(mode) {
+    if (_aiLabSessions.length >= 10 && !window.confirm("AI Lab kan holde maksimalt ti økter i minnet. En ny økt sletter den eldste økten og innholdet kan ikke gjenopprettes uten en tidligere eksport. Fortsette?")) {
+      return _aiLabSessions.filter(function (item) { return item.mode === mode; })[0] || null;
+    }
+    var session = {
+      id: "session-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      title: mode === "analyze" ? "Ny analyse" : "Ny samtale",
+      mode: mode,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "ready",
+      operation: mode === "analyze" ? "analyze-text" : "chat",
+      context: { kind: "none", text: "", sourceIds: ["safe-changes"] },
+      messages: []
+    };
+    _aiLabSessions.unshift(session);
+    _aiLabSessions = _aiLabSessions.slice(0, 10);
+    _aiLabActiveSessionId = session.id;
+    return session;
+  }
+
+  function aiLabActiveSession() {
+    var session = _aiLabSessions.filter(function (item) { return item.id === _aiLabActiveSessionId; })[0];
+    if (!session || session.mode !== _aiLabMode) session = aiLabNewSession(_aiLabMode);
+    return session;
+  }
+
+  function aiLabLoadSessionContext(session) {
+    var context = session && session.context || { kind: "none", text: "", sourceIds: ["safe-changes"] };
+    _aiLabContextKind = context.kind || "none";
+    _aiLabPastedText = context.text || "";
+    _aiLabGeneralSources = Array.isArray(context.sourceIds) ? context.sourceIds.slice(0, 6) : ["safe-changes"];
+    if (session && session.mode === "analyze" && ["analyze-text", "summarize", "rewrite"].indexOf(session.operation) !== -1) {
+      _aiLabAnalysisOperation = session.operation;
+    }
+  }
+
+  function aiLabSaveSessionContext(session) {
+    if (!session) return;
+    session.context = {
+      kind: _aiLabContextKind,
+      text: _aiLabContextKind === "pasted-text" ? _aiLabPastedText : "",
+      sourceIds: _aiLabContextKind === "selected-sources" ? _aiLabGeneralSources.slice(0, 6) : []
+    };
+    session.operation = session.mode === "analyze" ? _aiLabAnalysisOperation : "chat";
+  }
+
+  function aiLabApplySessionContextToControls(session) {
+    var kind = document.getElementById("cs-ai-lab-context-kind");
+    var pasted = document.getElementById("cs-ai-lab-pasted-text");
+    var operation = document.getElementById("cs-ai-lab-analysis-operation");
+    if (!kind || !pasted) return;
+    kind.value = _aiLabContextKind;
+    pasted.value = _aiLabPastedText;
+    var locked = !!(session && session.messages && session.messages.length);
+    kind.disabled = _aiLabBusy || locked;
+    pasted.disabled = _aiLabBusy || locked;
+    if (operation) operation.disabled = _aiLabBusy || locked;
+    document.querySelectorAll("[data-ai-lab-general-source]").forEach(function (checkbox) {
+      checkbox.checked = _aiLabGeneralSources.indexOf(checkbox.value) !== -1;
+      checkbox.disabled = _aiLabBusy || locked;
+    });
+    var pastedWrap = document.getElementById("cs-ai-lab-pasted-wrap");
+    var sourcesWrap = document.getElementById("cs-ai-lab-general-sources");
+    if (pastedWrap) pastedWrap.hidden = _aiLabContextKind !== "pasted-text";
+    if (sourcesWrap) sourcesWrap.hidden = _aiLabContextKind !== "selected-sources";
+    var lockHint = document.getElementById("cs-ai-lab-context-lock");
+    if (lockHint) lockHint.hidden = !locked;
+  }
+
+  function aiLabOperationForMode() { return _aiLabMode === "analyze" ? _aiLabAnalysisOperation : "chat"; }
+
+  function aiLabGeneralAvailable() {
+    return aiLabProviderCan(aiLabProviderConfig("ollama"), aiLabOperationForMode());
+  }
+
+  function aiLabDisposeContext(contextId) {
+    if (!contextId || !_aiLabConfig) return Promise.resolve();
+    return aiLabApi("contexts/dispose", { contextId: contextId }).catch(function () {});
+  }
+
+  function aiLabContextBody(session) {
+    var context = session && session.context || { kind: _aiLabContextKind, text: _aiLabPastedText, sourceIds: _aiLabGeneralSources };
+    if (context.kind === "pasted-text") return { kind: "pasted-text", text: context.text };
+    if (context.kind === "selected-sources") return { kind: "selected-sources", sourceIds: context.sourceIds.slice() };
+    return { kind: "none" };
+  }
+
+  function aiLabStreamHeaders() {
+    return {
+      "Authorization": "Bearer " + ((_session && _session.access_token) || ""),
+      "Content-Type": "application/json",
+      "X-AI-Lab-Token": _aiLabConfig.csrfToken,
+      "X-Arctic-Access-Token": _aiLabAccessToken
+    };
+  }
+
+  function aiLabReadNdjson(response, onFrame) {
+    if (!response.ok) {
+      return response.json().catch(function () { return {}; }).then(function (payload) {
+        throw new Error(payload && payload.error && payload.error.message || "AI Lab-feil (HTTP " + response.status + ")");
+      });
+    }
+    if (!response.body || typeof response.body.getReader !== "function") throw new Error("Nettleseren støtter ikke strømming av svaret.");
+    var reader = response.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = "";
+    function consume() {
+      return reader.read().then(function (part) {
+        buffer += decoder.decode(part.value || new Uint8Array(), { stream: !part.done });
+        var lines = buffer.split("\n");
+        buffer = lines.pop();
+        lines.forEach(function (line) { if (line.trim()) onFrame(JSON.parse(line)); });
+        if (!part.done) return consume();
+        if (buffer.trim()) onFrame(JSON.parse(buffer));
+      });
+    }
+    return consume();
+  }
+
+  function renderAiLabTranscript() {
+    var transcript = document.getElementById("cs-ai-lab-transcript");
+    if (!transcript || _aiLabMode === "learning") return;
+    transcript.innerHTML = "";
+    var session = aiLabActiveSession();
+    if (!session.messages.length) {
+      appendAiLabText(transcript, "p", "ai-lab-empty", _aiLabMode === "analyze" ? "Lim inn tekst eller velg kilder, og beskriv hva du vil analysere." : "Start en lokal samtale med Gemma. Ingen filer eller annen kontekst brukes før du velger det.");
+    }
+    session.messages.forEach(function (message) {
+      var article = document.createElement("article");
+      article.className = "ai-lab-message ai-lab-message--" + (message.role === "assistant" ? "assistant" : "user");
+      appendAiLabText(article, "strong", "ai-lab-message__role", message.role === "assistant" ? "Gemma" : "Du");
+      appendAiLabText(article, "p", "ai-lab-message__text", message.content || (message.status === "streaming" ? "…" : ""));
+      if (message.status && message.status !== "complete") appendAiLabText(article, "small", "ai-lab-message__status", message.status === "cancelled" ? "Avbrutt · delvis svar" : message.status === "error" ? "Kjøringen feilet · delvis svar kan vises" : "Svarer …");
+      transcript.appendChild(article);
+    });
+    transcript.scrollTop = transcript.scrollHeight;
+    var sessions = document.getElementById("cs-ai-lab-session-list");
+    if (sessions) {
+      sessions.innerHTML = "";
+      _aiLabSessions.filter(function (item) { return item.mode === _aiLabMode; }).forEach(function (item) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "ai-lab-session" + (item.id === session.id ? " is-active" : "");
+        button.textContent = item.title;
+        button.setAttribute("aria-pressed", item.id === session.id ? "true" : "false");
+        button.addEventListener("click", function () {
+          _aiLabActiveSessionId = item.id;
+          aiLabLoadSessionContext(item);
+          renderAiLabTranscript();
+          var activeButton = document.querySelector('.ai-lab-session[aria-pressed="true"]');
+          if (activeButton) activeButton.focus();
+        });
+        sessions.appendChild(button);
+      });
+    }
+    aiLabApplySessionContextToControls(session);
+  }
+
+  function stopAiLabStream() {
+    if (_aiLabStreamController) _aiLabStreamController.abort();
+  }
+
+  function aiLabMessagesForRequest(session, currentAnswer) {
+    var history = [];
+    var pendingUser = null;
+    session.messages.forEach(function (message) {
+      if (message === currentAnswer || !message.content || !message.content.trim()) return;
+      if (message.role === "user") {
+        // A new user message supersedes a prior turn that never produced any
+        // assistant text, while the failed attempt remains visible in the UI.
+        pendingUser = { role: "user", content: message.content };
+      } else if (message.role === "assistant" && pendingUser) {
+        history.push(pendingUser, { role: "assistant", content: message.content });
+        pendingUser = null;
+      }
+    });
+    if (pendingUser) history.push(pendingUser);
+    return history;
+  }
+
+  function runAiLabStream() {
+    if (_aiLabBusy || !_aiLabConfig) return;
+    var composer = document.getElementById("cs-ai-lab-composer");
+    var prompt = composer && composer.value.trim();
+    if (!_aiLabAccessToken.trim()) { setAiLabBusy(false, "Lim inn lokal tilgangstoken først."); return; }
+    if (!aiLabGeneralAvailable()) { setAiLabBusy(false, "Gemma støtter ikke denne handlingen i serverkonfigurasjonen."); return; }
+    if (!prompt) { setAiLabBusy(false, "Skriv en melding eller analyseinstruksjon først."); return; }
+    if (_aiLabMode === "analyze" && _aiLabContextKind === "none") { setAiLabBusy(false, "Analyse krever innlimt tekst eller eksplisitt valgte kilder."); return; }
+    if (_aiLabContextKind === "pasted-text" && !_aiLabPastedText.trim()) { setAiLabBusy(false, "Lim inn teksten som skal brukes som kontekst."); return; }
+    if (_aiLabContextKind === "selected-sources" && !_aiLabGeneralSources.length) { setAiLabBusy(false, "Velg minst én kilde."); return; }
+    var session = aiLabActiveSession();
+    aiLabSaveSessionContext(session);
+    var firstPrompt = !session.messages.length;
+    session.messages.push({ role: "user", content: prompt, status: "complete" });
+    var answer = { role: "assistant", content: "", status: "streaming", meta: null };
+    session.messages.push(answer);
+    session.status = "streaming";
+    session.updatedAt = new Date().toISOString();
+    if (firstPrompt) session.title = prompt.slice(0, 54) + (prompt.length > 54 ? "…" : "");
+    composer.value = "";
+    renderAiLabTranscript();
+    setAiLabBusy(true, "Gemma svarer lokalt …");
+    _aiLabStreamController = new AbortController();
+    aiLabApi("contexts", aiLabContextBody(session)).then(function (context) {
+      _aiLabStreamContextId = context.id;
+      return fetch(aiLabUrl("stream"), {
+        method: "POST", cache: "no-store", credentials: "omit", signal: _aiLabStreamController.signal,
+        targetAddressSpace: _aiLabApiBase ? "loopback" : undefined,
+        referrerPolicy: _aiLabApiBase ? "no-referrer" : undefined,
+        headers: aiLabStreamHeaders(),
+        body: JSON.stringify({ operation: aiLabOperationForMode(), provider: "ollama", contextId: context.id, messages: aiLabMessagesForRequest(session, answer) })
+      });
+    }).then(function (response) {
+      return aiLabReadNdjson(response, function (frame) {
+        if (frame.type === "meta") answer.meta = frame;
+        if (frame.type === "delta") answer.content += String(frame.text || frame.delta || "");
+        if (frame.type === "complete") answer.status = "complete";
+        if (frame.type === "cancelled") answer.status = "cancelled";
+        if (frame.type === "error") { answer.status = "error"; throw new Error(frame.message || "Modellen returnerte en feil."); }
+        renderAiLabTranscript();
+      });
+    }).then(function () {
+      if (answer.status === "streaming") answer.status = "complete";
+      session.status = answer.status;
+      setAiLabBusy(false, answer.status === "cancelled" ? "Kjøringen ble avbrutt. Delvis svar er beholdt." : "");
+      if (answer.status === "complete") setAiLabTransientStatus("Svaret er klart.", true);
+      renderAiLabTranscript();
+    }).catch(function (error) {
+      if (error && error.name === "AbortError") {
+        answer.status = "cancelled";
+        session.status = "cancelled";
+        setAiLabBusy(false, "Kjøringen ble avbrutt. Delvis svar er beholdt.");
+      } else {
+        answer.status = "error";
+        session.status = "error";
+        setAiLabBusy(false, error.message);
+      }
+      renderAiLabTranscript();
+    }).then(function () {
+      var contextId = _aiLabStreamContextId;
+      _aiLabStreamContextId = "";
+      _aiLabStreamController = null;
+      return aiLabDisposeContext(contextId);
+    });
+  }
+
+  function exportAiLabSession() {
+    var session = aiLabActiveSession();
+    var exportedContext = { kind: session.context.kind };
+    if (session.context.kind === "pasted-text") exportedContext.text = session.context.text;
+    if (session.context.kind === "selected-sources") exportedContext.sourceIds = session.context.sourceIds.slice();
+    var payload = { schemaVersion: "ai-lab-session-export-v2", exportedAt: new Date().toISOString(), mode: session.mode, operation: session.operation, title: session.title, status: session.status, context: exportedContext, messages: session.messages.map(function (item) { return { role: item.role, content: item.content, status: item.status || "complete", meta: item.meta || null }; }) };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a"); link.href = url; link.download = "vibeverk-ai-lab-session.json"; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  }
 
   function aiLabProviderConfig(id) {
     var providers = (_aiLabConfig && _aiLabConfig.providers) || [];
     return providers.filter(function (provider) { return provider.id === id; })[0] || null;
+  }
+
+  function aiLabProviderName(provider) {
+    if (!provider) return "modell";
+    if (provider.id === "ollama") return "Gemma";
+    if (provider.id === "anthropic") return "Claude / Haiku";
+    return provider.label || provider.id;
+  }
+
+  function aiLabProviderCan(provider, operation) {
+    if (!provider || provider.configured !== true) return false;
+    var operations = Array.isArray(provider.operations) ? provider.operations : [];
+    // Kompatibilitet med eit allereie starta v1-lokalserver frå før
+    // capability-felta vart lagde til. Ny server sender alltid operations.
+    if (!operations.length && provider.id === "ollama") operations = ["learning-draft"];
+    if (!operations.length && provider.id === "anthropic") operations = ["learning-draft", "learning-review"];
+    return operations.indexOf(operation) !== -1;
+  }
+
+  function aiLabCapabilitySummary(provider) {
+    var caps = provider && provider.capabilities || {};
+    var labels = [];
+    if (caps.chat) labels.push("samtale");
+    if (caps.documentAnalysis) labels.push("dokumentanalyse");
+    if (caps.codeAnalysis) labels.push("kodeanalyse");
+    if (caps.streaming) labels.push("strømming");
+    if (caps.fileAccess) labels.push("filtilgang");
+    if (caps.codeChanges) labels.push("kodeendringer");
+    if (caps.tools) labels.push("verktøy");
+    return labels.length ? labels.join(" · ") : "ingen aktive egenskaper";
+  }
+
+  function aiLabReasonText(code) {
+    return {
+      credentials_not_configured: "Mangler lokale tilgangsopplysninger.",
+      external_processing_not_approved: "Ekstern behandling er ikke godkjent i lokal konfigurasjon.",
+      gateway_required: "Krever en avgrenset Arctic-tilkobling.",
+      local_model_not_configured: "Den lokale modellen er ikke konfigurert."
+    }[code] || "Ikke konfigurert for denne arbeidsflyten.";
+  }
+
+  function aiLabProcessing(provider) {
+    if (provider && (provider.processing === "local" || provider.processing === "external")) return provider.processing;
+    if (provider && provider.id === "ollama") return "local";
+    if (provider && provider.id === "anthropic") return "external";
+    return "unknown";
+  }
+
+  function aiLabModesHtml(providers) {
+    var modes = [
+      { id: "chat", label: "Samtale", operation: "chat", detail: "Fri, lokal flertrinnssamtale." },
+      { id: "analyze", label: "Analyse", operation: "analyze-text", detail: "Analyser tekst eller eksplisitt valgte kilder." },
+      { id: "learning", label: "Læringsutkast", operation: "learning-draft", detail: "Fast, kildevalidert læringsstruktur." }
+    ];
+    return modes.map(function (mode) {
+      var available = providers.some(function (provider) { return aiLabProviderCan(provider, mode.operation); });
+      return '<button type="button" class="ai-lab-mode' + (available ? ' is-available' : ' is-unavailable') + '" data-ai-lab-mode="' + mode.id + '" data-provider-ready="' + (available ? "true" : "false") + '" aria-pressed="' + (_aiLabMode === mode.id ? "true" : "false") + '"' + (available ? '' : ' disabled') + '><strong>' + C.esc(mode.label) + '</strong><span>' + (available ? "Tilgjengelig" : "Ikke konfigurert") + '</span><small>' + C.esc(mode.detail) + '</small></button>';
+    }).join("");
+  }
+
+  function aiLabProvidersHtml(providers) {
+    return providers.map(function (provider) {
+      var configured = provider.configured === true;
+      return '<article class="ai-lab-provider' + (configured ? ' is-configured' : ' is-unconfigured') + '" data-ai-lab-provider="' + C.esc(provider.id) + '"><div><strong>' + C.esc(aiLabProviderName(provider)) + '</strong>' +
+        '<span class="ai-lab-provider__processing">' + C.esc(aiLabProcessing(provider) === "local" ? "Lokal behandling" : aiLabProcessing(provider) === "external" ? "Ekstern behandling" : "Behandlingssted ikke oppgitt") + '</span></div>' +
+        '<p>' + C.esc(configured ? ((provider.model || "Modell registrert") + " · " + aiLabCapabilitySummary(provider)) : aiLabReasonText(provider.reasonCode)) + '</p>' +
+        '<span class="arctic-badge arctic-badge--' + (configured ? "healthy" : "not-configured") + '">' + (configured ? "Konfigurert" : "Ikke konfigurert") + '</span></article>';
+    }).join("");
   }
 
   function aiLabInputKey() {
@@ -6562,10 +6927,12 @@ window.VwConsole = (function () {
   }
 
   function invalidateAiLabSnapshot() {
+    var snapshotId = _aiLabSnapshot && _aiLabSnapshot.id;
     _aiLabSnapshot = null;
     _aiLabSnapshotKey = "";
     _aiLabResults = { ollama: null, anthropic: null, review: null };
     _aiLabPreference = "";
+    if (snapshotId) aiLabApi("snapshots/dispose", { snapshotId: snapshotId }).catch(function () {});
     renderAiLabResults();
   }
 
@@ -6578,15 +6945,27 @@ window.VwConsole = (function () {
     boxes.forEach(function (box) { box.disabled = selected >= 6 && !box.checked; });
   }
 
+  function refreshAiLabGeneralSourceLimit() {
+    var boxes = Array.from(document.querySelectorAll("[data-ai-lab-general-source]"));
+    var selected = boxes.filter(function (box) { return box.checked; }).length;
+    if (_aiLabBusy) return;
+    var locked = !!(aiLabActiveSession().messages.length);
+    boxes.forEach(function (box) { box.disabled = locked || (selected >= 6 && !box.checked); });
+  }
+
   function aiLabApi(path, body) {
-    var options = { method: body ? "POST" : "GET", cache: "no-store", credentials: "omit", headers: {} };
+    var options = {
+      method: body ? "POST" : "GET", cache: "no-store", credentials: "omit",
+      headers: { Authorization: "Bearer " + ((_session && _session.access_token) || "") }
+    };
+    if (_aiLabApiBase) { options.targetAddressSpace = "loopback"; options.referrerPolicy = "no-referrer"; }
     if (body) {
       options.headers["Content-Type"] = "application/json";
       options.headers["X-AI-Lab-Token"] = _aiLabConfig.csrfToken;
-      options.headers.Authorization = "Bearer " + _aiLabAccessToken;
+      options.headers["X-Arctic-Access-Token"] = _aiLabAccessToken;
       options.body = JSON.stringify(body);
     }
-    return fetch("/__ai-lab/v1/" + path, options).then(function (response) {
+    return fetch(aiLabUrl(path), options).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
         if (!response.ok) {
           var message = payload && payload.error && payload.error.message;
@@ -6621,7 +7000,7 @@ window.VwConsole = (function () {
   function handleAiLabRunError(error) {
     if (error && (error.statusCode === 410 || error.code === "AI_LAB_SNAPSHOT_EXPIRED")) {
       invalidateAiLabSnapshot();
-      setAiLabBusy(false, "Kildesnapshotet gikk ut. Tidligere svar er fjernet; kjør sammenligningen på nytt.");
+      setAiLabBusy(false, "Kildesettet gikk ut. Tidligere svar er fjernet; kjør sammenligningen på nytt.");
       return;
     }
     setAiLabBusy(false, error.message);
@@ -6629,18 +7008,47 @@ window.VwConsole = (function () {
 
   function setAiLabBusy(busy, message) {
     _aiLabBusy = busy;
-    var status = document.getElementById("cs-ai-lab-status");
-    if (status) {
+    document.querySelectorAll("[data-ai-lab-status]").forEach(function (status) {
       status.textContent = message || "";
       status.style.color = busy ? "var(--color-muted)" : "#c0392b";
-    }
+    });
     document.querySelectorAll("[data-ai-lab-run]").forEach(function (button) {
       button.disabled = busy || button.getAttribute("data-provider-ready") === "false";
     });
-    document.querySelectorAll("[data-ai-lab-source], #cs-ai-lab-instruction, #cs-ai-lab-access-token, #cs-ai-lab-scenario").forEach(function (field) {
+    document.querySelectorAll("[data-ai-lab-source], [data-ai-lab-general-source], #cs-ai-lab-instruction, #cs-ai-lab-access-token, #cs-ai-lab-general-token, #cs-ai-lab-scenario, #cs-ai-lab-composer, #cs-ai-lab-context-kind, #cs-ai-lab-analysis-operation, #cs-ai-lab-pasted-text").forEach(function (field) {
       field.disabled = busy;
     });
-    if (!busy) refreshAiLabSourceLimit();
+    document.querySelectorAll("[data-ai-lab-mode]").forEach(function (button) { button.disabled = busy || button.getAttribute("data-provider-ready") === "false"; });
+    var streamRun = document.getElementById("cs-ai-lab-stream-run");
+    if (streamRun) streamRun.disabled = busy || !aiLabGeneralAvailable();
+    var newSession = document.getElementById("cs-ai-lab-new-session");
+    if (newSession) newSession.disabled = busy;
+    var sessionExport = document.getElementById("cs-ai-lab-session-export");
+    if (sessionExport) sessionExport.disabled = busy;
+    var stop = document.getElementById("cs-ai-lab-stop");
+    if (stop) stop.disabled = !busy;
+    if (!busy) {
+      refreshAiLabSourceLimit();
+      refreshAiLabGeneralSourceLimit();
+      var session = _aiLabSessions.filter(function (item) { return item.id === _aiLabActiveSessionId && item.mode === _aiLabMode; })[0];
+      if (session) aiLabApplySessionContextToControls(session);
+    }
+  }
+
+  function confirmAiLabExternal(label) {
+    return window.confirm(
+      label + " sender instruksjonen og de valgte kildene til Anthropic. " +
+      "Bekreft at materialet er godkjent for ekstern behandling og ikke inneholder personopplysninger, kundeinnhold eller hemmeligheter.\n\n" +
+      "Valgte kilde-ID-er: " + _aiLabSelectedSources.join(", ")
+    );
+  }
+
+  function focusAiLabResult(providerId) {
+    var targetId = providerId === "ollama" ? "cs-ai-lab-gemma-title"
+      : providerId === "anthropic" ? "cs-ai-lab-haiku-title"
+      : "cs-ai-lab-review-title";
+    var target = document.getElementById(targetId);
+    if (target) target.focus();
   }
 
   function runAiLabProvider(providerId) {
@@ -6648,8 +7056,10 @@ window.VwConsole = (function () {
     if (!_aiLabAccessToken.trim()) { setAiLabBusy(false, "Lim inn lokal tilgangstoken først."); return; }
     if (!_aiLabSelectedSources.length) { setAiLabBusy(false, "Vel minst én kilde."); return; }
     if (!_aiLabInstruction.trim()) { setAiLabBusy(false, "Instruksjonen kan ikke være tom."); return; }
+    var providerConfig = aiLabProviderConfig(providerId);
+    if (aiLabProcessing(providerConfig) === "external" && !confirmAiLabExternal(aiLabProviderName(providerConfig))) return;
     var requestKey = aiLabInputKey();
-    setAiLabBusy(true, "Klargjør identisk kildesnapshot og kjører " + (providerId === "ollama" ? "Gemma" : "Haiku") + " …");
+    setAiLabBusy(true, "Klargjør identisk kildesett og kjører " + aiLabProviderName(providerConfig) + " …");
     ensureAiLabSnapshot().then(function (snapshot) {
       return aiLabApi("run", { snapshotId: snapshot.id, provider: providerId });
     }).then(function (result) {
@@ -6657,6 +7067,8 @@ window.VwConsole = (function () {
       _aiLabResults[providerId] = result;
       setAiLabBusy(false, "");
       renderAiLabResults();
+      setAiLabTransientStatus(aiLabProviderName(providerConfig) + "-utkastet er klart.", true);
+      focusAiLabResult(providerId);
     }).catch(function (error) {
       handleAiLabRunError(error);
     });
@@ -6667,8 +7079,9 @@ window.VwConsole = (function () {
     if (!_aiLabAccessToken.trim()) { setAiLabBusy(false, "Lim inn lokal tilgangstoken først."); return; }
     if (!_aiLabSelectedSources.length) { setAiLabBusy(false, "Vel minst én kilde."); return; }
     if (!_aiLabInstruction.trim()) { setAiLabBusy(false, "Instruksjonen kan ikke være tom."); return; }
+    if (!confirmAiLabExternal("Gemma + kvalitetsvurdering")) return;
     var requestKey = aiLabInputKey();
-    setAiLabBusy(true, "Gemma lager utkast, deretter reviewer Haiku mot samme snapshot …");
+    setAiLabBusy(true, "Gemma lager utkast, deretter vurderer Haiku det mot samme kildesett …");
     ensureAiLabSnapshot().then(function (snapshot) {
       return aiLabApi("gemma-review", { snapshotId: snapshot.id });
     }).then(function (result) {
@@ -6682,6 +7095,8 @@ window.VwConsole = (function () {
       };
       setAiLabBusy(false, "");
       renderAiLabResults();
+      setAiLabTransientStatus("Gemma-utkastet og Haiku-vurderingen er klare.", true);
+      focusAiLabResult("review");
     }).catch(function (error) {
       handleAiLabRunError(error);
     });
@@ -6726,7 +7141,10 @@ window.VwConsole = (function () {
     container.innerHTML = "";
     if (!result) { appendAiLabText(container, "p", "ai-lab-empty", emptyText); return; }
     var draft = result.draft;
-    appendAiLabText(container, "p", "ai-lab-result__meta", result.provider.id + " · " + result.provider.model + " · " + result.provider.durationMs + " ms");
+    var providerConfig = aiLabProviderConfig(result.provider.id);
+    var processingKind = aiLabProcessing(providerConfig || { id: result.provider.id });
+    var processing = processingKind === "external" ? "ekstern" : processingKind === "local" ? "lokal" : "ikke oppgitt";
+    appendAiLabText(container, "p", "ai-lab-result__meta", result.provider.id + " · " + result.provider.model + " · " + processing + " behandling · " + result.provider.durationMs + " ms");
     appendAiLabText(container, "p", "ai-lab-draft-badge", draft.draftStatus + " · " + draft.suggestedLevel);
     appendAiLabText(container, "h2", "ai-lab-result__title", draft.title);
     appendAiLabDocumented(container, "Kort modulbeskrivelse", draft.moduleDescription);
@@ -6751,6 +7169,70 @@ window.VwConsole = (function () {
     appendAiLabText(details, "summary", "", "Rå JSON");
     appendAiLabText(details, "pre", "", JSON.stringify(result, null, 2));
     container.appendChild(details);
+    var actions = document.createElement("div");
+    actions.className = "ai-lab-result__actions";
+    var copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "btn btn--ghost";
+    copyButton.textContent = "Kopier JSON";
+    copyButton.addEventListener("click", function () {
+      copyAiLabText(JSON.stringify(result.draft, null, 2)).then(function () {
+        setAiLabTransientStatus("Utkastet er kopiert.", true);
+      }, function () {
+        setAiLabTransientStatus("Kunne ikke kopiere automatisk. Åpne «Rå JSON» og kopier manuelt.", false);
+      });
+    });
+    var reuseButton = document.createElement("button");
+    reuseButton.type = "button";
+    reuseButton.className = "btn btn--ghost";
+    reuseButton.textContent = "Bruk som nytt grunnlag";
+    reuseButton.addEventListener("click", function () { useAiLabResultAsInstruction(result); });
+    actions.appendChild(copyButton);
+    actions.appendChild(reuseButton);
+    container.appendChild(actions);
+  }
+
+  function setAiLabTransientStatus(message, isOk) {
+    document.querySelectorAll("[data-ai-lab-status]").forEach(function (status) {
+      status.textContent = message;
+      status.style.color = isOk ? "#166534" : "#c0392b";
+    });
+  }
+
+  function copyAiLabText(value) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      return navigator.clipboard.writeText(value);
+    }
+    return new Promise(function (resolve, reject) {
+      var field = document.createElement("textarea");
+      field.value = value;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      try {
+        if (!document.execCommand || !document.execCommand("copy")) throw new Error("copy unavailable");
+        resolve();
+      } catch (error) { reject(error); }
+      finally { field.remove(); }
+    });
+  }
+
+  function useAiLabResultAsInstruction(result) {
+    if (!result || !result.draft) return;
+    var draftText = JSON.stringify(result.draft);
+    var prefix = "Vurder og forbedre dette validerte utkastet. Behold bare påstander som støttes av de valgte kildene:\n\n";
+    if ((prefix + draftText).length > 4000) {
+      setAiLabTransientStatus("Utkastet er for langt til instruksjonsfeltet og ble ikke endret. Kopier JSON og lag et kortere grunnlag manuelt.", false);
+      return;
+    }
+    if (!window.confirm("Dette erstatter hele instruksjonen og fjerner de nåværende resultatene. Handlingen kan ikke angres. Fortsette?")) return;
+    _aiLabInstruction = prefix + draftText;
+    var instruction = document.getElementById("cs-ai-lab-instruction");
+    if (instruction) instruction.value = _aiLabInstruction;
+    invalidateAiLabSnapshot();
+    setAiLabTransientStatus("Utkastet er lagt inn som nytt grunnlag. Velg modell og kjør på nytt.", true);
   }
 
   function appendAiLabVerdictBadge(parent, verdict) {
@@ -6864,13 +7346,79 @@ window.VwConsole = (function () {
     URL.revokeObjectURL(url);
   }
 
+  function clearAiLabWorkspace() {
+    if (!window.confirm("Dette sletter alle samtale- og analyseøkter, meldinger, innlimt kontekst, læringsinstruksjon, lokal tilgangstoken, resultater, vurdering og kommentar fra nettleserminnet. Eksporter det du vil beholde først. Handlingen kan ikke angres. Fortsette?")) return;
+    invalidateAiLabSnapshot();
+    _aiLabInstruction = AI_LAB_DEFAULT_INSTRUCTION;
+    _aiLabSelectedSources = ["safe-changes"];
+    _aiLabResults = { ollama: null, anthropic: null, review: null };
+    _aiLabPreference = "";
+    _aiLabComment = "";
+    stopAiLabStream();
+    // Start disposal while the memory-only local token is still available.
+    // The server marks an in-flight context expired and removes it on release.
+    aiLabDisposeContext(_aiLabStreamContextId);
+    _aiLabStreamContextId = "";
+    _aiLabAccessToken = "";
+    _aiLabSessions = [];
+    _aiLabActiveSessionId = "";
+    _aiLabPastedText = "";
+    _aiLabContextKind = "none";
+    _aiLabGeneralSources = ["safe-changes"];
+    _aiLabAnalysisOperation = "analyze-text";
+    renderArcticPane();
+  }
+
+  function activateAiLabMode(mode, wrap) {
+    if (["chat", "analyze", "learning"].indexOf(mode) === -1) return;
+    var previousMode = _aiLabMode;
+    _aiLabMode = mode;
+    if (mode !== "learning") {
+      var selectedSession = aiLabActiveSession();
+      if (!selectedSession) { _aiLabMode = previousMode; return; }
+      aiLabLoadSessionContext(selectedSession);
+    }
+    wrap.querySelectorAll("[data-ai-lab-mode]").forEach(function (button) {
+      var active = button.getAttribute("data-ai-lab-mode") === mode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    var general = wrap.querySelector("#cs-ai-lab-general");
+    var learning = wrap.querySelector("#cs-ai-lab-learning");
+    if (general) general.hidden = mode === "learning";
+    if (learning) learning.hidden = mode !== "learning";
+    var composerLabel = wrap.querySelector("#cs-ai-lab-composer-label");
+    if (composerLabel) composerLabel.textContent = mode === "analyze" ? "Analyseinstruksjon" : "Melding til Gemma";
+    var composer = wrap.querySelector("#cs-ai-lab-composer");
+    if (composer) composer.placeholder = mode === "analyze" ? "For eksempel: Oppsummer hovedpoengene og marker uklarheter." : "Skriv en melding …";
+    var run = wrap.querySelector("#cs-ai-lab-stream-run");
+    if (run) {
+      run.textContent = mode === "analyze" ? (_aiLabAnalysisOperation === "summarize" ? "Oppsummer med Gemma" : _aiLabAnalysisOperation === "rewrite" ? "Skriv om med Gemma" : "Analyser med Gemma") : "Send til Gemma";
+      run.disabled = !aiLabGeneralAvailable();
+    }
+    var analysisOperation = wrap.querySelector("#cs-ai-lab-analysis-operation-wrap");
+    if (analysisOperation) analysisOperation.hidden = mode !== "analyze";
+    if (mode !== "learning") renderAiLabTranscript();
+  }
+
   function renderAiLab(sc, wrap) {
-    if (!isAiLabLocalEnvironment() || !_aiLabConfig) {
+    if (!aiLabUsesLocalApi() || !_aiLabConfig) {
       wrap.innerHTML = '<p class="i-notice i-notice--warn">AI Lab er bare tilgjengelig fra den lokale utviklingsserveren.</p>';
       return;
     }
     var anthropic = aiLabProviderConfig("anthropic");
     var ollama = aiLabProviderConfig("ollama");
+    var providers = _aiLabConfig.providers || [];
+    if (_aiLabMode !== "learning") aiLabLoadSessionContext(aiLabActiveSession());
+    var draftProviders = providers.filter(function (provider) {
+      return aiLabProviderCan(provider, "learning-draft") ||
+        (!provider.configured && provider.capabilities && provider.capabilities.documentAnalysis) ||
+        (!provider.configured && provider.id === "anthropic");
+    });
+    var draftActionsHtml = draftProviders.map(function (provider, index) {
+      var isPrimary = index === 0;
+      return '<button type="button" class="btn ' + (isPrimary ? 'btn--primary' : 'btn--ghost') + '" data-ai-lab-run="' + C.esc(provider.id) + '" data-provider-ready="' + (provider.configured ? "true" : "false") + '"' + (provider.configured ? "" : ' disabled title="' + C.esc(aiLabReasonText(provider.reasonCode)) + '"') + '>Kjør ' + C.esc(aiLabProviderName(provider)) + '</button>';
+    }).join("");
     var sourceHtml = _aiLabConfig.sources.map(function (source) {
       var checked = _aiLabSelectedSources.indexOf(source.id) !== -1 ? " checked" : "";
       return '<label class="ai-lab-source">' +
@@ -6881,37 +7429,67 @@ window.VwConsole = (function () {
     }).join("");
     wrap.innerHTML =
       '<div class="ai-lab-banner"><span class="ai-lab-banner__badge">INTERN TEST · KUN LOKALT</span>' +
-        '<h2>AI Lab</h2><p>Sammenlign og review AI-utkast. Ingenting lagres eller publiseres automatisk.</p>' +
+        '<h2>AI Lab</h2><p>Snakk med lokal Gemma, analyser eksplisitt valgt materiale eller lag kildevaliderte læringsutkast. Innholdet lagres ikke i Vibeverks database eller publiseres automatisk, men holdes midlertidig i lokalt prosess- og nettleserminne.</p>' +
         '<p><strong>Separat fra Læring:</strong> Godkjent læringsinnhold vises uten AI Lab, Ollama eller Anthropic.</p></div>' +
+      '<section class="ai-lab-workbench" aria-labelledby="cs-ai-lab-modes-title"><h2 id="cs-ai-lab-modes-title">Modellverksted</h2>' +
+        '<p class="field__hint">Arbeidsmoduser og kontroller følger modelltilbyderens faktiske egenskaper og tilgjengelige handlinger. Manglende adaptere vises som utilgjengelige.</p>' +
+        '<div class="ai-lab-modes">' + aiLabModesHtml(providers) + '</div><div class="ai-lab-providers">' + aiLabProvidersHtml(providers) + '</div></section>' +
       '<div class="ai-lab-config">' +
         '<div class="field"><label for="cs-ai-lab-scenario">Scenario</label><select id="cs-ai-lab-scenario"><option value="learning-module">Læringsmodulen</option></select></div>' +
         '<div class="field"><label for="cs-ai-lab-access-token">Lokal tilgangstoken</label><input id="cs-ai-lab-access-token" type="password" autocomplete="off" spellcheck="false" placeholder="Samme verdi som AI_LAB_ACCESS_TOKEN">' +
           '<p class="field__hint">Holdes bare i minnet i denne Console-fanen og blir ikke med i eksporten.</p></div>' +
-        '<fieldset class="admin-group"><legend>Kildemateriale</legend><p class="field__hint">Velg 1–6 eksplisitt godkjente prosjektfiler. Start med én liten kilde; velger du for mye på én gang kan modellen miste deler av innholdet eller svare dårligere. Kilder merket for Haiku sendes til Anthropic når du bruker Haiku eller review. <strong id="cs-ai-lab-source-count"></strong></p>' +
+        '<fieldset class="admin-group"><legend>Kontekst: Valgte filer</legend><p class="field__hint">Velg 1–6 eksplisitt godkjente prosjektfiler fra serverens faste kildeliste. AI Lab får aldri generell filtilgang. Start med én liten kilde; velger du for mye på én gang kan modellen miste deler av innholdet eller svare dårligere. Kilder merket for Haiku sendes til Anthropic når du bruker Haiku eller kvalitetsvurdering. <strong id="cs-ai-lab-source-count"></strong></p>' +
           '<div class="ai-lab-sources">' + sourceHtml + '</div></fieldset>' +
         '<div class="field"><label for="cs-ai-lab-instruction">Instruksjon</label><textarea id="cs-ai-lab-instruction" rows="5" maxlength="4000"></textarea>' +
-          '<p class="field__hint">Ikke skriv inn navn, kontaktopplysninger, kundeinnhold, API-nøkler, passord eller annet fortrolig innhold. Endring av instruksjon eller kilder oppretter et nytt snapshot og nullstiller sammenligningen.</p></div>' +
+          '<p class="field__hint">Ikke skriv inn navn, kontaktopplysninger, kundeinnhold, API-nøkler, passord eller annet fortrolig innhold. Endring av instruksjon eller kilder oppretter et nytt kildesett og nullstiller sammenligningen.</p></div>' +
         '<div class="ai-lab-actions">' +
-          '<button type="button" class="btn btn--primary" data-ai-lab-run="ollama" data-provider-ready="true">Kjør Gemma</button>' +
-          '<button type="button" class="btn btn--ghost" data-ai-lab-run="anthropic" data-provider-ready="' + (anthropic && anthropic.configured ? "true" : "false") + '"' + (anthropic && anthropic.configured ? "" : " disabled title=\"Mangler lokal ANTHROPIC_API_KEY\"") + '>Kjør Haiku</button>' +
-          '<button type="button" class="btn btn--ghost" data-ai-lab-run="review" data-provider-ready="' + (anthropic && anthropic.configured ? "true" : "false") + '"' + (anthropic && anthropic.configured ? "" : " disabled title=\"Mangler lokal ANTHROPIC_API_KEY\"") + '>Gemma + review</button>' +
+          draftActionsHtml +
+          '<button type="button" class="btn btn--ghost" data-ai-lab-run="review" data-provider-ready="' + (anthropic && anthropic.configured ? "true" : "false") + '"' + (anthropic && anthropic.configured ? "" : ' disabled title="' + C.esc(aiLabReasonText(anthropic && anthropic.reasonCode)) + '"') + '>Gemma + review</button>' +
         '</div>' +
-        '<p class="i-notice i-notice--warn ai-lab-external-note"><strong>Ekstern behandling:</strong> Haiku-kall sender valgte kildefiler og instruksjonen til Anthropic. «Gemma + review» sender i tillegg det validerte Gemma-utkastet. Ikke bruk personopplysninger, kundeinnhold eller hemmeligheter.</p>' +
-        (anthropic && anthropic.configured ? '' : '<p class="field__hint ai-lab-provider-status">Haiku er ikke konfigurert lokalt. Sett ANTHROPIC_API_KEY og start AI Lab-serveren på nytt for å aktivere knappene.</p>') +
+        '<p class="i-notice i-notice--warn ai-lab-external-note"><strong>Ekstern behandling:</strong> Haiku-kall sender valgte kildefiler og instruksjonen til Anthropic. «Gemma + review» sender i tillegg det validerte Gemma-utkastet. Hvert eksternt kall krever en egen bekreftelse. Ikke bruk personopplysninger, kundeinnhold eller hemmeligheter.</p>' +
+        '<p class="field__hint">Serveren blokkerer noen kjente hemmelighetsformater før eksterne kall. Dette er bare et ekstra sikkerhetsnett og er ingen garanti for anonymitet eller at alt sensitivt innhold blir oppdaget.</p>' +
+        (anthropic && anthropic.configured ? '' : '<p class="field__hint ai-lab-provider-status">Haiku er ikke tilgjengelig: ' + C.esc(aiLabReasonText(anthropic && anthropic.reasonCode)) + '</p>') +
         '<p class="field__hint">Modeller: Gemma ' + C.esc((ollama && ollama.model) || "—") + ' · Haiku ' + C.esc((anthropic && anthropic.model) || "—") + '</p>' +
-        '<p id="cs-ai-lab-status" class="form__status" role="status"></p>' +
+        '<p id="cs-ai-lab-status" class="form__status" role="status" data-ai-lab-status></p>' +
       '</div>' +
-      '<div class="ai-lab-compare"><section class="ai-lab-result" aria-labelledby="cs-ai-lab-gemma-title"><h2 id="cs-ai-lab-gemma-title">Gemma</h2><div id="cs-ai-lab-gemma-result"></div></section>' +
-        '<section class="ai-lab-result" aria-labelledby="cs-ai-lab-haiku-title"><h2 id="cs-ai-lab-haiku-title">Haiku</h2><div id="cs-ai-lab-haiku-result"></div></section></div>' +
-      '<section class="ai-lab-result ai-lab-review" aria-labelledby="cs-ai-lab-review-title"><h2 id="cs-ai-lab-review-title">Haiku-review av Gemma</h2><div id="cs-ai-lab-review-result"></div></section>' +
+      '<div class="ai-lab-compare"><section class="ai-lab-result" aria-labelledby="cs-ai-lab-gemma-title"><h2 id="cs-ai-lab-gemma-title" tabindex="-1">Gemma</h2><div id="cs-ai-lab-gemma-result"></div></section>' +
+        '<section class="ai-lab-result" aria-labelledby="cs-ai-lab-haiku-title"><h2 id="cs-ai-lab-haiku-title" tabindex="-1">Haiku</h2><div id="cs-ai-lab-haiku-result"></div></section></div>' +
+      '<section class="ai-lab-result ai-lab-review" aria-labelledby="cs-ai-lab-review-title"><h2 id="cs-ai-lab-review-title" tabindex="-1">Haiku-vurdering av Gemma</h2><div id="cs-ai-lab-review-result"></div></section>' +
       '<section class="ai-lab-evaluation"><h2>Testerens vurdering</h2>' +
         '<div class="field"><label for="cs-ai-lab-preference">Foretrukket svar</label><select id="cs-ai-lab-preference"><option value="">Ikke valgt</option><option value="ollama">Gemma</option><option value="anthropic">Haiku</option></select></div>' +
         '<div class="field"><label for="cs-ai-lab-comment">Kommentar</label><textarea id="cs-ai-lab-comment" rows="4" maxlength="4000" placeholder="Hva var bedre, svakere eller manglet?"></textarea></div>' +
-        '<button type="button" class="btn btn--ghost" id="cs-ai-lab-export" disabled>Eksporter som JSON</button>' +
+        '<div class="ai-lab-actions"><button type="button" class="btn btn--ghost" id="cs-ai-lab-export" disabled>Eksporter som JSON</button><button type="button" class="btn btn--ghost" id="cs-ai-lab-clear">Tøm arbeidsflaten</button></div>' +
         '<p class="field__hint">Eksporten legger ikke ved kildefilene eller API-nøkler automatisk, men inneholder instruksjon, kommentar og modelloutput. Kontroller filen for sensitivt innhold før deling.</p></section>';
+
+    var learningPanel = document.createElement("div");
+    learningPanel.id = "cs-ai-lab-learning";
+    learningPanel.setAttribute("aria-label", "Læringsutkast");
+    [".ai-lab-config", ".ai-lab-compare", ".ai-lab-review", ".ai-lab-evaluation"].forEach(function (selector) {
+      var node = wrap.querySelector(selector);
+      if (node) learningPanel.appendChild(node);
+    });
+    wrap.appendChild(learningPanel);
+
+    var generalSources = (_aiLabConfig.sources || []).map(function (source) {
+      return '<label class="ai-lab-source"><input type="checkbox" data-ai-lab-general-source value="' + C.esc(source.id) + '"' + (_aiLabGeneralSources.indexOf(source.id) !== -1 ? ' checked' : '') + '><span><strong>' + C.esc(source.label) + '</strong><small>' + C.esc(source.path) + ' · bare eksplisitt valgt</small></span></label>';
+    }).join("");
+    var generalPanel = document.createElement("section");
+    generalPanel.id = "cs-ai-lab-general";
+    generalPanel.className = "ai-lab-general";
+    generalPanel.innerHTML = '<aside class="ai-lab-session-panel"><div class="arctic-section-head"><div><p class="arctic-card__eyebrow">Kun nettleserminne</p><h2>Økter</h2></div><button type="button" class="btn btn--ghost" id="cs-ai-lab-new-session">Ny økt</button></div><div id="cs-ai-lab-session-list" class="ai-lab-session-list"></div></aside>' +
+      '<div class="ai-lab-conversation"><div class="ai-lab-config"><div class="field"><label for="cs-ai-lab-general-token">Lokal tilgangstoken</label><input id="cs-ai-lab-general-token" type="password" autocomplete="off" spellcheck="false"><p class="field__hint">Holdes bare i minnet og tas aldri med i eksport.</p></div>' +
+      '<div id="cs-ai-lab-analysis-operation-wrap" class="field" hidden><label for="cs-ai-lab-analysis-operation">Analysehandling</label><select id="cs-ai-lab-analysis-operation"><option value="analyze-text">Analyser</option><option value="summarize">Oppsummer</option><option value="rewrite">Skriv om</option></select></div>' +
+      '<div class="field"><label for="cs-ai-lab-context-kind">Ekstra kontekst</label><select id="cs-ai-lab-context-kind"><option value="none">Ingen ekstra kontekst</option><option value="pasted-text">Innlimt tekst</option><option value="selected-sources">Valgte Vibeverk-kilder</option></select><p id="cs-ai-lab-context-lock" class="field__hint" hidden>Konteksten er låst for denne økten. Start en ny økt for å bytte kontekst.</p></div>' +
+      '<div id="cs-ai-lab-pasted-wrap" class="field" hidden><label for="cs-ai-lab-pasted-text">Innlimt tekst</label><textarea id="cs-ai-lab-pasted-text" rows="7" maxlength="20000" placeholder="Lim inn teksten modellen skal bruke …"></textarea><p class="field__hint">Maks 20 000 tegn. Ikke lim inn personopplysninger, kundeinnhold eller hemmeligheter.</p></div>' +
+      '<fieldset id="cs-ai-lab-general-sources" class="admin-group" hidden><legend>Valgte kilder</legend><div class="ai-lab-sources">' + generalSources + '</div></fieldset></div>' +
+      '<div id="cs-ai-lab-transcript" class="ai-lab-transcript" aria-label="Samtale med Gemma"></div>' +
+      '<div class="ai-lab-composer"><label id="cs-ai-lab-composer-label" for="cs-ai-lab-composer">Melding til Gemma</label><textarea id="cs-ai-lab-composer" rows="4" maxlength="8000"></textarea><div class="ai-lab-actions"><button type="button" class="btn btn--primary" id="cs-ai-lab-stream-run">Send til Gemma</button><button type="button" class="btn btn--ghost" id="cs-ai-lab-stop" disabled>Stopp</button><button type="button" class="btn btn--ghost" id="cs-ai-lab-session-export">Eksporter økt</button></div><p id="cs-ai-lab-general-status" class="form__status" role="status" data-ai-lab-status></p><p class="field__hint">Gemma har ingen fil-, kode-, terminal- eller internettilgang. Bare valgt kontekst sendes til modellen.</p></div></div>';
+    var workbench = wrap.querySelector(".ai-lab-workbench");
+    workbench.parentNode.insertBefore(generalPanel, workbench.nextSibling);
 
     var instruction = wrap.querySelector("#cs-ai-lab-instruction");
     instruction.value = _aiLabInstruction;
+    wrap.querySelector('label[for="cs-ai-lab-instruction"]').textContent = "Tilleggsinstruksjon for læringsutkast";
     instruction.addEventListener("input", function () {
       _aiLabInstruction = instruction.value;
       invalidateAiLabSnapshot();
@@ -6919,6 +7497,53 @@ window.VwConsole = (function () {
     var accessToken = wrap.querySelector("#cs-ai-lab-access-token");
     accessToken.value = _aiLabAccessToken;
     accessToken.addEventListener("input", function () { _aiLabAccessToken = accessToken.value; });
+    var generalToken = wrap.querySelector("#cs-ai-lab-general-token");
+    generalToken.value = _aiLabAccessToken;
+    generalToken.addEventListener("input", function () {
+      _aiLabAccessToken = generalToken.value;
+      accessToken.value = _aiLabAccessToken;
+    });
+    wrap.querySelectorAll("[data-ai-lab-mode]").forEach(function (button) {
+      button.addEventListener("click", function () { activateAiLabMode(button.getAttribute("data-ai-lab-mode"), wrap); });
+    });
+    var contextKind = wrap.querySelector("#cs-ai-lab-context-kind");
+    contextKind.value = _aiLabContextKind;
+    var analysisOperation = wrap.querySelector("#cs-ai-lab-analysis-operation");
+    analysisOperation.value = _aiLabAnalysisOperation;
+    analysisOperation.addEventListener("change", function () {
+      if (["analyze-text", "summarize", "rewrite"].indexOf(analysisOperation.value) === -1) return;
+      _aiLabAnalysisOperation = analysisOperation.value;
+      aiLabSaveSessionContext(aiLabActiveSession());
+      activateAiLabMode(_aiLabMode, wrap);
+    });
+    function updateContextVisibility() {
+      wrap.querySelector("#cs-ai-lab-pasted-wrap").hidden = contextKind.value !== "pasted-text";
+      wrap.querySelector("#cs-ai-lab-general-sources").hidden = contextKind.value !== "selected-sources";
+    }
+    contextKind.addEventListener("change", function () { _aiLabContextKind = contextKind.value; aiLabSaveSessionContext(aiLabActiveSession()); updateContextVisibility(); });
+    var pasted = wrap.querySelector("#cs-ai-lab-pasted-text");
+    pasted.value = _aiLabPastedText;
+    pasted.addEventListener("input", function () { _aiLabPastedText = pasted.value; aiLabSaveSessionContext(aiLabActiveSession()); });
+    wrap.querySelectorAll("[data-ai-lab-general-source]").forEach(function (checkbox) {
+      checkbox.addEventListener("change", function () {
+        var chosen = Array.from(wrap.querySelectorAll("[data-ai-lab-general-source]:checked"));
+        if (chosen.length > 6) {
+          checkbox.checked = false;
+          setAiLabTransientStatus("Du kan velge maksimalt seks kilder.", false);
+        }
+        _aiLabGeneralSources = Array.from(wrap.querySelectorAll("[data-ai-lab-general-source]:checked")).map(function (item) { return item.value; }).slice(0, 6);
+        aiLabSaveSessionContext(aiLabActiveSession());
+        refreshAiLabGeneralSourceLimit();
+      });
+    });
+    wrap.querySelector("#cs-ai-lab-stream-run").addEventListener("click", runAiLabStream);
+    wrap.querySelector("#cs-ai-lab-stop").addEventListener("click", stopAiLabStream);
+    wrap.querySelector("#cs-ai-lab-new-session").addEventListener("click", function () { var session = aiLabNewSession(_aiLabMode); aiLabLoadSessionContext(session); renderAiLabTranscript(); wrap.querySelector("#cs-ai-lab-composer").focus(); });
+    wrap.querySelector("#cs-ai-lab-session-export").addEventListener("click", exportAiLabSession);
+    wrap.querySelector("#cs-ai-lab-composer").addEventListener("keydown", function (event) {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); runAiLabStream(); }
+    });
+    updateContextVisibility();
     wrap.querySelectorAll("[data-ai-lab-source]").forEach(function (checkbox) {
       checkbox.addEventListener("change", function () {
         _aiLabSelectedSources = Array.from(wrap.querySelectorAll("[data-ai-lab-source]:checked")).map(function (item) { return item.value; });
@@ -6940,9 +7565,675 @@ window.VwConsole = (function () {
     comment.value = _aiLabComment;
     comment.addEventListener("input", function () { _aiLabComment = comment.value; });
     wrap.querySelector("#cs-ai-lab-export").addEventListener("click", exportAiLabJson);
+    wrap.querySelector("#cs-ai-lab-clear").addEventListener("click", clearAiLabWorkspace);
     renderAiLabResults();
     refreshAiLabSourceLimit();
+    activateAiLabMode(_aiLabMode, wrap);
     if (_aiLabBusy) setAiLabBusy(true, "Et AI-kall pågår …");
+  }
+
+  /* =========================================================================
+     ARCTIC — superadmin-avgrenset drift og modellverksted
+     -------------------------------------------------------------------------
+     Arctic er global Vibeverk-infrastruktur, aldri tenantdata. Nettleseren
+     snakker bare med samme-origin API; private porter, Docker og den private
+     Arctic-agenten er bevisst ikke tilgjengelige herfra.
+     ====================================================================== */
+  var ARCTIC_TABS = [
+    { id: "overview", label: "Oversikt" },
+    { id: "ai-lab", label: "AI Lab" },
+    { id: "sessions", label: "Arbeidsøkter" },
+    { id: "services", label: "Tjenester" },
+    { id: "commands", label: "Kommandoer" }
+  ];
+  var ARCTIC_REFRESH_MS = 60000;
+  var _arcticTab = "overview";
+  var _arcticBootstrap = null;
+  var _arcticBootstrapPromise = null;
+  var _arcticOverview = null;
+  var _arcticServices = null;
+  var _arcticSessions = null;
+  var _arcticRefreshTimer = null;
+  var _arcticRequestGen = 0;
+  var _arcticVisibilityBound = false;
+
+  function arcticIsLocal() { return isAiLabLocalEnvironment(); }
+
+  function arcticApi(resource, body) {
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 5000);
+    var url = arcticIsLocal()
+      ? "/__arctic/v1/" + resource
+      : "/api/arctic?resource=" + encodeURIComponent(resource);
+    var options = {
+      method: body ? "POST" : "GET",
+      cache: "no-store",
+      credentials: "omit",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        Authorization: "Bearer " + ((_session && _session.access_token) || "")
+      }
+    };
+    if (body) {
+      options.headers["Content-Type"] = "application/json";
+      if (arcticIsLocal()) {
+        options.headers["X-AI-Lab-Token"] = (_aiLabConfig && _aiLabConfig.csrfToken) || "";
+        options.headers["X-Arctic-Access-Token"] = _aiLabAccessToken;
+      }
+      options.body = JSON.stringify(body);
+    }
+    return fetch(url, options).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (payload) {
+        if (!response.ok) {
+          var detail = payload && payload.error && payload.error.message;
+          var error = new Error(detail || "Arctic svarte med HTTP " + response.status + ".");
+          error.statusCode = response.status;
+          error.code = payload && payload.error && payload.error.code;
+          throw error;
+        }
+        return payload;
+      });
+    }).catch(function (error) {
+      if (error && error.name === "AbortError") {
+        var timeoutError = new Error("Arctic brukte for lang tid på å svare.");
+        timeoutError.code = "ARCTIC_TIMEOUT";
+        throw timeoutError;
+      }
+      throw error;
+    }).then(function (payload) {
+      clearTimeout(timeout);
+      return payload;
+    }, function (error) {
+      clearTimeout(timeout);
+      throw error;
+    });
+  }
+
+  function loadArcticBootstrap(force) {
+    if (_arcticBootstrap && !force) return Promise.resolve(_arcticBootstrap);
+    if (_arcticBootstrapPromise && !force) return _arcticBootstrapPromise;
+    _arcticBootstrapPromise = arcticApi("bootstrap").then(function (payload) {
+      if (!payload || payload.schemaVersion !== "arctic-bootstrap-v1") throw new Error("Arctic returnerte et ukjent bootstrap-format.");
+      _arcticBootstrap = payload;
+      _arcticBootstrapPromise = null;
+      return payload;
+    }, function (error) {
+      _arcticBootstrapPromise = null;
+      throw error;
+    });
+    return _arcticBootstrapPromise;
+  }
+
+  function arcticStatusLabel(status) {
+    return {
+      ok: "Alt fungerer", warning: "Advarsel", partial: "Delvis utilgjengelig", offline: "Frakoblet",
+      healthy: "Fungerer", degraded: "Redusert", down: "Nede", unknown: "Ukjent",
+      not_configured: "Ikke konfigurert", available: "Tilgjengelig", unavailable: "Utilgjengelig",
+      completed: "Fullført", failed: "Mislykket", rejected: "Avvist"
+    }[status] || "Ukjent";
+  }
+
+  function arcticSafeStatusClass(status) {
+    var known = ["ok", "warning", "partial", "offline", "healthy", "degraded", "down", "unknown", "not_configured", "available", "unavailable", "completed", "failed", "rejected"];
+    return known.indexOf(status) !== -1 ? status.replace(/_/g, "-") : "unknown";
+  }
+
+  function arcticReasonLabel(code) {
+    return {
+      gateway_not_configured: "Arctic-tilkoblingen er ikke konfigurert.",
+      gateway_required: "Krever en avgrenset Arctic-tilkobling.",
+      credentials_not_configured: "Tilgangsopplysninger er ikke konfigurert.",
+      external_processing_not_approved: "Ekstern behandling er ikke godkjent i lokal konfigurasjon.",
+      local_model_not_configured: "Den lokale modellen er ikke konfigurert.",
+      vibeverk_backup_source_missing: "En avgrenset Vibeverk-backupkilde er ikke konfigurert.",
+      filtered_log_source_missing: "En filtrert Vibeverk-loggkilde er ikke konfigurert.",
+      approval_gateway_required: "Krever en tilkobling med eksplisitt godkjenningsflyt.",
+      deployment_source_missing: "En avgrenset publiseringskilde er ikke konfigurert."
+    }[code] || "Krever mer infrastruktur før dette kan brukes.";
+  }
+
+  function arcticFormatDate(value) {
+    var date = new Date(value || "");
+    if (!Number.isFinite(date.getTime())) return "Ikke tilgjengelig";
+    return date.toLocaleString("nb-NO", { dateStyle: "short", timeStyle: "medium" });
+  }
+
+  function arcticFormatDuration(seconds) {
+    if (seconds === null || seconds === undefined || seconds === "" || !Number.isFinite(Number(seconds))) return "Ikke tilgjengelig";
+    var total = Math.max(0, Math.round(Number(seconds)));
+    var days = Math.floor(total / 86400);
+    var hours = Math.floor((total % 86400) / 3600);
+    var minutes = Math.floor((total % 3600) / 60);
+    if (days) return days + " d " + hours + " t";
+    if (hours) return hours + " t " + minutes + " min";
+    return minutes + " min";
+  }
+
+  function arcticFreshness(timestamp, config) {
+    var at = Date.parse(timestamp || "");
+    if (!Number.isFinite(at)) return { id: "missing", label: "Mangler data", ageMs: null };
+    var age = Math.max(0, Date.now() - at);
+    var staleAfter = config && Number(config.staleAfterMs) || 90000;
+    var offlineAfter = config && Number(config.offlineAfterMs) || 300000;
+    if (age <= staleAfter) return { id: "fresh", label: "Ferske data", ageMs: age };
+    if (age <= offlineAfter) return { id: "stale", label: "Utdaterte data", ageMs: age };
+    return { id: "offline", label: "Kontakt mangler", ageMs: age };
+  }
+
+  function arcticLoading(pane, label) {
+    pane.innerHTML = '<div class="arctic-loading" role="status"><span class="ti ti-loader-2" aria-hidden="true"></span><span>' + C.esc(label) + '</span></div>';
+  }
+
+  function arcticError(pane, message, retryTab) {
+    pane.innerHTML = '<div class="arctic-empty arctic-empty--error" role="alert"><h2>Kunne ikke hente Arctic-data</h2><p>' + C.esc(message) + '</p>' +
+      '<button type="button" class="btn btn--ghost" data-arctic-retry="' + C.esc(retryTab) + '">Prøv igjen</button></div>';
+    var retry = pane.querySelector("[data-arctic-retry]");
+    if (retry) retry.addEventListener("click", function () { renderArcticPane(); });
+  }
+
+  function arcticPaneIsCurrent(pane, tab, generation) {
+    return activeSection === "arctic" && _arcticTab === tab && generation === _arcticRequestGen && pane && pane.isConnected;
+  }
+
+  function stopArcticAutoRefresh() {
+    if (_arcticRefreshTimer) clearInterval(_arcticRefreshTimer);
+    _arcticRefreshTimer = null;
+  }
+
+  function startArcticAutoRefresh() {
+    stopArcticAutoRefresh();
+    if (activeSection !== "arctic" || _arcticTab !== "overview" || document.hidden) return;
+    _arcticRefreshTimer = setInterval(function () {
+      var pane = document.getElementById("cs-arctic-pane");
+      if (
+        pane && activeSection === "arctic" && _arcticTab === "overview" && !document.hidden &&
+        !(document.activeElement && pane.contains(document.activeElement))
+      ) refreshArcticOverview(pane, false);
+    }, ARCTIC_REFRESH_MS);
+  }
+
+  function bindArcticVisibility() {
+    if (_arcticVisibilityBound) return;
+    _arcticVisibilityBound = true;
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) stopArcticAutoRefresh();
+      else if (activeSection === "arctic" && _arcticTab === "overview") {
+        startArcticAutoRefresh();
+        var pane = document.getElementById("cs-arctic-pane");
+        if (pane) refreshArcticOverview(pane, false);
+      }
+    });
+  }
+
+  function arcticMetricValue(id, item) {
+    if (!item || item.status !== "available" || !Number.isFinite(Number(item.value))) return "Ikke tilgjengelig";
+    if (id === "uptimeSeconds") return arcticFormatDuration(item.value);
+    if (id === "cpuUsedPercent" || id === "memoryUsedPercent" || id === "diskUsedPercent") return Number(item.value).toLocaleString("nb-NO", { maximumFractionDigits: 1 }) + " %";
+    if (id === "cpuTemperatureC" || id === "nvmeTemperatureC") return Number(item.value).toLocaleString("nb-NO", { maximumFractionDigits: 1 }) + " °C";
+    return String(item.value) + (item.unit ? " " + item.unit : "");
+  }
+
+  function arcticMetricCard(id, label, item) {
+    var available = item && item.status === "available";
+    return '<article class="arctic-card arctic-metric' + (available ? '' : ' is-unavailable') + '" data-arctic-metric="' + C.esc(id) + '">' +
+      '<p class="arctic-card__eyebrow">' + C.esc(label) + '</p><strong class="arctic-metric__value">' + C.esc(arcticMetricValue(id, item)) + '</strong>' +
+      '<span class="arctic-card__meta">' + (available ? "Målt " + C.esc(arcticFormatDate(item.sampledAt)) : "Datakilde mangler") + '</span></article>';
+  }
+
+  function arcticServicesSummary(summary) {
+    summary = summary || {};
+    var healthy = Number(summary.healthy !== undefined ? summary.healthy : summary.healthyCount) || 0;
+    var degraded = Number(summary.degraded !== undefined ? summary.degraded : summary.degradedCount) || 0;
+    var down = Number(summary.down) || 0;
+    var unavailable = Number(summary.unavailable !== undefined ? summary.unavailable : summary.unavailableCount) || 0;
+    return healthy + " fungerer · " + degraded + " redusert · " + down + " nede · " + unavailable + " utilgjengelig";
+  }
+
+  function renderArcticOverviewData(pane, payload, bootstrap, warning) {
+    if (!payload) { arcticError(pane, warning || "Ingen status er tilgjengelig.", "overview"); return; }
+    var connected = bootstrap && bootstrap.connection && bootstrap.connection.status === "connected";
+    var contactAt = payload.lastSuccessfulContactAt || (connected ? payload.sampledAt : null);
+    var freshness = arcticFreshness(contactAt, bootstrap && bootstrap.freshness);
+    var reported = payload.overallStatus || "offline";
+    if (freshness.id === "offline" || freshness.id === "missing") reported = "offline";
+    var metrics = payload.metrics || {};
+    var gemma = payload.gemma || {};
+    var backup = payload.backup || {};
+    var sessions = payload.sessions || {};
+    var events = Array.isArray(payload.events) ? payload.events : [];
+    pane.innerHTML =
+      (warning ? '<div class="i-notice i-notice--warn" role="status">' + C.esc(warning) + ' Viser sist mottatte status.</div>' : '') +
+      '<section class="arctic-hero arctic-status--' + arcticSafeStatusClass(reported) + '" id="cs-arctic-status">' +
+        '<div><p class="arctic-card__eyebrow">Samlet status</p><h2>' + C.esc(arcticStatusLabel(reported)) + '</h2>' +
+          '<p>Siste vellykkede kontakt: ' + C.esc(arcticFormatDate(contactAt)) + '</p></div>' +
+        '<div class="arctic-hero__actions"><span class="arctic-freshness arctic-freshness--' + C.esc(freshness.id) + '" id="cs-arctic-freshness">' + C.esc(freshness.label) + '</span>' +
+          '<button type="button" class="btn btn--ghost" id="cs-arctic-refresh"><span class="ti ti-refresh" aria-hidden="true"></span> Oppdater status</button></div>' +
+      '</section>' +
+      '<div class="arctic-metrics">' +
+        arcticMetricCard("uptimeSeconds", "Oppetid", metrics.uptimeSeconds) +
+        arcticMetricCard("cpuUsedPercent", "CPU-belastning", metrics.cpuUsedPercent) +
+        arcticMetricCard("memoryUsedPercent", "Minnebruk", metrics.memoryUsedPercent) +
+        arcticMetricCard("diskUsedPercent", "Diskbruk", metrics.diskUsedPercent) +
+        arcticMetricCard("cpuTemperatureC", "CPU-temperatur", metrics.cpuTemperatureC) +
+        arcticMetricCard("nvmeTemperatureC", "NVMe-temperatur", metrics.nvmeTemperatureC) +
+      '</div>' +
+      '<div class="arctic-detail-grid">' +
+        '<article class="arctic-card"><p class="arctic-card__eyebrow">Gemma</p><h3>' + C.esc(arcticStatusLabel(gemma.status)) + '</h3><p>' + C.esc(gemma.safeMessage || (gemma.model ? "Modell: " + gemma.model : "Ingen ytterligere status.")) + '</p><span class="arctic-card__meta">Sist kontrollert: ' + C.esc(arcticFormatDate(gemma.lastCheckedAt)) + '</span></article>' +
+        '<article class="arctic-card"><p class="arctic-card__eyebrow">Vibeverk-tjenester</p><h3>' + C.esc(arcticServicesSummary(payload.servicesSummary)) + '</h3><p>Bare eksplisitt registrerte tjenester er med.</p></article>' +
+        '<article class="arctic-card"><p class="arctic-card__eyebrow">Vibeverk-backup</p><h3>' + C.esc(arcticStatusLabel(backup.status)) + '</h3><p>' + C.esc(backup.lastSuccessfulAt ? "Siste backup: " + arcticFormatDate(backup.lastSuccessfulAt) : arcticReasonLabel(backup.reasonCode)) + '</p></article>' +
+        '<article class="arctic-card"><p class="arctic-card__eyebrow">AI-arbeidsøkter</p><h3>' + C.esc(String(Number(sessions.activeCount) || 0)) + ' aktive</h3><p>' + (Array.isArray(sessions.recent) && sessions.recent.length ? C.esc(String(sessions.recent.length)) + ' nylige økter.' : 'Ingen registrerte arbeidsøkter.') + '</p></article>' +
+      '</div>' +
+      '<section class="arctic-card arctic-events"><div class="arctic-section-head"><div><p class="arctic-card__eyebrow">Hendelser</p><h2>Nylige relevante hendelser</h2></div></div>' +
+        (events.length ? '<ul>' + events.map(function (event) { return '<li>' + C.esc(event.label || event.message || "Hendelse") + '</li>'; }).join("") + '</ul>' : '<p class="arctic-empty-inline">Ingen avgrensede Vibeverk-hendelser er tilgjengelige.</p>') + '</section>';
+    var refresh = pane.querySelector("#cs-arctic-refresh");
+    if (refresh) refresh.addEventListener("click", function () { refreshArcticOverview(pane, true); });
+  }
+
+  function refreshArcticOverview(pane, manual) {
+    var generation = ++_arcticRequestGen;
+    if (!_arcticOverview) arcticLoading(pane, "Henter Arctic-status …");
+    else if (manual) {
+      var refresh = pane.querySelector("#cs-arctic-refresh");
+      if (refresh) { refresh.disabled = true; refresh.textContent = "Oppdaterer …"; }
+    }
+    Promise.all([loadArcticBootstrap(!!manual), arcticApi("overview")]).then(function (values) {
+      if (!arcticPaneIsCurrent(pane, "overview", generation)) return;
+      _arcticOverview = values[1];
+      renderArcticOverviewData(pane, _arcticOverview, values[0], "");
+      if (manual) {
+        var refreshed = pane.querySelector("#cs-arctic-refresh");
+        if (refreshed) refreshed.focus();
+      }
+    }).catch(function (error) {
+      if (!arcticPaneIsCurrent(pane, "overview", generation)) return;
+      if (_arcticOverview) {
+        renderArcticOverviewData(pane, _arcticOverview, _arcticBootstrap, error.message);
+        if (manual) {
+          var retryRefresh = pane.querySelector("#cs-arctic-refresh");
+          if (retryRefresh) retryRefresh.focus();
+        }
+      } else {
+        arcticError(pane, error.message, "overview");
+        if (manual) {
+          var retryButton = pane.querySelector("[data-arctic-retry]");
+          if (retryButton) retryButton.focus();
+        }
+      }
+    });
+  }
+
+  function renderArcticOverviewPane(pane) {
+    refreshArcticOverview(pane, false);
+    startArcticAutoRefresh();
+  }
+
+  function renderArcticServicesData(pane, payload) {
+    var items = payload && Array.isArray(payload.items) ? payload.items : [];
+    pane.innerHTML = '<div class="arctic-section-head"><div><p class="arctic-card__eyebrow">Fast, godkjent liste</p><h2>Vibeverk-tjenester</h2><p>Private prosesser, containere og tjenester blir aldri hentet eller vist.</p></div>' +
+      '<button type="button" class="btn btn--ghost" id="cs-arctic-services-refresh"><span class="ti ti-refresh" aria-hidden="true"></span> Oppdater</button></div>' +
+      (items.length ? '<div class="arctic-service-list">' + items.map(function (item) {
+        return '<article class="arctic-card arctic-service" data-arctic-service="' + C.esc(item.id) + '"><div class="arctic-service__head"><h3>' + C.esc(item.label || item.id) + '</h3>' +
+          '<span class="arctic-badge arctic-badge--' + arcticSafeStatusClass(item.status) + '">' + C.esc(arcticStatusLabel(item.status)) + '</span></div>' +
+          (item.safeMessage ? '<p>' + C.esc(item.safeMessage) + '</p>' : '<p>Ingen avgrenset feilmelding.</p>') +
+          '<dl><div><dt>Oppetid</dt><dd>' + C.esc(arcticFormatDuration(item.uptimeSeconds)) + '</dd></div><div><dt>Responstid</dt><dd>' + (item.responseTimeMs !== null && item.responseTimeMs !== undefined && Number.isFinite(Number(item.responseTimeMs)) ? C.esc(Math.round(item.responseTimeMs) + " ms") : "Ikke tilgjengelig") + '</dd></div><div><dt>Siste kontroll</dt><dd>' + C.esc(arcticFormatDate(item.lastCheckedAt)) + '</dd></div></dl></article>';
+      }).join("") + '</div>' : '<div class="arctic-empty"><h2>Ingen tjenester</h2><p>Ingen Vibeverk-tjenester er registrert i den serverstyrte listen.</p></div>');
+    var refresh = pane.querySelector("#cs-arctic-services-refresh");
+    if (refresh) refresh.addEventListener("click", function () { loadArcticServices(pane); });
+  }
+
+  function loadArcticServices(pane) {
+    var generation = ++_arcticRequestGen;
+    arcticLoading(pane, "Henter registrerte tjenester …");
+    arcticApi("services").then(function (payload) {
+      if (!arcticPaneIsCurrent(pane, "services", generation)) return;
+      _arcticServices = payload;
+      renderArcticServicesData(pane, payload);
+    }).catch(function (error) {
+      if (arcticPaneIsCurrent(pane, "services", generation)) arcticError(pane, error.message, "services");
+    });
+  }
+
+  function renderArcticSessionsData(pane, payload) {
+    var items = payload && Array.isArray(payload.items) ? payload.items : [];
+    var adapters = payload && Array.isArray(payload.adapters) ? payload.adapters : [];
+    pane.innerHTML = '<div class="arctic-section-head"><div><p class="arctic-card__eyebrow">Avgrenset kodearbeid</p><h2>Arbeidsøkter</h2><p>Fremtidige agentøkter skal bruke et låst Vibeverk-worktree, lesetilgang som standard og serverlagrede tråd-ID-er.</p></div></div>' +
+      '<div class="arctic-adapters">' + adapters.map(function (adapter) {
+        return '<article class="arctic-card" data-arctic-adapter="' + C.esc(adapter.id) + '"><div class="arctic-service__head"><h3>' + C.esc(adapter.label || adapter.id) + '</h3><span class="arctic-badge arctic-badge--not-configured">' + C.esc(arcticStatusLabel(adapter.status)) + '</span></div>' +
+          '<p>' + C.esc(arcticReasonLabel(adapter.reasonCode)) + '</p><p class="arctic-card__meta">Ingen start, fortsettelse, diff, test eller skrivetilgang er aktivert.</p></article>';
+      }).join("") + '</div>' +
+      (items.length ? '<div class="arctic-session-list">' + items.map(function (item) {
+        return '<article class="arctic-card arctic-session"><div class="arctic-service__head"><div><p class="arctic-card__eyebrow">' + C.esc(item.providerLabel || item.providerId || "Arbeidsøkt") + '</p><h3>' + C.esc(item.title || "Uten tittel") + '</h3></div><span class="arctic-badge arctic-badge--' + arcticSafeStatusClass(item.status) + '">' + C.esc(arcticStatusLabel(item.status)) + '</span></div>' +
+          '<dl><div><dt>Startet</dt><dd>' + C.esc(arcticFormatDate(item.startedAt)) + '</dd></div><div><dt>Siste aktivitet</dt><dd>' + C.esc(arcticFormatDate(item.lastActivityAt)) + '</dd></div><div><dt>Tilgang</dt><dd>' + C.esc(item.accessLevel || "Ikke oppgitt") + '</dd></div><div><dt>Arbeidsområde</dt><dd>' + C.esc(item.workspaceLabel || "Ikke oppgitt") + '</dd></div><div><dt>Branch/worktree</dt><dd>' + C.esc(item.branchLabel || "Ikke oppgitt") + '</dd></div></dl>' +
+          '<p class="arctic-card__meta">Endrede filer: ' + C.esc(String(Number(item.changedFileCount) || 0)) + ' · Tester: ' + C.esc(item.testStatus || "ikke kjørt") + ' · Venter på godkjenning: ' + C.esc(String(Number(item.pendingApprovalCount) || 0)) + '</p></article>';
+      }).join("") + '</div>' : '<div class="arctic-empty"><h2>Ingen arbeidsøkter</h2><p>Claude- og Codex-adapterne er ikke konfigurert, og ingen økter simuleres.</p></div>');
+  }
+
+  function loadArcticSessions(pane) {
+    var generation = ++_arcticRequestGen;
+    arcticLoading(pane, "Henter arbeidsøkter …");
+    arcticApi("sessions").then(function (payload) {
+      if (!arcticPaneIsCurrent(pane, "sessions", generation)) return;
+      _arcticSessions = payload;
+      renderArcticSessionsData(pane, payload);
+    }).catch(function (error) {
+      if (arcticPaneIsCurrent(pane, "sessions", generation)) arcticError(pane, error.message, "sessions");
+    });
+  }
+
+  function arcticCommandAvailable(command) {
+    return command && (command.available === true || command.availability === "available");
+  }
+
+  function renderArcticCommandResult(container, payload) {
+    container.innerHTML = "";
+    if (!payload) return;
+    var status = document.createElement("p");
+    status.className = "arctic-command-result__status arctic-badge arctic-badge--" + arcticSafeStatusClass(payload.status);
+    status.textContent = arcticStatusLabel(payload.status);
+    container.appendChild(status);
+    if (payload.reasonCode) {
+      var reason = document.createElement("p");
+      reason.textContent = payload.message || arcticReasonLabel(payload.reasonCode);
+      container.appendChild(reason);
+    }
+    if (payload.summary || payload.result || (Array.isArray(payload.details) && payload.details.length)) {
+      var summary = document.createElement("p");
+      if (payload.summary) {
+        summary.textContent = payload.summary;
+      } else if (payload.commandId === "health") {
+        summary.textContent = "Samlet status: " + arcticStatusLabel(payload.result.overallStatus) +
+          ". Målt " + arcticFormatDate(payload.result.sampledAt) + ".";
+      } else if (payload.commandId === "services") {
+        summary.textContent = String(Array.isArray(payload.result.items) ? payload.result.items.length : 0) + " registrerte tjenester returnert.";
+      } else if (payload.commandId === "sessions") {
+        summary.textContent = String(Array.isArray(payload.result.items) ? payload.result.items.length : 0) + " arbeidsøkter returnert.";
+      } else if (payload.commandId === "gemma-status") {
+        summary.textContent = "Gemma-status: " + arcticStatusLabel(payload.result.status) + ".";
+      } else summary.textContent = "Handlingen returnerte tekniske detaljer.";
+      container.appendChild(summary);
+      if (Array.isArray(payload.details) && payload.details.length) {
+        var detailList = document.createElement("dl");
+        detailList.className = "arctic-command-result__details";
+        payload.details.slice(0, 20).forEach(function (detail) {
+          var row = document.createElement("div");
+          var term = document.createElement("dt");
+          var value = document.createElement("dd");
+          term.textContent = detail && detail.label || "Detalj";
+          value.textContent = detail && detail.value != null ? String(detail.value) : "Ikke oppgitt";
+          row.appendChild(term); row.appendChild(value); detailList.appendChild(row);
+        });
+        container.appendChild(detailList);
+      }
+      if (payload.result) {
+        var details = document.createElement("details");
+        details.className = "ai-lab-raw";
+        var detailsSummary = document.createElement("summary");
+        detailsSummary.textContent = "Tekniske detaljer";
+        var pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(payload.result, null, 2);
+        details.appendChild(detailsSummary);
+        details.appendChild(pre);
+        container.appendChild(details);
+      }
+    }
+  }
+
+  function bindArcticCommands(pane, commands) {
+    var form = pane.querySelector("#cs-arctic-command-form");
+    var input = pane.querySelector("#cs-arctic-command-input");
+    var token = pane.querySelector("#cs-arctic-local-token");
+    var result = pane.querySelector("#cs-arctic-command-result");
+    var status = pane.querySelector("#cs-arctic-command-status");
+    if (token) {
+      token.value = _aiLabAccessToken;
+      token.addEventListener("input", function () { _aiLabAccessToken = token.value; });
+    }
+    pane.querySelectorAll("[data-arctic-command-suggestion]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        input.value = button.getAttribute("data-arctic-command-suggestion");
+        input.focus();
+      });
+    });
+    if (!form) return;
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var command = input.value.trim();
+      if (!command) { status.textContent = "Velg eller skriv en registrert kommando."; return; }
+      if (arcticIsLocal() && !_aiLabConfig) { status.textContent = "Den lokale Arctic-serveren mangler CSRF-konfigurasjon. Last siden på nytt."; return; }
+      if (arcticIsLocal() && !_aiLabAccessToken.trim()) { status.textContent = "Lim inn lokal tilgangstoken først."; token.focus(); return; }
+      var submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      input.disabled = true;
+      if (token) token.disabled = true;
+      status.textContent = "Kjører registrert, skrivebeskyttet handling …";
+      result.innerHTML = "";
+      arcticApi("commands", { input: command }).then(function (payload) {
+        status.textContent = payload.status === "completed" ? "Handlingen er fullført." : arcticReasonLabel(payload.reasonCode);
+        renderArcticCommandResult(result, payload);
+      }).catch(function (error) {
+        status.textContent = error.message;
+      }).then(function () {
+        submit.disabled = false;
+        input.disabled = false;
+        if (token) token.disabled = false;
+      });
+    });
+  }
+
+  function renderArcticCommandsData(pane, bootstrap) {
+    var commands = bootstrap && Array.isArray(bootstrap.commands) ? bootstrap.commands : [];
+    var available = commands.filter(arcticCommandAvailable);
+    pane.innerHTML = '<div class="arctic-section-head"><div><p class="arctic-card__eyebrow">Ingen terminal</p><h2>Kontrollerte kommandoer</h2><p>Teksten må samsvare nøyaktig med et serverstyrt register. Den sendes aldri til en kommandotolk, SQL eller et filsystem.</p></div></div>' +
+      '<div class="arctic-command-layout"><section class="arctic-card"><h3>Kommandoregister</h3><div class="arctic-command-registry">' + commands.map(function (command) {
+        var canRun = arcticCommandAvailable(command);
+        return '<div class="arctic-command"><div><code>' + C.esc(command.input) + '</code><strong>' + C.esc(command.label || command.id) + '</strong><p>' + C.esc(command.description || "Registrert Vibeverk-handling.") + '</p></div>' +
+          (canRun ? '<button type="button" class="btn btn--ghost" data-arctic-command-suggestion="' + C.esc(command.input) + '">Velg</button>' : '<span class="arctic-badge arctic-badge--not-configured" title="' + C.esc(arcticReasonLabel(command.reasonCode)) + '">Ikke tilgjengelig</span>') + '</div>';
+      }).join("") + '</div></section>' +
+      '<section class="arctic-card arctic-command-panel"><h3>Kjør registrert handling</h3>' +
+        (arcticIsLocal() ? '<div class="field"><label for="cs-arctic-local-token">Lokal tilgangstoken</label><input id="cs-arctic-local-token" type="password" autocomplete="off" spellcheck="false" placeholder="Samme verdi som AI_LAB_ACCESS_TOKEN"><p class="field__hint">Holdes bare i minnet og deles med AI Lab-fanen.</p></div>' : '') +
+        '<form id="cs-arctic-command-form"><div class="field"><label for="cs-arctic-command-input">Kommando</label><input id="cs-arctic-command-input" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="health"' + (available.length ? '' : ' disabled') + '></div>' +
+          '<button type="submit" class="btn btn--primary"' + (available.length ? '' : ' disabled') + '>Kjør</button></form>' +
+        (available.length ? '' : '<p class="i-notice i-notice--warn">Ingen kommandoer kan kjøres før en avgrenset Arctic-gateway er konfigurert.</p>') +
+        '<p id="cs-arctic-command-status" class="form__status" role="status" aria-live="polite"></p><div id="cs-arctic-command-result" class="arctic-command-result"></div>' +
+        '<p class="field__hint">Lokale kjøringer skriver bare metadata til en avgrenset revisjonslogg. Inndata, utdata, tilgangstokener og hemmeligheter logges ikke.</p></section></div>';
+    bindArcticCommands(pane, commands);
+  }
+
+  function renderArcticCommandsPane(pane) {
+    var generation = ++_arcticRequestGen;
+    arcticLoading(pane, "Henter kommandoregister …");
+    loadArcticBootstrap(false).then(function (bootstrap) {
+      if (arcticPaneIsCurrent(pane, "commands", generation)) renderArcticCommandsData(pane, bootstrap);
+    }).catch(function (error) {
+      if (arcticPaneIsCurrent(pane, "commands", generation)) arcticError(pane, error.message, "commands");
+    });
+  }
+
+  function aiLabBase64Url(bytes) {
+    var binary = "";
+    Array.from(bytes).forEach(function (byte) { binary += String.fromCharCode(byte); });
+    return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function aiLabBridgeNonce() {
+    var bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    return aiLabBase64Url(bytes);
+  }
+
+  function aiLabBridgeExpectedProof(token, nonce) {
+    if (!window.crypto || !window.crypto.subtle || typeof window.TextEncoder !== "function") {
+      return Promise.reject(new Error("Nettleseren støtter ikke sikker kontroll av den lokale broen."));
+    }
+    var encoder = new window.TextEncoder();
+    return window.crypto.subtle.importKey(
+      "raw", encoder.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+    ).then(function (key) {
+      return window.crypto.subtle.sign(
+        "HMAC", key, encoder.encode("vibeverk-arctic-bridge-v1\n" + window.location.origin + "\n" + nonce)
+      );
+    }).then(function (signature) { return aiLabBase64Url(new Uint8Array(signature)); });
+  }
+
+  function connectAiLabBridge(pane) {
+    if (_aiLabBridgeBusy) return;
+    var token = pane.querySelector("#cs-ai-lab-bridge-token");
+    var status = pane.querySelector("#cs-ai-lab-bridge-status");
+    var button = pane.querySelector("#cs-ai-lab-bridge-connect");
+    var localToken = token && token.value.trim();
+    if (!localToken) { status.textContent = "Lim inn AI_LAB_ACCESS_TOKEN først."; token.focus(); return; }
+    if (localToken.length < 32) { status.textContent = "Den lokale tokenen er for kort."; token.focus(); return; }
+    _aiLabBridgeBusy = true;
+    button.disabled = true;
+    token.disabled = true;
+    status.textContent = "Kontrollerer lokal Arctic-bro før Console-token sendes …";
+    var nonce = aiLabBridgeNonce();
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 5000);
+    fetch(AI_LAB_BRIDGE_BASE + "/__arctic/v1/bridge-info", {
+      method: "GET", cache: "no-store", credentials: "omit", signal: controller.signal,
+      targetAddressSpace: "loopback", referrerPolicy: "no-referrer",
+      headers: { Accept: "application/json", "X-Arctic-Bridge-Nonce": nonce }
+    }).then(function (response) {
+      if (!response.ok) throw new Error("Den lokale broen avviste tilkoblingen (HTTP " + response.status + ").");
+      return response.json();
+    }).then(function (info) {
+      if (!info || info.schemaVersion !== "arctic-bridge-info-v1" || info.origin !== window.location.origin || typeof info.proof !== "string") {
+        throw new Error("Den lokale broen returnerte et ukjent identitetsformat.");
+      }
+      return aiLabBridgeExpectedProof(localToken, nonce).then(function (expected) {
+        if (expected !== info.proof) throw new Error("Den lokale broen kunne ikke bekrefte riktig tilgangstoken.");
+      });
+    }).then(function () {
+      return fetch(AI_LAB_BRIDGE_BASE + "/__ai-lab/v1/config", {
+        method: "GET", cache: "no-store", credentials: "omit", signal: controller.signal,
+        targetAddressSpace: "loopback", referrerPolicy: "no-referrer",
+        headers: { Accept: "application/json", Authorization: "Bearer " + ((_session && _session.access_token) || "") }
+      });
+    }).then(function (response) {
+      if (!response.ok) throw new Error("AI Lab avviste Console-innloggingen (HTTP " + response.status + ").");
+      return response.json();
+    }).then(function (config) {
+      if (!validAiLabConfig(config)) throw new Error("AI Lab returnerte ukjent konfigurasjon.");
+      _aiLabApiBase = AI_LAB_BRIDGE_BASE;
+      _aiLabAccessToken = localToken;
+      _aiLabConfig = config;
+      clearTimeout(timeout);
+      _aiLabBridgeBusy = false;
+      renderArcticPane();
+    }).catch(function (error) {
+      clearTimeout(timeout);
+      _aiLabBridgeBusy = false;
+      if (!pane.isConnected) return;
+      button.disabled = false;
+      token.disabled = false;
+      status.textContent = error && error.name === "AbortError"
+        ? "Den lokale broen svarte ikke innen fem sekunder. Kontroller SSH-/VS Code-porten 8081."
+        : error.message;
+    });
+  }
+
+  function disconnectAiLabBridge() {
+    stopAiLabStream();
+    invalidateAiLabSnapshot();
+    aiLabDisposeContext(_aiLabStreamContextId);
+    _aiLabStreamContextId = "";
+    _aiLabAccessToken = "";
+    _aiLabConfig = null;
+    _aiLabApiBase = "";
+    _aiLabSessions = [];
+    _aiLabActiveSessionId = "";
+    _aiLabPastedText = "";
+    _aiLabContextKind = "none";
+    _aiLabGeneralSources = ["safe-changes"];
+    _aiLabInstruction = AI_LAB_DEFAULT_INSTRUCTION;
+    _aiLabResults = { ollama: null, anthropic: null, review: null };
+    _aiLabPreference = "";
+    _aiLabComment = "";
+    renderArcticPane();
+  }
+
+  function renderArcticAiLabPane(pane) {
+    if (!_aiLabConfig) {
+      if (!arcticIsLocal()) {
+        pane.innerHTML = '<section class="arctic-card ai-lab-bridge"><p class="arctic-card__eyebrow">Eksplisitt lokal tilkobling</p><h2>Koble til lokal Gemma</h2>' +
+          '<p>Console kan bruke AI Lab gjennom en SSH-/VS Code-portforward på <code>127.0.0.1:8081</code>. Ollama og Arctic-serveren forblir på loopback og eksponeres ikke på internett.</p>' +
+          '<ol><li>Start AI Lab-serveren på Arctic med port 8081 og tillatt Console-origin.</li><li>Forward port 8081 i SSH eller VS Code.</li><li>Lim inn lokal tilgangstoken og koble til.</li></ol>' +
+          '<div class="field"><label for="cs-ai-lab-bridge-token">Lokal tilgangstoken</label><input id="cs-ai-lab-bridge-token" type="password" autocomplete="off" spellcheck="false" placeholder="Samme verdi som AI_LAB_ACCESS_TOKEN"><p class="field__hint">Tokenen holdes bare i denne fanens minne. Console-JWT-en sendes først etter at broen kryptografisk har bevist kjennskap til tokenen.</p></div>' +
+          '<button type="button" class="btn btn--primary" id="cs-ai-lab-bridge-connect">Koble til lokal Arctic</button><p id="cs-ai-lab-bridge-status" class="form__status" role="status" aria-live="polite"></p>' +
+          '<p class="i-notice i-notice--warn"><strong>Avgrensning:</strong> Broen åpner bare eksisterende AI Lab-ruter. Arctic-kommandoer, privat driftstilgang, Docker, SSH og shell forblir utilgjengelige.</p></section>';
+        pane.querySelector("#cs-ai-lab-bridge-connect").addEventListener("click", function () { connectAiLabBridge(pane); });
+        return;
+      }
+      pane.innerHTML = '<div class="arctic-empty"><h2>AI Lab er ikke konfigurert</h2><p>Start den lokale AI Lab-serveren og last siden på nytt.</p><p>Gemma-, Claude- og Codex-arbeid simuleres ikke når adapterne mangler.</p></div>';
+      return;
+    }
+    renderAiLab({}, pane);
+    if (_aiLabApiBase === AI_LAB_BRIDGE_BASE) {
+      var banner = pane.querySelector(".ai-lab-banner");
+      if (banner) {
+        var disconnect = document.createElement("button");
+        disconnect.type = "button";
+        disconnect.className = "btn btn--ghost ai-lab-bridge__disconnect";
+        disconnect.textContent = "Koble fra lokal bro";
+        disconnect.addEventListener("click", disconnectAiLabBridge);
+        banner.appendChild(disconnect);
+      }
+    }
+  }
+
+  function renderArcticPane() {
+    var pane = document.getElementById("cs-arctic-pane");
+    if (!pane) return;
+    stopArcticAutoRefresh();
+    ARCTIC_TABS.forEach(function (tab) {
+      var button = document.querySelector('[data-arctic-tab="' + tab.id + '"]');
+      if (!button) return;
+      var active = tab.id === _arcticTab;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+      button.tabIndex = active ? 0 : -1;
+    });
+    pane.setAttribute("aria-labelledby", "cs-arctic-tab-" + _arcticTab);
+    if (_arcticTab === "overview") renderArcticOverviewPane(pane);
+    else if (_arcticTab === "ai-lab") { ++_arcticRequestGen; renderArcticAiLabPane(pane); }
+    else if (_arcticTab === "sessions") loadArcticSessions(pane);
+    else if (_arcticTab === "services") loadArcticServices(pane);
+    else renderArcticCommandsPane(pane);
+  }
+
+  function renderArctic(sc, wrap) {
+    if (_operatorRole !== "superadmin") {
+      wrap.innerHTML = '<p class="i-notice i-notice--warn" role="alert">Arctic er bare tilgjengelig for aktive superadministratorer.</p>';
+      return;
+    }
+    if (!ARCTIC_TABS.some(function (tab) { return tab.id === _arcticTab; })) _arcticTab = "overview";
+    wrap.innerHTML = '<section class="arctic-intro"><div><span class="arctic-intro__badge"><span class="ti ti-snowflake" aria-hidden="true"></span> Vibeverk internt</span><h2>Arctic</h2><p>Driftsstatus, modellverksted og avgrensede arbeidsverktøy for Vibeverk.</p></div><p class="arctic-intro__boundary">Ingen generell serveradministrasjon · ingen private tjenestedata · ingen fjernterminal</p></section>' +
+      '<div class="arctic-tabs" role="tablist" aria-label="Arctic">' + ARCTIC_TABS.map(function (tab) {
+        var active = tab.id === _arcticTab;
+        return '<button type="button" role="tab" id="cs-arctic-tab-' + tab.id + '" data-arctic-tab="' + tab.id + '" aria-controls="cs-arctic-pane" aria-selected="' + (active ? "true" : "false") + '" tabindex="' + (active ? "0" : "-1") + '" class="arctic-tab' + (active ? " is-active" : "") + '">' + C.esc(tab.label) + '</button>';
+      }).join("") + '</div><div id="cs-arctic-pane" class="arctic-pane" role="tabpanel"></div>';
+    var buttons = Array.from(wrap.querySelectorAll("[data-arctic-tab]"));
+    buttons.forEach(function (button, index) {
+      button.addEventListener("click", function () {
+        _arcticTab = button.getAttribute("data-arctic-tab");
+        renderArcticPane();
+      });
+      button.addEventListener("keydown", function (event) {
+        var next = index;
+        if (event.key === "ArrowRight") next = (index + 1) % buttons.length;
+        else if (event.key === "ArrowLeft") next = (index - 1 + buttons.length) % buttons.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = buttons.length - 1;
+        else return;
+        event.preventDefault();
+        buttons[next].focus();
+        buttons[next].click();
+      });
+    });
+    bindArcticVisibility();
+    renderArcticPane();
   }
 
   /* =========================================================================
@@ -8686,7 +9977,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   var TITLES = {
     kundar:"Kundar", produkt:"Produkt", web:"Web", "sidebygger-sider":"Sider", workspace:"Workspace",
-    modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", compliance:"Compliance", analyse:"Analyse", personvern:"Personvern", laring:"Læring", "ai-lab":"AI Lab", system:"System"
+    modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", compliance:"Compliance", arctic:"Arctic", analyse:"Analyse", personvern:"Personvern", laring:"Læring", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
@@ -8698,10 +9989,10 @@ window.VwConsole = (function () {
     priser:     renderPriser,
     kundeanalyse: renderKundeanalyse,
     compliance: renderCompliance,
+    arctic:     renderArctic,
     analyse:    renderAnalyse,
     personvern: renderPersonvern,
     laring:     renderLaring,
-    "ai-lab":  renderAiLab,
     system:     renderSystem
   };
 
@@ -8713,10 +10004,10 @@ window.VwConsole = (function () {
   function renderSection(id) {
     var content = document.getElementById("cs-content");
     if (!content) return;
-    // Priser og den eksplisitte side-ved-side-visninga i AI Lab treng breiare
+    // Priser og den eksplisitte side-ved-side-visninga i Arctic/AI Lab treng breiare
     // enn lesebreidde -- sjå CSS-kommentaren ved
     // .cs-content--wide (console/index.html) for grunngjeving.
-    content.classList.toggle("cs-content--wide", id === "priser" || id === "ai-lab" || id === "kundeanalyse" || id === "sidebygger-sider");
+    content.classList.toggle("cs-content--wide", id === "priser" || id === "arctic" || id === "kundeanalyse" || id === "sidebygger-sider");
     var myGen = ++_renderGen;
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +
@@ -8724,9 +10015,9 @@ window.VwConsole = (function () {
     var fn = RENDERERS[id];
     if (!fn) return;
     var wrap = document.getElementById("cs-section-wrap"); // fanga no, før det asynkrone hoppet
-    // AI Lab er eit reint lokalt utviklingsverktøy utan tenant-data, database
-    // eller App.store. Det skal difor ikkje hentast eller koplast til SC-data.
-    if (id === "ai-lab" || id === "kundeanalyse" || id === "compliance") {
+    // Arctic/AI Lab er eit globalt Vibeverk-verktøy utan tenantdata eller
+    // App.store. Det skal difor ikkje hentast eller koplast til SC-data.
+    if (id === "arctic" || id === "kundeanalyse" || id === "compliance") {
       fn({}, wrap);
       return;
     }
@@ -8766,6 +10057,9 @@ window.VwConsole = (function () {
     // Auditor-funn BLOCKER, 2026-08-11) og bør testast direkte, ikkje berre
     // implisitt gjennom eit mock-oppsett som ikkje skil ut superconfig frå
     // andre store-nøklar.
-    _test: { pbPreviewCss: pbPreviewCss, pbSafeCssColor: pbSafeCssColor, pbSafeCssFontName: pbSafeCssFontName }
+    _test: {
+      pbPreviewCss: pbPreviewCss, pbSafeCssColor: pbSafeCssColor, pbSafeCssFontName: pbSafeCssFontName,
+      arcticFreshness: arcticFreshness
+    }
   };
 })();

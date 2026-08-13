@@ -337,6 +337,9 @@ async function main() {
   r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader("hemmelig") }));
   assert(r.status !== 401, "d2: /workspace/ sleppast gjennom site-lock MED rett passord");
 
+  r = await middleware(fakeRequest("https://kunde.no/console/", { host: "kunde.no", authorization: basicAuthHeader("hemmelig") }));
+  assert(r.headers.get("permissions-policy") === "loopback-network=(self)", "d2b: Console tillèt browseren å be om eksplisitt loopback-tilgang");
+
   r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader("feil") }));
   assert(r.status === 401, "d3: /workspace/ avviser FEIL passord (ikkje berre manglande)");
 

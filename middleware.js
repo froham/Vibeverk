@@ -221,5 +221,8 @@ export default async function middleware(request) {
     );
   }
 
+  if (url.pathname === "/console" || url.pathname === "/console/") {
+    return next({ headers: { "Permissions-Policy": "loopback-network=(self)" } });
+  }
   return next();
 }

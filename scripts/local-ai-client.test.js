@@ -78,6 +78,71 @@ test("sender strukturert output og temperatur når adapteren ber om det", async 
   assert.deepEqual(requestBody.response_format.json_schema.schema, schema);
 });
 
+test("parser OpenAI-kompatibel SSE-strøm og videresender deltaer", async function () {
+  var requestBody;
+  var deltas = [];
+  var encoder = new TextEncoder();
+  var response = new Response(new ReadableStream({
+    start: function (controller) {
+      controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hei"}}]}\n\n'));
+      controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}],"usage":{"completion_tokens":2,"private_model_detail":"skal-ikke-videresendes"}}\n\n'));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  }), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  var result = await client.sendMessagesStream([{ role: "user", content: "Sei hei." }], {
+    env: validEnv(),
+    fetchImpl: async function (url, init) { requestBody = JSON.parse(init.body); return response; },
+    onDelta: function (text) { deltas.push(text); },
+  });
+  assert.equal(requestBody.stream, true);
+  assert.deepEqual(requestBody.messages, [{ role: "user", content: "Sei hei." }]);
+  assert.deepEqual(deltas, ["Hei", "!"]);
+  assert.equal(result.content, "Hei!");
+  assert.equal(result.finishReason, "stop");
+  assert.equal(result.usage.completion_tokens, 2);
+  assert.deepEqual(Object.keys(result.usage), ["completion_tokens"]);
+});
+
+test("strømmen feiler lukket uten DONE eller ved avkortet finish reason", async function (t) {
+  async function streamResult(events) {
+    var encoder = new TextEncoder();
+    return client.sendMessagesStream([{ role: "user", content: "Test." }], {
+      env: validEnv(),
+      fetchImpl: async function () {
+        return new Response(new ReadableStream({ start: function (controller) {
+          events.forEach(function (event) { controller.enqueue(encoder.encode(event)); });
+          controller.close();
+        } }), { status: 200 });
+      },
+    });
+  }
+  await t.test("manglende DONE", async function () {
+    await assert.rejects(streamResult([
+      'data: {"choices":[{"delta":{"content":"Uferdig"},"finish_reason":"stop"}]}\n\n',
+    ]), function (error) { return error.code === "LOCAL_AI_INCOMPLETE_STREAM"; });
+  });
+  await t.test("finish reason length", async function () {
+    await assert.rejects(streamResult([
+      'data: {"choices":[{"delta":{"content":"Avkorta"},"finish_reason":"length"}]}\n\n',
+      "data: [DONE]\n\n",
+    ]), function (error) { return error.code === "LOCAL_AI_OUTPUT_TRUNCATED"; });
+  });
+});
+
+test("avbryter strømmet Ollama-kall med innsendt AbortSignal", async function () {
+  var controller = new AbortController();
+  await assert.rejects(client.sendMessagesStream([{ role: "user", content: "Vent." }], {
+    env: validEnv(), signal: controller.signal,
+    fetchImpl: async function (url, init) {
+      await new Promise(function (resolve, reject) {
+        init.signal.addEventListener("abort", function () { reject(new Error("aborted")); }, { once: true });
+        controller.abort();
+      });
+    },
+  }), function (error) { return error.code === "LOCAL_AI_ABORTED"; });
+});
+
 test("fjernar terminalstyring frå konsollutskrifta", async function () {
   var output = [];
   var unsafeAnswer = "\x1B[31mRaud\x1B[0m\nTrygg";

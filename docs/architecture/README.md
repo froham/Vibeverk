@@ -9,6 +9,7 @@ This explains how Vibeverk is actually built today. It must be updated when real
 | [storage-and-data-flow.md](storage-and-data-flow.md) | localStorage namespace, App.store API, Supabase sync, superconfig, chat data flow |
 | [roles-and-tenants.md](roles-and-tenants.md) | Tenant isolation model, user roles, the three admin surfaces and their auth methods |
 | [ai-lab.md](ai-lab.md) | Local-only Console AI Lab, source snapshots, provider boundaries and its separation from Læringsmodulen |
+| [arctic.md](arctic.md) | Internal, tenant-independent Console section: superadmin boundary, local status/service adapters, command allowlist, audit and closed production gateway seam |
 | [customer-analysis.md](customer-analysis.md) | Internal Console website analysis: control-plane data, DNS-pinned crawl, robots handling, optional AI and human review |
 | [sidetelling.md](sidetelling.md) | Internal pageview/CTA analytics, server-side daily grouping, privacy boundaries, dashboard semantics and rollout gates |
 | [page-builder.md](page-builder.md) | Console "Sider" (a.k.a. "Sidebygger" in commit history) — the 9 controlled section types, the `blocks` composable data model, and its security patterns. Not to be confused with the `features.sidebygger` paid site-wide design-template flag (see `system-overview.md`/`CURRENT_STATE.md`) — same name, different feature |

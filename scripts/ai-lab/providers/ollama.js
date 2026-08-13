@@ -30,6 +30,7 @@ function parseStrictJson(raw) {
 function createOllamaProvider(config, options) {
   options = options || {};
   var sendPrompt = options.sendPrompt || localClient.sendPrompt;
+  var sendMessagesStream = options.sendMessagesStream || localClient.sendMessagesStream;
   var busy = false;
 
   async function generateDraft(prompt, schema) {
@@ -87,10 +88,36 @@ function createOllamaProvider(config, options) {
     }
   }
 
+  async function streamOperation(messages, streamOptions) {
+    if (busy) throw providerError("Lokal AI er opptatt med et annet kall.", 429, "AI_LAB_OLLAMA_BUSY");
+    busy = true;
+    try {
+      return await sendMessagesStream(messages, {
+        env: {
+          NODE_ENV: "development", AI_PROVIDER: "ollama", AI_MODEL: config.ollamaModel,
+          AI_BASE_URL: config.ollamaBaseUrl + "/v1", CI: "", VERCEL: "", VERCEL_ENV: "",
+          NODE_USE_ENV_PROXY: "", NODE_OPTIONS: "",
+        },
+        fetchImpl: options.fetchImpl,
+        timeoutMs: config.timeoutMs,
+        maxPromptLength: config.maxPromptChars,
+        signal: streamOptions && streamOptions.signal,
+        onDelta: streamOptions && streamOptions.onDelta,
+      });
+    } catch (error) {
+      if (error && error.code === "LOCAL_AI_ABORTED") throw providerError("Kjøringen ble avbrutt.", 499, "AI_LAB_CANCELLED");
+      if (error && error.code === "LOCAL_AI_RESPONSE_TOO_LARGE") throw providerError("Ollama-svaret var for stort.", 502, "AI_LAB_RESPONSE_TOO_LARGE");
+      if (error && /svarte ikkje innan/.test(error.message)) throw providerError("Ollama nådde tidsgrensen.", 504, "AI_LAB_TIMEOUT");
+      if (error && error.code && error.code.indexOf("AI_LAB_") === 0) throw error;
+      throw providerError("Ollama-kallet feilet.", 502, "AI_LAB_PROVIDER_ERROR");
+    } finally { busy = false; }
+  }
+
   return {
     id: "ollama",
     model: config.ollamaModel,
     generateDraft: generateDraft,
+    streamOperation: streamOperation,
     isBusy: function () { return busy; },
   };
 }

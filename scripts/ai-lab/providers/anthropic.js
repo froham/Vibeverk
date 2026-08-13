@@ -67,6 +67,13 @@ function createAnthropicProvider(config, options) {
     if (!config.anthropicApiKey) {
       throw providerError("Anthropic er ikkje konfigurert lokalt.", 503, "AI_LAB_PROVIDER_NOT_CONFIGURED");
     }
+    if (!config.anthropicProcessingApproved) {
+      throw providerError(
+        "Ekstern Anthropic-behandling er ikkje godkjend i lokal konfigurasjon.",
+        503,
+        "AI_LAB_EXTERNAL_PROCESSING_NOT_APPROVED"
+      );
+    }
     reserveCall();
     var controller = new AbortController();
     var timeout = setTimeout(function () { controller.abort(); }, config.timeoutMs);
@@ -122,7 +129,7 @@ function createAnthropicProvider(config, options) {
   return {
     id: "anthropic",
     model: config.anthropicModel,
-    configured: !!config.anthropicApiKey,
+    configured: !!config.anthropicApiKey && !!config.anthropicProcessingApproved,
     isBusy: function () { return busy; },
     generateDraft: function (prompt, schema) {
       return callTool(prompt, "return_learning_draft", "Returner eit kjeldebasert utkast til Læringsmodulen.", schema);
