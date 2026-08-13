@@ -294,6 +294,43 @@
   /* =========================================================================
      TO-FAKTOR-INNLOGGING (TOTP)-KORT
      ====================================================================== */
+  // Seks enkeltsifra-bokser (i staden for eitt fritekstfelt) -- same
+  // hjelpefunksjonar (og same grunngjeving) som core.js/workspace-core.js
+  // sine eigne versjonar, brukt i innloggingsutfordringa -- her ved
+  // stadfesting av ein splitter ny faktor, ikkje ved sjølve innlogginga.
+  function mfaCodeBoxesHtml() {
+    var boxes = "";
+    for (var i = 0; i < 6; i++) {
+      boxes += '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Siffer ' + (i + 1) + ' av 6" data-mfa-digit style="width:2.6rem;height:3.1rem;text-align:center;font-size:1.35rem;font-weight:700;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:inherit">';
+    }
+    return '<div style="display:flex;gap:.5rem;margin:0 0 .3rem">' + boxes + '</div>';
+  }
+  function wireMfaCodeBoxes(container, doSubmit) {
+    var boxes = Array.prototype.slice.call(container.querySelectorAll("[data-mfa-digit]"));
+    function currentCode() { return boxes.map(function (b) { return b.value; }).join(""); }
+    boxes.forEach(function (box, i) {
+      box.addEventListener("input", function () {
+        box.value = box.value.replace(/[^0-9]/g, "").slice(-1);
+        if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+        if (currentCode().length === boxes.length) doSubmit();
+      });
+      box.addEventListener("keydown", function (e) {
+        if (e.key === "Backspace" && !box.value && i > 0) { boxes[i - 1].focus(); boxes[i - 1].value = ""; }
+      });
+      box.addEventListener("paste", function (e) {
+        e.preventDefault();
+        var text = (e.clipboardData || window.clipboardData).getData("text").replace(/[^0-9]/g, "");
+        if (!text) return;
+        boxes.forEach(function (b, j) { b.value = text[j] || ""; });
+        var lastFilled = Math.min(text.length, boxes.length) - 1;
+        if (lastFilled >= 0) boxes[lastFilled].focus();
+        if (currentCode().length === boxes.length) doSubmit();
+      });
+    });
+    if (boxes[0]) setTimeout(function () { boxes[0].focus(); }, 50);
+    return currentCode;
+  }
+
   function renderMfaCard(root) {
     var body = root.querySelector("#settings-mfa-body");
     if (!body) return;
@@ -325,11 +362,11 @@
 
   function renderMfaEnrollStep(body, enrollData) {
     body.innerHTML =
-      '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .7rem">Skann koden under med autentiseringsappen din, eller skriv inn nøkkelen manuelt. Skriv så inn koden appen viser, for å bekrefte.</p>' +
+      '<p style="font-size:.85rem;color:var(--color-muted);margin:0 0 .7rem">Skann koden under med autentiseringsappen din (f.eks. Google Authenticator), eller skriv inn nøkkelen manuelt. Skriv så inn koden appen viser, for å bekrefte.</p>' +
       '<div style="max-width:200px;margin:0 0 .7rem">' + enrollData.totp.qr_code + '</div>' +
       '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 .9rem;word-break:break-all">Manuell nøkkel: <code>' + C.esc(enrollData.totp.secret) + '</code></p>' +
-      '<div style="display:grid;gap:.6rem;max-width:280px">' +
-        field("settings-mfa-verify-code", "Kode fra appen (6 siffer)", "", "text", "123456") +
+      '<div id="settings-mfa-verify-form" style="display:grid;gap:.6rem;max-width:280px">' +
+        mfaCodeBoxesHtml() +
         '<div style="display:flex;align-items:center;gap:.7rem">' +
           '<button type="button" class="btn btn--primary btn--sm" id="settings-mfa-verify-btn">Bekreft</button>' +
           '<button type="button" class="btn btn--ghost btn--sm" id="settings-mfa-cancel-btn">Avbryt</button>' +
@@ -342,10 +379,10 @@
       // aldri-stadfesta faktor ved kvart avbrotne forsøk.
       App.supabase.auth.mfa.unenroll({ factorId: enrollData.id }).then(function () { renderMfaOff(body); });
     });
-    body.querySelector("#settings-mfa-verify-btn").addEventListener("click", function () {
-      var code = body.querySelector("#settings-mfa-verify-code").value.trim();
+    var verifyForm = body.querySelector("#settings-mfa-verify-form");
+    function submitVerify(code) {
       var statusEl = body.querySelector("#settings-mfa-verify-status");
-      if (!code) return;
+      if (!code || code.length !== 6) return;
       statusEl.className = ""; statusEl.textContent = "Sjekker…";
       App.supabase.auth.mfa.challenge({ factorId: enrollData.id }).then(function (ch) {
         if (ch.error) { statusEl.className = "form__status is-error"; statusEl.textContent = ch.error.message; return; }
@@ -354,7 +391,9 @@
           renderMfaOn(body, { id: enrollData.id });
         });
       });
-    });
+    }
+    var getVerifyCode = wireMfaCodeBoxes(verifyForm, function () { submitVerify(getVerifyCode()); });
+    body.querySelector("#settings-mfa-verify-btn").addEventListener("click", function () { submitVerify(getVerifyCode()); });
   }
 
   function renderMfaOn(body, factor) {
