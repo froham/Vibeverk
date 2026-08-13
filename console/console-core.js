@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.148.0";
+  var VIBEVERK_VERSION = "0.149.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -5038,6 +5038,12 @@ window.VwConsole = (function () {
   function privacyPublicProjection(sc) {
     return {
       heading: sc.privacy.heading, text: sc.privacy.text,
+      // employeeText (2026-08-13): berre "employees"-blokka, brukt av
+      // Workspace sin eigen "Personvern"-lenke -- sjå notatet ved
+      // priv.employeeText-tildelinga i publiseringsflyten for kvifor dette
+      // ikkje kan avleiast frå sc.privacy.text i etterkant (blokk-grensene
+      // finst ikkje lenger i den flate teksten).
+      employeeText: sc.privacy.employeeText || "",
       forms: sc.privacy.forms, consentPurposes: sc.privacy.consentPurposes,
       publishedVersionId: sc.privacy.publishedVersionId || null,
       publishedAt: sc.privacy.publishedAt || null,
@@ -5823,6 +5829,14 @@ window.VwConsole = (function () {
         priv.activeVersionId = version.id;
         priv.heading = version.heading || "";
         priv.text = privacyBlocksToFlatHtml(version.bodyBlocks);
+        // UX-review-funn 2026-08-13: Workspace sin eigen "Personvern"-lenke
+        // synte tidlegare heile priv.text (kundevendt policy -- cookies,
+        // leads, kontaktskjema osv.) til tilsette, sidan publisering
+        // tidlegare flata ALLE blokkene saman til éin streng med ingen veg
+        // attende til kva for eit avsnitt som kom kvar frå. Lagrar difor no
+        // OGSÅ ein eigen, avgrensa versjon med berre "employees"-blokka, slik
+        // at Workspace kan vise BERRE det som faktisk gjeld tilsette.
+        priv.employeeText = privacyBlocksToFlatHtml((version.bodyBlocks || []).filter(function (b) { return b.id === "employees"; }));
         // Trygge, ufarlege peikarar til den offentlege nøkkelen (Fase 2) --
         // sjå privacyPublicProjection() sitt notat for kvifor.
         priv.publishedVersionId = version.id;

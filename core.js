@@ -237,13 +237,33 @@ window.App = (function () {
             if (wasOAuthPending) alert("Denne kontoen er ikke invitert til dette arbeidsområdet. Ta kontakt med en administrator.");
             return;
           }
-          sessionStorage.setItem(NS + ":admin", r.data.role);
-          // Reopnar admin-panelet etter ein fullført OAuth-runddans --
-          // hash-en (t.d. #admin) overlever ALDRI redirect-turen til
-          // Microsoft/Google og attende (Supabase sin eigen access_token-
-          // hash frå returen overskriv han). sessionStorage vart difor sett
-          // rett før signInWithOAuth() vart kalla, sjå renderAdminLogin().
-          if (wasOAuthPending && typeof openAdmin === "function") openAdmin();
+          // To-faktor-innlogging (2026-08-13): berre gate den OAuth-utløyste
+          // grantinga her -- denne handteraren fyrer for KVAR sesjonsendring
+          // på tvers av BÅDE Web-admin og Workspace (delt _sb-instans), og
+          // ein Workspace-utløyst sesjon skal IKKJE plutseleg få eit
+          // Web-admin-stila #admin-root-utfordringsskjermbilete dytta inn
+          // over seg. Vanleg cache-synkronisering (ikkje ei "innvilg
+          // tilgang"-hending) held difor fram uendra utanfor OAuth-pending.
+          if (wasOAuthPending && typeof openAdmin === "function") {
+            var mfaRoot = document.getElementById("admin-root");
+            if (!mfaRoot) {
+              mfaRoot = document.createElement("div");
+              mfaRoot.id = "admin-root";
+              document.body.appendChild(mfaRoot);
+            }
+            mfaChallengeThenProceed(mfaRoot, function () {
+              sessionStorage.setItem(NS + ":admin", r.data.role);
+              // Reopnar admin-panelet etter ein fullført OAuth-runddans --
+              // hash-en (t.d. #admin) overlever ALDRI redirect-turen til
+              // Microsoft/Google og attende (Supabase sin eigen
+              // access_token-hash frå returen overskriv han). sessionStorage
+              // vart difor sett rett før signInWithOAuth() vart kalla, sjå
+              // renderAdminLogin().
+              openAdmin();
+            });
+          } else {
+            sessionStorage.setItem(NS + ":admin", r.data.role);
+          }
         });
         // Lastar leads-cachen proaktivt så snart me veit brukaren er innlogga
         // (dekker både fersk innlogging og ein alt-innlogga sesjon ved
@@ -1712,6 +1732,63 @@ window.App = (function () {
     document.head.appendChild(s);
   }
 
+  // To-faktor-innlogging (TOTP, 2026-08-13) -- valfri, sjølvmeldt av kvar
+  // brukar (registrert i Workspace -> Innstillingar, module-settings.js --
+  // einaste registreringsstaden, men faktoren gjeld same auth.users-rad på
+  // tvers av Web-admin og Workspace, sidan begge autentiserer mot same
+  // Supabase-prosjekt). Kalla FØR nokon vert rekna som ferdig innlogga, både
+  // etter passord OG OAuth -- har brukaren eit stadfesta TOTP-faktor, må dei
+  // skrive inn ein kode FØR tilgang vert gjeve, uansett kva som fekk dei til
+  // aal1 i utgangspunktet.
+  //
+  // Bygd direkte denne runda, utan eiga Arkitekt-/Sikkerheitsrevisjon-runde
+  // (eksplisitt brukarønske, sjå CHANGELOG) -- fail-closed like fullt: viss
+  // sjølve AAL-oppslaget feilar (nettverksfeil), vert brukaren IKKJE sleppt
+  // gjennom stille, dei ser ei feilmelding og må prøve på nytt.
+  function mfaChallengeThenProceed(root, onPass) {
+    _sb.auth.mfa.getAuthenticatorAssuranceLevel().then(function (r) {
+      if (r.error) {
+        root.innerHTML = C.modal({
+          title: "Logg inn", label: "To-faktor-innlogging",
+          body: '<p class="prose prose--muted">Kunne ikkje sjekke om to-faktor-innlogging er påkrevd. Prøv å laste sida på nytt.</p>'
+        });
+        bindModalClose(root);
+        return;
+      }
+      if (r.data.nextLevel === r.data.currentLevel) { onPass(); return; }
+      root.innerHTML = C.modal({
+        title: "Logg inn", label: "To-faktor-innlogging",
+        body:
+          '<p class="prose prose--muted">Skriv inn koden fra autentiseringsappen din.</p>' +
+          '<form data-mfa-form class="admin-form">' +
+            C.field({ id: "mfa-code", label: "Kode (6 siffer)", type: "text", required: true }) +
+            C.button({ label: "Bekreft", type: "submit", variant: "primary" }) +
+            '<p class="form__status" data-mfa-status role="status" aria-live="polite"></p>' +
+          '</form>'
+      });
+      bindModalClose(root);
+      const mfaForm = root.querySelector("[data-mfa-form]");
+      const mfaStatus = root.querySelector("[data-mfa-status]");
+      mfaForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        const code = root.querySelector("#mfa-code").value.trim();
+        if (!code) return;
+        setStatus(mfaStatus, "Sjekker…", "");
+        _sb.auth.mfa.listFactors().then(function (lf) {
+          const factor = lf.data && lf.data.totp && lf.data.totp[0];
+          if (!factor) { setStatus(mfaStatus, "Fant ikke noe to-faktor-oppsett. Kontakt en administrator.", "error"); return; }
+          _sb.auth.mfa.challenge({ factorId: factor.id }).then(function (ch) {
+            if (ch.error) { setStatus(mfaStatus, ch.error.message, "error"); return; }
+            _sb.auth.mfa.verify({ factorId: factor.id, challengeId: ch.data.id, code: code }).then(function (v) {
+              if (v.error) { setStatus(mfaStatus, "Feil kode. Prøv igjen.", "error"); return; }
+              onPass();
+            });
+          });
+        });
+      });
+    });
+  }
+
   // Innlogging — Supabase for nivå 1–3, OTP for superadmin (nivå 4, sjå openSuperAdmin).
   function renderAdminLogin(root) {
     // Skil "Supabase er ikkje konfigurert" (lokalt/testmiljø — passord-fallback OK) frå
@@ -1810,10 +1887,12 @@ window.App = (function () {
               return;
             }
             const role = r.data.role;
-            setAuthed(role);
-            hydrateFromSupabase(function () {
-              if (role === "member") activeCategory = "henvendelser";
-              renderAdminPanel(root);
+            mfaChallengeThenProceed(root, function () {
+              setAuthed(role);
+              hydrateFromSupabase(function () {
+                if (role === "member") activeCategory = "henvendelser";
+                renderAdminPanel(root);
+              });
             });
           });
         });
