@@ -149,6 +149,12 @@ async function mount(opts) {
   // ein test overstyre enkeltfelt i features utan å måtte klone/skrive om
   // heile SC_SEED sjølv.
   if (opts.features) Object.assign(scSeedClone.features, opts.features);
+  // opts.privacyVersions (2026-08-17, orphan-avsnitt-regresjonstesten):
+  // let ein test seede eit ALT PUBLISERT versjonssett direkte, i staden for
+  // å la migratePrivacyVersions() lage ein tom v1 -- naudsynt for å
+  // simulere ein tenant som publiserte FØR 0.150.0 (med intro/breach-
+  // blokker alt liggjande i bodyBlocks).
+  if (opts.privacyVersions) Object.assign(scSeedClone.privacy, opts.privacyVersions);
   var tenant = {
     from: function (table) {
       // "content" (2026-08-13-brukarfunn): kunden sitt eige Web-admin-
@@ -335,4 +341,20 @@ test("Standardforslag: «Kunder og kundedialog» forsvinn når features.crm er s
   m.dom.window.document.querySelector("#cs-priv-fetch").click();
   await new Promise(function (resolve) { setTimeout(resolve, 20); });
   assert.doesNotMatch(sectionText(m), /Kunder og kundedialog/, "blokka skal IKKJE genererast når kunden ikkje har CRM-modulen");
+});
+
+test("Standardforslag droppar ARKITEKTONISK PENSJONERTE avsnitt (intro/breach) frå ein tenant som publiserte FØR 0.150.0, i staden for å dra dei med som eit «orphan» (brukarfunn, live testing på Vibeverk sin eigen tenant)", async function (t) {
+  var oldIntroBlock = { id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: "<p><strong>Om denne personvernerklæringen</strong></p><p>Gamal, pensjonert innleiingstekst.</p>" };
+  var oldBreachBlock = { id: "breach", source: "module", moduleId: "breach", included: true, edited: false, body: "<p><strong>Melding ved brudd på personopplysningssikkerheten</strong></p><p>Gamal, pensjonert tekst -- høyrer no heime i DPA-en.</p>" };
+  var oldVersion = { id: "v1", status: "published", basedOnVersionId: null, createdAt: Date.now(), publishedAt: Date.now(), heading: "Personvern", bodyBlocks: [oldIntroBlock, oldBreachBlock], approval: null };
+  var m = await mount({ privacyVersions: { activeVersionId: "v1", versions: [oldVersion] } });
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  assert.match(sectionText(m), /Om denne personvernerklæringen/, "føresetnad: den gamle, alt-publiserte intro-teksten er faktisk synleg før noko utkast vert laga");
+  await openNewDraft(m);
+  m.dom.window.document.querySelector("#cs-priv-fetch").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  var text = sectionText(m);
+  assert.doesNotMatch(text, /Om denne personvernerklæringen/, "gamal intro-tekst skal IKKJE dukke opp att nedst i dokumentet -- mergePrivacyBlocks() sin vanlege orphan-vern (for t.d. eit avslått features.booking) skal IKKJE gjelde arkitektonisk pensjonerte id-ar");
+  assert.doesNotMatch(text, /Melding ved brudd/, "gamal breach-tekst skal heller ikkje dukke opp att -- flytta til DPA-en, ikkje berre gøymd");
 });
