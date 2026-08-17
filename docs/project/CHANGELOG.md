@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.150.3 — 2026-08-17
+
+**«Tilsette (Workspace)»-avsnittet skal ALDRI vere med i det offentlege, publiserte personverndokumentet -- berre i Workspace sin eigen «Personvern for ansatte»-lenke.** Brukarønske: sidan `employeeText` (0.149.0) alt fanst som ein separat, avgrensa versjon for Workspace, var det uventa/uønska at det SAME avsnittet framleis låg inne i `priv.text` (det fulle, offentlege dokumentet som vert vist på nettsida, i "full tekst"-førehandsvisingar, HTML-eksport og versjonshistorikk).
+
+- Ny delt hjelpefunksjon `publicPrivacyBlocks()` filtrerer bort "employees"-blokka -- brukt av ALLE stadene som representerer "det offentlege dokumentet": sjølve publiseringa (`priv.text`), begge "Generer full tekstversjon"-knappane (publisert OG utkast), `privacyExportPublishedHtml()` (HTML-nedlasting), og versjonshistorikk-førehandsvisinga.
+- MEDVITE ikkje eit vanleg "included:false"-avkryssingsval -- ein strukturell regel, ikkje noko operatøren kan skru av/på per kunde, sidan Workspace-kontoar er strukturelt alltid aktive (`privacyModuleActive()` seier framleis "aktiv", elles ville hybrid-vakta feilaktig blokkert publisering).
+- Tilsette-avsnittet er framleis fullt synleg og redigerbart i Dokument-editoren sin blokkliste -- berre den ENDELEGE, offentlege flatinga ekskluderer det.
+- `privacyApprovalContentSnapshot()` (godkjenningsjournalen sin "har noko endra"-sjekk) er MEDVITE urørt -- gjeld heile det redigerte dokumentet, ikkje berre den offentlege utsnittet.
+
+Ny jsdom-regresjonstest stadfestar begge sidene: `priv.text` manglar tilsette-avsnittet, `priv.employeeText` har det framleis, og Dokument-editoren viser det framleis.
+
 ## 0.150.2 — 2026-08-17
 
 **«intro» attende, same dag -- brukaren ombestemte seg.** 0.150.0 fjerna `intro`-blokka heilt (fyrste utkastet frå brukaren opna direkte med behandlingsansvarleg, ingen generisk innleiing). Brukaren ønska likevel ein kort "Om denne personvernerklæringen"-seksjon, plassert FØR "Hvem er behandlingsansvarlig" -- med heilt NY tekst, ikkje den opphavlege (pensjonerte) ordlyden.

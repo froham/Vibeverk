@@ -122,6 +122,7 @@ async function mount(opts) {
   window.App = { ready: function (callback) { callback(window.SITE_CONFIG); }, ui: { bindRichTextFields: bindRichTextFields, readRichTextField: readRichTextField, setRichTextField: setRichTextField, textToRichHtml: textToRichHtml } };
   window.Components = { esc: esc, field: field, button: button, richTextField: richTextField, sanitizeRichHtml: sanitizeRichHtml, helpIcon: function () { return ""; } };
   var vendorRegistryFetchCount = 0;
+  var invokeCalls = [];
   var control = {
     auth: { onAuthStateChange: function () {}, getSession: function () { return Promise.resolve({ data: { session: { access_token: "operator-token", user: { id: "op-1" }, expires_at: 4102444800 } } }); }, signOut: function () {} },
     from: function (table) {
@@ -132,6 +133,12 @@ async function mount(opts) {
     },
     functions: { invoke: function (name, invokeOpts) {
       var body = (invokeOpts && invokeOpts.body) || {};
+      // invokeCalls (2026-08-17, "employees skal aldri vere i det
+      // offentlege dokumentet"-regresjonstesten): lèt testen inspisere den
+      // FAKTISKE payloaden saveSC() sender (set_config), ikkje berre kva
+      // som vert vist i DOM-en -- stadfestar at priv.text/employeeText
+      // faktisk vart skilt rett FØR skrivinga, ikkje berre i visinga.
+      invokeCalls.push({ name: name, body: body });
       if (name === "broker" && body.action === "get_private_config") {
         return Promise.resolve({ data: { value: {} }, error: null });
       }
@@ -180,7 +187,7 @@ async function mount(opts) {
   window.eval(code);
   window.document.dispatchEvent(new window.Event("DOMContentLoaded", { bubbles: true }));
   await new Promise(function (resolve) { setTimeout(resolve, 25); });
-  return { dom: dom, vendorRegistryFetchCount: function () { return vendorRegistryFetchCount; } };
+  return { dom: dom, vendorRegistryFetchCount: function () { return vendorRegistryFetchCount; }, invokeCalls: invokeCalls };
 }
 
 async function openPersonvern(m) {
@@ -369,4 +376,27 @@ test("Standardforslag erstattar gamal «intro»-tekst med fersk tekst (ikkje beg
   var controllerPos = text.indexOf("er behandlingsansvarlig for behandlingen");
   assert(introPos >= 0 && controllerPos >= 0 && introPos < controllerPos,
     "«Om denne personvernerklæringen» skal stå FØR «Hvem er behandlingsansvarlig» -- heile poenget med at brukaren bad om intro-en attende");
+});
+
+test("«Tilsette (Workspace)» hamnar ALDRI i det offentlege publiserte dokumentet (priv.text) -- berre i priv.employeeText, og er framleis synleg/redigerbar i Dokument-editoren (2026-08-17-brukarønske)", async function (t) {
+  var m = await mount({ content: { contact: { email: "post@kunden.no" } } });
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  await openNewDraft(m);
+  m.dom.window.document.querySelector("#cs-priv-fetch").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  // Føresetnad: operatøren SKAL framleis kunne sjå/redigere tilsette-
+  // avsnittet i editoren -- berre det ENDELEGE offentlege dokumentet skal
+  // ekskludere det, ikkje editoren sjølv.
+  assert.match(sectionText(m), /Tilsette \(Workspace\)/, "føresetnad: tilsette-avsnittet finst framleis synleg i Dokument-editoren sin blokkliste");
+
+  var btn = m.dom.window.document.querySelector("#cs-priv-publish");
+  btn.click();
+  await new Promise(function (resolve) { setTimeout(resolve, 30); });
+  var setConfigCall = m.invokeCalls.filter(function (c) { return c.name === "broker" && c.body.action === "set_config" && c.body.key === "superconfig"; }).pop();
+  assert(setConfigCall, "set_config vart faktisk kalla for superconfig-nøkkelen");
+  var savedPrivacy = setConfigCall.body.value.privacy;
+  assert.doesNotMatch(savedPrivacy.text, /Personopplysninger om ansatte/, "priv.text (det offentlege dokumentet) skal IKKJE innehalde tilsette-avsnittet");
+  assert.doesNotMatch(savedPrivacy.text, /Brukerstøtte/, "heller ikkje brukerstøtte-underavsnittet, som høyrer til same tilsette-blokk");
+  assert.match(savedPrivacy.employeeText, /Personopplysninger om ansatte/, "priv.employeeText (Workspace sin eigen «Personvern for ansatte»-lenke) skal framleis innehalde tilsette-avsnittet");
 });
