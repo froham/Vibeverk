@@ -247,6 +247,21 @@ test("Kundeavtale-fana (og dei andre dokumenta): Standardforslag fyller inn, Lag
   assert.match(call.body.content, /Databehandlar/i);
 });
 
+test("Kundeavtale-malen har eit eige punkt om melding ved avvik (art. 33(2)), flytta hit frå personvernerklæringa 2026-08-17", async function (t) {
+  var m = await mount();
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  dom.window.VwConsole.navigate("compliance");
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  dom.window.document.querySelector('[data-compliance-view="kundeavtale"]').click();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  dom.window.document.querySelector("#cd-standard").click();
+  var content = dom.window.document.querySelector("#cd-content").value;
+  assert.match(content, /<strong>10\. Melding om avvik<\/strong>/, "nytt §10 finst i malen, rendra som fet overskrift");
+  assert.match(content, /art\. 33\(2\)/, "viser til rett GDPR-artikkel (databehandlar sin plikt overfor kunden, ikkje kunden sin eigen plikt overfor Datatilsynet)");
+  assert.match(content, /<strong>14\. Ikraftsetjing<\/strong>/, "seinare punkt er rett omnummerert (var §13, no §14) etter at §10 vart sett inn");
+});
+
 test("Sikkerheitspolicy og Rettar-rutine-fanene finst og har eigne Standardforslag", async function (t) {
   var m = await mount();
   var dom = m.dom;

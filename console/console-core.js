@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.149.2";
+  var VIBEVERK_VERSION = "0.150.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -4807,12 +4807,14 @@ window.VwConsole = (function () {
   // Fase 5 (endringsvarsling): brukarvende namn på moduleId, til bruk i
   // "desse avsnitta bør sjekkast"-lista -- operatøren skal aldri sjå den
   // interne id-en ("booking") rått.
+  // "intro"/"breach" fjerna 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt
+  // eige notat) -- "general"/"customers" nye same runde.
   var PRIVACY_MODULE_LABEL = {
-    baseline: "Generelt", contactForm: "Kontaktskjema", quote: "Tilbud",
+    baseline: "Rettar", contactForm: "Kontaktskjema", quote: "Tilbud",
     booking: "Booking", analytics: "Cookies/analyse", suppliers: "Leverandørar",
-    intro: "Innledning", controller: "Behandlingsansvarlig",
-    retention: "Lagringstid", breach: "Avviksvarsling", employees: "Tilsette (Workspace)",
-    chat: "Chat"
+    controller: "Behandlingsansvarlig", general: "Generell informasjon",
+    retention: "Lagringstid", employees: "Tilsette (Workspace)",
+    chat: "Chat", customers: "Kunder"
   };
 
   // Fase 3 (leverandørregister, 2026-08-06): Vibeverk-heile leverandørfakta
@@ -5111,13 +5113,17 @@ window.VwConsole = (function () {
     if (moduleId === "suppliers")   return true;
     // Fase "Standardforslag" (2026-08-06): faste juridiske standardavsnitt,
     // ikkje styrt av noko features.*-flagg -- same "alltid aktiv"-grunngjeving
-    // som baseline/suppliers over.
-    if (moduleId === "intro" || moduleId === "controller" || moduleId === "retention" || moduleId === "breach" || moduleId === "employees") return true;
+    // som baseline/suppliers over. "intro"/"breach" fjerna, "general" ny,
+    // begge 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt eige notat).
+    if (moduleId === "controller" || moduleId === "general" || moduleId === "retention" || moduleId === "employees") return true;
     // module-chat.js sin eigen standard er "på" med mindre eksplisitt skrudd
     // av (same !== false-mønster som contactForm over) -- IKKJE eit "alltid
     // aktiv"-modul slik baseline/suppliers er, sidan features.chat faktisk
     // kan setjast til false.
     if (moduleId === "chat") return ft.chat !== false;
+    // "Kunder og kundedialog" (2026-08-17): same !== false-mønster, styrt av
+    // features.crm.
+    if (moduleId === "customers") return ft.crm !== false;
     return false; // ukjend/fjerna modul-id -- tving ikkje inkludering
   }
 
@@ -5187,7 +5193,24 @@ window.VwConsole = (function () {
     }).join("");
   }
 
-  function computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) {
+  // RETTA/UTVIDA 2026-08-17 (brukarutkast): sjølve mekanismen for
+  // kontakt/tilbud/booking (les frå sc.privacy.forms[id].retention, kollaps
+  // til éi generisk setning når ingenting er fylt ut) er MEDVITE UENDRA --
+  // brukaren bad eksplisitt om å ikkje endre standardverdiane/-forslaga
+  // (PRIVACY_FORM_RETENTION_SUGGESTION), berre utvide sjølve
+  // forklaringsteksten. Nye, faste linjer for chat/kundar/besøksstatistikk
+  // er lagt til under -- desse har ingen tilsvarande konfigurerbart felt i
+  // dag, difor fast tekst, ikkje operatør-redigerbare tal.
+  //
+  // "Etter opprettelse" (ikkje "etter siste kontakt/aktivitet") brukast
+  // MEDVITE berre for kontakt/tilbud/booking over -- det er dei einaste tre
+  // kategoriane retention-sweep faktisk måler (via leads.created_at), sjå
+  // 0.146.1-fiksen som først retta akkurat denne forma for nettopp denne
+  // grunnen. Chat/kundar/besøksstatistikk har ingen tilsvarande automatisert
+  // måling i dag -- teksten der er ei uttalt policy, ikkje ei teknisk
+  // stadfesta rekkjefølgje, difor ordlyden frå brukarutkastet stort sett
+  // uendra.
+  function computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking, hasChat, hasCrm, hasStats) {
     var forms = sc.privacy.forms || {};
     var activeIds = [];
     if (hasContactForm) activeIds.push("kontakt");
@@ -5214,6 +5237,10 @@ window.VwConsole = (function () {
       var unfilled = activeIds.filter(function (id) { return filled.indexOf(id) === -1; });
       if (unfilled.length) lines.push("For øvrige henvendelser lagrer vi ikke opplysningene lenger enn nødvendig for formålet.");
     }
+    if (hasChat) lines.push("Chatdialog lagres i inntil 12 måneder etter siste melding. Relevant dialog kan lagres videre som del av et tilbud, en bestilling eller et kundeforhold.");
+    if (hasCrm) lines.push("Opplysninger om potensielle kunder som ikke inngår et kundeforhold, slettes eller anonymiseres normalt senest 12 måneder etter siste relevante kontakt. For etablerte kunder lagres relevant kundedialog så lenge kundeforholdet varer og i inntil tre år etter at forholdet eller siste relevante oppfølging er avsluttet.");
+    if (hasStats) lines.push("Besøksstatistikk lagres i inntil 12 måneder.");
+    lines.push("Opplysninger kan lagres lenger når det er nødvendig for å oppfylle en lovpålagt plikt eller fastsette, gjøre gjeldende eller forsvare et rettskrav. I slike tilfeller begrenses opplysningene til det som er nødvendig for dette formålet.");
     return privacyTextToRichHtml(lines.join("\n"));
   }
 
@@ -5223,6 +5250,7 @@ window.VwConsole = (function () {
     var hasTilbud       = !!ft.quote;
     var hasBooking       = !!ft.booking;
     var hasChat          = ft.chat !== false;
+    var hasCrm           = ft.crm !== false;
     var hasAnalytics     = !!(an && (an.plausible || an.plausibleEmbed));
     var hasSidetelling   = !hasAnalytics && ft.sidetelling === true;
     // Konsolekrasj (2026-08-10, funne av brukar via reell testing på Vibeverk
@@ -5256,27 +5284,35 @@ window.VwConsole = (function () {
     var orgNr = ((sc.footer || {}).orgNr || "").trim();
 
     var blocks = [];
-    blocks.push({ id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Om denne personvernerklæringen\nDenne personvernerklæringen forteller deg hvilke personopplysninger vi samler inn, hva vi bruker dem til, hvor lenge vi lagrer dem, og hvilke rettigheter du har. Den gjelder for alle som besøker nettsiden, tar kontakt med oss via skjemaene her, eller er ansatt og bruker våre interne arbeidsverktøy (Workspace)."
-    ) });
+    // Standardtekst-revisjon (2026-08-17, brukarutkast, sjå CHANGELOG for full
+    // grunngjeving): "intro" (generisk "om denne personvernerklæringen"-
+    // innleiing) er fjerna -- opningsavsnittet i "controller" dekker no den
+    // funksjonen sjølv, same struktur som brukaren sitt eige utkast (ingen
+    // separat generisk innleiing).
     blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: privacyTextToRichHtml(
-      // RETTA 2026-08-13: "...gjennom denne nettsiden" dekte ikkje
-      // Workspace/tilsette-avsnittet under -- GPT-funn, personvern-full-
-      // argumentasjon del 2, blokk 2.
-      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? " (org.nr " + orgNr + ")" : "") + " er behandlingsansvarlig for personopplysningene som er beskrevet i denne personvernerklæringen. Det betyr at det er " + (company.name || "vi") + " — ikke leverandøren av selve nettsideplattformen — som bestemmer hva opplysningene brukes til og hvordan de behandles." +
-      (contactInfo.length ? " Har du spørsmål om personvern, kan du kontakte oss på " + contactInfo.join(", ") + "." : "")
+      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? ", organisasjonsnummer " + orgNr + "," : "") + " er behandlingsansvarlig for behandlingen som beskrives i denne personvernerklæringen." +
+      (contactInfo.length ? " Har du spørsmål om personvern eller ønsker å bruke rettighetene dine, kan du kontakte oss:\n" +
+        [contact.email ? "E-post: " + contact.email : "", contact.phone ? "Telefon: " + contact.phone : "", contact.address ? "Adresse: " + contact.address : ""].filter(Boolean).join("\n")
+      : "")
     ) });
-    // Rettar-avsnittet RETTA 2026-08-13 (GPT-funn, personvern-full-
-    // argumentasjon del 2, blokk 3): v1 nemnde berre innsyn/retting/
-    // sletting/klage -- art. 13 krev også begrensning (art. 18), protest
-    // (art. 21) og dataportabilitet (art. 20). Det ubetinga "vi sletter...
-    // uten ugrunnet opphold"-løftet er mjuka opp til å reflektere at
-    // sletting/begrensning er BETINGA av GDPR sine eigne vilkår (art. 17
-    // har unntak), ikkje eit automatisk løfte. Svarfrist-tilvisinga følgjer
-    // EDPB sin eigen praksis (normalt éin månad).
+    // Ny blokk (2026-08-17): korleis vi samlar inn opplysningar, obligatoriske
+    // felt, åtvaring mot særlege kategoriar, og generelle tryggingstiltak --
+    // fanst ikkje som eiga blokk før, berre spreidd/underforstått. "Alltid
+    // aktiv" same grunngjeving som baseline/suppliers/retention -- skildrar
+    // den generelle innsamlingsmekanismen, ikkje éin bestemt modul.
+    blocks.push({ id: "general", source: "module", moduleId: "general", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Generell informasjon\nVi får hovedsakelig personopplysningene direkte fra deg når du fyller ut et skjema, bruker chat, ber om tilbud, gjennomfører en booking eller har annen dialog med oss. Tekniske opplysninger oppstår når nettleseren din kommuniserer med nettsiden. Felt som er merket som obligatoriske, er nødvendige for at vi skal kunne behandle henvendelsen eller levere den aktuelle tjenesten. Dersom du ikke fyller ut disse feltene, kan vi være ute av stand til å følge opp forespørselen. Du bør ikke sende særlige kategorier av personopplysninger eller andre fortrolige opplysninger gjennom skjema, chat eller vedlegg med mindre dette er uttrykkelig etterspurt og nødvendig. Vi og våre leverandører bruker tekniske og organisatoriske tiltak for å beskytte opplysningene mot uautorisert tilgang, endring, tap og misbruk. Tiltakene omfatter blant annet tilgangsstyring, kryptert overføring, sikkerhetskopiering og logging av administrative handlinger der dette er relevant."
+    ) });
+    // Rettar-avsnittet (id "baseline" halde uendra medvite -- unngår å
+    // orphane ei eventuell operatør-redigering knytt til denne id-en --
+    // sjølv om "Hvor lagres opplysningene" no er flytta til leverandør-
+    // blokka, sjå computeSupplierBlock()). RETTA 2026-08-17
+    // (brukarutkast): utvida med uttrykkeleg protest-rett mot
+    // interesseavveging, rett til å trekkje tilbake samtykke, og eit
+    // fyldigare klage-avsnitt (ID-porten + postadresse til Datatilsynet,
+    // stadfesta direkte mot datatilsynet.no 2026-08-17).
     blocks.push({ id: "baseline", source: "module", moduleId: "baseline", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Hvor lagres opplysningene?\nNettsiden driftes hos Vercel. Innsendte opplysninger lagres i en database hos Supabase, med servere i Irland (EU).\n\n" +
-      "# Dine rettigheter\nDu har rett til innsyn i hvilke opplysninger vi har lagret om deg, og rett til å få disse korrigert, slettet eller begrenset, i tråd med personopplysningsloven/GDPR. Du kan også protestere mot behandlingen, og be om å få opplysningene utlevert i et strukturert format (dataportabilitet) der det er relevant. For å be om innsyn, retting, sletting eller andre rettigheter, ta kontakt via kontaktinformasjonen på denne siden og merk henvendelsen «Personvern» — vi behandler slike forespørsler uten ugrunnet opphold og normalt innen én måned. Opplysninger slettes eller begrenses når vilkårene for dette etter personvernregelverket er oppfylt. Du har også rett til å klage til Datatilsynet dersom du mener vi behandler personopplysningene dine i strid med regelverket. Du finner informasjon om hvordan du klager på datatilsynet.no."
+      "# Dine rettigheter\nAvhengig av behandlingen og behandlingsgrunnlaget kan du ha rett til informasjon og innsyn, retting, sletting, begrensning og dataportabilitet. Du kan protestere mot behandling som bygger på vår berettigede interesse. Dersom en behandling bygger på samtykke, kan du trekke samtykket tilbake når som helst. Det påvirker ikke lovligheten av behandlingen før samtykket ble trukket tilbake. Kontakt oss på " + (contact.email || "kontaktinformasjonen på denne siden") + " dersom du ønsker å bruke rettighetene dine. Vi svarer normalt innen én måned. Dersom saken er særlig komplisert, kan fristen forlenges etter reglene i personvernforordningen. Du får i så fall beskjed innen den første måneden. Du har også rett til å klage til Datatilsynet dersom du mener at personopplysningene dine behandles i strid med regelverket. Du finner veiledning og digitalt klageskjema på Datatilsynets klageside. Det digitale skjemaet krever innlogging med ID-porten. Dersom du ikke kan eller ønsker å bruke ID-porten, kan klagen sendes skriftlig til Datatilsynet, Postboks 458 Sentrum, 0105 Oslo. Datatilsynet anbefaler at du først kontakter virksomheten klagen gjelder, men dette begrenser ikke retten din til å klage."
     ) });
     // Vedtak 2026-08-06 (sak 6, "byggjast med standardformulering") -- bygd
     // 2026-08-12, ein månad forseinka (funne av begge agentane i den
@@ -5293,21 +5329,36 @@ window.VwConsole = (function () {
     ) });
     // Behandlingsgrunnlag lagt til 2026-08-13 (P0-fiks, GPT-funn): art.
     // 13(1)(c) krev BÅDE formål OG behandlingsgrunnlag, ikkje berre formål.
-    // Grunnlaga under er ei rimeleg standard-vurdering (kontakt/chat:
-    // berettiga interesse i å kunne følgje opp ei henvendelse retta til oss;
-    // tilbud/booking: nødvendig for å oppfylle/inngå ei avtale) -- IKKJE eit
-    // ferdig juridisk svar, sjå personvern-full-argumentasjon del 3, P2
-    // punkt 1. Ein jurist bør stadfeste/justere per aktivitet.
+    // Grunnlaga under er ei rimeleg standard-vurdering -- IKKJE eit ferdig
+    // juridisk svar, sjå personvern-full-argumentasjon del 3, P2 punkt 1.
+    // Ein jurist bør stadfeste/justere per aktivitet.
+    //
+    // RETTA 2026-08-17 (brukarutkast): Kontaktskjema fekk ny Formål/
+    // Grunnlag-struktur (same substans). Tilbud/Booking fekk i tillegg ei
+    // ekte juridisk forbetring -- ulikt behandlingsgrunnlag alt etter om
+    // førespurnaden kjem frå ein privatperson (nødvendig for å oppfylle/
+    // inngå avtale) eller på vegner av ei verksemd (berettiga interesse i å
+    // følgje opp forretningsforbindelsen) -- GDPR vernar berre fysiske
+    // personar, men kontaktpersonen sine eigne opplysningar er framleis
+    // personopplysningar sjølv når dei opptrer for ei verksemd, difor
+    // ulikt grunnlag, ikkje "avtale" i begge tilfelle.
     if (hasContactForm) blocks.push({ id: "mod-kontakt", source: "module", moduleId: "contactForm", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Kontaktskjema\nNår du sender oss en henvendelse, lagrer vi opplysningene du selv oppgir — typisk navn, e-postadresse, telefonnummer og innholdet i meldingen. Opplysningene brukes utelukkende til å besvare henvendelsen din, med grunnlag i vår berettigede interesse i å kunne besvare henvendelser rettet til oss, og deles ikke med tredjeparter for markedsføringsformål."
+      "# Kontaktskjema\nNår du sender oss en henvendelse gjennom kontaktskjemaet, behandler vi opplysningene du fyller inn, for eksempel navn, e-postadresse, telefonnummer og innholdet i meldingen. Formålet er å motta, besvare og følge opp henvendelsen. Behandlingen bygger på vår berettigede interesse i å kunne håndtere henvendelser som sendes til virksomheten."
     ) });
     if (hasTilbud) blocks.push({ id: "mod-tilbud", source: "module", moduleId: "quote", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Tilbudsforespørsel\nNår du ber om tilbud, lagrer vi navn, e-postadresse, telefonnummer, innholdet i forespørselen og eventuelle vedlegg du laster opp, med grunnlag i at behandlingen er nødvendig for å oppfylle en avtale du selv har bedt om, eller for å gjennomføre tiltak på din anmodning før en slik avtale inngås. Opplysningene brukes til å utarbeide og sende deg et tilbud."
+      "# Tilbudsforespørsel\nNår du ber om et tilbud, behandler vi navn, kontaktopplysninger, opplysninger om virksomheten du eventuelt representerer, innholdet i forespørselen og vedlegg du laster opp. Formålet er å vurdere behovet og utarbeide og følge opp tilbudet. Når du ber om tilbud som privatperson, bygger behandlingen på at den er nødvendig for å gjennomføre tiltak du har bedt om før en mulig avtale. Når du opptrer på vegne av en virksomhet, bygger behandlingen på vår berettigede interesse i å følge opp forespørselen og den mulige forretningsforbindelsen."
     ) });
     if (hasBooking) blocks.push({ id: "mod-booking", source: "module", moduleId: "booking", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Booking\nNår du reserverer en time/booking, lagrer vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding, med grunnlag i at behandlingen er nødvendig for å gjennomføre avtalen. Opplysningene brukes til å gjennomføre avtalen."
+      "# Booking\nNår du gjennomfører en booking, behandler vi navn, e-postadresse, telefonnummer, valgt tidspunkt og en eventuell melding. Formålet er å registrere, bekrefte, administrere og gjennomføre bookingen. Når bookingen gjelder en avtale med deg som privatperson, bygger behandlingen på avtalen eller tiltak du har bedt om før avtalen. Når du bestiller på vegne av en virksomhet, bygger behandlingen på vår berettigede interesse i å administrere bestillingen."
     ) });
-    blocks.push({ id: "retention", source: "module", moduleId: "retention", included: true, edited: false, body: computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking) });
+    // Ny blokk (2026-08-17, brukarutkast): CRM-drive kundedialog hadde
+    // ingen eiga blokk før i det heile, sjølv om module-crm.js faktisk
+    // lagrar akkurat denne typen data. Styrt av features.crm, same
+    // !== false-mønster som contactForm/chat over.
+    if (hasCrm) blocks.push({ id: "mod-customers", source: "module", moduleId: "customers", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Kunder og kundedialog\nNår du er kunde, potensiell kunde eller kontaktperson hos en virksomhet vi har dialog med, kan vi lagre navn, kontaktopplysninger, stilling og virksomhet, tidligere henvendelser, tilbud og bookinger, e-post- og chatdialog, notater fra telefonsamtaler og møter, avtalt oppfølging og opplysninger som er nødvendige for å levere tjenester. Formålet er å administrere kundeforholdet, følge opp dialog og avtaler, levere tjenester og dokumentere det som er avtalt. Når du selv er part i en avtale, bygger behandlingen på at den er nødvendig for å inngå eller oppfylle avtalen. Når du representerer en virksomhet, bygger behandlingen på vår berettigede interesse i å administrere kundeforholdet."
+    ) });
+    blocks.push({ id: "retention", source: "module", moduleId: "retention", included: true, edited: false, body: computeRetentionBlock(sc, hasContactForm, hasTilbud, hasBooking, hasChat, hasCrm, hasAnalytics || hasSidetelling) });
     // Plausible-linja RETTA 2026-08-13 (GPT-funn): "ikke samler inn
     // personidentifiserbar informasjon" var teksten sjølv som avsa ein
     // juridisk konklusjon om kva som ER/ikkje er personidentifiserbart --
@@ -5315,19 +5366,34 @@ window.VwConsole = (function () {
     // identifikatorar, IP ikkje lagra), verifisert mot Plausible sin eigen
     // DPA/dokumentasjon 2026-08-13, som lèt lesaren/juristen sjølv trekkje
     // konklusjonen.
+    //
+    // RETTA 2026-08-17 (brukarutkast): Plausible-greina er MEDVITE urørt --
+    // brukaren sitt utkast dekte berre sidetelling-tilfellet, og
+    // Plausible-tekst er alt teknisk presis. Berre sidetelling-greina er
+    // bytta til den nye, kortare ordlyden (same fakta, konsist skildra).
+    // "Ingen analyse i det heile"-greina er òg urørt.
     var cookieText = hasAnalytics
       ? "Ja, vi bruker Plausible Analytics for trafikkstatistikk — et personvernvennlig analyseverktøy som ikke bruker informasjonskapsler eller vedvarende identifikatorer, og som ikke lagrer besøkendes IP-adresser."
       : hasSidetelling
-      ? "Den interne sidetellingen bruker ingen cookies og verken leser fra eller skriver til nettleserlagring for analysegruppering. Vi bruker sidetellingen til trafikkstatistikk (sidevisninger, henvisninger, klikk på kontaktknapper, en grov enhetskategori, enkel filtrering av automatisert trafikk, hvilke sider besøkende kommer fra/går til, og hvilken kampanje en lenke er merket med hvis du selv har lagt til dette i lenken, ofte kalt UTM). På serveren lager vi en kode av datoen, nettstedsadressen, IP-adressen og informasjon nettleseren automatisk sender. Selve hendelsen og dagskoden lagres. Av IP-adressen, nettstedsadressen og den detaljerte nettleserinformasjonen lagres bare dagskoden, ikke de rå verdiene, og koden endres automatisk hver dag. Vi bruker ingen separat analyseleverandør; hendelsene og dagskoden lagres i nettsidens Supabase-database hos driftsleverandøren."
+      ? "Nei. Nettsiden bruker ikke informasjonskapsler eller lokal lagring. Vi fører likevel enkel, serverbasert statistikk over sidevisninger, henvisningsside, enhetstype og utvalgte klikk for å forstå hvordan nettsiden brukes og forbedre innholdet. IP-adresse og nettleserinformasjon brukes kortvarig til å skille besøk samme dag, men lagres ikke som rådata. Vi følger ikke besøkende mellom ulike dager eller nettsteder. Behandlingen bygger på vår berettigede interesse i å måle og forbedre nettsiden."
       : "Nei. Denne siden bruker ingen cookies eller analyseverktøy som samler inn personopplysninger.";
+    // RETTA 2026-08-17 (brukarutkast): ny Formål/Grunnlag-struktur, same
+    // substans som før.
     if (hasChat) blocks.push({ id: "mod-chat", source: "module", moduleId: "chat", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Chat\nNår du bruker chat-funksjonen på nettsiden, lagrer vi det du skriver, samt navn og e-postadresse dersom du oppgir dette, med grunnlag i vår berettigede interesse i å kunne besvare henvendelser sendt via chat. Vi lagrer også tekniske opplysninger som hvilken side du chattet fra, hvor du kom fra, og grunnleggende informasjon om nettleseren din. Opplysningene brukes til å besvare henvendelsen din."
+      "# Chat\nNår du bruker chatten, behandler vi innholdet i samtalen, navn og e-postadresse dersom du oppgir dette, siden du tok kontakt fra og nødvendig teknisk informasjon. Formålet er å motta, besvare og følge opp dialogen. Behandlingen bygger på vår berettigede interesse i å tilby og følge opp henvendelser gjennom chat."
     ) });
     blocks.push({ id: "mod-analytics", source: "module", moduleId: "analytics", included: true, edited: false, body: privacyTextToRichHtml("# Bruker vi cookies?\n" + cookieText) });
     blocks.push({ id: "mod-suppliers", source: "module", moduleId: "suppliers", included: true, edited: false, body: computeSupplierBlock(sc, an) });
-    blocks.push({ id: "breach", source: "module", moduleId: "breach", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Melding ved brudd på personopplysningssikkerheten\nDersom det skulle oppstå et brudd på personopplysningssikkerheten — for eksempel uautorisert tilgang til eller tap av opplysninger — som medfører risiko for dine rettigheter og friheter, vil vi varsle Datatilsynet uten unødig opphold og senest innen 72 timer etter at vi ble kjent med bruddet, i tråd med personvernforordningen (GDPR) artikkel 33. Dersom bruddet innebærer høy risiko for deg, vil vi også varsle deg direkte."
-    ) });
+    // "breach" (Melding ved brudd på personopplysningssikkerheten) FJERNA
+    // 2026-08-17 (brukarønske) -- høyrer heime i databehandleravtalen (DPA)
+    // mellom Vibeverk og Kunden, ikkje i personvernerklæringa til
+    // sluttbrukar. Sjå ny §10 i COMPLIANCE_DOCUMENT_STANDARD_SUGGESTIONS
+    // sin kundeavtale-mal -- MERK at retninga der er den MOTSETTE av det
+    // denne blokka sa: her stod det "vi [kunden] varslar Datatilsynet"
+    // (behandlingsansvarleg sin eigen art. 33(1)-plikt), medan DPA-en sin
+    // nye klausul er Vibeverk (databehandlar) sin plikt til å varsle
+    // KUNDEN utan ugrunna opphald (art. 33(2)) -- ikkje berre flytta same
+    // teksten, ulik juridisk retning.
     return blocks;
   }
 
@@ -5348,6 +5414,15 @@ window.VwConsole = (function () {
   function computeSupplierBlock(sc, an) {
     var region = (sc.privacy.suppliers && sc.privacy.suppliers.supabaseRegion) || "";
     var lines = ["# Hvilke leverandører behandler opplysningene dine?"];
+    // Ny opningslinje (2026-08-17, brukarutkast): namngjev Vibeverk AS
+    // eksplisitt som databehandlar for sjølve plattforma, med ei kort
+    // nemning av support-tilgang. Fast tekst (Vibeverk sjølv, ikkje
+    // kundespesifikk) -- same substans som "Brukerstøtte"-avsnittet i
+    // "employees"-blokka, men her i rett samanheng (leverandøroversikta),
+    // ikkje berre i Workspace-avsnittet. Begge står medvite ved lag --
+    // ei lita gjentaking i eit juridisk dokument er tryggare enn å
+    // forlate eitt av stadene tause.
+    lines.push("Vi bruker Vibeverk AS som leverandør av nettsideløsningen og funksjonene som er beskrevet her. Vibeverk behandler personopplysninger på våre vegne og etter våre instrukser. Ved avtalt brukerstøtte kan autorisert personell hos Vibeverk få tidsbegrenset tilgang for å undersøke eller rette en feil. Slik tilgang logges.");
     var transferLines = [];
     (sc._vendorRegistry || VIBEVERK_VENDORS).forEach(function (v) {
       if (!vendorIsActive(v, an)) return;
@@ -5504,6 +5579,38 @@ window.VwConsole = (function () {
     var stamp = new Date().toISOString().slice(0, 10);
     a.href = url;
     a.download = "personvernerklaering-" + (tenantName ? tenantName + "-" : "") + stamp + ".html";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Kunde-spesifikk DPA-draft (2026-08-17, brukarønske): kundeavtale-malen
+  // (COMPLIANCE_DOCUMENT_STANDARD_SUGGESTIONS.kundeavtale, kontrollplan-
+  // delt, generisk mellom alle kundar) er UENDRA -- denne funksjonen bytter
+  // berre ut den generiske "kunden («Behandlingsansvarleg»)" i §1 med det
+  // faktiske firmanamnet (+ org.nr om sett) for EIN bestemt kunde, og
+  // eksporterer resultatet som HTML, same nedlastingsmønster som
+  // privacyExportPublishedHtml(). Berre desse to felta -- meir enn det var
+  // ikkje bedt om.
+  function dpaExportDraftHtml(companyName, orgNr) {
+    var partyLine = (companyName || "Kunden") + (orgNr ? " (org.nr " + orgNr + ")" : "") + " («Behandlingsansvarleg»)";
+    var text = COMPLIANCE_DOCUMENT_STANDARD_SUGGESTIONS.kundeavtale.replace("kunden («Behandlingsansvarleg»)", partyLine);
+    // Same sanering-ved-eksport-disiplin som privacyExportPublishedHtml()
+    // sitt eige notat -- fila er meint å opnast i ein nettlesar seinare.
+    var bodyHtml = C.sanitizeRichHtml(privacyTextToRichHtml(text)) || "<p>(Tomt innhald)</p>";
+    var doc = "<!doctype html><html lang=\"no\"><head><meta charset=\"utf-8\">" +
+      "<title>Databehandleravtale (utkast)</title>" +
+      "<style>body{font:16px/1.6 system-ui,sans-serif;max-width:720px;margin:2.5rem auto;padding:0 1.5rem;color:#1a1a1a}h1{font-size:1.5rem}p.meta{color:#666;font-size:.85rem}</style>" +
+      "</head><body>" +
+      "<h1>Databehandleravtale — utkast</h1>" +
+      "<p class=\"meta\">Generert " + C.esc(new Date().toLocaleString("nb-NO")) + ". Utkast, ikkje signert.</p>" +
+      bodyHtml +
+      "</body></html>";
+    var blob = new Blob([doc], { type: "text/html" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = "databehandleravtale-utkast-" + (companyName ? companyName + "-" : "") + stamp + ".html";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -7581,8 +7688,9 @@ window.VwConsole = (function () {
           (tenant.dpa_signed_at ? "Signert " + C.esc(new Date(tenant.dpa_signed_at).toLocaleDateString("nb-NO"))
             : tenant.dpa_sent_at ? "Sendt " + C.esc(new Date(tenant.dpa_sent_at).toLocaleDateString("nb-NO")) + ", ikkje signert enno"
             : "Ikkje sendt") +
-          '<p class="field__hint">Malen finn du i Compliance → Kundeavtale (DPA) — eksporter til Word/PDF og send manuelt for signatur, deretter registrer status her. Ingen e-signeringsintegrasjon i dag.</p>' +
+          '<p class="field__hint">Malen finn du i Compliance → Kundeavtale (DPA) — eksporter til Word/PDF og send manuelt for signatur, deretter registrer status her. Ingen e-signeringsintegrasjon i dag. «Last ned utkast for denne kunden» under fyller inn firmanavn/org.nr automatisk, resten av malen er framleis generisk.</p>' +
           '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem">' +
+            C.button({ label: "Last ned utkast for denne kunden", variant: "ghost", attrs: 'type="button" id="kd-dpa-draft-btn" style="font-size:.82rem"' }) +
             C.button({ label: "Marker som sendt", variant: "ghost", attrs: 'type="button" id="kd-dpa-sent-btn" style="font-size:.82rem"' }) +
             '<input type="file" id="kd-dpa-file" accept="application/pdf" style="max-width:220px;font-size:.8rem">' +
             C.button({ label: "Last opp signert PDF", variant: "ghost", attrs: 'type="button" id="kd-dpa-upload-btn" style="font-size:.82rem"' }) +
@@ -7860,6 +7968,23 @@ window.VwConsole = (function () {
       });
     }
 
+    var dpaDraftBtn = wrap.querySelector("#kd-dpa-draft-btn");
+    if (dpaDraftBtn) {
+      dpaDraftBtn.addEventListener("click", function () {
+        // getSC() hentar DENNE tenanten sin eigen superconfig (_activeTenant
+        // er alt sett til rett kunde av sidemeny-veljaren) -- ikkje noko
+        // som alt ligg lasta her, sidan Kundar-fana i utgangspunktet berre
+        // opererer på kontrollplan-raden (tenant), ikkje sc.
+        var out = wrap.querySelector("#kd-dpa-status");
+        statusMsg(out, "Genererer utkast…", true);
+        getSC(function (sc) {
+          var company = sc.company || {};
+          var orgNr = ((sc.footer || {}).orgNr || "").trim();
+          dpaExportDraftHtml(company.name, orgNr);
+          statusMsg(out, "✓ Utkast lasta ned", true);
+        });
+      });
+    }
     var dpaSentBtn = wrap.querySelector("#kd-dpa-sent-btn");
     if (dpaSentBtn) {
       dpaSentBtn.addEventListener("click", function () {
@@ -8130,10 +8255,20 @@ window.VwConsole = (function () {
       "# 7. Bruk av underleverandørar\nDatabehandlar brukar Supabase (database/autentisering/lagring), Vercel (hosting) og Resend (e-post) som underleverandørar, og eventuelt Plausible (analyse) dersom aktivert. Sjå Databehandlar sitt leverandørregister for oppdatert oversikt. Behandlingsansvarleg vert varsla ved vesentlege endringar i underleverandørar.\n\n" +
       "# 8. Overføring til tredjeland\nEnkelte underleverandørar (Vercel, Resend) er etablerte i USA. Overføring skjer basert på EUs standardavtaler (SCC) og/eller tilsvarande godkjende overføringsmekanismar, sjå leverandørregisteret for detaljar per leverandør.\n\n" +
       "# 9. Bistand til Behandlingsansvarleg\nDatabehandlar skal, så langt det er mogleg, bistå Behandlingsansvarleg med å svare på førespurnadar frå registrerte (innsyn, retting, sletting m.m.) og med eventuelle personvernkonsekvensvurderingar.\n\n" +
-      "# 10. Sletting/retur ved avtaleslutt\nVed avslutning av kundeforholdet skal personopplysningane slettast eller returnerast til Behandlingsansvarleg, etter Behandlingsansvarleg sitt val, med mindre lovpålagt lagringsplikt gjeld.\n\n" +
-      "# 11. Revisjon\nBehandlingsansvarleg kan be om dokumentasjon som stadfestar at Databehandlar oppfyller sine plikter etter denne Avtalen.\n\n" +
-      "# 12. Ansvar\nPartane sitt ansvar følgjer av GDPR art. 82 og gjeldande rett.\n\n" +
-      "# 13. Ikraftsetjing\nDenne Avtalen trer i kraft ved oppstart av kundeforholdet.",
+      // Nytt punkt (2026-08-17, brukarønske): flytta hit frå
+      // personvernerklæringa (sjå computeTenantPrivacyBlocks() sitt eige
+      // notat om "breach"-blokka som vart fjerna same runde). MERK
+      // retninga: dette er DATABEHANDLAR (Vibeverk) sin eigen plikt til å
+      // varsle BEHANDLINGSANSVARLEG (Kunden) utan ugrunna opphald ved eit
+      // avvik (GDPR art. 33(2)) -- IKKJE Behandlingsansvarleg sin eigen
+      // plikt til å varsle Datatilsynet (art. 33(1)), som er Kunden sitt
+      // eige ansvar overfor sine sluttbrukarar, ikkje noko denne DPA-en
+      // regulerer.
+      "# 10. Melding om avvik\nDatabehandlar skal varsle Behandlingsansvarleg utan ugrunna opphald etter å ha blitt merksam på eit brot på personopplysningstryggleiken (jf. GDPR art. 33(2)), slik at Behandlingsansvarleg kan oppfylle sine eigne plikter overfor Datatilsynet og eventuelt registrerte. Varselet skal, så langt det er mogleg, skildre kva slag brot det gjeld, kva for opplysningar og registrerte som truleg er råka, og kva tiltak Databehandlar har sett i verk eller føreslår.\n\n" +
+      "# 11. Sletting/retur ved avtaleslutt\nVed avslutning av kundeforholdet skal personopplysningane slettast eller returnerast til Behandlingsansvarleg, etter Behandlingsansvarleg sitt val, med mindre lovpålagt lagringsplikt gjeld.\n\n" +
+      "# 12. Revisjon\nBehandlingsansvarleg kan be om dokumentasjon som stadfestar at Databehandlar oppfyller sine plikter etter denne Avtalen.\n\n" +
+      "# 13. Ansvar\nPartane sitt ansvar følgjer av GDPR art. 82 og gjeldande rett.\n\n" +
+      "# 14. Ikraftsetjing\nDenne Avtalen trer i kraft ved oppstart av kundeforholdet.",
     sikkerheitspolicy:
       "# Formål\nDenne policyen skildrar dei tekniske og organisatoriske tiltaka Vibeverk AS har på plass for å sikre personopplysningar som vert behandla gjennom plattformen.\n\n" +
       "# Tilgangsstyring\nTilgang til kundedata og internverktøy er avgrensa etter tenstleg behov. Console (operatørverktøyet) krev aktiv operatørstatus og rollesjekk (operatør/superadmin) for kvar handling. Workspace brukar rollestyrt tilgang (admin/editor/member). Databasetilgang er RLS-styrt (Row Level Security) i Supabase -- kvar handling er eksplisitt policy-gata, ikkje standard-open.\n\n" +

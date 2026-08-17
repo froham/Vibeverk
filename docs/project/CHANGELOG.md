@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.150.0 — 2026-08-17
+
+**Personvern-standardteksten (Standardforslag) skriven om, etter brukaren sitt eige fullstendige tekstutkast — gjennomgått, tilbakemeldt og eksplisitt godkjent punkt for punkt før noko vart koda (sjå samtalen same dag).**
+
+- **Fjerna**: `intro`-blokka (generisk innleiing) -- opningsavsnittet i `controller` dekker no den funksjonen sjølv, same struktur som utkastet.
+- **Ny blokk**: "Kunder og kundedialog" (CRM-drive kundedialog hadde ingen eiga blokk før, sjølv om `module-crm.js` faktisk lagrar akkurat denne typen data) -- styrt av `features.crm !== false`.
+- **Fjerna frå personvernteksten, flytta til DPA-en**: "Melding ved brudd på personopplysningssikkerheten". MERK retninga endra seg, ikkje berre staden -- den gamle teksten var kunden (behandlingsansvarleg) sin eigen art. 33(1)-plikt til å varsle Datatilsynet; den nye DPA-klausulen (§10, ny, resten av punkta omnummerert §10-13 → §11-14) er Vibeverk (databehandlar) sin plikt til å varsle KUNDEN utan ugrunna opphald (art. 33(2)) -- ulik juridisk retning, ikkje ei rein flytting.
+- **Rettar-avsnittet** (behalde id `baseline` for å ikkje orphane ei eventuell operatør-redigering) utvida med uttrykkeleg protest-rett, rett til å trekkje tilbake samtykke, og eit fyldigare Datatilsynet-klageavsnitt (ID-porten + postadresse -- stadfesta direkte mot datatilsynet.no same dag).
+- **Tilbud/Booking** fekk ei ekte juridisk forbetring: ulikt behandlingsgrunnlag alt etter om førespurnaden kjem frå ein privatperson (nødvendig for avtale) eller på vegner av ei verksemd (berettiga interesse).
+- **Cookies-teksten**: berre sidetelling-greina bytta til ny, kortare ordlyd -- Plausible-greina er MEDVITE urørt (alt teknisk presis, utkastet dekte ikkje det tilfellet).
+- **Lagringstid-avsnittet**: sjølve dei konfigurerbare standardverdiane (`PRIVACY_FORM_RETENTION_SUGGESTION`) er UENDRA (eksplisitt brukarønske) -- berre forklaringsteksten utvida med dekning for chat/potensielle-kundar/etablerte-kundar/besøksstatistikk, som før ikkje hadde noko tekst i det heile. "Etter opprettelse" (ikkje "etter siste kontakt") brukt spesifikt for kontakt/tilbud/booking, sidan det er dei tre kategoriane retention-sweep faktisk måler.
+- **Leverandør-blokka** fekk ei ny opningslinje som namngjev Vibeverk AS sjølv som databehandlar + support-tilgang, "Hvor lagres opplysningene" vevd inn her (framleis generert dynamisk frå leverandørregisteret, ikkje hardkoda).
+- **Ny funksjon**: "Last ned utkast for denne kunden" i Kundar → DPA-kortet -- fyller inn den konkrete kunden sitt firmanavn + org.nr (henta via `getSC()` for akkurat den valde tenanten) i kundeavtale-malen sitt opningsavsnitt, eksportert som HTML. Malen sjølv (delt, kontrollplan-lagra) er elles uendra -- berre §1 sin partsnemning vert bytta ut per eksport, ikkje lagra tilbake nokon stad.
+- 6 nye jsdom-testar (3 i `test-privacy-console.js`, 1 i `test-compliance-console.js`, 1 i `test-kundar-console.js`) -- fann undervegs at ein tidlegare kommentar i `test-privacy-console.js` feilaktig hevda "Standardforslag" var for kostbart å teste end-to-end; investeringa (rik-tekst-editor-mock) var alt gjort i 0.149.2, kommentaren var berre ikkje oppdatert.
+
+**Ope, medvite utsett** (brukaren sitt eige spørsmål, ikkje bygd denne runda): om automatisk sletting/retention bør byggjast, gjeve at retention-sweep i dag berre tel (dry-run), aldri slettar -- verdt å sjå på, men eksplisitt utanfor denne runda sitt omfang.
+
 ## 0.149.2 — 2026-08-13
 
 **Personvern-publisering var strukturelt umogleg å opne att for ALLE kundar** — funne av brukaren via live testing (fylte inn kontaktinfo som instruert, publisering feila likevel). Root cause: publiseringssperra (og sjølve tekstgeneratoren) sjekka `sc.contact` (superconfig, operatør-/Console-styrt), men kontaktinfo (e-post/telefon/adresse) vert redigert av KUNDEN sjølv i deira eige Web-admin-panel ("Innhald → Kontaktinfo"), som lagrar til ein HEILT ANNA lagringsnøkkel ("content"). `sc.contact` eksisterte difor ALDRI, uansett kva nokon fylte ut — sperra kunne strukturelt ikkje opnast att, og feilmeldinga peikte i tillegg til feil stad (Console sin eigen "Web → Firma"-fane, som aldri har hatt desse felta).
