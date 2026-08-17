@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.150.1 — 2026-08-17
+
+**To rettingar til 0.150.0, funne av brukaren same dag ved å faktisk trykke «Standardforslag» på Vibeverk sin eigen tenant.**
+
+- **Pensjonerte avsnitt («Innledning»/«Avviksvarsling») dukka opp att som eit «orphan» nedst i dokumentet.** Root cause: `mergePrivacyBlocks()` sin eksisterande, medvitne åtferd ("ei modul-blokk for ein modul som ikkje lenger er aktiv vert teken vare på, operatøren fjernar ho sjølv") vart bygd for scenarioet "ein kunde skrudde av `features.booking`", ikkje "denne id-en finst ikkje lenger i det heile i koden". `intro`/`breach` (fjerna i 0.150.0) fall inn i same handtering, og enda difor opp attpålagt nedst kvar gong "Standardforslag" vart trykt. Verre: sidan begge har `source:"module"`, hadde dei ingen "Fjern avsnitt"-knapp i editoren (berre `source:"manual"`-blokker har den) -- operatøren kunne ALDRI fjerna dei att gjennom vanleg UI. Retta med ei eksplisitt `RETIRED_PRIVACY_BLOCK_IDS`-liste i `mergePrivacyBlocks()`. Verkar retroaktivt -- eit nytt trykk på "Standardforslag" etter denne fiksen fjernar dei automatisk frå ein alt-eksisterande draft, ingen manuell opprydding naudsynt.
+- **Behandlingsansvarleg-avsnittet** fekk eit ekte paragraf-skilje (i staden for éin samanhengande tekstblokk) mellom sjølve ansvars-setninga og kontaktinfo-lista, etter at brukaren viste eit klarare formatert eksempel -- "denne erklæringen" (ikkje "denne personvernerklæringen") for ordrett samsvar med utkastet.
+
+Ny jsdom-regresjonstest som simulerer nøyaktig scenarioet (ein tenant med ein alt-publisert versjon frå FØR 0.150.0, intro/breach liggjande i `bodyBlocks`) og stadfestar at eit nytt "Standardforslag"-trykk faktisk fjernar dei.
+
 ## 0.150.0 — 2026-08-17
 
 **Personvern-standardteksten (Standardforslag) skriven om, etter brukaren sitt eige fullstendige tekstutkast — gjennomgått, tilbakemeldt og eksplisitt godkjent punkt for punkt før noko vart koda (sjå samtalen same dag).**

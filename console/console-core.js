@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.150.0";
+  var VIBEVERK_VERSION = "0.150.1";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -5289,9 +5289,18 @@ window.VwConsole = (function () {
     // innleiing) er fjerna -- opningsavsnittet i "controller" dekker no den
     // funksjonen sjølv, same struktur som brukaren sitt eige utkast (ingen
     // separat generisk innleiing).
+    // RETTA 2026-08-17 (brukarfunn, live testing): opphavleg éin samanhengande
+    // avsnitt (kun \n, aldri \n\n) -- brukaren viste eit klarare, konkret
+    // formatert eksempel med reelle paragraf-skilje: behandlingsansvarleg-
+    // setninga for seg sjølv, DEREFTER kontaktinfo-innleiinga + E-post/
+    // Telefon/Adresse-lista som sitt eige avsnitt. \n\n mellom dei to
+    // meiningsbolkane gjev nettopp dette (privacyTextToRichHtml() sin
+    // \n\n-splitt), \n framleis internt i kontakt-lista for <br> mellom
+    // kvar linje. Ordlyden "denne erklæringen" (ikkje "denne
+    // personvernerklæringen") matchar no brukaren sitt utkast ordrett.
     blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? ", organisasjonsnummer " + orgNr + "," : "") + " er behandlingsansvarlig for behandlingen som beskrives i denne personvernerklæringen." +
-      (contactInfo.length ? " Har du spørsmål om personvern eller ønsker å bruke rettighetene dine, kan du kontakte oss:\n" +
+      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? ", organisasjonsnummer " + orgNr + "," : "") + " er behandlingsansvarlig for behandlingen som beskrives i denne erklæringen." +
+      (contactInfo.length ? "\n\nHar du spørsmål om personvern eller ønsker å bruke rettighetene dine, kan du kontakte oss:\n" +
         [contact.email ? "E-post: " + contact.email : "", contact.phone ? "Telefon: " + contact.phone : "", contact.address ? "Adresse: " + contact.address : ""].filter(Boolean).join("\n")
       : "")
     ) });
@@ -5465,6 +5474,21 @@ window.VwConsole = (function () {
   // røre eigne, manuelt tilføyde avsnitt (source:"manual" er urørt uansett,
   // sjå pushen under). Klikk-handteraren viser ei åtvaring FØR dette kallet
   // skjer dersom det faktisk finst noko redigert å overskrive.
+  // "intro"/"breach" (2026-08-17, brukarfunn, live testing): dette er IKKJE
+  // eit "features.*-flagget vart skrudd av"-orphan (den vanlege, medvitne
+  // grunngjevinga for å ta vare på ei modul-blokk som ikkje lenger er
+  // aktiv) -- dei to id-ane er ARKITEKTONISK PENSJONERTE, fjerna frå
+  // computeTenantPrivacyBlocks() sjølv (sjå 0.150.0). Utan denne eksplisitte
+  // lista vart dei handsama identisk med eit vanleg orphan: framleis
+  // dukka opp att kvar gong "Standardforslag" vart trykt, no lengst NEDST i
+  // dokumentet (etter alle dei ferske blokkene) sidan orphan-steget under
+  // alltid legg til ETTER `merged` sitt ferske innhald. Verre: sidan begge
+  // har `source:"module"`, hadde dei ingen "Fjern avsnitt"-knapp i det heile
+  // i editoren (berre "manual"-blokker har den knappen) -- operatøren kunne
+  // ALDRI fjerna dei att gjennom vanleg UI, uansett kor mange gonger
+  // "Standardforslag" vart trykt.
+  var RETIRED_PRIVACY_BLOCK_IDS = { intro: true, breach: true };
+
   function mergePrivacyBlocks(existingBlocks, freshBlocks, forceOverwrite) {
     var existingById = {};
     (existingBlocks || []).forEach(function (b) { existingById[b.id] = b; });
@@ -5476,6 +5500,7 @@ window.VwConsole = (function () {
     var freshIds = {};
     freshBlocks.forEach(function (f) { freshIds[f.id] = true; });
     (existingBlocks || []).forEach(function (b) {
+      if (RETIRED_PRIVACY_BLOCK_IDS[b.id]) return;
       if (b.source === "manual" || !freshIds[b.id]) merged.push(b);
     });
     return merged;
