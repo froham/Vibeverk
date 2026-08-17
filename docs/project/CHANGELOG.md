@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.150.2 — 2026-08-17
+
+**«intro» attende, same dag -- brukaren ombestemte seg.** 0.150.0 fjerna `intro`-blokka heilt (fyrste utkastet frå brukaren opna direkte med behandlingsansvarleg, ingen generisk innleiing). Brukaren ønska likevel ein kort "Om denne personvernerklæringen"-seksjon, plassert FØR "Hvem er behandlingsansvarlig" -- med heilt NY tekst, ikkje den opphavlege (pensjonerte) ordlyden.
+
+- `intro` er no ein vanleg, aktiv blokk igjen (`privacyModuleActive()`, `PRIVACY_MODULE_LABEL`), plassert FØRST i `computeTenantPrivacyBlocks()`.
+- `RETIRED_PRIVACY_BLOCK_IDS` (0.150.1-fiksen) inneheld no berre `breach` -- `intro` er ikkje lenger pensjonert.
+- Ny tekst: "Denne personvernerklæringen forklarer hvordan [FIRMANAVN] behandler personopplysninger når du besøker nettsiden, kontakter oss, ber om tilbud, bestiller, bruker chat eller har dialog med oss som kunde eller potensiell kunde." -- dynamisk firmanamn, same mønster som `controller`.
+- Regresjonstesten frå 0.150.1 oppdatert: stadfestar no at gamal intro-tekst vert BYTT UT med fersk tekst (ikkje ståande att i tillegg), pluss ein ny rekkjefølgje-sjekk (intro FØR behandlingsansvarleg).
+
 ## 0.150.1 — 2026-08-17
 
 **To rettingar til 0.150.0, funne av brukaren same dag ved å faktisk trykke «Standardforslag» på Vibeverk sin eigen tenant.**
