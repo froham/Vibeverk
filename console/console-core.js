@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.150.1";
+  var VIBEVERK_VERSION = "0.150.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -4809,10 +4809,12 @@ window.VwConsole = (function () {
   // interne id-en ("booking") rått.
   // "intro"/"breach" fjerna 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt
   // eige notat) -- "general"/"customers" nye same runde.
+  // "intro" gjeninnført 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt
+  // eige notat) -- fjerna, så attinnsett same dag med ny tekst.
   var PRIVACY_MODULE_LABEL = {
     baseline: "Rettar", contactForm: "Kontaktskjema", quote: "Tilbud",
     booking: "Booking", analytics: "Cookies/analyse", suppliers: "Leverandørar",
-    controller: "Behandlingsansvarlig", general: "Generell informasjon",
+    intro: "Innledning", controller: "Behandlingsansvarlig", general: "Generell informasjon",
     retention: "Lagringstid", employees: "Tilsette (Workspace)",
     chat: "Chat", customers: "Kunder"
   };
@@ -5115,7 +5117,7 @@ window.VwConsole = (function () {
     // ikkje styrt av noko features.*-flagg -- same "alltid aktiv"-grunngjeving
     // som baseline/suppliers over. "intro"/"breach" fjerna, "general" ny,
     // begge 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt eige notat).
-    if (moduleId === "controller" || moduleId === "general" || moduleId === "retention" || moduleId === "employees") return true;
+    if (moduleId === "intro" || moduleId === "controller" || moduleId === "general" || moduleId === "retention" || moduleId === "employees") return true;
     // module-chat.js sin eigen standard er "på" med mindre eksplisitt skrudd
     // av (same !== false-mønster som contactForm over) -- IKKJE eit "alltid
     // aktiv"-modul slik baseline/suppliers er, sidan features.chat faktisk
@@ -5284,11 +5286,15 @@ window.VwConsole = (function () {
     var orgNr = ((sc.footer || {}).orgNr || "").trim();
 
     var blocks = [];
-    // Standardtekst-revisjon (2026-08-17, brukarutkast, sjå CHANGELOG for full
-    // grunngjeving): "intro" (generisk "om denne personvernerklæringen"-
-    // innleiing) er fjerna -- opningsavsnittet i "controller" dekker no den
-    // funksjonen sjølv, same struktur som brukaren sitt eige utkast (ingen
-    // separat generisk innleiing).
+    // "intro" fjerna 2026-08-17, GJENINNFØRT same dag (brukarfunn) med NY
+    // tekst -- fyrste utkastet hadde ingen generisk innleiing i det heile,
+    // men brukaren ombestemte seg og ville ha ein kort, dynamisk "om denne
+    // erklæringa"-seksjon FØRST, over "Hvem er behandlingsansvarlig". Ikkje
+    // same ordlyd som den opphavlege (pensjonerte) intro-teksten frå før
+    // 0.150.0 -- heilt ny tekst, spesifisert av brukaren.
+    blocks.push({ id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Om denne personvernerklæringen\nDenne personvernerklæringen forklarer hvordan " + (company.name || "vi") + " behandler personopplysninger når du besøker nettsiden, kontakter oss, ber om tilbud, bestiller, bruker chat eller har dialog med oss som kunde eller potensiell kunde."
+    ) });
     // RETTA 2026-08-17 (brukarfunn, live testing): opphavleg éin samanhengande
     // avsnitt (kun \n, aldri \n\n) -- brukaren viste eit klarare, konkret
     // formatert eksempel med reelle paragraf-skilje: behandlingsansvarleg-
@@ -5474,20 +5480,25 @@ window.VwConsole = (function () {
   // røre eigne, manuelt tilføyde avsnitt (source:"manual" er urørt uansett,
   // sjå pushen under). Klikk-handteraren viser ei åtvaring FØR dette kallet
   // skjer dersom det faktisk finst noko redigert å overskrive.
-  // "intro"/"breach" (2026-08-17, brukarfunn, live testing): dette er IKKJE
-  // eit "features.*-flagget vart skrudd av"-orphan (den vanlege, medvitne
+  // "breach" (2026-08-17, brukarfunn, live testing): dette er IKKJE eit
+  // "features.*-flagget vart skrudd av"-orphan (den vanlege, medvitne
   // grunngjevinga for å ta vare på ei modul-blokk som ikkje lenger er
-  // aktiv) -- dei to id-ane er ARKITEKTONISK PENSJONERTE, fjerna frå
-  // computeTenantPrivacyBlocks() sjølv (sjå 0.150.0). Utan denne eksplisitte
-  // lista vart dei handsama identisk med eit vanleg orphan: framleis
-  // dukka opp att kvar gong "Standardforslag" vart trykt, no lengst NEDST i
-  // dokumentet (etter alle dei ferske blokkene) sidan orphan-steget under
-  // alltid legg til ETTER `merged` sitt ferske innhald. Verre: sidan begge
-  // har `source:"module"`, hadde dei ingen "Fjern avsnitt"-knapp i det heile
-  // i editoren (berre "manual"-blokker har den knappen) -- operatøren kunne
-  // ALDRI fjerna dei att gjennom vanleg UI, uansett kor mange gonger
+  // aktiv) -- id-en er ARKITEKTONISK PENSJONERT, fjerna frå
+  // computeTenantPrivacyBlocks() sjølv (sjå 0.150.0, flytta til DPA-en).
+  // Utan denne eksplisitte lista vart han handsama identisk med eit vanleg
+  // orphan: framleis dukka opp att kvar gong "Standardforslag" vart trykt,
+  // nedst i dokumentet (etter alle dei ferske blokkene) sidan orphan-steget
+  // under alltid legg til ETTER `merged` sitt ferske innhald. Verre: sidan
+  // han har `source:"module"`, hadde han ingen "Fjern avsnitt"-knapp i det
+  // heile i editoren (berre "manual"-blokker har den knappen) -- operatøren
+  // kunne ALDRI fjerna han att gjennom vanleg UI, uansett kor mange gonger
   // "Standardforslag" vart trykt.
-  var RETIRED_PRIVACY_BLOCK_IDS = { intro: true, breach: true };
+  //
+  // MERK: "intro" stod her òg fram til 2026-08-17, same dag -- brukaren
+  // ombestemte seg og ville ha "intro" attende (med NY tekst), difor fjerna
+  // frå denne lista att (sjå computeTenantPrivacyBlocks() sitt eige notat).
+  // "intro" er IKKJE lenger pensjonert.
+  var RETIRED_PRIVACY_BLOCK_IDS = { breach: true };
 
   function mergePrivacyBlocks(existingBlocks, freshBlocks, forceOverwrite) {
     var existingById = {};
