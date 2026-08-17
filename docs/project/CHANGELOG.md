@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.151.2 — 2026-08-17
+
+**Vercel-previewen kan no opne den tenant-uavhengige Console-flata utan å registrere eit flyktig preview-domene som kunde.** Første ekte preview av 0.151.1 vart korrekt stoppa av den generelle ukjent-tenant-porten med «Dette domenet er ikkje registrert som ein Vibeverk-kunde.»
+
+- Middleware slepp berre `/console` gjennom når `VERCEL_ENV` er eksakt `preview` og request-host er eksakt lik Vercel si servereigde `VERCEL_URL`.
+- Den eksisterande SITE_LOCK-kontrollen skjer framleis først, og Console krev framleis eiga control-plane-innlogging og aktiv superadmin for Arctic.
+- Vilkårlege `*.vercel.app`-hostar, Workspace, kundesider og same hostname i produksjonsmiljø får ikkje unntaket og held fram med `404` utan registrert tenant.
+- API-testar dekker alle fire grensene. Ingen tenantregistrering, Supabase-migrasjon eller produksjonsendring er gjort. Cache-bust: `console-core.js` 274→275.
+
 ## 0.150.0 — 2026-08-17
 
 **Personvern-standardteksten (Standardforslag) skriven om, etter brukaren sitt eige fullstendige tekstutkast — gjennomgått, tilbakemeldt og eksplisitt godkjent punkt for punkt før noko vart koda (sjå samtalen same dag).**

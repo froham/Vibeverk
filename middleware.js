@@ -136,6 +136,14 @@ async function resolveTenant(controlUrl, controlAnonKey, host) {
   return Array.isArray(rows) ? rows[0] : null;
 }
 
+function isExactConsolePreview(url, host) {
+  const deploymentHost = String(process.env.VERCEL_URL || "").trim().toLowerCase();
+  return process.env.VERCEL_ENV === "preview" &&
+    !!deploymentHost &&
+    host === deploymentHost &&
+    (url.pathname === "/console" || url.pathname === "/console/");
+}
+
 export default async function middleware(request) {
   const url = new URL(request.url);
 
@@ -214,7 +222,13 @@ export default async function middleware(request) {
     return rewrite(new URL("/api/tenant-config", request.url));
   }
 
-  if (controlUrl && controlAnonKey && host && !tenant) {
+  // Console er global og tenant-uavhengig, men den genererte preview-hostname
+  // finst med vilje ikkje i tenantregisteret. Slepp berre gjennom akkurat den
+  // deployment-hostname Vercel sjølv annonserer, berre i preview-miljøet og
+  // berre for /console. SITE_LOCK er kontrollert over, og Console krev framleis
+  // control-plane-innlogging. Produksjon, Workspace, kundesider og andre
+  // *.vercel.app-hostar held fram med 404 ved manglande tenant.
+  if (controlUrl && controlAnonKey && host && !tenant && !isExactConsolePreview(url, host)) {
     return new Response(
       "Dette domenet er ikkje registrert som ein Vibeverk-kunde.",
       { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
