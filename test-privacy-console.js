@@ -145,6 +145,10 @@ async function mount(opts) {
   // test (fanga under skriving av denne testfila, ikkje eit ekte
   // produksjonsproblem, sidan éin verkeleg operatørsesjon berre har ÉIN sc).
   var scSeedClone = JSON.parse(JSON.stringify(SC_SEED));
+  // opts.features (2026-08-17, ny for "Kunder og kundedialog"-testane): lèt
+  // ein test overstyre enkeltfelt i features utan å måtte klone/skrive om
+  // heile SC_SEED sjølv.
+  if (opts.features) Object.assign(scSeedClone.features, opts.features);
   var tenant = {
     from: function (table) {
       // "content" (2026-08-13-brukarfunn): kunden sitt eige Web-admin-
@@ -293,13 +297,42 @@ test("Publiser går gjennom når kunden faktisk har fylt ut kontaktinfo i sitt e
   assert.match(sectionText(m), /Publisert/, "publiseringa gjekk faktisk gjennom");
 });
 
-// MERK: "Standardforslag"-knappen (Dokument-fana, computeSupplierBlock() sin
-// faktiske kallar via computeTenantPrivacyBlocks()) er MEDVITE IKKJE testa
-// end-to-end her -- ho krev heile rik-tekst-editor-infrastrukturen
-// (App.ui.bindRichTextFields/readRichTextField, C.richTextField) mocka, ein
-// uforholdsmessig stor investering for noko som køyrer NØYAKTIG same to
-// linjer (`sc._vendorRegistry || VIBEVERK_VENDORS`, vendorIsActive()) som
-// testane over allereie dekker direkte via Leverandørar-fana, PLUSS no òg
-// stadfestar at sc._vendorRegistry faktisk er sett FØR Dokument-fana i det
-// heile vert vist (sjå testen over). Stadfesta ved kodelesing
-// (console-core.js sin computeSupplierBlock()), ikkje anteke.
+// MERK (oppdatert 2026-08-17): kommentaren som stod her hevda "Standardforslag"
+// var for kostbar å teste end-to-end (kravde rik-tekst-editor-infrastruktur).
+// Den investeringa vart likevel gjort (sjå sanitizeRichHtml/richTextField/
+// bindRichTextFields/readRichTextField/setRichTextField over, lagt til for
+// openNewDraft()/Publiser-testane) -- "Standardforslag" kan no testast billig,
+// difor testane under. computeSupplierBlock() sin eigen vendor_registry-logikk
+// er framleis dekt direkte via Leverandørar-fana over, ikkje duplisert her.
+test("Standardforslag genererer «Kunder og kundedialog»-avsnittet (nytt 2026-08-17), IKKJE lenger noko «Melding ved brudd»-avsnitt (flytta til DPA)", async function (t) {
+  var m = await mount({});
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  await openNewDraft(m);
+  m.dom.window.document.querySelector("#cs-priv-fetch").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  var text = sectionText(m);
+  assert.match(text, /Kunder og kundedialog/, "ny kundedialog-blokk finst i standardforslaget (features.crm er ikkje sett -- default på)");
+  assert.doesNotMatch(text, /Melding ved brudd/, "breach-avsnittet skal IKKJE lenger finnast i personvernteksten -- flytta til DPA-malen");
+});
+
+test("Standardforslag: opningsavsnittet bruker kundens eige firmanavn dynamisk, ikkje ein hardkoda placeholder", async function (t) {
+  var m = await mount({});
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  await openNewDraft(m);
+  m.dom.window.document.querySelector("#cs-priv-fetch").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  var text = sectionText(m);
+  assert.match(text, /Test AS er behandlingsansvarlig/, "SC_SEED sitt firmanavn (Test AS) kjem gjennom i den genererte teksten: " + text.slice(0, 300));
+});
+
+test("Standardforslag: «Kunder og kundedialog» forsvinn når features.crm er skrudd eksplisitt av", async function (t) {
+  var m = await mount({ features: { crm: false } });
+  t.after(function () { m.dom.window.close(); });
+  await openPersonvern(m);
+  await openNewDraft(m);
+  m.dom.window.document.querySelector("#cs-priv-fetch").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 20); });
+  assert.doesNotMatch(sectionText(m), /Kunder og kundedialog/, "blokka skal IKKJE genererast når kunden ikkje har CRM-modulen");
+});

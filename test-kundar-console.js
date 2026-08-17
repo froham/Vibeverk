@@ -48,12 +48,27 @@ function chainQuery(result) {
 
 var TENANT_SEED = { id: "t1", slug: "tenant", status: "active", data_plane_url: "https://tenant.example", data_plane_anon_key: "anon", data_plane_storage_key: "nordpunkt", retention_policy: { leads: { enabled: false, months: 12 } } };
 
-async function mount(retentionRunsSeed) {
+// Key-aware "store"-mock (same mønster som test-privacy-console.js sin
+// storeQuery()) -- naudsynt for DPA-utkast-testen under, som treng
+// getSC()/superconfig til faktisk å returnere eit firmanamn, ikkje berre
+// {} uansett kva nøkkel som vert spurt om (den generiske chainQuery()-
+// baserte tenant.from() alle dei ANDRE testane her brukar).
+function storeQuery(valuesByKey) {
+  var lastKey = null;
+  var chain = {
+    select: function () { return chain; },
+    eq: function (col, val) { if (col === "key") lastKey = val; return chain; },
+    maybeSingle: function () { return Promise.resolve({ data: { value: valuesByKey[lastKey] || {} }, error: null }); }
+  };
+  return chain;
+}
+
+async function mount(retentionRunsSeed, superconfigSeed) {
   var dom = new JSDOM('<!doctype html><html><body><div id="console-app"></div></body></html>', { runScripts: "outside-only", pretendToBeVisual: true, url: "https://vibeverk.no/console/" });
   var window = dom.window;
   window.SITE_CONFIG = { storageKey: "nordpunkt", company: { name: "Vibeverk" } };
   window.App = { ready: function (callback) { callback(window.SITE_CONFIG); } };
-  window.Components = { esc: esc, field: field, button: button, helpIcon: function () { return ""; } };
+  window.Components = { esc: esc, field: field, button: button, helpIcon: function () { return ""; }, sanitizeRichHtml: function (html) { return String(html || ""); } };
   var invokeCalls = [];
   var control = {
     auth: { onAuthStateChange: function () {}, getSession: function () { return Promise.resolve({ data: { session: { access_token: "operator-token", user: { id: "op-1" }, expires_at: 4102444800 } } }); }, signOut: function () {} },
@@ -68,11 +83,16 @@ async function mount(retentionRunsSeed) {
       return Promise.resolve({ data: { success: true }, error: null });
     } }
   };
-  var tenant = { from: function () { return chainQuery({ data: { value: {} }, error: null }); } };
+  var tenant = { from: function (table) {
+    if (table === "store") return storeQuery({ superconfig: superconfigSeed || {} });
+    return chainQuery({ data: { value: {} }, error: null });
+  } };
   var calls = 0;
   window.supabase = { createClient: function () { calls += 1; return calls === 1 ? control : tenant; } };
   window.confirm = function () { return true; };
   window.alert = function () {};
+  window.URL.createObjectURL = window.URL.createObjectURL || (function () { return "blob:mock"; });
+  window.URL.revokeObjectURL = window.URL.revokeObjectURL || (function () {});
   window.eval(code);
   window.document.dispatchEvent(new window.Event("DOMContentLoaded", { bubbles: true }));
   await new Promise(function (resolve) { setTimeout(resolve, 25); });
@@ -128,4 +148,26 @@ test("«Sist kjørt» seier tydeleg frå når ingen køyring finst enno, ikkje b
   await new Promise(function (resolve) { setTimeout(resolve, 10); });
   var lastrun = dom.window.document.querySelector("#kd-retention-lastrun");
   assert.match(lastrun.textContent, /Ingen køyring registrert enno/);
+});
+
+test("«Last ned utkast for denne kunden» (DPA) hentar kundens eige firmanavn/org.nr frå superconfig, ikkje ein generisk fil (2026-08-17-funksjon)", async function (t) {
+  var m = await mount([], { company: { name: "Testkunden AS" }, footer: { orgNr: "999 888 777" } });
+  var dom = m.dom;
+  t.after(function () { dom.window.close(); });
+  await openKdDetail(dom);
+  var btn = dom.window.document.querySelector("#kd-dpa-draft-btn");
+  assert(btn, "«Last ned utkast for denne kunden»-knappen finst i DPA-korta");
+  var downloads = [];
+  var origCreateElement = dom.window.document.createElement.bind(dom.window.document);
+  dom.window.document.createElement = function (tag) {
+    var el = origCreateElement(tag);
+    if (tag === "a") el.click = function () { downloads.push({ download: el.download }); };
+    return el;
+  };
+  btn.click();
+  await new Promise(function (resolve) { setTimeout(resolve, 15); });
+  assert.equal(downloads.length, 1, "eit utkast vart faktisk lasta ned");
+  assert.match(downloads[0].download, /Testkunden AS/, "filnamnet inneheld kundens eige firmanavn, ikkje ein generisk mal-fil: " + downloads[0].download);
+  var status = dom.window.document.querySelector("#kd-dpa-status");
+  assert.match(status.textContent, /lasta ned/);
 });
