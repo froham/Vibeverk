@@ -32,6 +32,34 @@ function createOllamaProvider(config, options) {
   var sendPrompt = options.sendPrompt || localClient.sendPrompt;
   var sendMessagesStream = options.sendMessagesStream || localClient.sendMessagesStream;
   var busy = false;
+  var idleWaiters = [];
+
+  function releaseBusy() {
+    busy = false;
+    var waiters = idleWaiters.slice();
+    idleWaiters = [];
+    waiters.forEach(function (resolve) { resolve(); });
+  }
+
+  function waitUntilIdle(timeoutMs) {
+    if (!busy) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timeout = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        idleWaiters = idleWaiters.filter(function (waiter) { return waiter !== onIdle; });
+        reject(providerError("Gemma brukte for lang tid på å avslutte det avbrutte kallet.", 504, "AI_LAB_PROVIDER_CLEANUP_TIMEOUT"));
+      }, timeoutMs);
+      function onIdle() {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      }
+      idleWaiters.push(onIdle);
+    });
+  }
 
   async function generateDraft(prompt, schema) {
     if (busy) throw providerError("Lokal AI er opptatt med eit anna kall.", 429, "AI_LAB_OLLAMA_BUSY");
@@ -83,9 +111,7 @@ function createOllamaProvider(config, options) {
         );
       }
       return parseStrictJson(raw);
-    } finally {
-      busy = false;
-    }
+    } finally { releaseBusy(); }
   }
 
   async function streamOperation(messages, streamOptions) {
@@ -103,6 +129,7 @@ function createOllamaProvider(config, options) {
         maxPromptLength: config.maxPromptChars,
         signal: streamOptions && streamOptions.signal,
         onDelta: streamOptions && streamOptions.onDelta,
+        reasoningEffort: streamOptions && streamOptions.reasoningEffort,
       });
     } catch (error) {
       if (error && error.code === "LOCAL_AI_ABORTED") throw providerError("Kjøringen ble avbrutt.", 499, "AI_LAB_CANCELLED");
@@ -110,7 +137,7 @@ function createOllamaProvider(config, options) {
       if (error && /svarte ikkje innan/.test(error.message)) throw providerError("Ollama nådde tidsgrensen.", 504, "AI_LAB_TIMEOUT");
       if (error && error.code && error.code.indexOf("AI_LAB_") === 0) throw error;
       throw providerError("Ollama-kallet feilet.", 502, "AI_LAB_PROVIDER_ERROR");
-    } finally { busy = false; }
+    } finally { releaseBusy(); }
   }
 
   return {
@@ -118,6 +145,7 @@ function createOllamaProvider(config, options) {
     model: config.ollamaModel,
     generateDraft: generateDraft,
     streamOperation: streamOperation,
+    waitUntilIdle: waitUntilIdle,
     isBusy: function () { return busy; },
   };
 }

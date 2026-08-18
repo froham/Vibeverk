@@ -1,5 +1,6 @@
 "use strict";
 
+var fs = require("node:fs");
 var configModule = require("./ai-lab/config");
 var workflowModule = require("./ai-lab/workflow");
 
@@ -86,6 +87,21 @@ async function runCancellationCase(workflow, ownerId) {
   }
 }
 
+async function runVisionCase(workflow, ownerId) {
+  var context = workflow.createContext({ kind: "none" }, ownerId);
+  var output = "";
+  try {
+    var result = await workflow.runOperation(context.id, "chat", [{
+      role: "user", content: "Beskriv kort hva som er synlig i dette bildet. Ikke gjett på informasjon som ikke kan ses.",
+    }], { onDelta: function (text) { output += text; } }, ownerId, {
+      mimeType: "image/png",
+      data: fs.readFileSync("asset/Logo Icon.png").toString("base64"),
+    });
+    requireUsefulOutput(output, 1200);
+    printResult("Lokalt bildevedlegg", result.provider.durationMs, output);
+  } finally { workflow.disposeContext(context.id, ownerId); }
+}
+
 async function main() {
   var config = configModule.readConfig(process.env);
   var workflow = workflowModule.createWorkflow(config);
@@ -141,8 +157,9 @@ async function main() {
   for (var index = 0; index < cases.length; index += 1) {
     await runTextCase(workflow, ownerId, cases[index]);
   }
+  await runVisionCase(workflow, ownerId);
   await runCancellationCase(workflow, ownerId);
-  process.stdout.write("\nRESULTAT: 5/5 PASS\n");
+  process.stdout.write("\nRESULTAT: 6/6 PASS\n");
 }
 
 main().catch(function (error) {

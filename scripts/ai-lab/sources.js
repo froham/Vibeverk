@@ -8,6 +8,7 @@ var util = require("node:util");
 var MAX_SOURCE_COUNT = 6;
 var MAX_TOTAL_BYTES = 120000;
 var MAX_TOTAL_LINES = 5000;
+var MAX_PASTED_CHARS = 20000;
 var PROMPT_VERSION = "learning-prompt-v1";
 var SCHEMA_VERSION = "learning-draft-v1";
 
@@ -143,7 +144,25 @@ function loadSources(repoRoot, sourceIds, requireAnthropic) {
   });
 }
 
-function createSnapshot(repoRoot, scenarioId, sourceIds, instruction, requireAnthropic) {
+function createPastedSource(text, label, requireAnthropic) {
+  if (text == null || text === "") return null;
+  if (requireAnthropic) throw sourceError("Innlimt materiale kan bare behandles lokalt.", 403);
+  if (typeof text !== "string" || !text.trim() || text.length > MAX_PASTED_CHARS) {
+    throw sourceError("Innlimt materiale må inneholde mellom 1 og 20000 tegn.", text && text.length > MAX_PASTED_CHARS ? 413 : 400);
+  }
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)) throw sourceError("Innlimt materiale inneholder ugyldige kontrolltegn.");
+  label = typeof label === "string" && label.trim() ? label.trim() : "Innlimt materiale";
+  if (label.length > 80 || /[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(label)) throw sourceError("Navnet på innlimt materiale er ugyldig.");
+  var normalized = text.trim();
+  var bytes = Buffer.from(normalized, "utf8");
+  var lineCount = normalized.split("\n").length;
+  return {
+    id: "pasted-material", label: label, path: "midlertidig/innlimt-materiale.txt",
+    anthropicAllowed: false, bytes: bytes, text: normalized, lineCount: lineCount,
+  };
+}
+
+function createSnapshot(repoRoot, scenarioId, sourceIds, instruction, requireAnthropic, pastedText, pastedLabel) {
   if (scenarioId !== "learning-module") throw sourceError("Ukjent scenario.");
   if (typeof instruction !== "string" || !instruction.trim() || instruction.length > 4000) {
     throw sourceError("Instruksjonen må innehalde mellom 1 og 4000 teikn.");
@@ -151,7 +170,16 @@ function createSnapshot(repoRoot, scenarioId, sourceIds, instruction, requireAnt
   if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(instruction)) {
     throw sourceError("Instruksjonen inneheld ugyldige kontrollteikn.");
   }
-  var sources = loadSources(repoRoot, sourceIds, requireAnthropic);
+  if (!Array.isArray(sourceIds)) throw sourceError("Kildelisten har ugyldig format.");
+  var pastedSource = createPastedSource(pastedText, pastedLabel, requireAnthropic);
+  if (!sourceIds.length && !pastedSource) throw sourceError("Velg eller legg til minst én kilde.");
+  if (sourceIds.length + (pastedSource ? 1 : 0) > MAX_SOURCE_COUNT) throw sourceError("Vel mellom 1 og " + MAX_SOURCE_COUNT + " kjelder totalt.");
+  var sources = sourceIds.length ? loadSources(repoRoot, sourceIds, requireAnthropic) : [];
+  if (pastedSource) sources.push(pastedSource);
+  var totalBytes = sources.reduce(function (sum, source) { return sum + source.bytes.length; }, 0);
+  var totalLines = sources.reduce(function (sum, source) { return sum + source.lineCount; }, 0);
+  if (totalBytes > MAX_TOTAL_BYTES) throw sourceError("Valde kjelder er samla sett for store.");
+  if (totalLines > MAX_TOTAL_LINES) throw sourceError("Valde kjelder har for mange linjer.");
   var hash = crypto.createHash("sha256");
   hash.update(PROMPT_VERSION + "\0" + SCHEMA_VERSION + "\0" + scenarioId + "\0" + instruction.trim() + "\0");
   sources.forEach(function (source) {
@@ -173,6 +201,7 @@ module.exports = {
   MAX_SOURCE_COUNT: MAX_SOURCE_COUNT,
   SOURCE_REGISTRY: SOURCE_REGISTRY,
   approvedForAnthropic: approvedForAnthropic,
+  createPastedSource: createPastedSource,
   createSnapshot: createSnapshot,
   loadSources: loadSources,
   publicSources: publicSources,

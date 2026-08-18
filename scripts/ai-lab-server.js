@@ -11,6 +11,7 @@ var arcticAuthModule = require("./arctic/auth");
 var arcticRuntimeModule = require("./arctic/runtime");
 
 var MAX_BODY_BYTES = 65536;
+var MAX_STREAM_BODY_BYTES = 3 * 1024 * 1024;
 var MAX_STATIC_BYTES = 25 * 1024 * 1024;
 var DENIED_STATIC_SEGMENTS = ["node_modules", "scripts", "supabase", "supabase-control", ".git", ".claude", ".codex", ".agents", ".vercel"];
 var MIME_TYPES = {
@@ -333,7 +334,7 @@ function createAiLabServer(config, options) {
     validateMutationRequest(request, host, csrfToken, config);
     var aiCaller = await verifySuperadmin(request);
     validateAccessToken(request, config.accessToken);
-    var body = await readJsonBody(request);
+    var body = await readJsonBody(request, url.pathname === "/__ai-lab/v1/stream" ? MAX_STREAM_BODY_BYTES : undefined);
 
     if (url.pathname === "/__ai-lab/v1/snapshots") {
       sendJson(response, 201, workflow.createSnapshot(body, aiCaller.userId));
@@ -352,6 +353,15 @@ function createAiLabServer(config, options) {
       sendJson(response, 200, { disposed: true });
       return;
     }
+    if (url.pathname === "/__ai-lab/v1/provider-idle") {
+      if (!body || typeof body !== "object" || Array.isArray(body) ||
+          Object.keys(body).length !== 1 || body.provider !== "ollama") {
+        throw labError("Ugyldig forespørsel om providerstatus.", 400);
+      }
+      var idleStatus = await workflow.waitForProviderIdle("ollama", 15000);
+      sendJson(response, 200, idleStatus);
+      return;
+    }
     if (url.pathname === "/__ai-lab/v1/snapshots/dispose") {
       if (!body || typeof body !== "object" || Array.isArray(body) ||
           Object.keys(body).length !== 1 || typeof body.snapshotId !== "string") {
@@ -363,9 +373,10 @@ function createAiLabServer(config, options) {
     }
     if (url.pathname === "/__ai-lab/v1/stream") {
       if (!body || typeof body !== "object" || Array.isArray(body) ||
-          Object.keys(body).some(function (key) { return ["operation", "provider", "contextId", "messages"].indexOf(key) === -1; }) ||
+          Object.keys(body).some(function (key) { return ["operation", "provider", "contextId", "messages", "image", "reasoningEffort"].indexOf(key) === -1; }) ||
           body.provider !== "ollama" || typeof body.contextId !== "string" ||
-          typeof body.operation !== "string" || !Array.isArray(body.messages)) {
+          typeof body.operation !== "string" || !Array.isArray(body.messages) ||
+          (body.reasoningEffort != null && ["none", "low"].indexOf(body.reasoningEffort) === -1)) {
         throw labError("Ugyldig strømmeforespørsel.", 400);
       }
       if (!arctic || typeof arctic.auditAiEvent !== "function") {
@@ -403,12 +414,15 @@ function createAiLabServer(config, options) {
           characterCount: contextInfo.characterCount,
           sources: contextInfo.sources,
         },
+        imageAttached: !!body.image,
+        reasoningEffort: body.reasoningEffort || (body.operation === "analyze-text" ? "low" : "none"),
       });
       try {
         var streamed = await workflow.runOperation(body.contextId, body.operation, body.messages, {
           signal: streamAbort.signal,
           onDelta: function (text) { writeEvent({ type: "delta", text: text }); },
-        }, aiCaller.userId);
+          reasoningEffort: body.reasoningEffort,
+        }, aiCaller.userId, body.image);
         arctic.auditAiEvent(Object.assign({}, streamAudit, { result: "completed", durationMs: Date.now() - streamStarted }));
         writeEvent({
           type: "complete", finishReason: streamed.finishReason,

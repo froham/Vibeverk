@@ -94,14 +94,39 @@ test("parser OpenAI-kompatibel SSE-strøm og videresender deltaer", async functi
     env: validEnv(),
     fetchImpl: async function (url, init) { requestBody = JSON.parse(init.body); return response; },
     onDelta: function (text) { deltas.push(text); },
+    reasoningEffort: "none",
   });
   assert.equal(requestBody.stream, true);
+  assert.equal(requestBody.reasoning_effort, "none");
   assert.deepEqual(requestBody.messages, [{ role: "user", content: "Sei hei." }]);
   assert.deepEqual(deltas, ["Hei", "!"]);
   assert.equal(result.content, "Hei!");
   assert.equal(result.finishReason, "stop");
   assert.equal(result.usage.completion_tokens, 2);
   assert.deepEqual(Object.keys(result.usage), ["completion_tokens"]);
+});
+
+test("sender bare avgrenset base64-bilde til lokal OpenAI-kompatibel vision-modell", async function () {
+  var requestBody;
+  var encoder = new TextEncoder();
+  var response = new Response(new ReadableStream({ start: function (controller) {
+    controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Et bilde"},"finish_reason":"stop"}]}\n\n'));
+    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+    controller.close();
+  } }), { status: 200 });
+  await client.sendMessagesStream([{ role: "user", content: [
+    { type: "text", text: "Hva ser du?" },
+    { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgo=" } },
+  ] }], {
+    env: validEnv(),
+    fetchImpl: async function (url, init) { requestBody = JSON.parse(init.body); return response; },
+  });
+  assert.equal(requestBody.messages[0].content[0].text, "Hva ser du?");
+  assert.equal(requestBody.messages[0].content[1].image_url.url, "data:image/png;base64,iVBORw0KGgo=");
+  await assert.rejects(client.sendMessagesStream([{ role: "user", content: [
+    { type: "text", text: "Hent bilde" },
+    { type: "image_url", image_url: { url: "https://example.com/private.png" } },
+  ] }], { env: validEnv(), fetchImpl: async function () { throw new Error("skal ikke kalles"); } }), /ugyldig format/);
 });
 
 test("strømmen feiler lukket uten DONE eller ved avkortet finish reason", async function (t) {

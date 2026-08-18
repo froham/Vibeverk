@@ -15,6 +15,7 @@ var MAX_CONTEXTS = 20;
 var MAX_RESOURCES_PER_OWNER = 5;
 var MAX_HISTORY_MESSAGES = 20;
 var MAX_HISTORY_CHARS = 24000;
+var MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 var OPERATIONS = ["chat", "analyze-text", "summarize", "rewrite"];
 
 function workflowError(message, statusCode, code) {
@@ -160,7 +161,72 @@ function createWorkflow(config, options) {
     return normalized;
   }
 
-  async function runOperation(contextId, operation, messages, streamOptions, ownerId) {
+  function readImageDimensions(bytes, mimeType) {
+    var offset;
+    if (mimeType === "image/png") {
+      if (bytes.length < 24 || bytes.subarray(12, 16).toString("ascii") !== "IHDR") return null;
+      return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+    }
+    if (mimeType === "image/jpeg") {
+      offset = 2;
+      while (offset + 9 < bytes.length) {
+        if (bytes[offset] !== 255) { offset += 1; continue; }
+        var marker = bytes[offset + 1];
+        if (marker === 216 || marker === 217 || marker === 1) { offset += 2; continue; }
+        if (offset + 4 > bytes.length) return null;
+        var segmentLength = bytes.readUInt16BE(offset + 2);
+        if (segmentLength < 2 || offset + 2 + segmentLength > bytes.length) return null;
+        if ([192, 193, 194, 195, 197, 198, 199, 201, 202, 203, 205, 206, 207].indexOf(marker) !== -1) {
+          return { width: bytes.readUInt16BE(offset + 7), height: bytes.readUInt16BE(offset + 5) };
+        }
+        offset += 2 + segmentLength;
+      }
+      return null;
+    }
+    if (mimeType === "image/webp" && bytes.length >= 30) {
+      var chunk = bytes.subarray(12, 16).toString("ascii");
+      if (chunk === "VP8X") {
+        return {
+          width: 1 + bytes[24] + bytes[25] * 256 + bytes[26] * 65536,
+          height: 1 + bytes[27] + bytes[28] * 256 + bytes[29] * 65536,
+        };
+      }
+      if (chunk === "VP8L" && bytes[20] === 47 && bytes.length >= 25) {
+        return {
+          width: 1 + bytes[21] + ((bytes[22] & 63) << 8),
+          height: 1 + (bytes[22] >> 6) + (bytes[23] << 2) + ((bytes[24] & 15) << 10),
+        };
+      }
+      if (chunk === "VP8 " && bytes[23] === 157 && bytes[24] === 1 && bytes[25] === 42) {
+        return { width: bytes.readUInt16LE(26) & 16383, height: bytes.readUInt16LE(28) & 16383 };
+      }
+    }
+    return null;
+  }
+
+  function normalizeImage(image) {
+    if (image == null) return null;
+    if (!image || typeof image !== "object" || Array.isArray(image) ||
+        Object.keys(image).some(function (key) { return ["mimeType", "data"].indexOf(key) === -1; }) ||
+        ["image/jpeg", "image/png", "image/webp"].indexOf(image.mimeType) === -1 ||
+        typeof image.data !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) {
+      throw workflowError("Bildevedlegget har ugyldig format.");
+    }
+    var bytes = Buffer.from(image.data, "base64");
+    if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw workflowError("Bildet må være mindre enn 2 MB.", 413);
+    var validMagic = image.mimeType === "image/png" && bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+      image.mimeType === "image/jpeg" && bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ||
+      image.mimeType === "image/webp" && bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+    if (!validMagic) throw workflowError("Bildeinnholdet samsvarer ikke med filtypen.");
+    var dimensions = readImageDimensions(bytes, image.mimeType);
+    if (!dimensions || !dimensions.width || !dimensions.height) throw workflowError("Bildets dimensjoner kunne ikke valideres.");
+    if (dimensions.width > 16384 || dimensions.height > 16384 || dimensions.width * dimensions.height > 40000000) {
+      throw workflowError("Bildet har for store dimensjoner (maks 40 megapiksler).", 413);
+    }
+    return { mimeType: image.mimeType, dataUrl: "data:" + image.mimeType + ";base64," + image.data };
+  }
+
+  async function runOperation(contextId, operation, messages, streamOptions, ownerId, image) {
     if (OPERATIONS.indexOf(operation) === -1) throw workflowError("Ukjent AI Lab-operasjon.");
     var history = normalizeHistory(messages);
     var entry = acquireContext(contextId, ownerId);
@@ -169,8 +235,20 @@ function createWorkflow(config, options) {
         throw workflowError("Denne analysehandlingen krever innlimt tekst eller eksplisitt valgte kilder.");
       }
       var promptMessages = prompts.buildOperationMessages(operation, entry.context, history);
+      var normalizedImage = normalizeImage(image);
+      if (normalizedImage) {
+        var last = promptMessages[promptMessages.length - 1];
+        last.content = [
+          { type: "text", text: last.content },
+          { type: "image_url", image_url: { url: normalizedImage.dataUrl } },
+        ];
+      }
       var started = performanceNow();
-      var result = await ollama.streamOperation(promptMessages, streamOptions || {});
+      var reasoningEffort = streamOptions && streamOptions.reasoningEffort;
+      if (reasoningEffort == null) reasoningEffort = operation === "analyze-text" ? "low" : "none";
+      if (["none", "low"].indexOf(reasoningEffort) === -1) throw workflowError("Ugyldig svarmodus.");
+      var providerOptions = Object.assign({}, streamOptions || {}, { reasoningEffort: reasoningEffort });
+      var result = await ollama.streamOperation(promptMessages, providerOptions);
       return {
         schemaVersion: "ai-lab-stream-result-v1",
         operation: operation,
@@ -180,6 +258,15 @@ function createWorkflow(config, options) {
         usage: result.usage || null,
       };
     } finally { releaseContext(contextId, entry); }
+  }
+
+  async function waitForProviderIdle(providerId, timeoutMs) {
+    if (providerId !== "ollama") throw workflowError("Ukjent AI Lab-provider.");
+    if (!ollama || typeof ollama.waitUntilIdle !== "function") {
+      throw workflowError("Provideren støtter ikke oppryddingskontroll.", 503);
+    }
+    await ollama.waitUntilIdle(timeoutMs);
+    return { provider: providerId, idle: true };
   }
 
   function publicSnapshot(id, snapshot, expiresAt) {
@@ -198,12 +285,18 @@ function createWorkflow(config, options) {
 
   function createSnapshot(input, ownerId) {
     cleanupSnapshots(ownerId);
+    if (!input || typeof input !== "object" || Array.isArray(input) ||
+        Object.keys(input).some(function (key) { return ["scenarioId", "sourceIds", "instruction", "pastedText", "pastedLabel"].indexOf(key) === -1; })) {
+      throw workflowError("Snapshotforespørselen har ugyldig format.");
+    }
     var snapshot = sourceModule.createSnapshot(
       config.repoRoot,
       input && input.scenarioId,
       input && input.sourceIds,
       input && input.instruction,
-      false
+      false,
+      input && input.pastedText,
+      input && input.pastedLabel
     );
     var id = crypto.randomUUID();
     var expiresAt = now() + config.snapshotTtlMs;
@@ -329,6 +422,7 @@ function createWorkflow(config, options) {
     },
     disposeContext: disposeContext,
     runOperation: runOperation,
+    waitForProviderIdle: waitForProviderIdle,
     getConfig: function () {
       return {
         schemaVersion: "ai-lab-config-v2",
@@ -347,7 +441,7 @@ function createWorkflow(config, options) {
           {
             id: "ollama", label: "Lokal Ollama", model: ollama.model, configured: true,
             processing: "local",
-            capabilities: { chat: true, streaming: true, documentAnalysis: true, codeAnalysis: true, fileAccess: false, codeChanges: false, tools: false },
+            capabilities: { chat: true, streaming: true, vision: true, documentAnalysis: true, codeAnalysis: true, fileAccess: false, codeChanges: false, tools: false },
             operations: ["chat", "analyze-text", "summarize", "rewrite", "learning-draft"], reasonCode: null,
           },
           {

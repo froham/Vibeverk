@@ -112,21 +112,47 @@ function validateMessages(messages, maxLength) {
     throw new Error("Meldingshistorikken må innehalde mellom 1 og 24 meldingar.");
   }
   var total = 0;
-  return messages.map(function (message) {
+  var normalized = messages.map(function (message) {
     if (!message || typeof message !== "object" || Array.isArray(message) ||
         ["system", "user", "assistant"].indexOf(message.role) === -1 ||
-        typeof message.content !== "string" || !message.content.trim()) {
+        !(typeof message.content === "string" || Array.isArray(message.content))) {
       throw new Error("Meldingshistorikken har ugyldig format.");
     }
-    if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(message.content)) {
+    if (typeof message.content === "string") {
+      if (!message.content.trim()) throw new Error("Meldingshistorikken har ugyldig format.");
+      if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(message.content)) {
+        throw new Error("Ei melding inneheld ugyldige kontrollteikn.");
+      }
+      total += message.content.length;
+      return { role: message.role, content: message.content.trim() };
+    }
+    if (message.role !== "user" || message.content.length !== 2) throw new Error("Bildevedlegg må ligge i én brukermelding.");
+    var textPart = message.content[0];
+    var imagePart = message.content[1];
+    if (!textPart || Object.keys(textPart).some(function (key) { return ["type", "text"].indexOf(key) === -1; }) ||
+        textPart.type !== "text" || typeof textPart.text !== "string" || !textPart.text.trim() ||
+        !imagePart || Object.keys(imagePart).some(function (key) { return ["type", "image_url"].indexOf(key) === -1; }) ||
+        imagePart.type !== "image_url" || !imagePart.image_url ||
+        Object.keys(imagePart.image_url).some(function (key) { return key !== "url"; }) ||
+        typeof imagePart.image_url.url !== "string" ||
+        !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(imagePart.image_url.url) ||
+        imagePart.image_url.url.length > 2800000) {
+      throw new Error("Bildevedlegget har ugyldig format.");
+    }
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(textPart.text)) {
       throw new Error("Ei melding inneheld ugyldige kontrollteikn.");
     }
-    total += message.content.length;
-    return { role: message.role, content: message.content.trim() };
-  }).map(function (message, index, normalized) {
-    if (total > maxLength) throw new Error("Meldingshistorikken er for lang (maks " + maxLength + " teikn).");
-    return message;
+    total += textPart.text.length;
+    return {
+      role: message.role,
+      content: [
+        { type: "text", text: textPart.text.trim() },
+        { type: "image_url", image_url: { url: imagePart.image_url.url } },
+      ],
+    };
   });
+  if (total > maxLength) throw new Error("Meldingshistorikken er for lang (maks " + maxLength + " teikn).");
+  return normalized;
 }
 
 function parseSseEvent(raw, onDelta, state) {
@@ -161,6 +187,8 @@ async function sendMessagesStream(messages, options) {
   if (typeof fetchImpl !== "function") throw new Error("Denne Node-versjonen manglar fetch; bruk Node 20 eller nyare.");
   var onDelta = typeof options.onDelta === "function" ? options.onDelta : function () {};
   var timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
+  var reasoningEffort = options.reasoningEffort;
+  if (reasoningEffort != null && ["none", "low"].indexOf(reasoningEffort) === -1) throw new Error("Ugyldig reasoning-nivå.");
   var controller = new AbortController();
   var externalSignal = options.signal;
   var externallyAborted = false;
@@ -174,10 +202,12 @@ async function sendMessagesStream(messages, options) {
   var response;
   try {
     try {
+      var requestBody = { model: config.model, messages: normalizedMessages, stream: true };
+      if (reasoningEffort != null) requestBody.reasoning_effort = reasoningEffort;
       response = await fetchImpl(config.completionsUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ model: config.model, messages: normalizedMessages, stream: true }),
+        body: JSON.stringify(requestBody),
         redirect: "error",
         signal: controller.signal,
       });

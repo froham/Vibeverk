@@ -2,7 +2,7 @@
 
 Arctic er en global, tenant-uavhengig seksjon i Vibeverk Console. Første vertikal samler avgrenset driftsstatus, det eksisterende lokale AI Lab-et, arbeidsøkt-adaptere, en fast tjenesteliste og et eksplisitt kommandoregister. Arctic leser ikke valgt kundes `App.store`, kundedata eller private Supabase-prosjekt.
 
-Dette dokumentet beskriver v0.151.3-releasekandidaten. Det er ikke gjort noen databasemigrasjon eller produksjonsutrulling. Produksjonsgrensesnittet returnerer fortsatt bevisst `not_configured`/`gateway_not_configured` for drift og kommandoer; den eneste nye forbindelsen er en eksplisitt, lokal browser-bro til AI Lab/Gemma.
+Dette dokumentet beskriver v0.158.0-releasekandidaten. Det er ikke gjort noen databasemigrasjon eller produksjonsutrulling. Produksjonsgrensesnittet returnerer fortsatt bevisst `not_configured`/`gateway_not_configured` for drift og kommandoer; den eneste nye forbindelsen er en eksplisitt, lokal browser-bro til AI Lab/Gemma.
 
 ## Flater og forbindelser
 

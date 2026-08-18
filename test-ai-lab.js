@@ -172,6 +172,31 @@ test("standardkjeldene passar innan AI Lab si eksplisitte Ollama-promptgrense", 
   assert.ok((reviewPrompt.system + "\n\n" + reviewPrompt.user).length < config.maxPromptChars);
 });
 
+test("innlimt læringsmateriale blir en lokal, linjenummererbar kilde", function () {
+  var snapshot = sourceModule.createSnapshot(
+    process.cwd(), "learning-module", [], "Lag et kort utkast.", false,
+    "Første linje.\nAndre linje.", "notater.txt"
+  );
+  assert.equal(snapshot.sources.length, 1);
+  assert.deepEqual({
+    id: snapshot.sources[0].id,
+    label: snapshot.sources[0].label,
+    path: snapshot.sources[0].path,
+    lineCount: snapshot.sources[0].lineCount,
+    anthropicAllowed: snapshot.sources[0].anthropicAllowed,
+  }, {
+    id: "pasted-material", label: "notater.txt",
+    path: "midlertidig/innlimt-materiale.txt", lineCount: 2, anthropicAllowed: false,
+  });
+  assert.match(promptModule.buildDraftPrompt(snapshot).user, /Første linje/);
+  assert.throws(function () {
+    sourceModule.createSnapshot(process.cwd(), "learning-module", [], "Test", true, "Lokal tekst", "tekst.txt");
+  }, /bare behandles lokalt/);
+  assert.throws(function () {
+    sourceModule.createSnapshot(process.cwd(), "learning-module", [], "Test", false, "x".repeat(20001), "tekst.txt");
+  }, /20000/);
+});
+
 test("generelle kontekster er typet, avgrenset og inneholder ingen vilkårlige filstier", function () {
   var none = contextModule.createContext(process.cwd(), { kind: "none" });
   assert.equal(none.kind, "none");
@@ -182,6 +207,34 @@ test("generelle kontekster er typet, avgrenset og inneholder ingen vilkårlige f
   assert.throws(function () { contextModule.createContext(process.cwd(), { kind: "none", path: "/etc/passwd" }); }, /ukjente felt/);
   assert.throws(function () { contextModule.createContext(process.cwd(), { kind: "pasted-text", text: "x".repeat(20001) }); }, /for lang/);
   assert.throws(function () { contextModule.createContext(process.cwd(), { kind: "selected-sources", sourceIds: ["../../etc/passwd"] }); }, /Ukjend kjelde-ID/);
+});
+
+test("vision-vedlegg valideres lokalt og sendes som én OpenAI-innholdsdel", async function () {
+  var capturedMessages;
+  var capturedOptions;
+  var workflow = workflowModule.createWorkflow(configModule.readConfig(validEnv()), {
+    ollamaProvider: {
+      id: "ollama", model: "gemma-test",
+      streamOperation: async function (messages, options) { capturedMessages = messages; capturedOptions = options; return { content: "Et bilde", finishReason: "stop", usage: null }; },
+      waitUntilIdle: async function () {},
+    },
+    anthropicProvider: { id: "anthropic", model: "haiku-test", configured: false },
+  });
+  var context = workflow.createContext({ kind: "none" }, "operator-a");
+  var pngBytes = Buffer.alloc(24);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(pngBytes);
+  Buffer.from("IHDR").copy(pngBytes, 12);
+  pngBytes.writeUInt32BE(1, 16);
+  pngBytes.writeUInt32BE(1, 20);
+  var png = pngBytes.toString("base64");
+  await workflow.runOperation(context.id, "chat", [{ role: "user", content: "Hva ser du?" }], { onDelta: function () {} }, "operator-a", { mimeType: "image/png", data: png });
+  assert.equal(capturedMessages[capturedMessages.length - 1].content[0].type, "text");
+  assert.match(capturedMessages[capturedMessages.length - 1].content[1].image_url.url, /^data:image\/png;base64,/);
+  assert.equal(capturedOptions.reasoningEffort, "none");
+  await assert.rejects(workflow.runOperation(context.id, "chat", [{ role: "user", content: "Test" }], {}, "operator-a", { mimeType: "image/png", data: Buffer.from("ikke png").toString("base64") }), /samsvarer ikke/);
+  pngBytes.writeUInt32BE(20000, 16);
+  await assert.rejects(workflow.runOperation(context.id, "chat", [{ role: "user", content: "Test" }], {}, "operator-a", { mimeType: "image/png", data: pngBytes.toString("base64") }), /for store dimensjoner/);
+  await assert.rejects(workflow.runOperation(context.id, "chat", [{ role: "user", content: "Test" }], {}, "operator-a", { mimeType: "image/svg+xml", data: png }), /ugyldig format/);
 });
 
 test("generell Gemma-flyt bruker begrenset historikk, strømmer og kan tømme kontekst", async function () {
@@ -206,6 +259,8 @@ test("generell Gemma-flyt bruker begrenset historikk, strømmer og kan tømme ko
   });
   assert.deepEqual(deltas, ["Hei", "!"]);
   assert.match(captured[0].content, /Et enkelt hei/);
+  assert.match(captured[0].content, /Du er Viba/);
+  assert.match(captured[0].content, /underliggende språkmodellen er Gemma/);
   assert.deepEqual(captured[1], { role: "user", content: "HEI" });
   assert.equal(result.operation, "chat");
   assert.equal(result.usage.completion_tokens, 2);
@@ -470,6 +525,24 @@ test("Ollama-adapter bruker samme single-flight for læringsutkast og generell s
   assert.equal((await streaming).content, "Hei");
 });
 
+test("Ollama-adapter bekrefter idle først etter at avbrutt providerjobb er ryddet", async function () {
+  var config = configModule.readConfig(validEnv());
+  var release;
+  var provider = ollamaModule.createOllamaProvider(config, {
+    sendMessagesStream: function () { return new Promise(function (resolve) { release = resolve; }); },
+  });
+  var streaming = provider.streamOperation([{ role: "user", content: "Vent" }], { onDelta: function () {} });
+  var idleConfirmed = false;
+  var idle = provider.waitUntilIdle(1000).then(function () { idleConfirmed = true; });
+  await new Promise(function (resolve) { setTimeout(resolve, 0); });
+  assert.equal(idleConfirmed, false);
+  release({ content: "Ferdig", finishReason: "stop", usage: null });
+  await streaming;
+  await idle;
+  assert.equal(idleConfirmed, true);
+  assert.equal(provider.isBusy(), false);
+});
+
 test("Ollama-adapter gjer avkorta kontekstsvar tydeleg", async function () {
   var config = configModule.readConfig(validEnv());
   var provider = ollamaModule.createOllamaProvider(config, {
@@ -572,6 +645,7 @@ test("lokal HTTP-server krev korrekt Host, Origin, token og JSON", async functio
     createContext: function (body) { return { id: "context-test", kind: body.kind, contextHash: "d".repeat(64), sources: [] }; },
     describeContext: function () { return { id: "context-test", kind: "none", contextHash: "d".repeat(64), sources: [] }; },
     disposeContext: function () { return true; },
+    waitForProviderIdle: async function (providerId) { return { provider: providerId, idle: true }; },
     runOperation: async function (contextId, operation, messages, options) {
       assert.equal(auditEvents[auditEvents.length - 1].result, "requested");
       options.onDelta("Hei");
@@ -688,6 +762,14 @@ test("lokal HTTP-server krev korrekt Host, Origin, token og JSON", async functio
   });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).disposed, true);
+
+  response = await fetch(base + "/__ai-lab/v1/provider-idle", {
+    method: "POST",
+    headers: { Host: "127.0.0.1:" + config.port, Origin: base, Authorization: "Bearer console-jwt", "X-Arctic-Access-Token": config.accessToken, "X-AI-Lab-Token": "csrf-test", "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "ollama" }),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { provider: "ollama", idle: true });
 
   response = await fetch(base + "/__ai-lab/v1/snapshots/dispose", {
     method: "POST",

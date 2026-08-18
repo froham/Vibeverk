@@ -30,6 +30,72 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.158.0 — 2026-08-18
+
+**Den brukerrettede assistenten i AI Lab heter nå Viba.** Dette etablerer et stabilt agentnavn uten å forveksle identiteten med modellen som til enhver tid driver den.
+
+- Samtale og Analyse bruker Viba i banner, transcript, skrivefelt, knapper, status, bildevedlegg, komprimeringsflyt og nedlastede filnavn.
+- Den generelle systemprompten sier eksplisitt at assistenten heter Viba og at den underliggende språkmodellen er Gemma. Testen verifiserer begge deler.
+- Modell-/providerkort, lokal teknisk status og den strukturerte Læringsutkast-sammenligningen beholder navnet Gemma. Haiku-reviewet vurderer fortsatt et Gemma-utkast; ingen kontrakt eller provider-ID er omdøpt.
+- Ingen voice, mikrofontilgang, wake word, lagring, ny kapabilitet eller produksjonsendring. Cache-bust: `console-core.js` 282→283.
+
+## 0.157.0 — 2026-08-18
+
+**Bilder kan nå limes direkte inn i Gemma-skrivefeltet med Ctrl/⌘+V.** Clipboard-hendelsen fanges bare når den faktisk inneholder et bilde; vanlig tekstinnliming beholder nettleserens standardoppførsel.
+
+- Innlimt PNG/JPEG/WebP går gjennom nøyaktig samme lokale validering, 12 MB-inntaksgrense, komprimering til maks 2 MB og server-side dimensjonskontroll som bildeknappen.
+- Skjermbildet vises som vanlig ventende bildevedlegg og sendes bare med neste melding. Det erstatter et eventuelt tidligere ventende bilde; ett bilde per melding er fortsatt den eksplisitte grensen.
+- UI-et forklarer tastatursnarveien direkte over komponisten. Console-testen dekker både bildeinnliming som blokkerer standard paste og vanlig tekst-paste som ikke blokkeres.
+- Lokal måling av `gemma4:26b` viste at `low`, `medium` og `high` alle aksepteres, men ga ingen meningsfull eller monoton kvalitets-/latensforskjell på et trivielt kontrollkall (ca. 5,3–6,9 sekunder), mens `none` tidligere målte 1,8 sekunder. Ingen kunstig tredje svarmodus er derfor innført uten en kode-evaluering. Ingen database-, provider- eller produksjonsendring. Cache-bust: `console-core.js` 281→282.
+
+## 0.156.0 — 2026-08-18
+
+**Lange Gemma-samtaler har nå eksplisitt kontekststyring med `/compact` og `/clear`.** Grensen på 20 meldinger gjelder modellkonteksten i hvert kall, ikke hvor mange meldinger som kan være synlige i nettleserøkten.
+
+- `/compact` sender den gjeldende effektive historikken til lokal Gemma som en avgrenset oppsummeringsoperasjon. Ved suksess får senere kall et syntetisk sammendragspar pluss nye meldinger; originalhistorikken forblir synlig og blir med i eksporten.
+- Rekompaktering oppsummerer forrige sammendrag sammen med nyere meldinger. Kilden kan være maks 20 000 tegn og sammendraget maks 8 000; overskridelse feiler tydelig uten stille trunkering.
+- `/clear` tømmer bare aktiv økt etter bekreftelse, men beholder valgt grunnlag og den minnelokale tilgangstokenen. `/new` oppretter en ny økt, og `/help` viser kommandoene. Ingen av kommandoene er shell-kommandoer eller sendes som fri serverhandling.
+- UI-et viser løpende «N av 20 i modellkontekst» og stopper et nytt kall før serverfeil dersom melding-/tegnrammen er full. Det foreslår da `/compact`, `/clear` eller `/new`.
+- Console-testen dekker lokal komprimering, sammendragsbasert neste kall, intakt full historikk og tømming. Ingen database-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 280→281.
+
+## 0.155.0 — 2026-08-18
+
+**Gemma-svar kan nå kopieres og lastes ned som ekte kodefiler.** Ferdige og avbrutte svar får «Kopier svar» og «Last ned .txt». Markdown-kodegjerder rendres som egne, trygge kodepaneler med «Kopier kode» og filnedlasting basert på et fast språk→filtype-register, blant annet HTML, CSS, JavaScript, JSON, Markdown, Python, shell og SQL.
+
+- Et helt svar som starter som et HTML-dokument gjenkjennes også uten kodegjerde og kan lastes ned som `.html`.
+- Modellinnhold settes fortsatt bare via `textContent`; HTML og kode kjøres eller forhåndsvises aldri i Console. En synlig advarsel ber operatøren kontrollere modellgenerert kode før filen åpnes eller kjøres.
+- Filnavn og utvidelser er klientgenererte/allowlistede. Modellteksten kan ikke velge filsti, starte nedlastingen automatisk eller skrive til repoet.
+- Console-testen dekker XSS-grensen, kopiering av kode og svar samt faktisk `.html`-filnavn. Ingen database-, provider-, server- eller produksjonsendring. Cache-bust: `console-core.js` 279→280.
+
+## 0.154.0 — 2026-08-18
+
+**Samtale-/analysekomponisten er bygget om, store bilder komprimeres lokalt og trivielle Gemma-kall bruker ikke lenger unødvendig resonnering.** Skrivefeltet er nå en samlet, tydelig flate med integrert vedlegg, tegnmåler, svarmodus og sendeknapp.
+
+- Ett PNG/JPEG/WebP-bilde på opptil 12 MB kan velges. Bilder over 2 MB dekodes og komprimeres i nettleseren til JPEG på maks 2 MB og maksimalt 40 megapiksler før noe sendes. Originalen forlater ikke nettleseren. Serveren validerer i tillegg filsignatur, dimensjoner og 40-megapikselgrensen før Ollama-kallet.
+- «Rask» setter `reasoning_effort=none`; «Grundig» setter `low`. Samtale starter i Rask, Analyse i Grundig, og valget eies av den enkelte minneøkten og følger eksplisitt eksport.
+- Reell lokal måling med varm `gemma4:26b` viste at et trivielt hei-kall uten styring brukte 190 completion-/interne tokens og 14,1 sekunder, mens `none` brukte 13 tokens og 1,8 sekunder direkte mot Ollama. Full AI Lab-smoke målte naturlig chat til 3,6 sekunder og endte 6/6 grønn.
+- Ingen database-, Supabase-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 278→279.
+
+## 0.153.0 — 2026-08-18
+
+**AI Lab har fått en vedleggsorientert arbeidsflate og ekte lokal bildeanalyse.** Læringsutkastet var fortsatt et langt, smalt administrasjonsskjema. Det er erstattet av én stor promptflate med tydelig vedleggshåndtering og et eget resultatområde.
+
+- Prosjektkilder vises som fjernbare vedleggsbrikker i en sammenleggbar velger.
+- Innlimt tekst og lokale TXT/MD/CSV/JSON/JS/CSS/HTML-filer blir flyktige, linjenummererte læringskilder. De er begrenset til 20 000 tegn, holdes i minnet og kan aldri sendes til Haiku.
+- Samtale/Analyse støtter ett lokalt PNG/JPEG/WebP-bilde per melding, maks 2 MB. Serveren validerer MIME, base64 og filsignatur; eksterne bilde-URL-er og SVG avvises.
+- Den installerte `gemma4:26b` annonserer vision lokalt og bestod en ekte bilde-smoke mot Vibeverks logo. Bilder er ikke innført som dokumentasjonskilder i Læringsutkast fordi dagens sourceRefs-kontrakt krever stabile tekstlinjer.
+- Ingen database-, Supabase-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 277→278.
+
+## 0.152.0 — 2026-08-18
+
+**AI Lab er ryddet for praktisk desktopbruk, og avbrudd venter nå på reell Gemma-opprydding.** Manuell preview-testing avdekket at CSS kunne vise Samtale/Analyse og Læringsutkast samtidig, at en ny kjøring kunne møte en fremdeles opptatt provider etter «Stopp», og at øktgrensen var vanskelig å forstå.
+
+- Arbeidsmåtene er gjort til én tydelig modusvelger. Samtale/Analyse har en kompakt øktliste og sammenleggbar kontekst; Læringsutkast har et desktop-oppsett med nummererte steg til venstre og resultater til høyre.
+- `[hidden]` håndheves i Arctic-panelet, slik at bare valgt arbeidsflate og relevante resultatseksjoner vises.
+- Hver nettleserøkt har eksplisitt sletting. Grensen på ti blokkerer oppretting med forklaring; ingenting slettes automatisk.
+- «Stopp» holder kjøreknappene låst til Ollama-adapteren faktisk har frigitt single-flight-jobben. Et nytt, autentisert `provider-idle`-kall bekrefter dette uten å åpne shell, modellvalg eller nye datakilder.
+- AI Lab-, Arctic- og nærliggende Console-tester dekker den nye flyten. Ingen database-, Supabase- eller produksjonsendring. Cache-bust: `console-core.js` 276→277.
+
 ## 0.151.3 — 2026-08-18
 
 **Preview-Console lastar no den statiske basiskonfigurasjonen som `core.js` treng.** 0.151.2 sleppte sjølve `/console/` gjennom tenant-porten, men `/config.js` vart framleis omskriven til tenant-config for eit domene som med vilje ikkje er registrert som kunde. Resultatet var `SITE_CONFIG=null`, stopp i `core.js` og den synlege følgjefeilen «core.js / components.js ikkje lasta».

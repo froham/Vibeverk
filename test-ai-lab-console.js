@@ -177,6 +177,7 @@ test("feil lokal token stopper bridge før Console-JWT sendes", async function (
 test("AI Lab ligg under lokal Arctic og Læring fungerer utan AI-kall", async function (t) {
   var calls = [];
   var mutationHeaders = [];
+  var snapshotBodies = [];
   var config = {
     apiVersion: "v1", csrfToken: "csrf-test",
     scenarios: [{ id: "learning-module", label: "Læringsmodulen" }],
@@ -192,6 +193,7 @@ test("AI Lab ligg under lokal Arctic og Læring fungerer utan AI-kall", async fu
     if (String(url) === "/__ai-lab/v1/config") return Promise.resolve(new Response(JSON.stringify(config), { status: 200 }));
     if (String(url) === "/__ai-lab/v1/snapshots") {
       mutationHeaders.push(init.headers);
+      snapshotBodies.push(JSON.parse(init.body));
       return Promise.resolve(new Response(JSON.stringify({
         id: "snapshot-ui", scenarioId: "learning-module", snapshotHash: "hash-ui",
         promptVersion: "learning-prompt-v1", schemaVersion: "learning-draft-v1",
@@ -228,16 +230,39 @@ test("AI Lab ligg under lokal Arctic og Læring fungerer utan AI-kall", async fu
 
   window.VwConsole.navigate("ai-lab");
   assert.match(window.document.getElementById("cs-section-wrap").textContent, /Separat fra Læring/);
-  assert.match(window.document.getElementById("cs-section-wrap").textContent, /Modellverksted/);
+  assert.match(window.document.getElementById("cs-section-wrap").textContent, /Velg arbeidsmåte/);
   assert.equal(window.document.querySelectorAll("[data-ai-lab-provider]").length, 3);
   assert.match(window.document.querySelector('[data-ai-lab-provider="ollama"]').textContent, /Lokal behandling|Konfigurert/);
   assert.match(window.document.querySelector('[data-ai-lab-provider="codex"]').textContent, /gateway|ikke konfigurert/i);
-  assert.match(window.document.getElementById("cs-section-wrap").textContent, /instruksjonen til Anthropic/);
   assert.match(window.document.getElementById("cs-section-wrap").textContent, /Haiku er ikke tilgjengelig/);
+  assert.equal(window.document.getElementById("cs-ai-lab-general").hidden, true);
+  assert.equal(window.document.getElementById("cs-ai-lab-learning").hidden, false);
+  assert.ok(window.document.querySelector("#cs-ai-lab-learning .ai-lab-learning-setup"));
+  assert.ok(window.document.querySelector("#cs-ai-lab-learning .ai-lab-learning-output #cs-ai-lab-learning-empty"));
+  var consoleHtml = fs.readFileSync("console/index.html", "utf8");
+  assert.match(consoleHtml, /\.arctic-pane \[hidden\]\s*\{\s*display:none !important;/);
+  assert.match(consoleHtml, /\.ai-lab-learning-layout\s*\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
+  assert.ok(window.document.getElementById("cs-ai-lab-open-sources"));
+  assert.ok(window.document.getElementById("cs-ai-lab-open-paste"));
+  assert.ok(window.document.getElementById("cs-ai-lab-upload-text"));
   assert.equal(window.document.querySelector('[data-ai-lab-run="anthropic"]').disabled, true);
   window.document.querySelector('[data-ai-lab-source][value="safe-changes"]').checked = true;
   window.document.querySelector('[data-ai-lab-source][value="safe-changes"]').dispatchEvent(new window.Event("change", { bubbles: true }));
-  assert.equal(window.document.getElementById("cs-ai-lab-source-count").textContent, "1 av 6 valgt");
+  assert.equal(window.document.getElementById("cs-ai-lab-source-count").textContent, "1 av 6 vedlegg");
+  window.document.getElementById("cs-ai-lab-open-paste").click();
+  assert.equal(window.document.getElementById("cs-ai-lab-paste-picker").open, true);
+  window.document.getElementById("cs-ai-lab-learning-label").value = "møte-notater.txt";
+  window.document.getElementById("cs-ai-lab-learning-label").dispatchEvent(new window.Event("input", { bubbles: true }));
+  window.document.getElementById("cs-ai-lab-learning-text").value = "Første linje\nAndre linje";
+  window.document.getElementById("cs-ai-lab-learning-text").dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.equal(window.document.getElementById("cs-ai-lab-source-count").textContent, "2 av 6 vedlegg");
+  assert.match(window.document.getElementById("cs-ai-lab-learning-attachments").textContent, /møte-notater\.txt/);
+  var textFileInput = window.document.getElementById("cs-ai-lab-text-file");
+  Object.defineProperty(textFileInput, "files", { configurable: true, value: [new window.File(["Opplastet linje én\nOpplastet linje to"], "brief.md", { type: "text/markdown" })] });
+  textFileInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.equal(window.document.getElementById("cs-ai-lab-learning-label").value, "brief.md");
+  assert.match(window.document.getElementById("cs-ai-lab-learning-text").value, /Opplastet linje én/);
   window.document.getElementById("cs-ai-lab-access-token").value = "lokal-test-token-som-ikkje-skal-lagrast";
   window.document.getElementById("cs-ai-lab-access-token").dispatchEvent(new window.Event("input", { bubbles: true }));
   window.document.querySelector('[data-ai-lab-run="ollama"]').click();
@@ -246,10 +271,15 @@ test("AI Lab ligg under lokal Arctic og Læring fungerer utan AI-kall", async fu
   assert.equal(window.document.querySelector('[data-ai-lab-source][value="safe-changes"]').disabled, true);
   await new Promise(function (resolve) { setTimeout(resolve, 15); });
   assert.equal(mutationHeaders.length, 2);
+  assert.equal(snapshotBodies[0].pastedText, "Opplastet linje én\nOpplastet linje to");
+  assert.equal(snapshotBodies[0].pastedLabel, "brief.md");
   assert.equal(mutationHeaders[0].Authorization, "Bearer console-jwt-test");
   assert.equal(mutationHeaders[0]["X-Arctic-Access-Token"], "lokal-test-token-som-ikkje-skal-lagrast");
   assert.equal(mutationHeaders[0]["X-AI-Lab-Token"], "csrf-test");
   assert.match(window.document.getElementById("cs-ai-lab-gemma-result").textContent, /Trygt utkast/);
+  assert.equal(window.document.getElementById("cs-ai-lab-gemma-section").hidden, false);
+  assert.equal(window.document.getElementById("cs-ai-lab-haiku-section").hidden, true);
+  assert.equal(window.document.getElementById("cs-ai-lab-learning-empty").hidden, true);
   assert.match(window.document.getElementById("cs-ai-lab-gemma-result").textContent, /lokal behandling/);
   assert.equal(window.document.querySelector("#cs-ai-lab-gemma-result img"), null);
   assert.ok(window.document.querySelector("#cs-ai-lab-gemma-result .ai-lab-raw pre"));
@@ -376,6 +406,7 @@ test("lokal origin skjuler AI Lab når den lokale API-proben feiler", async func
 
 test("Samtale strømmer trygg tekst, bruker eksplisitt kontekst og disponerer snapshotet", async function (t) {
   var calls = [];
+  var streamBodies = [];
   var config = {
     apiVersion: "v1", csrfToken: "csrf-test", sources: [{ id: "safe-changes", label: "Trygge endringer", path: "docs/safe.md" }],
     providers: [{ id: "ollama", model: "gemma-test", configured: true, processing: "local", capabilities: { chat: true, streaming: true, documentAnalysis: true }, operations: ["chat", "analyze-text", "summarize", "rewrite", "learning-draft"] }],
@@ -386,11 +417,12 @@ test("Samtale strømmer trygg tekst, bruker eksplisitt kontekst og disponerer sn
     if (String(url) === "/__ai-lab/v1/contexts") return Promise.resolve(new Response(JSON.stringify({ id: "context-1", kind: "pasted-text", contextHash: "hash", expiresAt: new Date(Date.now() + 60000).toISOString(), summary: "tekst" }), { status: 201 }));
     if (String(url) === "/__ai-lab/v1/contexts/dispose") return Promise.resolve(new Response(JSON.stringify({ disposed: true }), { status: 200 }));
     if (String(url) === "/__ai-lab/v1/stream") {
+      streamBodies.push(JSON.parse(init.body));
       var encoder = new TextEncoder();
       var stream = new ReadableStream({ start: function (controller) {
         controller.enqueue(encoder.encode('{"type":"meta","model":"gemma-test"}\n'));
         controller.enqueue(encoder.encode('{"type":"delta","text":"<img src=x onerror=alert(1)> Hei"}\n'));
-        controller.enqueue(encoder.encode('{"type":"delta","text":" tilbake"}\n{"type":"complete"}\n'));
+        controller.enqueue(encoder.encode(JSON.stringify({ type: "delta", text: " tilbake\n```html\n<!doctype html><html><body><h1>Hei</h1></body></html>\n```" }) + '\n{"type":"complete"}\n'));
         controller.close();
       } });
       return Promise.resolve(new Response(stream, { status: 200, headers: { "Content-Type": "application/x-ndjson" } }));
@@ -401,27 +433,106 @@ test("Samtale strømmer trygg tekst, bruker eksplisitt kontekst og disponerer sn
   var window = dom.window;
   window.VwConsole.navigate("ai-lab");
   assert.equal(window.document.querySelector('[data-ai-lab-mode="chat"]').getAttribute("aria-pressed"), "true");
+  assert.equal(window.document.getElementById("cs-ai-lab-general").hidden, false);
+  assert.equal(window.document.getElementById("cs-ai-lab-learning").hidden, true);
   assert.deepEqual(Array.from(window.document.getElementById("cs-ai-lab-analysis-operation").options).map(function (item) { return item.value; }), ["analyze-text", "summarize", "rewrite"]);
-  window.document.getElementById("cs-ai-lab-general-token").value = "minnelokal-token";
-  window.document.getElementById("cs-ai-lab-general-token").dispatchEvent(new window.Event("input", { bubbles: true }));
+  window.document.getElementById("cs-ai-lab-access-token").value = "minnelokal-token";
+  window.document.getElementById("cs-ai-lab-access-token").dispatchEvent(new window.Event("input", { bubbles: true }));
   var kind = window.document.getElementById("cs-ai-lab-context-kind");
   kind.value = "pasted-text"; kind.dispatchEvent(new window.Event("change", { bubbles: true }));
   var pasted = window.document.getElementById("cs-ai-lab-pasted-text");
   pasted.value = "Eksplisitt analysetekst"; pasted.dispatchEvent(new window.Event("input", { bubbles: true }));
+  var imageInput = window.document.getElementById("cs-ai-lab-image-file");
+  var clipboardImage = new window.File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0])], "skisse.png", { type: "image/png" });
+  var pasteEvent = new window.Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(pasteEvent, "clipboardData", { configurable: true, value: { items: [{ type: "image/png", getAsFile: function () { return clipboardImage; } }] } });
+  window.document.getElementById("cs-ai-lab-composer").dispatchEvent(pasteEvent);
+  assert.equal(pasteEvent.defaultPrevented, true);
+  var textPasteEvent = new window.Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(textPasteEvent, "clipboardData", { configurable: true, value: { items: [{ type: "text/plain", getAsFile: function () { return null; } }] } });
+  window.document.getElementById("cs-ai-lab-composer").dispatchEvent(textPasteEvent);
+  assert.equal(textPasteEvent.defaultPrevented, false);
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.equal(window.document.getElementById("cs-ai-lab-pending-image").hidden, false);
+  assert.match(window.document.getElementById("cs-ai-lab-pending-image").textContent, /skisse\.png/);
   window.document.getElementById("cs-ai-lab-composer").value = "HEI";
   window.document.getElementById("cs-ai-lab-stream-run").click();
   await new Promise(function (resolve) { setTimeout(resolve, 30); });
   var transcript = window.document.getElementById("cs-ai-lab-transcript");
   assert.match(transcript.textContent, /Hei tilbake/);
+  assert.match(transcript.textContent, /Viba/);
+  assert.equal(transcript.getAttribute("aria-label"), "Samtale med Viba");
+  assert.match(window.document.querySelector(".ai-lab-banner").textContent, /Viba/);
+  assert.match(window.document.querySelector(".ai-lab-providers").textContent, /Gemma/);
   assert.equal(transcript.querySelector("img"), null);
+  assert.equal(transcript.querySelector(".ai-lab-code code").textContent, "<!doctype html><html><body><h1>Hei</h1></body></html>");
+  assert.match(transcript.querySelector(".ai-lab-code-warning").textContent, /utrygg/i);
+  var copiedCode = "";
+  Object.defineProperty(window.navigator, "clipboard", { configurable: true, value: { writeText: function (value) { copiedCode = value; return Promise.resolve(); } } });
+  transcript.querySelector(".ai-lab-code .ai-lab-message-action").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 0); });
+  assert.match(copiedCode, /<!doctype html>/);
+  var downloadedName = "";
+  window.URL.createObjectURL = function () { return "blob:ai-lab-test"; };
+  window.URL.revokeObjectURL = function () {};
+  window.HTMLAnchorElement.prototype.click = function () { downloadedName = this.download; };
+  transcript.querySelectorAll(".ai-lab-code .ai-lab-message-action")[1].click();
+  assert.match(downloadedName, /\.html$/);
+  transcript.querySelector(".ai-lab-message__actions .ai-lab-message-action").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 0); });
+  assert.match(copiedCode, /```html/);
   var contextCall = calls.filter(function (call) { return call.url === "/__ai-lab/v1/contexts"; })[0];
   assert.deepEqual(JSON.parse(contextCall.init.body), { kind: "pasted-text", text: "Eksplisitt analysetekst" });
   var streamCall = calls.filter(function (call) { return call.url === "/__ai-lab/v1/stream"; })[0];
   assert.equal(JSON.parse(streamCall.init.body).operation, "chat");
+  assert.equal(streamBodies[0].image.mimeType, "image/png");
+  assert.ok(streamBodies[0].image.data.length > 0);
+  assert.equal(streamBodies[0].reasoningEffort, "none");
+  assert.match(transcript.textContent, /Bilde · skisse\.png/);
+  assert.equal(window.document.getElementById("cs-ai-lab-pending-image").hidden, true);
+  var originalCreateElement = window.document.createElement.bind(window.document);
+  var originalImage = window.Image;
+  window.Image = function () {
+    var self = this;
+    self.width = 2400; self.height = 1600;
+    Object.defineProperty(self, "src", { set: function () { setTimeout(function () { self.onload(); }, 0); } });
+  };
+  window.document.createElement = function (name) {
+    if (String(name).toLowerCase() !== "canvas") return originalCreateElement(name);
+    return {
+      width: 0, height: 0,
+      getContext: function () { return { fillStyle: "", fillRect: function () {}, drawImage: function () {} }; },
+      toBlob: function (callback) { callback(new window.Blob([new Uint8Array([255, 216, 255, 0])], { type: "image/jpeg" })); },
+    };
+  };
+  Object.defineProperty(imageInput, "files", { configurable: true, value: [new window.File(["x".repeat(2 * 1024 * 1024 + 1)], "stort.png", { type: "image/png" })] });
+  imageInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise(function (resolve) { setTimeout(resolve, 35); });
+  assert.match(window.document.getElementById("cs-ai-lab-pending-image").textContent, /2,0 MB → 1 kB/);
+  window.document.createElement = originalCreateElement;
+  window.Image = originalImage;
   assert.equal(streamCall.init.headers["X-Arctic-Access-Token"], "minnelokal-token");
   assert.equal(calls.filter(function (call) { return call.url === "/__ai-lab/v1/contexts/dispose"; }).length, 1);
   assert.equal(kind.disabled, true);
   assert.equal(window.document.getElementById("cs-ai-lab-context-lock").hidden, false);
+  window.confirm = function () { return true; };
+  window.document.getElementById("cs-ai-lab-composer").value = "/compact";
+  window.document.getElementById("cs-ai-lab-stream-run").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 50); });
+  assert.equal(streamBodies[1].operation, "summarize");
+  assert.equal(streamBodies[1].reasoningEffort, "low");
+  assert.match(window.document.querySelector(".ai-lab-compaction-note").textContent, /2 eldre meldinger/);
+  assert.match(window.document.getElementById("cs-ai-lab-context-count").textContent, /2 av 20/);
+  window.document.getElementById("cs-ai-lab-composer").value = "Fortsett fra sammendraget";
+  window.document.getElementById("cs-ai-lab-stream-run").click();
+  await new Promise(function (resolve) { setTimeout(resolve, 35); });
+  assert.equal(streamBodies[2].messages.length, 3);
+  assert.match(streamBodies[2].messages[0].content, /lokalt sammendrag/);
+  assert.match(streamBodies[2].messages[1].content, /<!doctype html>/);
+  window.document.getElementById("cs-ai-lab-composer").value = "/clear";
+  window.document.getElementById("cs-ai-lab-stream-run").click();
+  assert.equal(window.document.querySelectorAll("#cs-ai-lab-transcript article").length, 0);
+  assert.match(window.document.getElementById("cs-ai-lab-context-count").textContent, /0 av 20/);
   window.document.getElementById("cs-ai-lab-new-session").click();
   assert.equal(window.document.getElementById("cs-ai-lab-context-kind").value, "none");
   assert.equal(window.document.getElementById("cs-ai-lab-context-kind").disabled, false);
@@ -429,12 +540,14 @@ test("Samtale strømmer trygg tekst, bruker eksplisitt kontekst og disponerer sn
   assert.equal(window.sessionStorage.length, 0);
 });
 
-test("Samtale kan avbrytes og øktlisten begrenses til ti i nettleserminnet", async function (t) {
+test("Samtale venter på provider-opprydding etter avbrudd og økter slettes eksplisitt", async function (t) {
   var config = { apiVersion: "v1", csrfToken: "csrf-test", sources: [], providers: [{ id: "ollama", model: "gemma-test", configured: true, processing: "local", capabilities: { chat: true, streaming: true }, operations: ["chat"] }] };
+  var releaseProviderIdle;
   var dom = await mountConsole("http://127.0.0.1:8080/console/", function (url, init) {
     if (String(url) === "/__ai-lab/v1/config") return Promise.resolve(new Response(JSON.stringify(config), { status: 200 }));
     if (String(url) === "/__ai-lab/v1/contexts") return Promise.resolve(new Response(JSON.stringify({ id: "context-cancel", kind: "none", expiresAt: new Date(Date.now() + 60000).toISOString() }), { status: 201 }));
     if (String(url) === "/__ai-lab/v1/contexts/dispose") return Promise.resolve(new Response("{}", { status: 200 }));
+    if (String(url) === "/__ai-lab/v1/provider-idle") return new Promise(function (resolve) { releaseProviderIdle = function () { resolve(new Response(JSON.stringify({ provider: "ollama", idle: true }), { status: 200 })); }; });
     if (String(url) === "/__ai-lab/v1/stream") return new Promise(function (resolve, reject) {
       init.signal.addEventListener("abort", function () { var error = new Error("aborted"); error.name = "AbortError"; reject(error); });
     });
@@ -443,14 +556,28 @@ test("Samtale kan avbrytes og øktlisten begrenses til ti i nettleserminnet", as
   t.after(function () { dom.window.close(); });
   var window = dom.window;
   window.VwConsole.navigate("ai-lab");
-  window.document.getElementById("cs-ai-lab-general-token").value = "token";
-  window.document.getElementById("cs-ai-lab-general-token").dispatchEvent(new window.Event("input", { bubbles: true }));
+  window.document.getElementById("cs-ai-lab-access-token").value = "token";
+  window.document.getElementById("cs-ai-lab-access-token").dispatchEvent(new window.Event("input", { bubbles: true }));
   window.document.getElementById("cs-ai-lab-composer").value = "Langt svar";
   window.document.getElementById("cs-ai-lab-stream-run").click();
   await new Promise(function (resolve) { setTimeout(resolve, 5); });
   window.document.getElementById("cs-ai-lab-stop").click();
   await new Promise(function (resolve) { setTimeout(resolve, 10); });
   assert.match(window.document.getElementById("cs-ai-lab-transcript").textContent, /Avbrutt|delvis/i);
-  for (var i = 0; i < 11; i += 1) window.document.getElementById("cs-ai-lab-new-session").click();
+  assert.match(window.document.getElementById("cs-ai-lab-general-status").textContent, /rydder opp/i);
+  assert.equal(window.document.getElementById("cs-ai-lab-stream-run").disabled, true);
+  releaseProviderIdle();
+  await new Promise(function (resolve) { setTimeout(resolve, 10); });
+  assert.equal(window.document.getElementById("cs-ai-lab-stream-run").disabled, false);
+
+  window.document.getElementById("cs-ai-lab-new-session").click();
+  window.document.getElementById("cs-ai-lab-new-session").click();
+  window.document.querySelectorAll("[data-ai-lab-delete-session]")[1].click();
+  assert.equal(window.document.querySelectorAll("#cs-ai-lab-session-list .ai-lab-session").length, 2);
+  var retainedSessionId = window.document.querySelector("#cs-ai-lab-session-list .ai-lab-session").getAttribute("data-ai-lab-session-id");
+  for (var i = 0; i < 12; i += 1) window.document.getElementById("cs-ai-lab-new-session").click();
   assert.equal(window.document.querySelectorAll("#cs-ai-lab-session-list .ai-lab-session").length, 10);
+  assert.equal(window.document.getElementById("cs-ai-lab-new-session").disabled, true);
+  assert.match(window.document.getElementById("cs-ai-lab-session-count").textContent, /10 av 10/);
+  assert.ok(window.document.querySelector('[data-ai-lab-session-id="' + retainedSessionId + '"]'));
 });

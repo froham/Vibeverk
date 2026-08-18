@@ -1,6 +1,6 @@
 # AI Lab — lokal utvikling og kvalitetssikring
 
-AI Lab er det lokale modellverkstedet under den interne **Arctic**-seksjonen i Vibeverk Console. Det støtter fri samtale med Gemma, analyse av innlimt tekst eller eksplisitt valgte prosjektfiler, og den eksisterende sammenligningen/reviewen av strukturerte forslag til **Læringsmodulen**.
+AI Lab er det lokale modellverkstedet under den interne **Arctic**-seksjonen i Vibeverk Console. Assistenten i Samtale og Analyse heter **Viba** og drives av den lokale **Gemma**-modellen. Modellkort, teknisk status og den eksisterende sammenligningen/reviewen av strukturerte forslag til **Læringsmodulen** bruker fortsatt modellnavnet Gemma. Navnet gir ingen voice-, mikrofon- eller wake-word-funksjon.
 
 AI Lab og Læringsmodulen er separate konsepter. Eksisterende eller menneskelig godkjent læringsinnhold er statiske dokumenter og vises uten AI Lab, Ollama eller Anthropic. AI Lab skriver aldri til disse dokumentene, Supabase, `App.store`, `localStorage` eller en database.
 
@@ -81,18 +81,23 @@ Ollama-adapteren håndhever utkastsskjemaet med strukturert output (`response_fo
 
 1. Velg **Samtale** for en naturlig, lokal flertrinnssamtale uten dokumentkontekst. En melding som «HEI» skal derfor behandles som vanlig samtale, ikke som bestilling på et læringsutkast.
 2. Velg **Analyse**, og velg enten innlimt tekst (maks 20 000 tegn) eller én til seks filer fra den faste kildelisten. Ingen vilkårlig filsti eller mappe kan sendes.
-3. Gemma-svaret strømmes til Console og kan avbrytes. Serveren proxyer aldri rå Ollama-rammer, og en avbrutt nettleserrequest avbryter oppstrømslesingen.
-4. Samtaleøkter, meldinger og innlimt tekst lever bare i nettleserminnet (maks ti økter). Eksport er eksplisitt og kan inneholde samtale-/kontekstinnhold; kontroller filen før deling.
+3. Gemma-svaret strømmes til Console og kan avbrytes. Serveren proxyer aldri rå Ollama-rammer, og en avbrutt nettleserrequest avbryter oppstrømslesingen. Etter «Stopp» holdes kjøreknappen låst til providerjobben faktisk er frigitt.
+4. Samtaleøkter, meldinger og innlimt tekst lever bare i nettleserminnet (maks ti økter). Økter slettes eksplisitt; en ellevte økt blokkeres og evikterer aldri en eldre økt. Eksport er eksplisitt og kan inneholde samtale-/kontekstinnhold; kontroller filen før deling.
+5. Samtale/Analyse kan legge ved eller lime inn med Ctrl/⌘+V ett PNG-, JPEG- eller WebP-bilde på opptil 12 MB i neste melding. Bilder over 2 MB komprimeres lokalt til JPEG på maks 2 MB før sending; både klient og server avviser over 40 megapiksler. Originalen sendes ikke når komprimering skjer. Bildet går bare til lokal Gemma; rå bildebytes lagres ikke i økteksport eller audit. Vanlig tekstinnliming påvirkes ikke.
+6. Velg **Rask** (`reasoning_effort=none`) for korte oppgaver og **Grundig** (`low`) når modellen bør bruke mer intern bearbeiding. Samtale starter i Rask; Analyse starter i Grundig.
+7. Ferdige svar kan kopieres eller lastes ned som tekst. Kodegjerder får egne kopierings- og nedlastingsknapper; HTML lastes ned som `.html`, men kjøres eller forhåndsvises aldri i Console. Kontroller alltid modellgenerert kode før du åpner eller kjører filen.
+8. Modellkonteksten viser løpende bruk mot grensen på 20 meldinger. Skriv `/compact` for å la lokal Gemma oppsummere eldre kontekst uten å fjerne den synlige/eksporterte historikken, `/clear` for å tømme aktiv økt, `/new` for ny økt eller `/help` for kommandooversikten. Komprimer før telleren er full; over 20 000 tegn kan ikke kompakteres uten mulig informasjonstap og avvises derfor.
 
 ## Læringsarbeidsflyt
 
-1. Velg scenarioet Læringsmodulen, én til seks godkjente kilder og en instruksjon.
-2. Kjør Gemma og Haiku separat for sammenligning mot samme snapshot.
-3. Bruk **Gemma + review** for en atomisk totrinnsflyt: Gemma-utkast, deretter Haiku-review mot nøyaktig samme kilder.
-4. Review (`learning-review-v2`) returnerer eit eige verdict (`GODKJENT`, `MÅ RETTES` eller `MANGLER KILDE`) for kvar av `moduleDescription`, `howItWorks`, `onboardingText` og `notDocumented`, pluss éin indeksert verdict per quiz- og kontrollspørsmål i det faktiske utkastet -- ikkje berre éin samla beslutning. Kvart verdict har eiga grunngjeving og konkrete funn der det trengst.
+1. Velg **Læringsutkast**, skriv instruksjonen i den store promptflaten og legg ved én til seks kilder. Kilder kan være godkjente prosjektfiler eller én innlimt/opplastet tekst på maks 20 000 tegn.
+2. Innlimt/opplastet tekst blir en flyktig, linjenummerert kilde for lokal Gemma. Den kan ikke sendes til Haiku. Bilder er ikke tillatt som læringskilde fordi dagens validering krever tekstlinjer for alle faktapåstander.
+3. Kjør Gemma og Haiku separat for sammenligning mot samme snapshot.
+4. Bruk **Gemma + review** for en atomisk totrinnsflyt: Gemma-utkast, deretter Haiku-review mot nøyaktig samme kilder.
+5. Review (`learning-review-v2`) returnerer eit eige verdict (`GODKJENT`, `MÅ RETTES` eller `MANGLER KILDE`) for kvar av `moduleDescription`, `howItWorks`, `onboardingText` og `notDocumented`, pluss éin indeksert verdict per quiz- og kontrollspørsmål i det faktiske utkastet -- ikkje berre éin samla beslutning. Kvart verdict har eiga grunngjeving og konkrete funn der det trengst.
    Servervalidatoren gjer det strukturelt umogleg å returnere ei samla `GODKJENT`-beslutning med mindre ALLE delvurderingane over sjølv er `GODKJENT`; motsett krev ei ikkje-godkjend samla beslutning minst éi delvurdering som ikkje er `GODKJENT`.
-5. Velg foretrukket svar, skriv kommentar og eksporter JSON. Eksporten inneholder kildereferanser og snapshot-hash, men ikke kildefilenes innhold eller API-nøkler automatisk. Den inneholder likevel instruksjon, kommentar og modelloutput og må kontrolleres før deling.
-6. Flytt eventuelt godkjent innhold manuelt til Læringsmodulen etter menneskelig kontroll. Det finnes ingen automatisk publiseringsvei.
+6. Velg foretrukket svar, skriv kommentar og eksporter JSON. Eksporten inneholder kildereferanser og snapshot-hash, men ikke kildefilenes innhold eller API-nøkler automatisk. Den inneholder likevel instruksjon, kommentar og modelloutput og må kontrolleres før deling.
+7. Flytt eventuelt godkjent innhold manuelt til Læringsmodulen etter menneskelig kontroll. Det finnes ingen automatisk publiseringsvei.
 
 Hvis en påstand ikke støttes av de valgte kildene, skal utkastet bruke `IKKE DOKUMENTERT`. Alle dokumenterte avsnitt og svar må ha validerte referanser på formen `kilde-ID Lstart–slutt`.
 Provider-skjemaet begrenser `sourceId` dynamisk til kilde-ID-ene i det aktuelle snapshotet. Modellen kan derfor ikke velge en filsti, et visningsnavn eller en kilde fra en tidligere kjøring som referanse.
@@ -139,9 +144,9 @@ Etter grønn smoke bør følgende gås gjennom i Console før commit/PR:
 
 1. Send `HEI` i **Samtale** uten kontekst og kontroller et kort, naturlig svar.
 2. Lim inn samme syntetiske tekst som smoke-skriptet bruker, og kjør **Analyser**, **Oppsummer** og **Skriv om**.
-3. Start et langt svar, trykk **Stopp**, og kontroller at delvis svar merkes som avbrutt og at neste melding kan sendes.
-4. Bytt mellom minst to økter og kontroller at låst kontekst og analysehandling følger riktig økt.
-5. Test ved omtrent 375 px bredde: ingen horisontal sideskroll, øktlisten kan skrolles og alle handlinger er tilgjengelige.
+3. Start et langt svar, trykk **Stopp**, og kontroller at delvis svar merkes som avbrutt, knappen viser opprydding, og at neste melding først kan sendes når Gemma er ledig.
+4. Bytt mellom minst to økter, slett én eksplisitt og kontroller at låst kontekst og analysehandling følger riktig økt. Ved ti økter skal «Ny økt» blokkeres uten automatisk sletting.
+5. Kontroller desktopbredden: bare valgt arbeidsmåte er synlig; Læringsutkast har oppsett til venstre og resultat til høyre uten duplisert skjema.
 6. Eksporter én økt og kontroller at riktig melding/kontekst/operasjon finnes, men at lokal tilgangstoken og rå bytes fra valgte filer mangler.
 7. Kjør Læringsutkast med Gemma og bekreft at den eksisterende strukturerte flyten fortsatt er separat fra samtale/analyse.
 
