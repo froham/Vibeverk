@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.158.1 — 2026-08-18
+
+**KRITISK preview-sikringsretting før ny utrulling.** Den første manuelle `vercel --yes`-previewen av 0.158.0 tok med den Git-ignorerte `scripts/ai-lab.env.local` fordi prosjektet manglet `.vercelignore`; filen svarte offentlig som en statisk fil. Deployen ble fjernet umiddelbart og stien ble verifisert til `404`. Innholdet ble ikke lest i denne kontrollen.
+
+- Den lokale `AI_LAB_ACCESS_TOKEN` er rotert, den lokale `ANTHROPIC_API_KEY` er blankt/deaktivert og AI Lab-tjenesten er startet på nytt. Den tidligere Anthropic-nøkkelen må fortsatt tilbakekalles hos leverandøren; lokal blanking tilbakekaller ikke en allerede utstedt nøkkel.
+- Ny sporet `.vercelignore` sperrer eksplisitt alle `.env`-varianter, `scripts/ai-lab.env.local`, `.runtime`, `.vercel`, `node_modules`, `.git`, logger og lokale testskjermbilder fra Vercel-opplasting.
+- `test-api.js` har en permanent deploy-sikkerhetsassert som feiler dersom de sentrale sperremønstrene mangler.
+- 0.158.0-commiten er pushet til release-grenen, men den usikre previewen er slettet og det finnes ingen ny aktiv preview før nøkkeltilbakekalling er bekreftet. Ingen produksjonsdeploy. Cache-bust: `console-core.js` 283→284.
+
 ## 0.158.0 — 2026-08-18
 
 **Den brukerrettede assistenten i AI Lab heter nå Viba.** Dette etablerer et stabilt agentnavn uten å forveksle identiteten med modellen som til enhver tid driver den.

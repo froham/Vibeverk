@@ -51,7 +51,7 @@ Kilderegisteret i `scripts/ai-lab/sources.js` er eneste sted som kan åpne nye f
 
 Secret-tripwiren er bevisst en blocker, ikke en redaktor: endrede bytes ville brutt snapshot-hash og linjereferanser. Den gjenkjenner bare kjente formater. At et kall passerer er ingen garanti for anonymitet, fravær av personopplysninger eller at materialet kan deles. Kildeklassifisering må gjennomgås ved innholdsendringer og hver allowlist-utvidelse. Leverandørvilkår/DPA, retensjon, region/dataoverføring og intern godkjenning er prosessporter som ikke kan verifiseres fra kodebasen. Eksportert JSON inneholder instruksjon, kommentar og modelloutput og må kontrolleres før deling.
 
-AI Lab-serveren og Ollama skal ikke deployeres til Vercel, GitHub Pages eller annen produksjonsruntime. Produksjons-Arctic sin vanlige API-seam er fortsatt lukket; browser-broen er en eksplisitt operatørstyrt forbindelse til browserens egen loopback og gir bare tilgang til eksisterende AI Lab-ruter, ikke Arctic-kommandoer eller privat drift.
+AI Lab-serveren og Ollama skal ikke deployeres til Vercel, GitHub Pages eller annen produksjonsruntime. Den sporede `.vercelignore` er en del av denne grensen og må eksplisitt utelate lokale miljøfiler og runtime-data; `.gitignore` alene er ikke tilstrekkelig for Vercel CLI-opplasting. Produksjons-Arctic sin vanlige API-seam er fortsatt lukket; browser-broen er en eksplisitt operatørstyrt forbindelse til browserens egen loopback og gir bare tilgang til eksisterende AI Lab-ruter, ikke Arctic-kommandoer eller privat drift.
 
 ## Minne, audit og retensjon
 

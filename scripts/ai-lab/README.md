@@ -30,7 +30,7 @@ openssl rand -hex 32
 
 Lim den tilfeldige verdien fra siste kommando inn som `AI_LAB_ACCESS_TOKEN`. Eksempelfilen lar både denne tokenen og Anthropic-nøkkelen stå tomme med vilje, slik at en ukonfigurert eller offentlig kjent placeholder aldri blir godtatt.
 
-Filen `scripts/ai-lab.env.local` er ignorert av Git. Ikke skriv API-nøkler i README, kode, testdata eller logger.
+Filen `scripts/ai-lab.env.local` er ignorert av både Git og den sporede `.vercelignore`. Begge grensene er nødvendige: Vercel CLI pakker arbeidskopien og Git-ignore alene er ikke en deploysperre. Ikke skriv API-nøkler i README, kode, testdata eller logger.
 
 | Variabel | Formål |
 |---|---|

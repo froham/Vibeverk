@@ -18,6 +18,7 @@
    som test.js/test-workspace.js). */
 
 let __ok = 0, __err = 0;
+const fs = require("node:fs");
 function assert(cond, msg) {
   if (!cond) { __err++; console.error("FEIL:", msg); process.exitCode = 1; }
   else { __ok++; console.log("OK:", msg); }
@@ -43,6 +44,10 @@ function basicAuthHeader(password) {
 }
 
 async function main() {
+  const vercelIgnore = fs.readFileSync(".vercelignore", "utf8").split(/\r?\n/).map((line) => line.trim());
+  assert([".env", ".env.*", "**/.env", "**/.env.*", "scripts/ai-lab.env.local", ".runtime/**", ".vercel/**", "node_modules/**", ".git/**"].every((entry) => vercelIgnore.includes(entry)),
+    "deploy-sikkerheit: .vercelignore sperrar lokale miljøfiler, runtime-data og arbeidskopiar eksplisitt");
+
   process.env.VIBEVERK_CONTROL_URL = "https://control.example.test";
   process.env.VIBEVERK_CONTROL_ANON_KEY = "control-anon-key";
 

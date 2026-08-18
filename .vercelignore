@@ -1,0 +1,26 @@
+# Deployment boundary: Vercel CLI uploads from the working tree and does not
+# reliably inherit every Git ignore. Keep local secrets/runtime artefacts out.
+.env
+.env.*
+**/.env
+**/.env.*
+scripts/ai-lab.env.local
+
+.runtime
+.runtime/**
+.vercel
+.vercel/**
+node_modules
+node_modules/**
+.git
+.git/**
+
+*.log
+.DS_Store
+Thumbs.db
+supabase/.temp
+supabase/.temp/**
+.claude/skills/run-vibeverk/screenshots
+.claude/skills/run-vibeverk/screenshots/**
+.claude/skills/smoke-vibeverk/screenshots
+.claude/skills/smoke-vibeverk/screenshots/**
