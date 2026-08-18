@@ -362,6 +362,11 @@ async function main() {
   }));
   assert(r.status !== 404 && r.headers.get("permissions-policy") === "loopback-network=(self)", "d6b: eksakt VERCEL_URL slepp tenant-uavhengig Console gjennom i preview etter SITE_LOCK");
 
+  r = await middleware(fakeRequest("https://vibeverk-preview-123.vercel.app/config.js", {
+    host: "vibeverk-preview-123.vercel.app", authorization: basicAuthHeader("hemmelig")
+  }));
+  assert(r.headers.get("x-middleware-next") === "1" && !r.headers.get("x-middleware-rewrite"), "d6bb: eksakt preview-host får statisk config.js slik at core.js kan starte Console");
+
   r = await middleware(fakeRequest("https://anna-preview.vercel.app/console/", {
     host: "anna-preview.vercel.app", authorization: basicAuthHeader("hemmelig")
   }));

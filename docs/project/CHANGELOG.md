@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.151.3 — 2026-08-18
+
+**Preview-Console lastar no den statiske basiskonfigurasjonen som `core.js` treng.** 0.151.2 sleppte sjølve `/console/` gjennom tenant-porten, men `/config.js` vart framleis omskriven til tenant-config for eit domene som med vilje ikkje er registrert som kunde. Resultatet var `SITE_CONFIG=null`, stopp i `core.js` og den synlege følgjefeilen «core.js / components.js ikkje lasta».
+
+- Berre eksakt Vercel-eigd `VERCEL_URL` i `preview` får den statiske `/config.js` etter SITE_LOCK; vanlege kundedomene brukar framleis tenant-config uendra.
+- Console sine øvrige rotfiler er ordinære statiske ressursar og var ikkje omfatta av middleware-matcharen; ingen brei statisk allowlist eller `*.vercel.app`-regel er innført.
+- API-testen stadfestar eksplisitt `next` utan rewrite for preview-config. Ingen database- eller produksjonsendring. Cache-bust: `console-core.js` 275→276.
+
 ## 0.151.2 — 2026-08-17
 
 **Vercel-previewen kan no opne den tenant-uavhengige Console-flata utan å registrere eit flyktig preview-domene som kunde.** Første ekte preview av 0.151.1 vart korrekt stoppa av den generelle ukjent-tenant-porten med «Dette domenet er ikkje registrert som ein Vibeverk-kunde.»

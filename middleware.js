@@ -136,11 +136,15 @@ async function resolveTenant(controlUrl, controlAnonKey, host) {
   return Array.isArray(rows) ? rows[0] : null;
 }
 
-function isExactConsolePreview(url, host) {
+function isExactPreviewDeployment(host) {
   const deploymentHost = String(process.env.VERCEL_URL || "").trim().toLowerCase();
   return process.env.VERCEL_ENV === "preview" &&
     !!deploymentHost &&
-    host === deploymentHost &&
+    host === deploymentHost;
+}
+
+function isExactConsolePreview(url, host) {
+  return isExactPreviewDeployment(host) &&
     (url.pathname === "/console" || url.pathname === "/console/");
 }
 
@@ -219,6 +223,13 @@ export default async function middleware(request) {
   }
 
   if (url.pathname === "/config.js") {
+    // Console brukar den statiske basiskonfigurasjonen før core.js startar.
+    // På den eksakte Vercel-preview-hostnamen finst ingen tenant å generere
+    // config frå; ei omskriving til tenant-config ville difor setje
+    // SITE_CONFIG=null og få core.js til å stoppe før Console vert montert.
+    // SITE_LOCK er allereie kontrollert over. Unntaket gjeld berre denne eine
+    // statiske fila på Vercel si servereigde preview-hostname.
+    if (isExactPreviewDeployment(host)) return next();
     return rewrite(new URL("/api/tenant-config", request.url));
   }
 
