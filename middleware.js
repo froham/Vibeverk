@@ -61,7 +61,9 @@ export const config = {
     "/admin/",
     "/admin/manifest.json",
     "/qr/:code",
+    "/qr/:code/",
     "/api/qr-redirect",
+    "/api/qr-redirect/",
   ],
 };
 
@@ -236,7 +238,14 @@ export default async function middleware(request) {
   }
 
   if (url.pathname.indexOf("/qr/") === 0) {
-    const qrCode = url.pathname.slice(4);
+    // vercel.json sitt trailingSlash:true 308-redirecter /qr/<code> til
+    // /qr/<code>/ FØR denne fila i det heile nås -- den reelle pathname
+    // her har difor alltid ein etterslengande skråstrek. Stadfesta i
+    // produksjon rett etter fyrste deploy (2026-08-19): utan replace(/\/+$/)
+    // vart heile koden (inkl. skråstreken) sendt vidare som ?code=, som
+    // aldri matcha noka lagra rad -- kvar einaste skanna QR-kode enda på
+    // ei generisk Vercel-404 i staden for den venlege qr-redirect-sida.
+    const qrCode = url.pathname.slice(4).replace(/\/+$/, "");
     if (qrCode) return rewrite(new URL("/api/qr-redirect?code=" + encodeURIComponent(qrCode), request.url));
   }
 
