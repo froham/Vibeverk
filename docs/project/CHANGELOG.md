@@ -30,6 +30,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.151.1 — 2026-08-19
+
+**Hastefiks: skanna QR-koder 404et i produksjon rett etter 0.151.0-utrullinga** — fanget under egen manuell smoke-test rett etter deploy, ikke av CI (som ikke dekker live routing). `vercel.json` sin `trailingSlash: true` 308-omdirigerer ALLE forespørsler til å ha etterslengande skråstrek FØR `middleware.js` i det heile nås — `/qr/<code>` vart difor alltid `/qr/<code>/` når koden faktisk køyrde, men `middleware.js` sin matcher og pathname-utrekning venta berre den slash-lause forma. Resultat: kvar einaste skanning enda på ei generisk Vercel-404 i staden for redirect-en. Retta ved å (1) leggje `/qr/:code/` og `/api/qr-redirect/` til matcher-lista, og (2) strippe ein etterslengande skråstrek av koden før RPC-kallet. Verifisert direkte mot produksjon (`curl -sL`) etter fiksen — `/qr/<ukjend-kode>` gir no den venlege «finst ikkje lenger»-sida (404 med rett innhald), ikkje Vercel sin generiske 404.
+
 ## 0.151.0 — 2026-08-19
 
 **Ny QR-modul (`module-qrcode.js`), aktiverbar uavhengig i Web-admin og Workspace.** Genererer dynamiske/redirect-baserte QR-koder — den trykte/delte koden peker alltid på en fast `/qr/<code>`-adresse på tenantens eget domene, aldri på mål-lenken direkte, slik at mål-lenken kan byttes senere uten at koden må skrives ut på nytt. Diskutert og godkjent med bruker før bygging.
