@@ -59,19 +59,47 @@
     }
 
     /* =======================================================================
+       STILER  (Web-admin sin index.html definerer .field input/.field
+       textarea sin avrunda styling -- workspace/index.html manglar denne
+       CSS-blokka heilt, sidan Workspace sine eigne moduler hand-rullar
+       inputfelt i staden for å bruke C.field(). Denne modulen BRUKER
+       C.field() på begge overflater (delt render-funksjon), så utan denne
+       injiserte regelen fekk feltet i Workspace skarpe, ustila
+       nettlesar-standard-hjørne -- fanga av brukar i praksis, 2026-08-19.
+       Harmlaus duplikat på Web-admin, som alt har identiske reglar. */
+    function injectStyles() {
+      if (document.getElementById("qr-field-styles")) return;
+      var s = document.createElement("style");
+      s.id = "qr-field-styles";
+      s.textContent =
+        ".field input:not([type=\"color\"]), .field textarea{font:inherit;padding:.7rem .85rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;box-sizing:border-box;transition:border-color .2s,box-shadow .2s}" +
+        ".field input:not([type=\"color\"]):focus, .field textarea:focus{outline:none;border-color:var(--color-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--color-primary) 18%,transparent)}" +
+        ".field input[type=\"color\"]{width:100%;height:42px;padding:3px 4px;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);cursor:pointer}";
+      document.head.appendChild(s);
+    }
+
+    /* =======================================================================
        QR-GENERERING  (window.QRCodeStyling)
        ==================================================================== */
     function qrTargetUrl(record) { return window.location.origin + "/qr/" + record.code; }
 
+    var QR_PREVIEW_SIZE = 220;
+
     function buildQr(record, extra) {
       var opts = Object.assign({
-        width: 280, height: 280, margin: 8,
+        width: QR_PREVIEW_SIZE, height: QR_PREVIEW_SIZE, margin: 10,
         data: qrTargetUrl(record),
         qrOptions: { errorCorrectionLevel: "H" },
         dotsOptions: { color: record.fgColor || "#142033", type: "rounded" },
         cornersSquareOptions: { type: "extra-rounded", color: record.fgColor || "#142033" },
         backgroundOptions: { color: record.bgColor || "#ffffff" },
-        imageOptions: { crossOrigin: "anonymous", imageSize: 0.35, margin: 6, hideBackgroundDots: true }
+        // imageSize:0.28 + margin:10 (ned frå 0.35/6) -- ved 0.35 stakk logoen
+        // synleg utanfor den kvite avstandssona rundt QR-modulane i praksis
+        // (brukar-skjermbilete, 2026-08-19), sjølv om talet i seg sjølv er ein
+        // brøkdel av canvas-storleiken -- for lite margin mellom logo og
+        // modular gjorde det visuelt utydeleg kvar koden slutta og logoen
+        // starta. hideBackgroundDots fjernar framleis QR-prikkane bak logoen.
+        imageOptions: { crossOrigin: "anonymous", imageSize: 0.28, margin: 10, hideBackgroundDots: true }
       }, extra || {});
       if (record.useLogo && CFG.company && CFG.company.logoUrl) opts.image = CFG.company.logoUrl;
       return new window.QRCodeStyling(opts);
@@ -184,8 +212,8 @@
       ed.innerHTML =
         '<form class="admin-form admin-form--card" data-qr-form>' +
           '<h4 style="margin:0">' + (item ? "Rediger QR-kode" : "Ny QR-kode") + '</h4>' +
-          '<div style="display:grid;grid-template-columns:1fr 200px;gap:1.4rem;align-items:start">' +
-            '<div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:1.4rem;align-items:flex-start">' +
+            '<div style="flex:1;min-width:240px">' +
               C.field({ id: "qr-label", label: "Navn/merkelapp", required: true, value: rec.label,
                 hint: "Kun til intern bruk — vises ikke når koden skannes." }) +
               C.field({ id: "qr-url", label: "Mål-lenke", type: "url", required: true, value: rec.targetUrl,
@@ -205,7 +233,7 @@
               '<p class="field__hint">Fysisk lenke: ' + esc(qrTargetUrl(rec)) + '</p>' +
               '<p class="form__status" data-qr-status></p>' +
             '</div>' +
-            '<div data-qr-preview style="display:flex;justify-content:center;align-items:center;min-height:280px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius)"></div>' +
+            '<div data-qr-preview style="flex:0 0 auto;display:flex;justify-content:center;align-items:center;width:' + (QR_PREVIEW_SIZE + 24) + 'px;height:' + (QR_PREVIEW_SIZE + 24) + 'px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;margin:0 auto"></div>' +
           '</div>' +
         '</form>';
 
@@ -257,6 +285,7 @@
     /* =======================================================================
        REGISTRERING
        ==================================================================== */
+    injectStyles();
     if (siteOn) {
       App.registerModule({
         id: "qrcode", label: "QR-koder", order: 999, adminOnly: true,
