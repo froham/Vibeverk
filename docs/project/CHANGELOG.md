@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.151.3 — 2026-08-19
+
+**UI-fiks: QR-editoren fløt utenfor kortet/modalen på Workspace, og felt-inputene var ustilte (skarpe hjørner).** Brukertilbakemelding med skjermbilder, samme dag som 0.151.0/0.151.2. To reelle bugs, ikke bare polish:
+
+- **Overflow**: editoren la QR-forhåndsvisningen i en `1fr 200px`-grid-kolonne, men selve QR-koden ble tegnet 280×280px — garantert overflow uansett skjermstørrelse. Byttet til en responsiv `flex-wrap`-layout der forhåndsvisnings-boksen matcher den faktiske QR-størrelsen (nå 220px), og som stables under feltene på smale skjermer i stedet for å flyte utenfor.
+- **Ustilte inputfelt på Workspace**: `index.html` (Web-admin) definerer `.field input`/`.field textarea` sin avrundede styling, men `workspace/index.html` mangler denne CSS-blokken helt — Workspace sine egne moduler unngår dette ved å håndrulle input-felt i stedet for å bruke `C.field()`, men denne modulen bruker `C.field()` delt på begge overflater (samme mønster som `module-crm.js`). Fikset ved å injisere de manglende reglene fra modulen selv (harmløst duplikat på Web-admin, som allerede har dem).
+- **Logo-plassering**: redusert `imageOptions.imageSize` fra 0.35 til 0.28 og økt margin fra 6 til 10 — ved 0.35 var det for lite luft mellom logoen og QR-modulene, utydelig hvor koden sluttet og logoen begynte.
+- Cache-bust: `module-qrcode.js` 1→2, `console-core.js` 279→280.
+
 ## 0.151.2 — 2026-08-19
 
 **Hastefiks: QR-modulen manglet i Console sin «Modular»-brytarliste.** `module-qrcode.js` (0.151.0) leser `features.qrCode`/`intranettFeatures.qrCode`, men Console sin egen katalog over hvilke flagg som faktisk vises som checkboxer (`FEAT_LABELS`/`IFEAT_LABELS` + tilhørende hjelpetekster og `OPT_IN_FEATURES`-defaulten) i `console-core.js` ble aldri oppdatert — brukeren fant ikke bryteren i Console fordi den rett og slett ikke fantes der, selv om selve modulen var fullt fungerende. Lagt til `qrCode` i alle fire katalogene (Web-admin- og Workspace-siden hver, pluss opt-in-default siden flagget skal være AV som standard for en kunde som aldri har lagret features eksplisitt).
