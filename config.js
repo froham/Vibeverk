@@ -186,7 +186,11 @@ window.SITE_CONFIG = {
                           //   eige Supabase-prosjekt fyrst (Authentication → Providers), elles gjev
                           //   knappen berre ei kryptisk Supabase-feilmelding. Skru på i Console →
                           //   Modular ETTER at oppsettet er gjort, ikkje før.
-    oauthGoogle:    false  // ← "Logg inn med Google", same føresetnad som oauthMicrosoft over.
+    oauthGoogle:    false, // ← "Logg inn med Google", same føresetnad som oauthMicrosoft over.
+    qrCode:         false  // ← QR-modul (generer/eksporter QR-kodar til PNG/SVG). Krever
+                          //   module-qrcode.js. MÅ vere eksplisitt false som standard
+                          //   (nytt/uprøvd, 2026-08-19) -- delt datasett med Workspace sin
+                          //   intranettFeatures.qrCode (same App.store-nøkkel "qr-codes").
   },
 
   /* --- Workspace-funksjoner (skru av/på) ------------------------------------
@@ -211,7 +215,10 @@ window.SITE_CONFIG = {
     contact:       true,  // ← Kontakthenvendingar (frå nettsida)
     kb:            false, // ← Kunnskapsbase
     mediaInternal: false, // ← Mediebank (intern)
-    eiendeler:     true   // ← Eiendeler-fane i Organisasjon & drift (krev orgdrift: true òg)
+    eiendeler:     true,  // ← Eiendeler-fane i Organisasjon & drift (krev orgdrift: true òg)
+    qrCode:        false  // ← QR-modul (generer/eksporter QR-kodar). Krever module-qrcode.js
+                          //   i workspace/. MÅ vere eksplisitt false (nytt/uprøvd,
+                          //   2026-08-19). Deler datasett med features.qrCode på nettsida.
     // NB: "Smart årshjul" (AI-baserte forslag til årsplan) er IKKJE ein
     // intranettFeatures-brytar -- det er ein skreddarsydd modul, sjå
     // customModules under (nøkkel "smartAarshjul"). Krev
