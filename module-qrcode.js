@@ -74,7 +74,12 @@
       s.textContent =
         ".field input:not([type=\"color\"]), .field textarea{font:inherit;padding:.7rem .85rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;box-sizing:border-box;transition:border-color .2s,box-shadow .2s}" +
         ".field input:not([type=\"color\"]):focus, .field textarea:focus{outline:none;border-color:var(--color-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--color-primary) 18%,transparent)}" +
-        ".field input[type=\"color\"]{width:100%;height:42px;padding:3px 4px;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);cursor:pointer}";
+        ".field input[type=\"color\"]{width:100%;height:42px;padding:3px 4px;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);cursor:pointer}" +
+        // .admin-row__actions sin delte base-CSS har flex-shrink:0 (nektar å
+        // krympe) -- på smale skjermar tvingar dette knapperada ned på ei
+        // eiga, full-bredde linje under tittel/lenke i staden for å klemme
+        // seg oppå (sjå qrRow()).
+        "@media (max-width:560px){.qr-row-actions{flex:1 1 100% !important;justify-content:flex-start !important}}";
       document.head.appendChild(s);
     }
 
@@ -183,13 +188,18 @@
     }
 
     function qrRow(r) {
-      return '<li class="admin-row" style="align-items:center;gap:.8rem">' +
-        '<div class="admin-row__main">' +
+      // flex-wrap på sjølve raden + qr-row-actions (media query i
+      // injectStyles()) -- utan dette klemte dei fem knappane seg oppå
+      // tittel/lenke-teksten på smale skjermar i staden for å falle ned på
+      // eiga linje, sidan .admin-row__actions sin flex-shrink:0 (delt
+      // base-CSS) nektar å krympe. Fanga av brukar på ekte mobil, 2026-08-19.
+      return '<li class="admin-row" style="align-items:center;gap:.8rem;flex-wrap:wrap">' +
+        '<div class="admin-row__main" style="flex:1 1 200px;min-width:0">' +
           '<strong>' + esc(r.label) + '</strong>' +
           (r.active === false ? ' <span class="badge" style="opacity:.6">Deaktivert</span>' : '') +
           '<span class="admin-row__meta" style="display:block;word-break:break-all">' + esc(r.targetUrl) + '</span>' +
         '</div>' +
-        '<div class="admin-row__actions" style="display:flex;flex-wrap:wrap;gap:.4rem">' +
+        '<div class="admin-row__actions qr-row-actions" style="display:flex;flex-wrap:wrap;gap:.4rem">' +
           C.button({ label: "Rediger",            variant: "ghost", attrs: 'data-qr-edit="'   + esc(r.id) + '"' }) +
           C.button({ label: "PNG",                 variant: "ghost", attrs: 'data-qr-png="'    + esc(r.id) + '"' }) +
           C.button({ label: "SVG",                 variant: "ghost", attrs: 'data-qr-svg="'    + esc(r.id) + '"' }) +

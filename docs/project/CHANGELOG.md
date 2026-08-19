@@ -30,6 +30,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.151.4 — 2026-08-19
+
+**UI-fiks: knapperada (Rediger/PNG/SVG/Deaktiver/Slett) klemte seg oppå tittel/lenke-teksten i QR-lista på mobil.** Brukertilbakemelding med skjermbilde fra ekte mobilnettleser (Safari iOS). `.admin-row__actions` sin delte base-CSS (`index.html`/`workspace/index.html`) har `flex-shrink:0` — på smale skjermer nektet knapperada å krympe eller falle ned på egen linje, og overlappet i stedet direkte over teksten siden `.admin-row` selv ikke hadde `flex-wrap`. Fikset i `module-qrcode.js`: raden får `flex-wrap:wrap`, og en ny `@media (max-width:560px)`-regel (injisert av modulen selv, samme mønster som 0.151.3 sin `.field`-fiks) tvinger knapperada til en egen full-bredde linje under teksten på smale skjermer. Cache-bust: `module-qrcode.js` 2→3, `console-core.js` 280→281.
+
 ## 0.151.3 — 2026-08-19
 
 **UI-fiks: QR-editoren fløt utenfor kortet/modalen på Workspace, og felt-inputene var ustilte (skarpe hjørner).** Brukertilbakemelding med skjermbilder, samme dag som 0.151.0/0.151.2. To reelle bugs, ikke bare polish:
