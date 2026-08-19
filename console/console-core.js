@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.151.1";
+  var VIBEVERK_VERSION = "0.151.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -431,7 +431,12 @@ window.VwConsole = (function () {
     // for ein gjeven kunde, sjå renderAdminLogin()/renderLogin()) -- difor
     // plassert her i "Nettside"-fana sitt delte features-objekt, sjølv om
     // effekten ikkje er avgrensa til sjølve nettsida.
-    oauthMicrosoft:"Innlogging med Microsoft", oauthGoogle:"Innlogging med Google"
+    oauthMicrosoft:"Innlogging med Microsoft", oauthGoogle:"Innlogging med Google",
+    // qrCode (2026-08-19): styrer Web-admin-fana. Deler App.store-nøkkelen
+    // "qr-codes" med intranettFeatures sin qrCode under -- IFEAT_LABELS/
+    // IFEAT_HELP har difor si eiga oppføring for Workspace-sida, sjølv om
+    // dataa er delt (sjå module-qrcode.js).
+    qrCode:"QR-koder"
   };
   // Opt-in-brytarar -- MÅ defaulte til AV for ein kunde som aldri har lagra
   // features eksplisitt, i motsetnad til alle andre brytarar over (som er
@@ -442,7 +447,7 @@ window.VwConsole = (function () {
   // lagra verdien er av. Det ville i tillegg lagra "true" stille inn viss
   // operatøren trykte "Lagra" av ein heilt annan grunn (t.d. skrudde på
   // FAQ), sidan skjemaet skriv HEILE features-objektet på nytt kvar gong.
-  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true, oauthMicrosoft: true, oauthGoogle: true };
+  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true, oauthMicrosoft: true, oauthGoogle: true, qrCode: true };
   // Kva kvar bryter faktisk gjer -- rendrast som ein helpIcon() ved sida av
   // kvar checkbox (copy-clarity-initiativet, fase 4, 2026-07-13). Vald i
   // staden for å gjette meining frå den korte labelen åleine, sidan fleire
@@ -465,12 +470,14 @@ window.VwConsole = (function () {
     sidebygger:  "Gjev kunden ein eigen «Design»-fane i Web-admin, der dei sjølv kan velje mellom fleire designmalar for heile nettsida, i tillegg til Banner- og Karusell-seksjonar — eit betalt tillegg.",
     sidetelling: "Aktiverer Vibeverk sin eigen, cookiefrie analyse (sidevisningar, henvisningar og klikk på knappar), synleg for kunden i den eigne Innsikt-fana i Web-admin (var underfane under Innstillinger, no ei eiga fane i adminpanelet). Kan ikkje brukast saman med eit eksternt verktøy (t.d. Plausible) sett opp i Analyse-fana her i Console — er begge slått på, vinn Plausible automatisk, og denne interne analysen samlar ikkje inn noko.",
     oauthMicrosoft: "Viser «Logg inn med Microsoft» i BÅDE Web-admin og Workspace sine innloggingsskjema. Krev at kunden (eller Vibeverk på deira vegne) har registrert ein app i Azure/Entra ID og lagt inn klient-ID/-hemmelegheit i kundens eige Supabase-prosjekt (Authentication → Providers) FØRST — denne brytaren viser berre knappen, ho set ikkje opp sjølve leverandøren. Fungerer kun for e-postar som alt er invitert som brukar frå før — kan ikkje brukast til å opprette nye kontoar.",
-    oauthGoogle: "Same som «Innlogging med Microsoft», men for Google. Krev tilsvarande oppsett i Google Cloud Console + kundens Supabase-prosjekt."
+    oauthGoogle: "Same som «Innlogging med Microsoft», men for Google. Krev tilsvarande oppsett i Google Cloud Console + kundens Supabase-prosjekt.",
+    qrCode: "Gjev kunden ei «QR-koder»-fane i Web-admin der dei kan generere og laste ned QR-kodar (PNG/SVG). Kvar kode peikar på ei fast adresse hos oss som videresender vidare -- kunden kan byte mål-lenka seinare utan å skrive ut koden på nytt."
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
     mediaInternal:"Mediebank", links:"Lenker", orgdrift:"Org & drift",
-    crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar"
+    crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar",
+    qrCode:"QR-koder"
   };
   var IFEAT_HELP = {
     announcements: "Kunngjeringar/interne nyheiter, synleg for alle i Workspace.",
@@ -482,7 +489,8 @@ window.VwConsole = (function () {
     crm:           "Gjev tilgang til kundehandtering (CRM) frå Workspace, i tillegg til Web-admin.",
     booking:       "Sjå og handtere bookingar frå Workspace.",
     quote:         "Sjå og handtere tilbodsførespurnadar frå Workspace.",
-    contact:       "Sjå og svare på kontakthenvendingar frå Workspace."
+    contact:       "Sjå og svare på kontakthenvendingar frå Workspace.",
+    qrCode:        "Gjev tilgang til «QR-koder» i Workspace, i tillegg til Web-admin -- deler same lista av kodar (samme App.store-nøkkel)."
   };
 
   // Rein PRISINGS-katalog (brukarønske 2026-08-05) -- Hosting/vedlikehold
