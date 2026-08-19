@@ -30,6 +30,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.151.2 — 2026-08-19
+
+**Hastefiks: QR-modulen manglet i Console sin «Modular»-brytarliste.** `module-qrcode.js` (0.151.0) leser `features.qrCode`/`intranettFeatures.qrCode`, men Console sin egen katalog over hvilke flagg som faktisk vises som checkboxer (`FEAT_LABELS`/`IFEAT_LABELS` + tilhørende hjelpetekster og `OPT_IN_FEATURES`-defaulten) i `console-core.js` ble aldri oppdatert — brukeren fant ikke bryteren i Console fordi den rett og slett ikke fantes der, selv om selve modulen var fullt fungerende. Lagt til `qrCode` i alle fire katalogene (Web-admin- og Workspace-siden hver, pluss opt-in-default siden flagget skal være AV som standard for en kunde som aldri har lagret features eksplisitt).
+
 ## 0.151.1 — 2026-08-19
 
 **Hastefiks: skanna QR-koder 404et i produksjon rett etter 0.151.0-utrullinga** — fanget under egen manuell smoke-test rett etter deploy, ikke av CI (som ikke dekker live routing). `vercel.json` sin `trailingSlash: true` 308-omdirigerer ALLE forespørsler til å ha etterslengande skråstrek FØR `middleware.js` i det heile nås — `/qr/<code>` vart difor alltid `/qr/<code>/` når koden faktisk køyrde, men `middleware.js` sin matcher og pathname-utrekning venta berre den slash-lause forma. Resultat: kvar einaste skanning enda på ei generisk Vercel-404 i staden for redirect-en. Retta ved å (1) leggje `/qr/:code/` og `/api/qr-redirect/` til matcher-lista, og (2) strippe ein etterslengande skråstrek av koden før RPC-kallet. Verifisert direkte mot produksjon (`curl -sL`) etter fiksen — `/qr/<ukjend-kode>` gir no den venlege «finst ikkje lenger»-sida (404 med rett innhald), ikkje Vercel sin generiske 404.
