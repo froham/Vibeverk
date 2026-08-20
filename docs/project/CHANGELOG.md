@@ -30,6 +30,134 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.2 — 2026-08-20
+
+**Slått sammen `main` (QR-modul + personvern-rettinger, 0.151.0–0.151.4) inn i `arctic-ai-lab-rc` (Arctic/AI Lab-arbeidsflate, tidligere 0.151.0–0.158.1) før felles Security/Privacy/UX-review og PR.** De to grenene hadde uavhengig brukt de samme versjonsnumrene (0.151.0–0.151.3) for helt ulikt innhold siden de forgrenet seg fra samme 0.150.0-punkt. Ingen historiske oppføringer er slettet eller omskrevet innholdsmessig — hele Arctic/AI Lab-serien er omnummerert til å ligge etter denne sammenslåingen (gammelt → nytt): 0.151.0→0.152.0, 0.151.1→0.152.1, 0.151.2→0.152.2, 0.151.3→0.152.3, 0.152.0→0.153.0, 0.153.0→0.154.0, 0.154.0→0.155.0, 0.155.0→0.156.0, 0.156.0→0.157.0, 0.157.0→0.158.0, 0.158.0→0.159.0, 0.158.1→0.159.1. Rekkefølgen under er derfor versjonsnummer-fallende, ikke strengt kronologisk — QR-serien (0.151.0–0.151.4, 2026-08-19) er nyere i dato enn deler av Arctic/AI Lab-serien den nå står under, men eldre i versjonsnummer etter omnummereringen. **Rettelse same dag**: den første renumereringspassen (denne oppføringa opprinnelig skrevet) glemte den eldste Arctic-oppføringa (Fase 0, 2026-08-13), som fortsatt sto som `0.151.0` og kolliderte med QR-seriens ekte `0.151.0`. Project Historian fanget dette og flagget det i en `<!-- HISTORIAN NOTE -->`; jeg har nå flyttet og renummerert hele klyngen korrekt (over) i stedet for å la merknaden stå.
+
+- Konflikter løst i `console/console-core.js`, `console/index.html`, `middleware.js`, `test-customer-analysis-console.js`, `test-page-builder-console.js`: QR-modulen (main) og Arctic/AI Lab (denne grenen) er begge additive og uavhengige, ingen funksjonalitet fra noen av sidene er fjernet.
+- Uavhengig Security-, Privacy- og UX/mobil-gjennomgang av sluttdiffen (2026-08-20) fant ingen blokkerende eller høyalvorlige funn. Full testkjøring (alle hovedsuiter, Arctic/AI Lab-suitene, ekte lokal Gemma-smoke 6/6) bekreftet grønn — se `docs/project/CURRENT_STATE.md`.
+- Ingen database- eller produksjonsendring i denne sammenslåingen i seg selv. Cache-bust: se enkeltfilenes egne `?v=N`-oppdateringer i denne og forrige runde.
+
+## 0.159.1 — 2026-08-18
+
+**KRITISK preview-sikringsretting før ny utrulling.** Den første manuelle `vercel --yes`-previewen av 0.159.0 tok med den Git-ignorerte `scripts/ai-lab.env.local` fordi prosjektet manglet `.vercelignore`; filen svarte offentlig som en statisk fil. Deployen ble fjernet umiddelbart og stien ble verifisert til `404`. Innholdet ble ikke lest i denne kontrollen.
+
+- Den lokale `AI_LAB_ACCESS_TOKEN` er rotert, den lokale `ANTHROPIC_API_KEY` er blankt/deaktivert og AI Lab-tjenesten er startet på nytt. Den tidligere Anthropic-nøkkelen må fortsatt tilbakekalles hos leverandøren; lokal blanking tilbakekaller ikke en allerede utstedt nøkkel.
+- Ny sporet `.vercelignore` sperrer eksplisitt alle `.env`-varianter, `scripts/ai-lab.env.local`, `.runtime`, `.vercel`, `node_modules`, `.git`, logger og lokale testskjermbilder fra Vercel-opplasting.
+- `test-api.js` har en permanent deploy-sikkerhetsassert som feiler dersom de sentrale sperremønstrene mangler.
+- 0.159.0-commiten er pushet til release-grenen, men den usikre previewen er slettet og det finnes ingen ny aktiv preview før nøkkeltilbakekalling er bekreftet. Ingen produksjonsdeploy. Cache-bust: `console-core.js` 283→284.
+
+## 0.159.0 — 2026-08-18
+
+**Den brukerrettede assistenten i AI Lab heter nå Viba.** Dette etablerer et stabilt agentnavn uten å forveksle identiteten med modellen som til enhver tid driver den.
+
+- Samtale og Analyse bruker Viba i banner, transcript, skrivefelt, knapper, status, bildevedlegg, komprimeringsflyt og nedlastede filnavn.
+- Den generelle systemprompten sier eksplisitt at assistenten heter Viba og at den underliggende språkmodellen er Gemma. Testen verifiserer begge deler.
+- Modell-/providerkort, lokal teknisk status og den strukturerte Læringsutkast-sammenligningen beholder navnet Gemma. Haiku-reviewet vurderer fortsatt et Gemma-utkast; ingen kontrakt eller provider-ID er omdøpt.
+- Ingen voice, mikrofontilgang, wake word, lagring, ny kapabilitet eller produksjonsendring. Cache-bust: `console-core.js` 282→283.
+
+## 0.158.0 — 2026-08-18
+
+**Bilder kan nå limes direkte inn i Gemma-skrivefeltet med Ctrl/⌘+V.** Clipboard-hendelsen fanges bare når den faktisk inneholder et bilde; vanlig tekstinnliming beholder nettleserens standardoppførsel.
+
+- Innlimt PNG/JPEG/WebP går gjennom nøyaktig samme lokale validering, 12 MB-inntaksgrense, komprimering til maks 2 MB og server-side dimensjonskontroll som bildeknappen.
+- Skjermbildet vises som vanlig ventende bildevedlegg og sendes bare med neste melding. Det erstatter et eventuelt tidligere ventende bilde; ett bilde per melding er fortsatt den eksplisitte grensen.
+- UI-et forklarer tastatursnarveien direkte over komponisten. Console-testen dekker både bildeinnliming som blokkerer standard paste og vanlig tekst-paste som ikke blokkeres.
+- Lokal måling av `gemma4:26b` viste at `low`, `medium` og `high` alle aksepteres, men ga ingen meningsfull eller monoton kvalitets-/latensforskjell på et trivielt kontrollkall (ca. 5,3–6,9 sekunder), mens `none` tidligere målte 1,8 sekunder. Ingen kunstig tredje svarmodus er derfor innført uten en kode-evaluering. Ingen database-, provider- eller produksjonsendring. Cache-bust: `console-core.js` 281→282.
+
+## 0.157.0 — 2026-08-18
+
+**Lange Gemma-samtaler har nå eksplisitt kontekststyring med `/compact` og `/clear`.** Grensen på 20 meldinger gjelder modellkonteksten i hvert kall, ikke hvor mange meldinger som kan være synlige i nettleserøkten.
+
+- `/compact` sender den gjeldende effektive historikken til lokal Gemma som en avgrenset oppsummeringsoperasjon. Ved suksess får senere kall et syntetisk sammendragspar pluss nye meldinger; originalhistorikken forblir synlig og blir med i eksporten.
+- Rekompaktering oppsummerer forrige sammendrag sammen med nyere meldinger. Kilden kan være maks 20 000 tegn og sammendraget maks 8 000; overskridelse feiler tydelig uten stille trunkering.
+- `/clear` tømmer bare aktiv økt etter bekreftelse, men beholder valgt grunnlag og den minnelokale tilgangstokenen. `/new` oppretter en ny økt, og `/help` viser kommandoene. Ingen av kommandoene er shell-kommandoer eller sendes som fri serverhandling.
+- UI-et viser løpende «N av 20 i modellkontekst» og stopper et nytt kall før serverfeil dersom melding-/tegnrammen er full. Det foreslår da `/compact`, `/clear` eller `/new`.
+- Console-testen dekker lokal komprimering, sammendragsbasert neste kall, intakt full historikk og tømming. Ingen database-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 280→281.
+
+## 0.156.0 — 2026-08-18
+
+**Gemma-svar kan nå kopieres og lastes ned som ekte kodefiler.** Ferdige og avbrutte svar får «Kopier svar» og «Last ned .txt». Markdown-kodegjerder rendres som egne, trygge kodepaneler med «Kopier kode» og filnedlasting basert på et fast språk→filtype-register, blant annet HTML, CSS, JavaScript, JSON, Markdown, Python, shell og SQL.
+
+- Et helt svar som starter som et HTML-dokument gjenkjennes også uten kodegjerde og kan lastes ned som `.html`.
+- Modellinnhold settes fortsatt bare via `textContent`; HTML og kode kjøres eller forhåndsvises aldri i Console. En synlig advarsel ber operatøren kontrollere modellgenerert kode før filen åpnes eller kjøres.
+- Filnavn og utvidelser er klientgenererte/allowlistede. Modellteksten kan ikke velge filsti, starte nedlastingen automatisk eller skrive til repoet.
+- Console-testen dekker XSS-grensen, kopiering av kode og svar samt faktisk `.html`-filnavn. Ingen database-, provider-, server- eller produksjonsendring. Cache-bust: `console-core.js` 279→280.
+
+## 0.155.0 — 2026-08-18
+
+**Samtale-/analysekomponisten er bygget om, store bilder komprimeres lokalt og trivielle Gemma-kall bruker ikke lenger unødvendig resonnering.** Skrivefeltet er nå en samlet, tydelig flate med integrert vedlegg, tegnmåler, svarmodus og sendeknapp.
+
+- Ett PNG/JPEG/WebP-bilde på opptil 12 MB kan velges. Bilder over 2 MB dekodes og komprimeres i nettleseren til JPEG på maks 2 MB og maksimalt 40 megapiksler før noe sendes. Originalen forlater ikke nettleseren. Serveren validerer i tillegg filsignatur, dimensjoner og 40-megapikselgrensen før Ollama-kallet.
+- «Rask» setter `reasoning_effort=none`; «Grundig» setter `low`. Samtale starter i Rask, Analyse i Grundig, og valget eies av den enkelte minneøkten og følger eksplisitt eksport.
+- Reell lokal måling med varm `gemma4:26b` viste at et trivielt hei-kall uten styring brukte 190 completion-/interne tokens og 14,1 sekunder, mens `none` brukte 13 tokens og 1,8 sekunder direkte mot Ollama. Full AI Lab-smoke målte naturlig chat til 3,6 sekunder og endte 6/6 grønn.
+- Ingen database-, Supabase-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 278→279.
+
+## 0.154.0 — 2026-08-18
+
+**AI Lab har fått en vedleggsorientert arbeidsflate og ekte lokal bildeanalyse.** Læringsutkastet var fortsatt et langt, smalt administrasjonsskjema. Det er erstattet av én stor promptflate med tydelig vedleggshåndtering og et eget resultatområde.
+
+- Prosjektkilder vises som fjernbare vedleggsbrikker i en sammenleggbar velger.
+- Innlimt tekst og lokale TXT/MD/CSV/JSON/JS/CSS/HTML-filer blir flyktige, linjenummererte læringskilder. De er begrenset til 20 000 tegn, holdes i minnet og kan aldri sendes til Haiku.
+- Samtale/Analyse støtter ett lokalt PNG/JPEG/WebP-bilde per melding, maks 2 MB. Serveren validerer MIME, base64 og filsignatur; eksterne bilde-URL-er og SVG avvises.
+- Den installerte `gemma4:26b` annonserer vision lokalt og bestod en ekte bilde-smoke mot Vibeverks logo. Bilder er ikke innført som dokumentasjonskilder i Læringsutkast fordi dagens sourceRefs-kontrakt krever stabile tekstlinjer.
+- Ingen database-, Supabase-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 277→278.
+
+## 0.153.0 — 2026-08-18
+
+**AI Lab er ryddet for praktisk desktopbruk, og avbrudd venter nå på reell Gemma-opprydding.** Manuell preview-testing avdekket at CSS kunne vise Samtale/Analyse og Læringsutkast samtidig, at en ny kjøring kunne møte en fremdeles opptatt provider etter «Stopp», og at øktgrensen var vanskelig å forstå.
+
+- Arbeidsmåtene er gjort til én tydelig modusvelger. Samtale/Analyse har en kompakt øktliste og sammenleggbar kontekst; Læringsutkast har et desktop-oppsett med nummererte steg til venstre og resultater til høyre.
+- `[hidden]` håndheves i Arctic-panelet, slik at bare valgt arbeidsflate og relevante resultatseksjoner vises.
+- Hver nettleserøkt har eksplisitt sletting. Grensen på ti blokkerer oppretting med forklaring; ingenting slettes automatisk.
+- «Stopp» holder kjøreknappene låst til Ollama-adapteren faktisk har frigitt single-flight-jobben. Et nytt, autentisert `provider-idle`-kall bekrefter dette uten å åpne shell, modellvalg eller nye datakilder.
+- AI Lab-, Arctic- og nærliggende Console-tester dekker den nye flyten. Ingen database-, Supabase- eller produksjonsendring. Cache-bust: `console-core.js` 276→277.
+
+## 0.152.3 — 2026-08-18
+
+**Preview-Console lastar no den statiske basiskonfigurasjonen som `core.js` treng.** 0.152.2 sleppte sjølve `/console/` gjennom tenant-porten, men `/config.js` vart framleis omskriven til tenant-config for eit domene som med vilje ikkje er registrert som kunde. Resultatet var `SITE_CONFIG=null`, stopp i `core.js` og den synlege følgjefeilen «core.js / components.js ikkje lasta».
+
+- Berre eksakt Vercel-eigd `VERCEL_URL` i `preview` får den statiske `/config.js` etter SITE_LOCK; vanlege kundedomene brukar framleis tenant-config uendra.
+- Console sine øvrige rotfiler er ordinære statiske ressursar og var ikkje omfatta av middleware-matcharen; ingen brei statisk allowlist eller `*.vercel.app`-regel er innført.
+- API-testen stadfestar eksplisitt `next` utan rewrite for preview-config. Ingen database- eller produksjonsendring. Cache-bust: `console-core.js` 275→276.
+
+## 0.152.2 — 2026-08-17
+
+**Vercel-previewen kan no opne den tenant-uavhengige Console-flata utan å registrere eit flyktig preview-domene som kunde.** Første ekte preview av 0.152.1 vart korrekt stoppa av den generelle ukjent-tenant-porten med «Dette domenet er ikkje registrert som ein Vibeverk-kunde.»
+
+- Middleware slepp berre `/console` gjennom når `VERCEL_ENV` er eksakt `preview` og request-host er eksakt lik Vercel si servereigde `VERCEL_URL`.
+- Den eksisterande SITE_LOCK-kontrollen skjer framleis først, og Console krev framleis eiga control-plane-innlogging og aktiv superadmin for Arctic.
+- Vilkårlege `*.vercel.app`-hostar, Workspace, kundesider og same hostname i produksjonsmiljø får ikkje unntaket og held fram med `404` utan registrert tenant.
+- API-testar dekker alle fire grensene. Ingen tenantregistrering, Supabase-migrasjon eller produksjonsendring er gjort. Cache-bust: `console-core.js` 274→275.
+
+## 0.152.1 — 2026-08-17
+
+*(Renumbert 2026-08-20 frå opphaveleg `0.151.1` — kolliderte med QR-modulens eigen, legitime `0.151.1`-versjon etter samanslåinga i 0.159.2. Sjå toppoppføringa i denne fila. Ingen innhaldsendring.)*
+
+**Produksjons-Console kan no kople AI Lab eksplisitt til lokal Gemma gjennom ein loopback-only SSH-/VS Code-portforward.** Dette er ikkje ein offentleg gateway: nettlesaren treff berre fast `http://127.0.0.1:8081`, Ollama og AI Lab-serveren bind framleis berre loopback, og Arctic-status/kommandoar held fram på den lukka produksjonsseamen.
+
+- Arctic → AI Lab viser ein eigen «Koble til lokal Arctic»-flyt på produksjonsorigin. Lokal token lever berre i fane-minnet; ingenting vert lagra i `localStorage`, `sessionStorage`, URL eller eksport.
+- Før Console-JWT-en vert sendt, må loopback-serveren bevise kjennskap til `AI_LAB_ACCESS_TOKEN` med HMAC-SHA-256 over eksakt Console-origin og ein fersk 256-bits browser-nonce. Identitetsproben sender korkje JWT eller rå lokal token. Deretter gjeld same server-side aktive-superadmin-, CSRF-, lokal-token-, schema- og auditkontroll som ved same-origin lokal bruk.
+- Cross-origin er fail-closed og valfri: serveren svarar berre den eine eksakte HTTPS-originen i `ARCTIC_BRIDGE_ALLOWED_ORIGIN`; wildcard, sti, port, HTTP og ukjende origins vert avviste. CSP tillèt berre den faste loopback-porten 8081. Browserkalla er merkte som lokal nettverkstilgang; Chrome kan krevje at operatøren godkjenner den innebygde Local Network Access-dialogen.
+- «Koble fra» avbryt aktiv straum, disponerer best-effort flyktige handles og tømmer lokal token, økter, innlimt tekst, instruksjon og resultat frå nettlesarminnet.
+- Nye HTTP-/Console-testar dekker origin/CORS/preflight, proof-verifisering, at JWT/token ikkje vert sendt før identitetskontrollen og at riktig superadmin-config opnar AI Lab.
+- Fase 0-releasekontroll 2026-08-17 rebaserte kandidaten på produksjon v0.150.0 utan å miste den nye personvernstandardteksten. Full plattformport, målretta Arctic/AI Lab-/personvernsuitar og ein ny ekte, syntetisk Gemma-smoke passa etter rebasen; browser-spesifikasjonen vart kontrollert mot den no granulære `loopback-network`-policyen. Versjonslinja vart derfor flytta frå den kolliderande 0.150.x-serien til det som på det tidspunktet heitte 0.151.0/0.151.1 (den opphavelege Fase 0-oppføringa er sidan omnummerert til 0.152.0, sjå CHANGELOG.md 0.159.2).
+
+
+## 0.152.0 — 2026-08-13
+
+**Arctic og utvida lokal AI Lab:** Console har fått ei tenant-uavhengig, superadmin-avgrensa internflate for trygg driftsstatus og eit reelt lokalt modellverkstad. Produksjonsseamen kontaktar ingen privat maskin og er ærleg `gateway_not_configured`; AI-funksjonane er framleis loopback-only og krev Console-JWT, aktiv `superadmin`, same-origin/CSRF og lokal handlingstoken.
+
+- Arctic har Oversikt, AI Lab, Arbeidsøkter, Tjenester og Kommandoar. Reelle lokale data er avgrensa til aggregerte maskinmålingar og faste, saniterte tenesteprobar. Kommandofeltet er eit eksakt, lesande allowlist-register, aldri shell; backup, logg, deploy og Claude-/Codex-arbeidsøkter står eksplisitt som ikkje konfigurerte.
+- Metadata-only lokal audit er gitignorert, no-follow/tilgangsavgrensa, storleiksavgrensa og rotert med 30 dagars filretensjon. Innhald, prompt, modelloutput, token og secrets vert ikkje logga. Produksjons-API-et gjer same server-side rollekontroll, men har ingen privat gateway eller kommandoadapter.
+- AI Lab har funksjonelle modusar for Samtale, Analyse og det bevarte Læringsutkastet. Lokal Gemma støttar naturleg chat, analyse, oppsummering og omskriving med eksplisitt innlimt eller allowlista kontekst, avgrensa historikk, strømming og reell avbryting. Inntil ti økter lever berre i nettlesarminnet; ingen database, `localStorage`, fri filtilgang, kodeendring eller automatisk publisering er lagt til.
+- Kontekstar og læringssnapshot er tidsavgrensa, eksplisitt disponible og bundne til operatøren. SSE frå Ollama vert tolka med byte-/teikn-/timeoutgrenser og omsett til servereigde NDJSON-rammer; ufullstendig eller avkorta straum feilar lukka. Haiku krev framleis separat server-side godkjenning og er ikkje aktivert av denne endringa.
+- Ny `npm run smoke:ai-lab` køyrer fem faktiske, syntetiske akseptansetestar mot konfigurert loopback-Gemma utan prosjektfiler eller Anthropic. Siste køyring med `gemma4:26b` passa 5/5: naturleg chat, analyse, oppsummering, omskriving og oppstrøms avbryting. Automatiske AI Lab-/Arctic-suitar og full plattformport er dokumenterte separat i arkitekturdokumenta.
+- Ingen databasemigrasjon, Supabase-endring, push, deploy eller produksjonskonfigurasjon inngår. Ein framtidig fjernkopla Arctic-gateway krev ei eiga least-privilege-arkitektur og sikkerheitsgjennomgang.
+
+
+Ingen offentleg Ollama-port, reverse proxy, privat Arctic-agent, shell, Docker-/SSH-kommando eller produksjonshemmeligheit er lagt til. Cache-bust: `console-core.js` 273→274.
+
 ## 0.151.4 — 2026-08-19
 
 **UI-fiks: knapperada (Rediger/PNG/SVG/Deaktiver/Slett) klemte seg oppå tittel/lenke-teksten i QR-lista på mobil.** Brukertilbakemelding med skjermbilde fra ekte mobilnettleser (Safari iOS). `.admin-row__actions` sin delte base-CSS (`index.html`/`workspace/index.html`) har `flex-shrink:0` — på smale skjermer nektet knapperada å krympe eller falle ned på egen linje, og overlappet i stedet direkte over teksten siden `.admin-row` selv ikke hadde `flex-wrap`. Fikset i `module-qrcode.js`: raden får `flex-wrap:wrap`, og en ny `@media (max-width:560px)`-regel (injisert av modulen selv, samme mønster som 0.151.3 sin `.field`-fiks) tvinger knapperada til en egen full-bredde linje under teksten på smale skjermer. Cache-bust: `module-qrcode.js` 2→3, `console-core.js` 280→281.
@@ -92,7 +220,6 @@ Ny jsdom-regresjonstest stadfestar begge sidene: `priv.text` manglar tilsette-av
 - **Behandlingsansvarleg-avsnittet** fekk eit ekte paragraf-skilje (i staden for éin samanhengande tekstblokk) mellom sjølve ansvars-setninga og kontaktinfo-lista, etter at brukaren viste eit klarare formatert eksempel -- "denne erklæringen" (ikkje "denne personvernerklæringen") for ordrett samsvar med utkastet.
 
 Ny jsdom-regresjonstest som simulerer nøyaktig scenarioet (ein tenant med ein alt-publisert versjon frå FØR 0.150.0, intro/breach liggjande i `bodyBlocks`) og stadfestar at eit nytt "Standardforslag"-trykk faktisk fjernar dei.
-
 ## 0.150.0 — 2026-08-17
 
 **Personvern-standardteksten (Standardforslag) skriven om, etter brukaren sitt eige fullstendige tekstutkast — gjennomgått, tilbakemeldt og eksplisitt godkjent punkt for punkt før noko vart koda (sjå samtalen same dag).**
@@ -110,6 +237,7 @@ Ny jsdom-regresjonstest som simulerer nøyaktig scenarioet (ein tenant med ein a
 
 **Ope, medvite utsett** (brukaren sitt eige spørsmål, ikkje bygd denne runda): om automatisk sletting/retention bør byggjast, gjeve at retention-sweep i dag berre tel (dry-run), aldri slettar -- verdt å sjå på, men eksplisitt utanfor denne runda sitt omfang.
 
+Arkitektur: `docs/architecture/arctic.md` og `docs/architecture/ai-lab.md`. Manuell akseptansesjekk: `scripts/ai-lab/README.md`. Cache-bust: `console-core.js` 272→273.
 ## 0.149.2 — 2026-08-13
 
 **Personvern-publisering var strukturelt umogleg å opne att for ALLE kundar** — funne av brukaren via live testing (fylte inn kontaktinfo som instruert, publisering feila likevel). Root cause: publiseringssperra (og sjølve tekstgeneratoren) sjekka `sc.contact` (superconfig, operatør-/Console-styrt), men kontaktinfo (e-post/telefon/adresse) vert redigert av KUNDEN sjølv i deira eige Web-admin-panel ("Innhald → Kontaktinfo"), som lagrar til ein HEILT ANNA lagringsnøkkel ("content"). `sc.contact` eksisterte difor ALDRI, uansett kva nokon fylte ut — sperra kunne strukturelt ikkje opnast att, og feilmeldinga peikte i tillegg til feil stad (Console sin eigen "Web → Firma"-fane, som aldri har hatt desse felta).

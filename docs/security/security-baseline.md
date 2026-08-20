@@ -92,6 +92,8 @@ The session is a real, live Supabase session against `vibeverk-control` (`_sbCon
 
 All config reads/writes for the operator's picked tenant go through a `broker` Edge Function in `vibeverk-control` (an anon-key client confirms active-operator status, then a service-role client acts on the target tenant's own project via a Vault-decrypted key never returned to the caller); every action is written to `broker_audit_log` before returning. See `docs/architecture/roles-and-tenants.md` for the full current model.
 
+Arctic er eit strengare, tenant-uavhengig undersett av Console. UI-skjuling er berre forsvar i djupna: kvart produksjonskall til `/api/arctic`, kvart lokalt `/__arctic/v1/*`-kall og også AI Lab-config/arbeidskall verifiserer control-plane JWT-en server-side og krev både `operators.status='active'` og `role='superadmin'`. Den lokale serveren bruker den offentlege anon-nøkkelen saman med brukar-JWT-en, aldri `service_role`; lokale POST-kall krev i tillegg same origin, CSRF og ein prosessunik handlingstoken som ikkje vert lagra i browser storage. Produksjonsseamen har ingen privat nettverksadapter eller kommandoutføring før ein separat least-privilege gateway eventuelt vert bygd. Sjå `docs/architecture/arctic.md`.
+
 This is still a browser-side JS session, not an httpOnly cookie — XSS on the console page would still expose it. **Not yet independently reviewed by a Security Auditor pass as of ADR-0009** (a named, acknowledged gap in that ADR) — see `docs/project/CURRENT_STATE.md`'s security-findings tracking for whether a later pass has since covered it.
 
 ## Web admin password

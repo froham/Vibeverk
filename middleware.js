@@ -152,6 +152,18 @@ async function resolveTenant(controlUrl, controlAnonKey, host) {
   return Array.isArray(rows) ? rows[0] : null;
 }
 
+function isExactPreviewDeployment(host) {
+  const deploymentHost = String(process.env.VERCEL_URL || "").trim().toLowerCase();
+  return process.env.VERCEL_ENV === "preview" &&
+    !!deploymentHost &&
+    host === deploymentHost;
+}
+
+function isExactConsolePreview(url, host) {
+  return isExactPreviewDeployment(host) &&
+    (url.pathname === "/console" || url.pathname === "/console/");
+}
+
 export default async function middleware(request) {
   const url = new URL(request.url);
 
@@ -227,14 +239,31 @@ export default async function middleware(request) {
   }
 
   if (url.pathname === "/config.js") {
+    // Console brukar den statiske basiskonfigurasjonen før core.js startar.
+    // På den eksakte Vercel-preview-hostnamen finst ingen tenant å generere
+    // config frå; ei omskriving til tenant-config ville difor setje
+    // SITE_CONFIG=null og få core.js til å stoppe før Console vert montert.
+    // SITE_LOCK er allereie kontrollert over. Unntaket gjeld berre denne eine
+    // statiske fila på Vercel si servereigde preview-hostname.
+    if (isExactPreviewDeployment(host)) return next();
     return rewrite(new URL("/api/tenant-config", request.url));
   }
 
-  if (controlUrl && controlAnonKey && host && !tenant) {
+  // Console er global og tenant-uavhengig, men den genererte preview-hostname
+  // finst med vilje ikkje i tenantregisteret. Slepp berre gjennom akkurat den
+  // deployment-hostname Vercel sjølv annonserer, berre i preview-miljøet og
+  // berre for /console. SITE_LOCK er kontrollert over, og Console krev framleis
+  // control-plane-innlogging. Produksjon, Workspace, kundesider og andre
+  // *.vercel.app-hostar held fram med 404 ved manglande tenant.
+  if (controlUrl && controlAnonKey && host && !tenant && !isExactConsolePreview(url, host)) {
     return new Response(
       "Dette domenet er ikkje registrert som ein Vibeverk-kunde.",
       { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
     );
+  }
+
+  if (url.pathname === "/console" || url.pathname === "/console/") {
+    return next({ headers: { "Permissions-Policy": "loopback-network=(self)" } });
   }
 
   if (url.pathname.indexOf("/qr/") === 0) {

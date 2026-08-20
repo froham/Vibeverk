@@ -18,6 +18,7 @@
    som test.js/test-workspace.js). */
 
 let __ok = 0, __err = 0;
+const fs = require("node:fs");
 function assert(cond, msg) {
   if (!cond) { __err++; console.error("FEIL:", msg); process.exitCode = 1; }
   else { __ok++; console.log("OK:", msg); }
@@ -43,6 +44,10 @@ function basicAuthHeader(password) {
 }
 
 async function main() {
+  const vercelIgnore = fs.readFileSync(".vercelignore", "utf8").split(/\r?\n/).map((line) => line.trim());
+  assert([".env", ".env.*", "**/.env", "**/.env.*", "scripts/ai-lab.env.local", ".runtime/**", ".vercel/**", "node_modules/**", ".git/**"].every((entry) => vercelIgnore.includes(entry)),
+    "deploy-sikkerheit: .vercelignore sperrar lokale miljøfiler, runtime-data og arbeidskopiar eksplisitt");
+
   process.env.VIBEVERK_CONTROL_URL = "https://control.example.test";
   process.env.VIBEVERK_CONTROL_ANON_KEY = "control-anon-key";
 
@@ -337,6 +342,9 @@ async function main() {
   r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader("hemmelig") }));
   assert(r.status !== 401, "d2: /workspace/ sleppast gjennom site-lock MED rett passord");
 
+  r = await middleware(fakeRequest("https://kunde.no/console/", { host: "kunde.no", authorization: basicAuthHeader("hemmelig") }));
+  assert(r.headers.get("permissions-policy") === "loopback-network=(self)", "d2b: Console tillèt browseren å be om eksplisitt loopback-tilgang");
+
   r = await middleware(fakeRequest("https://kunde.no/workspace/", { host: "kunde.no", authorization: basicAuthHeader("feil") }));
   assert(r.status === 401, "d3: /workspace/ avviser FEIL passord (ikkje berre manglande)");
 
@@ -351,6 +359,36 @@ async function main() {
   scenario = "no-tenant";
   r = await middleware(fakeRequest("https://ukjend.no/", { host: "ukjend.no", authorization: basicAuthHeader("hemmelig") }));
   assert(r.status === 404, "d6: ukjend hostname på ei vanleg side gjev 404 «ikkje registrert som kunde» (etter site-lock, uendra åtferd)");
+
+  process.env.VERCEL_ENV = "preview";
+  process.env.VERCEL_URL = "vibeverk-preview-123.vercel.app";
+  r = await middleware(fakeRequest("https://vibeverk-preview-123.vercel.app/console/", {
+    host: "vibeverk-preview-123.vercel.app", authorization: basicAuthHeader("hemmelig")
+  }));
+  assert(r.status !== 404 && r.headers.get("permissions-policy") === "loopback-network=(self)", "d6b: eksakt VERCEL_URL slepp tenant-uavhengig Console gjennom i preview etter SITE_LOCK");
+
+  r = await middleware(fakeRequest("https://vibeverk-preview-123.vercel.app/config.js", {
+    host: "vibeverk-preview-123.vercel.app", authorization: basicAuthHeader("hemmelig")
+  }));
+  assert(r.headers.get("x-middleware-next") === "1" && !r.headers.get("x-middleware-rewrite"), "d6bb: eksakt preview-host får statisk config.js slik at core.js kan starte Console");
+
+  r = await middleware(fakeRequest("https://anna-preview.vercel.app/console/", {
+    host: "anna-preview.vercel.app", authorization: basicAuthHeader("hemmelig")
+  }));
+  assert(r.status === 404, "d6c: ein annan *.vercel.app-host får ikkje bruke preview-unntaket");
+
+  r = await middleware(fakeRequest("https://vibeverk-preview-123.vercel.app/workspace/", {
+    host: "vibeverk-preview-123.vercel.app", authorization: basicAuthHeader("hemmelig")
+  }));
+  assert(r.status === 404, "d6d: preview-unntaket gjeld ikkje Workspace eller kundesider");
+
+  process.env.VERCEL_ENV = "production";
+  r = await middleware(fakeRequest("https://vibeverk-preview-123.vercel.app/console/", {
+    host: "vibeverk-preview-123.vercel.app", authorization: basicAuthHeader("hemmelig")
+  }));
+  assert(r.status === 404, "d6e: same hostname får ikkje preview-unntaket i produksjonsmiljø");
+  delete process.env.VERCEL_ENV;
+  delete process.env.VERCEL_URL;
 
   // d7-d11: per-tenant sidesperre (2026-08-10) -- erstattar det globale
   // passordet ("hemmelig", framleis sett over) for akkurat denne tenanten,
