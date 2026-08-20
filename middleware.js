@@ -13,7 +13,7 @@
 // package.json. Do not "fix" this back to .mjs because the docs say it
 // should work -- that claim does not hold for this project shape.
 //
-// Two jobs:
+// Three jobs:
 // 1. Every request for /config.js is rewritten to /api/tenant-config (the
 //    Phase 6 per-tenant config generator) -- unconditionally, since that
 //    function does the real hostname resolution itself.
@@ -21,6 +21,18 @@
 //    too, so an unknown hostname gets a real "not a customer" response
 //    instead of silently serving index.html with no window.SITE_CONFIG
 //    behind it (core.js is not guarded against that today).
+// 3. Any /qr/<code> request (module-qrcode.js's dynamic/redirect QR codes,
+//    2026-08-19) is rewritten to /api/qr-redirect?code=<code>, which does
+//    its OWN independent tenant resolution (same self-contained pattern as
+//    api/tenant-config.js) rather than reusing the `tenant` resolved below
+//    -- kept deliberately decoupled so the function stays testable in
+//    isolation. This request still goes through the same site-lock gate as
+//    every other page below -- no bypass for QR scans while a tenant's
+//    site-lock is on. /api/qr-redirect is ALSO listed directly in the
+//    matcher below (Security Auditor finding, 2026-08-19): without that, a
+//    request straight to /api/qr-redirect (skipping the /qr/<code> rewrite
+//    entirely) would never run through this file at all, bypassing the
+//    site-lock check the header above claims applies unconditionally.
 //
 // The matcher list below was empirically verified against a real deployment
 // 2026-07-16 (curl against the live "vibeverk" Vercel project, --resolve to
@@ -48,6 +60,10 @@ export const config = {
     "/admin",
     "/admin/",
     "/admin/manifest.json",
+    "/qr/:code",
+    "/qr/:code/",
+    "/api/qr-redirect",
+    "/api/qr-redirect/",
   ],
 };
 
@@ -249,5 +265,18 @@ export default async function middleware(request) {
   if (url.pathname === "/console" || url.pathname === "/console/") {
     return next({ headers: { "Permissions-Policy": "loopback-network=(self)" } });
   }
+
+  if (url.pathname.indexOf("/qr/") === 0) {
+    // vercel.json sitt trailingSlash:true 308-redirecter /qr/<code> til
+    // /qr/<code>/ FØR denne fila i det heile nås -- den reelle pathname
+    // her har difor alltid ein etterslengande skråstrek. Stadfesta i
+    // produksjon rett etter fyrste deploy (2026-08-19): utan replace(/\/+$/)
+    // vart heile koden (inkl. skråstreken) sendt vidare som ?code=, som
+    // aldri matcha noka lagra rad -- kvar einaste skanna QR-kode enda på
+    // ei generisk Vercel-404 i staden for den venlege qr-redirect-sida.
+    const qrCode = url.pathname.slice(4).replace(/\/+$/, "");
+    if (qrCode) return rewrite(new URL("/api/qr-redirect?code=" + encodeURIComponent(qrCode), request.url));
+  }
+
   return next();
 }

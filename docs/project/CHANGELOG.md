@@ -30,16 +30,24 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
-## 0.158.1 — 2026-08-18
+## 0.159.2 — 2026-08-20
 
-**KRITISK preview-sikringsretting før ny utrulling.** Den første manuelle `vercel --yes`-previewen av 0.158.0 tok med den Git-ignorerte `scripts/ai-lab.env.local` fordi prosjektet manglet `.vercelignore`; filen svarte offentlig som en statisk fil. Deployen ble fjernet umiddelbart og stien ble verifisert til `404`. Innholdet ble ikke lest i denne kontrollen.
+**Slått sammen `main` (QR-modul + personvern-rettinger, 0.151.0–0.151.4) inn i `arctic-ai-lab-rc` (Arctic/AI Lab-arbeidsflate, tidligere 0.151.1–0.158.1) før felles Security/Privacy/UX-review og PR.** De to grenene hadde uavhengig brukt de samme versjonsnumrene (0.151.1–0.151.3) for helt ulikt innhold siden de forgrenet seg fra samme 0.150.0-punkt. Ingen historiske oppføringer er slettet eller omskrevet innholdsmessig — hele Arctic/AI Lab-serien er omnummerert til å ligge etter denne sammenslåingen (gammelt → nytt): 0.151.1→0.152.0, 0.151.2→0.152.1, 0.151.3→0.152.2, 0.152.0→0.153.0, 0.153.0→0.154.0, 0.154.0→0.155.0, 0.155.0→0.156.0, 0.156.0→0.157.0, 0.157.0→0.158.0, 0.158.0→0.159.0, 0.158.1→0.159.1. Rekkefølgen under er derfor versjonsnummer-fallende, ikke strengt kronologisk — QR-serien (0.151.0–0.151.4, 2026-08-19) er nyere i dato enn deler av Arctic/AI Lab-serien den nå står under, men eldre i versjonsnummer etter omnummereringen.
+
+- Konflikter løst i `console/console-core.js`, `console/index.html`, `middleware.js`, `test-customer-analysis-console.js`, `test-page-builder-console.js`: QR-modulen (main) og Arctic/AI Lab (denne grenen) er begge additive og uavhengige, ingen funksjonalitet fra noen av sidene er fjernet.
+- Ny full testkjøring og uavhengig Security/Privacy/UX/dokumentasjonsgjennomgang av sluttdiffen gjenstår før PR — se `docs/project/CURRENT_STATE.md`.
+- Ingen database- eller produksjonsendring i denne sammenslåingen i seg selv. Cache-bust: se enkeltfilenes egne `?v=N`-oppdateringer i denne og forrige runde.
+
+## 0.159.1 — 2026-08-18
+
+**KRITISK preview-sikringsretting før ny utrulling.** Den første manuelle `vercel --yes`-previewen av 0.159.0 tok med den Git-ignorerte `scripts/ai-lab.env.local` fordi prosjektet manglet `.vercelignore`; filen svarte offentlig som en statisk fil. Deployen ble fjernet umiddelbart og stien ble verifisert til `404`. Innholdet ble ikke lest i denne kontrollen.
 
 - Den lokale `AI_LAB_ACCESS_TOKEN` er rotert, den lokale `ANTHROPIC_API_KEY` er blankt/deaktivert og AI Lab-tjenesten er startet på nytt. Den tidligere Anthropic-nøkkelen må fortsatt tilbakekalles hos leverandøren; lokal blanking tilbakekaller ikke en allerede utstedt nøkkel.
 - Ny sporet `.vercelignore` sperrer eksplisitt alle `.env`-varianter, `scripts/ai-lab.env.local`, `.runtime`, `.vercel`, `node_modules`, `.git`, logger og lokale testskjermbilder fra Vercel-opplasting.
 - `test-api.js` har en permanent deploy-sikkerhetsassert som feiler dersom de sentrale sperremønstrene mangler.
-- 0.158.0-commiten er pushet til release-grenen, men den usikre previewen er slettet og det finnes ingen ny aktiv preview før nøkkeltilbakekalling er bekreftet. Ingen produksjonsdeploy. Cache-bust: `console-core.js` 283→284.
+- 0.159.0-commiten er pushet til release-grenen, men den usikre previewen er slettet og det finnes ingen ny aktiv preview før nøkkeltilbakekalling er bekreftet. Ingen produksjonsdeploy. Cache-bust: `console-core.js` 283→284.
 
-## 0.158.0 — 2026-08-18
+## 0.159.0 — 2026-08-18
 
 **Den brukerrettede assistenten i AI Lab heter nå Viba.** Dette etablerer et stabilt agentnavn uten å forveksle identiteten med modellen som til enhver tid driver den.
 
@@ -48,7 +56,7 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - Modell-/providerkort, lokal teknisk status og den strukturerte Læringsutkast-sammenligningen beholder navnet Gemma. Haiku-reviewet vurderer fortsatt et Gemma-utkast; ingen kontrakt eller provider-ID er omdøpt.
 - Ingen voice, mikrofontilgang, wake word, lagring, ny kapabilitet eller produksjonsendring. Cache-bust: `console-core.js` 282→283.
 
-## 0.157.0 — 2026-08-18
+## 0.158.0 — 2026-08-18
 
 **Bilder kan nå limes direkte inn i Gemma-skrivefeltet med Ctrl/⌘+V.** Clipboard-hendelsen fanges bare når den faktisk inneholder et bilde; vanlig tekstinnliming beholder nettleserens standardoppførsel.
 
@@ -57,7 +65,7 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - UI-et forklarer tastatursnarveien direkte over komponisten. Console-testen dekker både bildeinnliming som blokkerer standard paste og vanlig tekst-paste som ikke blokkeres.
 - Lokal måling av `gemma4:26b` viste at `low`, `medium` og `high` alle aksepteres, men ga ingen meningsfull eller monoton kvalitets-/latensforskjell på et trivielt kontrollkall (ca. 5,3–6,9 sekunder), mens `none` tidligere målte 1,8 sekunder. Ingen kunstig tredje svarmodus er derfor innført uten en kode-evaluering. Ingen database-, provider- eller produksjonsendring. Cache-bust: `console-core.js` 281→282.
 
-## 0.156.0 — 2026-08-18
+## 0.157.0 — 2026-08-18
 
 **Lange Gemma-samtaler har nå eksplisitt kontekststyring med `/compact` og `/clear`.** Grensen på 20 meldinger gjelder modellkonteksten i hvert kall, ikke hvor mange meldinger som kan være synlige i nettleserøkten.
 
@@ -67,7 +75,7 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - UI-et viser løpende «N av 20 i modellkontekst» og stopper et nytt kall før serverfeil dersom melding-/tegnrammen er full. Det foreslår da `/compact`, `/clear` eller `/new`.
 - Console-testen dekker lokal komprimering, sammendragsbasert neste kall, intakt full historikk og tømming. Ingen database-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 280→281.
 
-## 0.155.0 — 2026-08-18
+## 0.156.0 — 2026-08-18
 
 **Gemma-svar kan nå kopieres og lastes ned som ekte kodefiler.** Ferdige og avbrutte svar får «Kopier svar» og «Last ned .txt». Markdown-kodegjerder rendres som egne, trygge kodepaneler med «Kopier kode» og filnedlasting basert på et fast språk→filtype-register, blant annet HTML, CSS, JavaScript, JSON, Markdown, Python, shell og SQL.
 
@@ -76,7 +84,7 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - Filnavn og utvidelser er klientgenererte/allowlistede. Modellteksten kan ikke velge filsti, starte nedlastingen automatisk eller skrive til repoet.
 - Console-testen dekker XSS-grensen, kopiering av kode og svar samt faktisk `.html`-filnavn. Ingen database-, provider-, server- eller produksjonsendring. Cache-bust: `console-core.js` 279→280.
 
-## 0.154.0 — 2026-08-18
+## 0.155.0 — 2026-08-18
 
 **Samtale-/analysekomponisten er bygget om, store bilder komprimeres lokalt og trivielle Gemma-kall bruker ikke lenger unødvendig resonnering.** Skrivefeltet er nå en samlet, tydelig flate med integrert vedlegg, tegnmåler, svarmodus og sendeknapp.
 
@@ -85,7 +93,7 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - Reell lokal måling med varm `gemma4:26b` viste at et trivielt hei-kall uten styring brukte 190 completion-/interne tokens og 14,1 sekunder, mens `none` brukte 13 tokens og 1,8 sekunder direkte mot Ollama. Full AI Lab-smoke målte naturlig chat til 3,6 sekunder og endte 6/6 grønn.
 - Ingen database-, Supabase-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 278→279.
 
-## 0.153.0 — 2026-08-18
+## 0.154.0 — 2026-08-18
 
 **AI Lab har fått en vedleggsorientert arbeidsflate og ekte lokal bildeanalyse.** Læringsutkastet var fortsatt et langt, smalt administrasjonsskjema. Det er erstattet av én stor promptflate med tydelig vedleggshåndtering og et eget resultatområde.
 
@@ -95,7 +103,7 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - Den installerte `gemma4:26b` annonserer vision lokalt og bestod en ekte bilde-smoke mot Vibeverks logo. Bilder er ikke innført som dokumentasjonskilder i Læringsutkast fordi dagens sourceRefs-kontrakt krever stabile tekstlinjer.
 - Ingen database-, Supabase-, ekstern provider- eller produksjonsendring. Cache-bust: `console-core.js` 277→278.
 
-## 0.152.0 — 2026-08-18
+## 0.153.0 — 2026-08-18
 
 **AI Lab er ryddet for praktisk desktopbruk, og avbrudd venter nå på reell Gemma-opprydding.** Manuell preview-testing avdekket at CSS kunne vise Samtale/Analyse og Læringsutkast samtidig, at en ny kjøring kunne møte en fremdeles opptatt provider etter «Stopp», og at øktgrensen var vanskelig å forstå.
 
@@ -105,15 +113,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - «Stopp» holder kjøreknappene låst til Ollama-adapteren faktisk har frigitt single-flight-jobben. Et nytt, autentisert `provider-idle`-kall bekrefter dette uten å åpne shell, modellvalg eller nye datakilder.
 - AI Lab-, Arctic- og nærliggende Console-tester dekker den nye flyten. Ingen database-, Supabase- eller produksjonsendring. Cache-bust: `console-core.js` 276→277.
 
-## 0.151.3 — 2026-08-18
+## 0.152.2 — 2026-08-18
 
-**Preview-Console lastar no den statiske basiskonfigurasjonen som `core.js` treng.** 0.151.2 sleppte sjølve `/console/` gjennom tenant-porten, men `/config.js` vart framleis omskriven til tenant-config for eit domene som med vilje ikkje er registrert som kunde. Resultatet var `SITE_CONFIG=null`, stopp i `core.js` og den synlege følgjefeilen «core.js / components.js ikkje lasta».
+**Preview-Console lastar no den statiske basiskonfigurasjonen som `core.js` treng.** 0.152.1 sleppte sjølve `/console/` gjennom tenant-porten, men `/config.js` vart framleis omskriven til tenant-config for eit domene som med vilje ikkje er registrert som kunde. Resultatet var `SITE_CONFIG=null`, stopp i `core.js` og den synlege følgjefeilen «core.js / components.js ikkje lasta».
 
 - Berre eksakt Vercel-eigd `VERCEL_URL` i `preview` får den statiske `/config.js` etter SITE_LOCK; vanlege kundedomene brukar framleis tenant-config uendra.
 - Console sine øvrige rotfiler er ordinære statiske ressursar og var ikkje omfatta av middleware-matcharen; ingen brei statisk allowlist eller `*.vercel.app`-regel er innført.
 - API-testen stadfestar eksplisitt `next` utan rewrite for preview-config. Ingen database- eller produksjonsendring. Cache-bust: `console-core.js` 275→276.
 
-## 0.151.2 — 2026-08-17
+## 0.152.1 — 2026-08-17
 
 **Vercel-previewen kan no opne den tenant-uavhengige Console-flata utan å registrere eit flyktig preview-domene som kunde.** Første ekte preview av 0.151.1 vart korrekt stoppa av den generelle ukjent-tenant-porten med «Dette domenet er ikkje registrert som ein Vibeverk-kunde.»
 
@@ -121,7 +129,68 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - Den eksisterande SITE_LOCK-kontrollen skjer framleis først, og Console krev framleis eiga control-plane-innlogging og aktiv superadmin for Arctic.
 - Vilkårlege `*.vercel.app`-hostar, Workspace, kundesider og same hostname i produksjonsmiljø får ikkje unntaket og held fram med `404` utan registrert tenant.
 - API-testar dekker alle fire grensene. Ingen tenantregistrering, Supabase-migrasjon eller produksjonsendring er gjort. Cache-bust: `console-core.js` 274→275.
+## 0.151.4 — 2026-08-19
 
+**UI-fiks: knapperada (Rediger/PNG/SVG/Deaktiver/Slett) klemte seg oppå tittel/lenke-teksten i QR-lista på mobil.** Brukertilbakemelding med skjermbilde fra ekte mobilnettleser (Safari iOS). `.admin-row__actions` sin delte base-CSS (`index.html`/`workspace/index.html`) har `flex-shrink:0` — på smale skjermer nektet knapperada å krympe eller falle ned på egen linje, og overlappet i stedet direkte over teksten siden `.admin-row` selv ikke hadde `flex-wrap`. Fikset i `module-qrcode.js`: raden får `flex-wrap:wrap`, og en ny `@media (max-width:560px)`-regel (injisert av modulen selv, samme mønster som 0.151.3 sin `.field`-fiks) tvinger knapperada til en egen full-bredde linje under teksten på smale skjermer. Cache-bust: `module-qrcode.js` 2→3, `console-core.js` 280→281.
+
+## 0.151.3 — 2026-08-19
+
+**UI-fiks: QR-editoren fløt utenfor kortet/modalen på Workspace, og felt-inputene var ustilte (skarpe hjørner).** Brukertilbakemelding med skjermbilder, samme dag som 0.151.0/0.151.2. To reelle bugs, ikke bare polish:
+
+- **Overflow**: editoren la QR-forhåndsvisningen i en `1fr 200px`-grid-kolonne, men selve QR-koden ble tegnet 280×280px — garantert overflow uansett skjermstørrelse. Byttet til en responsiv `flex-wrap`-layout der forhåndsvisnings-boksen matcher den faktiske QR-størrelsen (nå 220px), og som stables under feltene på smale skjermer i stedet for å flyte utenfor.
+- **Ustilte inputfelt på Workspace**: `index.html` (Web-admin) definerer `.field input`/`.field textarea` sin avrundede styling, men `workspace/index.html` mangler denne CSS-blokken helt — Workspace sine egne moduler unngår dette ved å håndrulle input-felt i stedet for å bruke `C.field()`, men denne modulen bruker `C.field()` delt på begge overflater (samme mønster som `module-crm.js`). Fikset ved å injisere de manglende reglene fra modulen selv (harmløst duplikat på Web-admin, som allerede har dem).
+- **Logo-plassering**: redusert `imageOptions.imageSize` fra 0.35 til 0.28 og økt margin fra 6 til 10 — ved 0.35 var det for lite luft mellom logoen og QR-modulene, utydelig hvor koden sluttet og logoen begynte.
+- Cache-bust: `module-qrcode.js` 1→2, `console-core.js` 279→280.
+
+## 0.151.2 — 2026-08-19
+
+**Hastefiks: QR-modulen manglet i Console sin «Modular»-brytarliste.** `module-qrcode.js` (0.151.0) leser `features.qrCode`/`intranettFeatures.qrCode`, men Console sin egen katalog over hvilke flagg som faktisk vises som checkboxer (`FEAT_LABELS`/`IFEAT_LABELS` + tilhørende hjelpetekster og `OPT_IN_FEATURES`-defaulten) i `console-core.js` ble aldri oppdatert — brukeren fant ikke bryteren i Console fordi den rett og slett ikke fantes der, selv om selve modulen var fullt fungerende. Lagt til `qrCode` i alle fire katalogene (Web-admin- og Workspace-siden hver, pluss opt-in-default siden flagget skal være AV som standard for en kunde som aldri har lagret features eksplisitt).
+
+## 0.151.1 — 2026-08-19
+
+**Hastefiks: skanna QR-koder 404et i produksjon rett etter 0.151.0-utrullinga** — fanget under egen manuell smoke-test rett etter deploy, ikke av CI (som ikke dekker live routing). `vercel.json` sin `trailingSlash: true` 308-omdirigerer ALLE forespørsler til å ha etterslengande skråstrek FØR `middleware.js` i det heile nås — `/qr/<code>` vart difor alltid `/qr/<code>/` når koden faktisk køyrde, men `middleware.js` sin matcher og pathname-utrekning venta berre den slash-lause forma. Resultat: kvar einaste skanning enda på ei generisk Vercel-404 i staden for redirect-en. Retta ved å (1) leggje `/qr/:code/` og `/api/qr-redirect/` til matcher-lista, og (2) strippe ein etterslengande skråstrek av koden før RPC-kallet. Verifisert direkte mot produksjon (`curl -sL`) etter fiksen — `/qr/<ukjend-kode>` gir no den venlege «finst ikkje lenger»-sida (404 med rett innhald), ikkje Vercel sin generiske 404.
+
+## 0.151.0 — 2026-08-19
+
+**Ny QR-modul (`module-qrcode.js`), aktiverbar uavhengig i Web-admin og Workspace.** Genererer dynamiske/redirect-baserte QR-koder — den trykte/delte koden peker alltid på en fast `/qr/<code>`-adresse på tenantens eget domene, aldri på mål-lenken direkte, slik at mål-lenken kan byttes senere uten at koden må skrives ut på nytt. Diskutert og godkjent med bruker før bygging.
+
+- Én delt fil dual-registrerer for begge overflater (samme mønster som `module-crm.js`), gatet uavhengig av `features.qrCode` og `intranettFeatures.qrCode` — begge MÅ være eksplisitt `true` (default `false`, nytt/uprøvd modul-konvensjon). Datasettet for opprett/rediger/slett ligger i `App.store`-nøkkelen `qr-codes`, altså den eksisterende `store`-tabellen — ingen ny tabell for det.
+- Ny Vercel Edge Function `api/qr-redirect.js` løser selve videresendingen: slår opp tenant fra Host-header (samme mønster som `api/tenant-config.js`), kaller ei ny, trong `get_qr_redirect_target(code, tenant_id)`-RPC (SECURITY DEFINER, anon-kallbar) som returnerer KUN mål-lenken for én aktiv kode innenfor riktig tenant, og gir 302 dit. `middleware.js` fikk to nye matcher-oppføringer (`/qr/:code` og `/api/qr-redirect`) — begge går gjennom samme site-lock-sperre som alt annet, ingen unntak.
+- QR-generering/eksport (PNG + SVG, valgfri logo fra `company.logoUrl` midt i koden, egendefinerte for-/bakgrunnsfarger) skjer klientsidig via `qr-code-styling@1.9.2` (CDN, eksakt pinnet).
+- Sletting av en QR-kode er Nivå B (irreversibel stadfesting, jf. `copy-style-guide.md`) — koden slutter å virke for alltid. Aktiver/deaktiver er Nivå A (reversibelt).
+- **Security Auditor-runde (FØR noe var deployet) fant og fikk rettet to reelle hull i førsteutkastet**: (1) HIGH — den opprinnelige redirect-funksjonen gjorde et rått anon-SELECT mot hele `qr-codes`-lista via `store`-tabellens eksisterende anon-lesepolicy, som eksponerte hver kode/mål-lenke/label i bulk uavhengig av `/qr/<code>`-gjetting — retta ved å ekskludere `qr-codes` fra `store_anon_read` og innføre den trange RPC-en i stedet; (2) MEDIUM/HIGH — `/api/qr-redirect` manglet i `middleware.js` sin `matcher`, så direkte kall dit omgikk site-lock-sperra — retta ved å legge stien direkte til matcher-lista.
+- **Ett tredje hull, fanget av meg selv under manuell verifisering rett etter push til `vibeverk-staging`**: `get_qr_redirect_target(code)` filtrerte ikke på `store.tenant_id` — siden `store` sin faktiske nøkkel er `(tenant_id, key)`, kunne funksjonen i prinsippet returnert feil tenants mål-lenke hvis mer enn én `qr-codes`-rad fantes. Retta ved å legge til en påkrevd `p_tenant_id`-parameter.
+- Begge migrasjoner (`20260819150944_qr_codes_lockdown.sql`, `20260819155245_qr_codes_scope_tenant.sql`) er kjørt og verifisert både mot `vibeverk-staging` og produksjon (`clzczbyklgdtdhgjphup`) — policy-tekst, funksjonssignatur og `anon`/`authenticated`-grants sjekket direkte i databasen, ikke bare CLI-en sin «Finished»-melding. Et fire-tilfelle funksjonstest (aktiv/riktig tenant → treff, inaktiv → null, riktig kode/feil tenant → null, ukjent kode → null) kjørt live på begge, testrader ryddet bort etterpå.
+- **Bevisst isolert til denne ene commiten, ikke hele `arctic-ai-lab-rc`**: `main` lå på 0.150.3 (uendra sidan 2026-08-17); den langvarige RC-grenen har akkumulert Viba/AI Lab-arbeidsflate-arbeid (0.151.x–0.158.1) som IKKE er del av denne utrullinga — brukarønske, eksplisitt spurt om omfang før push. Cache-bust: `config.js` 17→18 (16→17 i Workspace/Console), `console-core.js` 276→277, nye `module-qrcode.js?v=1`-tagger i `index.html`/`workspace/index.html`.
+
+## 0.150.3 — 2026-08-17
+
+**«Tilsette (Workspace)»-avsnittet skal ALDRI vere med i det offentlege, publiserte personverndokumentet -- berre i Workspace sin eigen «Personvern for ansatte»-lenke.** Brukarønske: sidan `employeeText` (0.149.0) alt fanst som ein separat, avgrensa versjon for Workspace, var det uventa/uønska at det SAME avsnittet framleis låg inne i `priv.text` (det fulle, offentlege dokumentet som vert vist på nettsida, i "full tekst"-førehandsvisingar, HTML-eksport og versjonshistorikk).
+
+- Ny delt hjelpefunksjon `publicPrivacyBlocks()` filtrerer bort "employees"-blokka -- brukt av ALLE stadene som representerer "det offentlege dokumentet": sjølve publiseringa (`priv.text`), begge "Generer full tekstversjon"-knappane (publisert OG utkast), `privacyExportPublishedHtml()` (HTML-nedlasting), og versjonshistorikk-førehandsvisinga.
+- MEDVITE ikkje eit vanleg "included:false"-avkryssingsval -- ein strukturell regel, ikkje noko operatøren kan skru av/på per kunde, sidan Workspace-kontoar er strukturelt alltid aktive (`privacyModuleActive()` seier framleis "aktiv", elles ville hybrid-vakta feilaktig blokkert publisering).
+- Tilsette-avsnittet er framleis fullt synleg og redigerbart i Dokument-editoren sin blokkliste -- berre den ENDELEGE, offentlege flatinga ekskluderer det.
+- `privacyApprovalContentSnapshot()` (godkjenningsjournalen sin "har noko endra"-sjekk) er MEDVITE urørt -- gjeld heile det redigerte dokumentet, ikkje berre den offentlege utsnittet.
+
+Ny jsdom-regresjonstest stadfestar begge sidene: `priv.text` manglar tilsette-avsnittet, `priv.employeeText` har det framleis, og Dokument-editoren viser det framleis.
+
+## 0.150.2 — 2026-08-17
+
+**«intro» attende, same dag -- brukaren ombestemte seg.** 0.150.0 fjerna `intro`-blokka heilt (fyrste utkastet frå brukaren opna direkte med behandlingsansvarleg, ingen generisk innleiing). Brukaren ønska likevel ein kort "Om denne personvernerklæringen"-seksjon, plassert FØR "Hvem er behandlingsansvarlig" -- med heilt NY tekst, ikkje den opphavlege (pensjonerte) ordlyden.
+
+- `intro` er no ein vanleg, aktiv blokk igjen (`privacyModuleActive()`, `PRIVACY_MODULE_LABEL`), plassert FØRST i `computeTenantPrivacyBlocks()`.
+- `RETIRED_PRIVACY_BLOCK_IDS` (0.150.1-fiksen) inneheld no berre `breach` -- `intro` er ikkje lenger pensjonert.
+- Ny tekst: "Denne personvernerklæringen forklarer hvordan [FIRMANAVN] behandler personopplysninger når du besøker nettsiden, kontakter oss, ber om tilbud, bestiller, bruker chat eller har dialog med oss som kunde eller potensiell kunde." -- dynamisk firmanamn, same mønster som `controller`.
+- Regresjonstesten frå 0.150.1 oppdatert: stadfestar no at gamal intro-tekst vert BYTT UT med fersk tekst (ikkje ståande att i tillegg), pluss ein ny rekkjefølgje-sjekk (intro FØR behandlingsansvarleg).
+
+## 0.150.1 — 2026-08-17
+
+**To rettingar til 0.150.0, funne av brukaren same dag ved å faktisk trykke «Standardforslag» på Vibeverk sin eigen tenant.**
+
+- **Pensjonerte avsnitt («Innledning»/«Avviksvarsling») dukka opp att som eit «orphan» nedst i dokumentet.** Root cause: `mergePrivacyBlocks()` sin eksisterande, medvitne åtferd ("ei modul-blokk for ein modul som ikkje lenger er aktiv vert teken vare på, operatøren fjernar ho sjølv") vart bygd for scenarioet "ein kunde skrudde av `features.booking`", ikkje "denne id-en finst ikkje lenger i det heile i koden". `intro`/`breach` (fjerna i 0.150.0) fall inn i same handtering, og enda difor opp attpålagt nedst kvar gong "Standardforslag" vart trykt. Verre: sidan begge har `source:"module"`, hadde dei ingen "Fjern avsnitt"-knapp i editoren (berre `source:"manual"`-blokker har den) -- operatøren kunne ALDRI fjerna dei att gjennom vanleg UI. Retta med ei eksplisitt `RETIRED_PRIVACY_BLOCK_IDS`-liste i `mergePrivacyBlocks()`. Verkar retroaktivt -- eit nytt trykk på "Standardforslag" etter denne fiksen fjernar dei automatisk frå ein alt-eksisterande draft, ingen manuell opprydding naudsynt.
+- **Behandlingsansvarleg-avsnittet** fekk eit ekte paragraf-skilje (i staden for éin samanhengande tekstblokk) mellom sjølve ansvars-setninga og kontaktinfo-lista, etter at brukaren viste eit klarare formatert eksempel -- "denne erklæringen" (ikkje "denne personvernerklæringen") for ordrett samsvar med utkastet.
+
+Ny jsdom-regresjonstest som simulerer nøyaktig scenarioet (ein tenant med ein alt-publisert versjon frå FØR 0.150.0, intro/breach liggjande i `bodyBlocks`) og stadfestar at eit nytt "Standardforslag"-trykk faktisk fjernar dei.
 ## 0.150.0 — 2026-08-17
 
 **Personvern-standardteksten (Standardforslag) skriven om, etter brukaren sitt eige fullstendige tekstutkast — gjennomgått, tilbakemeldt og eksplisitt godkjent punkt for punkt før noko vart koda (sjå samtalen same dag).**

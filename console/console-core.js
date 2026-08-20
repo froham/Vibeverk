@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.158.1";
+  var VIBEVERK_VERSION = "0.159.2";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -435,7 +435,12 @@ window.VwConsole = (function () {
     // for ein gjeven kunde, sjå renderAdminLogin()/renderLogin()) -- difor
     // plassert her i "Nettside"-fana sitt delte features-objekt, sjølv om
     // effekten ikkje er avgrensa til sjølve nettsida.
-    oauthMicrosoft:"Innlogging med Microsoft", oauthGoogle:"Innlogging med Google"
+    oauthMicrosoft:"Innlogging med Microsoft", oauthGoogle:"Innlogging med Google",
+    // qrCode (2026-08-19): styrer Web-admin-fana. Deler App.store-nøkkelen
+    // "qr-codes" med intranettFeatures sin qrCode under -- IFEAT_LABELS/
+    // IFEAT_HELP har difor si eiga oppføring for Workspace-sida, sjølv om
+    // dataa er delt (sjå module-qrcode.js).
+    qrCode:"QR-koder"
   };
   // Opt-in-brytarar -- MÅ defaulte til AV for ein kunde som aldri har lagra
   // features eksplisitt, i motsetnad til alle andre brytarar over (som er
@@ -446,7 +451,7 @@ window.VwConsole = (function () {
   // lagra verdien er av. Det ville i tillegg lagra "true" stille inn viss
   // operatøren trykte "Lagra" av ein heilt annan grunn (t.d. skrudde på
   // FAQ), sidan skjemaet skriv HEILE features-objektet på nytt kvar gong.
-  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true, oauthMicrosoft: true, oauthGoogle: true };
+  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true, oauthMicrosoft: true, oauthGoogle: true, qrCode: true };
   // Kva kvar bryter faktisk gjer -- rendrast som ein helpIcon() ved sida av
   // kvar checkbox (copy-clarity-initiativet, fase 4, 2026-07-13). Vald i
   // staden for å gjette meining frå den korte labelen åleine, sidan fleire
@@ -469,12 +474,14 @@ window.VwConsole = (function () {
     sidebygger:  "Gjev kunden ein eigen «Design»-fane i Web-admin, der dei sjølv kan velje mellom fleire designmalar for heile nettsida, i tillegg til Banner- og Karusell-seksjonar — eit betalt tillegg.",
     sidetelling: "Aktiverer Vibeverk sin eigen, cookiefrie analyse (sidevisningar, henvisningar og klikk på knappar), synleg for kunden i den eigne Innsikt-fana i Web-admin (var underfane under Innstillinger, no ei eiga fane i adminpanelet). Kan ikkje brukast saman med eit eksternt verktøy (t.d. Plausible) sett opp i Analyse-fana her i Console — er begge slått på, vinn Plausible automatisk, og denne interne analysen samlar ikkje inn noko.",
     oauthMicrosoft: "Viser «Logg inn med Microsoft» i BÅDE Web-admin og Workspace sine innloggingsskjema. Krev at kunden (eller Vibeverk på deira vegne) har registrert ein app i Azure/Entra ID og lagt inn klient-ID/-hemmelegheit i kundens eige Supabase-prosjekt (Authentication → Providers) FØRST — denne brytaren viser berre knappen, ho set ikkje opp sjølve leverandøren. Fungerer kun for e-postar som alt er invitert som brukar frå før — kan ikkje brukast til å opprette nye kontoar.",
-    oauthGoogle: "Same som «Innlogging med Microsoft», men for Google. Krev tilsvarande oppsett i Google Cloud Console + kundens Supabase-prosjekt."
+    oauthGoogle: "Same som «Innlogging med Microsoft», men for Google. Krev tilsvarande oppsett i Google Cloud Console + kundens Supabase-prosjekt.",
+    qrCode: "Gjev kunden ei «QR-koder»-fane i Web-admin der dei kan generere og laste ned QR-kodar (PNG/SVG). Kvar kode peikar på ei fast adresse hos oss som videresender vidare -- kunden kan byte mål-lenka seinare utan å skrive ut koden på nytt."
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
     mediaInternal:"Mediebank", links:"Lenker", orgdrift:"Org & drift",
-    crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar"
+    crm:"Kunder", booking:"Booking", quote:"Tilbud", contact:"Kontakthenvendingar",
+    qrCode:"QR-koder"
   };
   var IFEAT_HELP = {
     announcements: "Kunngjeringar/interne nyheiter, synleg for alle i Workspace.",
@@ -486,7 +493,8 @@ window.VwConsole = (function () {
     crm:           "Gjev tilgang til kundehandtering (CRM) frå Workspace, i tillegg til Web-admin.",
     booking:       "Sjå og handtere bookingar frå Workspace.",
     quote:         "Sjå og handtere tilbodsførespurnadar frå Workspace.",
-    contact:       "Sjå og svare på kontakthenvendingar frå Workspace."
+    contact:       "Sjå og svare på kontakthenvendingar frå Workspace.",
+    qrCode:        "Gjev tilgang til «QR-koder» i Workspace, i tillegg til Web-admin -- deler same lista av kodar (samme App.store-nøkkel)."
   };
 
   // Rein PRISINGS-katalog (brukarønske 2026-08-05) -- Hosting/vedlikehold
@@ -4838,10 +4846,12 @@ window.VwConsole = (function () {
   // interne id-en ("booking") rått.
   // "intro"/"breach" fjerna 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt
   // eige notat) -- "general"/"customers" nye same runde.
+  // "intro" gjeninnført 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt
+  // eige notat) -- fjerna, så attinnsett same dag med ny tekst.
   var PRIVACY_MODULE_LABEL = {
     baseline: "Rettar", contactForm: "Kontaktskjema", quote: "Tilbud",
     booking: "Booking", analytics: "Cookies/analyse", suppliers: "Leverandørar",
-    controller: "Behandlingsansvarlig", general: "Generell informasjon",
+    intro: "Innledning", controller: "Behandlingsansvarlig", general: "Generell informasjon",
     retention: "Lagringstid", employees: "Tilsette (Workspace)",
     chat: "Chat", customers: "Kunder"
   };
@@ -5144,7 +5154,7 @@ window.VwConsole = (function () {
     // ikkje styrt av noko features.*-flagg -- same "alltid aktiv"-grunngjeving
     // som baseline/suppliers over. "intro"/"breach" fjerna, "general" ny,
     // begge 2026-08-17 (sjå computeTenantPrivacyBlocks() sitt eige notat).
-    if (moduleId === "controller" || moduleId === "general" || moduleId === "retention" || moduleId === "employees") return true;
+    if (moduleId === "intro" || moduleId === "controller" || moduleId === "general" || moduleId === "retention" || moduleId === "employees") return true;
     // module-chat.js sin eigen standard er "på" med mindre eksplisitt skrudd
     // av (same !== false-mønster som contactForm over) -- IKKJE eit "alltid
     // aktiv"-modul slik baseline/suppliers er, sidan features.chat faktisk
@@ -5313,14 +5323,27 @@ window.VwConsole = (function () {
     var orgNr = ((sc.footer || {}).orgNr || "").trim();
 
     var blocks = [];
-    // Standardtekst-revisjon (2026-08-17, brukarutkast, sjå CHANGELOG for full
-    // grunngjeving): "intro" (generisk "om denne personvernerklæringen"-
-    // innleiing) er fjerna -- opningsavsnittet i "controller" dekker no den
-    // funksjonen sjølv, same struktur som brukaren sitt eige utkast (ingen
-    // separat generisk innleiing).
+    // "intro" fjerna 2026-08-17, GJENINNFØRT same dag (brukarfunn) med NY
+    // tekst -- fyrste utkastet hadde ingen generisk innleiing i det heile,
+    // men brukaren ombestemte seg og ville ha ein kort, dynamisk "om denne
+    // erklæringa"-seksjon FØRST, over "Hvem er behandlingsansvarlig". Ikkje
+    // same ordlyd som den opphavlege (pensjonerte) intro-teksten frå før
+    // 0.150.0 -- heilt ny tekst, spesifisert av brukaren.
+    blocks.push({ id: "intro", source: "module", moduleId: "intro", included: true, edited: false, body: privacyTextToRichHtml(
+      "# Om denne personvernerklæringen\nDenne personvernerklæringen forklarer hvordan " + (company.name || "vi") + " behandler personopplysninger når du besøker nettsiden, kontakter oss, ber om tilbud, bestiller, bruker chat eller har dialog med oss som kunde eller potensiell kunde."
+    ) });
+    // RETTA 2026-08-17 (brukarfunn, live testing): opphavleg éin samanhengande
+    // avsnitt (kun \n, aldri \n\n) -- brukaren viste eit klarare, konkret
+    // formatert eksempel med reelle paragraf-skilje: behandlingsansvarleg-
+    // setninga for seg sjølv, DEREFTER kontaktinfo-innleiinga + E-post/
+    // Telefon/Adresse-lista som sitt eige avsnitt. \n\n mellom dei to
+    // meiningsbolkane gjev nettopp dette (privacyTextToRichHtml() sin
+    // \n\n-splitt), \n framleis internt i kontakt-lista for <br> mellom
+    // kvar linje. Ordlyden "denne erklæringen" (ikkje "denne
+    // personvernerklæringen") matchar no brukaren sitt utkast ordrett.
     blocks.push({ id: "controller", source: "module", moduleId: "controller", included: true, edited: false, body: privacyTextToRichHtml(
-      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? ", organisasjonsnummer " + orgNr + "," : "") + " er behandlingsansvarlig for behandlingen som beskrives i denne personvernerklæringen." +
-      (contactInfo.length ? " Har du spørsmål om personvern eller ønsker å bruke rettighetene dine, kan du kontakte oss:\n" +
+      "# Hvem er behandlingsansvarlig?\n" + (company.name || "Vi") + (orgNr ? ", organisasjonsnummer " + orgNr + "," : "") + " er behandlingsansvarlig for behandlingen som beskrives i denne erklæringen." +
+      (contactInfo.length ? "\n\nHar du spørsmål om personvern eller ønsker å bruke rettighetene dine, kan du kontakte oss:\n" +
         [contact.email ? "E-post: " + contact.email : "", contact.phone ? "Telefon: " + contact.phone : "", contact.address ? "Adresse: " + contact.address : ""].filter(Boolean).join("\n")
       : "")
     ) });
@@ -5494,6 +5517,26 @@ window.VwConsole = (function () {
   // røre eigne, manuelt tilføyde avsnitt (source:"manual" er urørt uansett,
   // sjå pushen under). Klikk-handteraren viser ei åtvaring FØR dette kallet
   // skjer dersom det faktisk finst noko redigert å overskrive.
+  // "breach" (2026-08-17, brukarfunn, live testing): dette er IKKJE eit
+  // "features.*-flagget vart skrudd av"-orphan (den vanlege, medvitne
+  // grunngjevinga for å ta vare på ei modul-blokk som ikkje lenger er
+  // aktiv) -- id-en er ARKITEKTONISK PENSJONERT, fjerna frå
+  // computeTenantPrivacyBlocks() sjølv (sjå 0.150.0, flytta til DPA-en).
+  // Utan denne eksplisitte lista vart han handsama identisk med eit vanleg
+  // orphan: framleis dukka opp att kvar gong "Standardforslag" vart trykt,
+  // nedst i dokumentet (etter alle dei ferske blokkene) sidan orphan-steget
+  // under alltid legg til ETTER `merged` sitt ferske innhald. Verre: sidan
+  // han har `source:"module"`, hadde han ingen "Fjern avsnitt"-knapp i det
+  // heile i editoren (berre "manual"-blokker har den knappen) -- operatøren
+  // kunne ALDRI fjerna han att gjennom vanleg UI, uansett kor mange gonger
+  // "Standardforslag" vart trykt.
+  //
+  // MERK: "intro" stod her òg fram til 2026-08-17, same dag -- brukaren
+  // ombestemte seg og ville ha "intro" attende (med NY tekst), difor fjerna
+  // frå denne lista att (sjå computeTenantPrivacyBlocks() sitt eige notat).
+  // "intro" er IKKJE lenger pensjonert.
+  var RETIRED_PRIVACY_BLOCK_IDS = { breach: true };
+
   function mergePrivacyBlocks(existingBlocks, freshBlocks, forceOverwrite) {
     var existingById = {};
     (existingBlocks || []).forEach(function (b) { existingById[b.id] = b; });
@@ -5505,6 +5548,7 @@ window.VwConsole = (function () {
     var freshIds = {};
     freshBlocks.forEach(function (f) { freshIds[f.id] = true; });
     (existingBlocks || []).forEach(function (b) {
+      if (RETIRED_PRIVACY_BLOCK_IDS[b.id]) return;
       if (b.source === "manual" || !freshIds[b.id]) merged.push(b);
     });
     return merged;
@@ -5563,6 +5607,26 @@ window.VwConsole = (function () {
     return (blocks || []).filter(function (b) { return b.included; }).map(function (b) { return b.body; }).join("");
   }
 
+  // "employees" (Tilsette/Workspace) skal ALDRI vere med i det OFFENTLEGE,
+  // publiserte dokumentet (2026-08-17, brukarønske) -- berre i
+  // priv.employeeText, Workspace sin eigen "Personvern for ansatte"-lenke.
+  // Dette er MEDVITE ikkje eit vanleg "included:false"-avkryssingsval den
+  // enkelte operatøren styrer sjølv -- det er ein strukturell regel (same
+  // "alltid ekskludert frå offentleg tekst"-status som employeeText sin
+  // eigen filter er "alltid berre denne blokka"), sidan employees framleis
+  // skal reknast som "alltid aktiv" i privacyModuleActive() (Workspace-
+  // kontoar finst strukturelt for kvar tenant) -- elles ville hybrid-vakta
+  // (privacyGuardBlockedBlocks()) feilaktig blokkert publisering.
+  //
+  // Brukt av ALLE stadene som viser/eksporterer "det offentlege dokumentet"
+  // (sjølve publiseringa, førehandsvisingar, HTML-eksport, versjonshistorikk)
+  // -- IKKJE av privacyApprovalContentSnapshot() (godkjenninga gjeld HEILE
+  // det redigerte dokumentet operatøren registrerer, ikkje berre det
+  // offentlege utsnittet) eller employeeText sjølv (som gjer det motsette).
+  function publicPrivacyBlocks(blocks) {
+    return (blocks || []).filter(function (b) { return b.id !== "employees"; });
+  }
+
   // Fase 4 (godkjenning, UX-funn HIGH): billeg "har noko endra sidan
   // godkjenninga"-fingeravtrykk -- ingen hashing, berre den flate teksten
   // sjølv (heading + innhald), same idiom som resten av fila brukar (t.d.
@@ -5592,7 +5656,7 @@ window.VwConsole = (function () {
     // -- farleg spesifikt her sidan fila er MEINT å opnast i ein nettlesar
     // seinare (kunden sitt eige arkiv). sanitizeRichHtml() er idempotent, så
     // dette er gratis for det vanlege, alt trygge tilfellet.
-    var bodyHtml = C.sanitizeRichHtml(privacyBlocksToFlatHtml(version.bodyBlocks)) || "<p>(Tomt innhald)</p>";
+    var bodyHtml = C.sanitizeRichHtml(privacyBlocksToFlatHtml(publicPrivacyBlocks(version.bodyBlocks))) || "<p>(Tomt innhald)</p>";
     var publishedStr = version.publishedAt ? new Date(version.publishedAt).toLocaleString("nb-NO") : "";
     var doc = "<!doctype html><html lang=\"no\"><head><meta charset=\"utf-8\">" +
       "<title>" + C.esc(version.heading || "Personvernerklæring") + "</title>" +
@@ -5672,7 +5736,7 @@ window.VwConsole = (function () {
           (driftLabels.length
             ? '<p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem"><span class="kd-pill kd-pill--provisioning">Bør sjekkast</span> Sidan denne teksten vart publisert kan desse avsnitta ha endra seg: <strong>' + C.esc(driftLabels.join(", ")) + '</strong>. Teksten er ikkje endra automatisk — opprett eit nytt utkast for å sjå eit oppdatert forslag.</p>'
             : (an ? '' : '<p style="font-size:.78rem;color:var(--color-muted);margin:0 0 .8rem">Sjekkar om innhaldet framleis stemmer med aktive modular…</p>')) +
-          '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(version.bodyBlocks) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
+          '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(publicPrivacyBlocks(version.bodyBlocks)) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
         '</fieldset>' +
         '<div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">' +
           C.button({ label: "Rediger (opprett nytt utkast)", variant: "primary", attrs: 'type="button" id="cs-priv-new-draft"' }) +
@@ -5696,7 +5760,7 @@ window.VwConsole = (function () {
       // Reint les-modus, ingen redigering, difor trygt å bruke same
       // privacyBlocksToFlatHtml() som den publiserte visinga alt brukar.
       pane.querySelector("#cs-priv-fulltext").addEventListener("click", function () {
-        showTextPreviewModal("Personvernerklæring — full tekst", privacyBlocksToFlatHtml(version.bodyBlocks) || "<p>(Tomt innhald)</p>", true);
+        showTextPreviewModal("Personvernerklæring — full tekst", privacyBlocksToFlatHtml(publicPrivacyBlocks(version.bodyBlocks)) || "<p>(Tomt innhald)</p>", true);
       });
       // Fase 4 (eksport, 2026-08-06): brukaren avklarte eksplisitt -- kun ein
       // nedlastbar fil av DEN PUBLISERTE versjonen, til kunden sitt eige
@@ -5956,7 +6020,7 @@ window.VwConsole = (function () {
     // no, ikkje sist lagra tilstand.
     pane.querySelector("#cs-priv-fulltext").addEventListener("click", function () {
       captureFieldEdits();
-      showTextPreviewModal("Personvernerklæring — full tekst (utkast)", privacyBlocksToFlatHtml(version.bodyBlocks) || "<p>(Tomt innhald)</p>", true);
+      showTextPreviewModal("Personvernerklæring — full tekst (utkast)", privacyBlocksToFlatHtml(publicPrivacyBlocks(version.bodyBlocks)) || "<p>(Tomt innhald)</p>", true);
     });
 
     pane.querySelector("#cs-priv-publish").addEventListener("click", function () {
@@ -6013,7 +6077,10 @@ window.VwConsole = (function () {
           version.publishedAt = Date.now();
           priv.activeVersionId = version.id;
           priv.heading = version.heading || "";
-          priv.text = privacyBlocksToFlatHtml(version.bodyBlocks);
+          // RETTA 2026-08-17 (brukarønske): "employees" skal ALDRI vere med
+          // i det offentlege dokumentet -- sjå publicPrivacyBlocks() sitt
+          // eige notat.
+          priv.text = privacyBlocksToFlatHtml(publicPrivacyBlocks(version.bodyBlocks));
           // UX-review-funn 2026-08-13: Workspace sin eigen "Personvern"-lenke
           // synte tidlegare heile priv.text (kundevendt policy -- cookies,
           // leads, kontaktskjema osv.) til tilsette, sidan publisering
@@ -6341,7 +6408,7 @@ window.VwConsole = (function () {
         var v = versions.filter(function (x) { return x.id === btn.getAttribute("data-hist-view"); })[0];
         pane.querySelector("#hist-preview").innerHTML =
           '<fieldset class="admin-group"><legend>' + C.esc(v.heading || "(uten overskrift)") + '</legend>' +
-            '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(v.bodyBlocks) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
+            '<div style="border:1px solid var(--color-border);border-radius:8px;padding:.8rem">' + (privacyBlocksToFlatHtml(publicPrivacyBlocks(v.bodyBlocks)) || '<p style="color:var(--color-muted)">(Tomt innhald)</p>') + '</div>' +
           '</fieldset>';
       });
     });

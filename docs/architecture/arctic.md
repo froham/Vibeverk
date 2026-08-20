@@ -2,7 +2,7 @@
 
 Arctic er en global, tenant-uavhengig seksjon i Vibeverk Console. Første vertikal samler avgrenset driftsstatus, det eksisterende lokale AI Lab-et, arbeidsøkt-adaptere, en fast tjenesteliste og et eksplisitt kommandoregister. Arctic leser ikke valgt kundes `App.store`, kundedata eller private Supabase-prosjekt.
 
-Dette dokumentet beskriver v0.158.1-releasekandidaten. Det er ikke gjort noen databasemigrasjon eller produksjonsutrulling. Produksjonsgrensesnittet returnerer fortsatt bevisst `not_configured`/`gateway_not_configured` for drift og kommandoer; den eneste nye forbindelsen er en eksplisitt, lokal browser-bro til AI Lab/Gemma. Vercel-opplasting har i tillegg en eksplisitt `.vercelignore`-grense for lokale miljø- og runtimefiler.
+Dette dokumentet beskriver v0.159.2-releasekandidaten (etter at `arctic-ai-lab-rc` vart slått saman med `main` sin QR-modul og personvern-rettingar 2026-08-20; sjølve Arctic/AI Lab-innhaldet er identisk med det tidlegare omtala som v0.158.1, berre omnummerert for å unngå ein versjonskollisjon med `main`, sjå `docs/project/CHANGELOG.md` 0.159.2). Det er ikke gjort noen databasemigrasjon eller produksjonsutrulling. Produksjonsgrensesnittet returnerer fortsatt bevisst `not_configured`/`gateway_not_configured` for drift og kommandoer; den eneste nye forbindelsen er en eksplisitt, lokal browser-bro til AI Lab/Gemma. Vercel-opplasting har i tillegg en eksplisitt `.vercelignore`-grense for lokale miljø- og runtimefiler.
 
 ## Flater og forbindelser
 

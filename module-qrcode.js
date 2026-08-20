@@ -1,0 +1,319 @@
+/* =============================================================================
+   module-qrcode.js  —  QR-KODER (dynamisk/redirect)
+   -----------------------------------------------------------------------------
+   Dual-registrerer for både Web-admin (App.registerModule) og Workspace
+   (window.Intranet.registerModule), etter same mønster som module-crm.js —
+   ÉIN fil, delt kode og datanøkkel («qr-codes» i App.store), slik at ein
+   QR-kode oppretta i Web-admin er synleg og redigerbar i Workspace og omvendt.
+
+   Kvar QR-kode koder for ei FAST adresse på eige domene (/qr/<code>), aldri
+   for mål-lenka direkte — sjølve QR-biletet endrar seg difor aldri, sjølv om
+   mål-lenka byttast ut seinare (sjå api/qr-redirect.js + middleware.js for
+   sjølve videresendinga). Slette ein kode gjer den trykte/delte QR-en
+   verdilaus (vennleg feilside i staden for videresending) — irreversibelt,
+   difor Nivå B-stadfesting ved sletting (docs/architecture/copy-style-guide.md).
+
+   Krev det eksterne QR-biblioteket «qr-code-styling» (window.QRCodeStyling),
+   lasta via CDN i index.html/workspace/index.html FØR denne fila.
+
+   Uavhengige funksjonsbrytarar (begge MÅ vere eksplisitt true, standard er
+   false for begge — sjå config.js):
+     features.qrCode           → admin-fane i Web-admin
+     intranettFeatures.qrCode  → eiga side i Workspace
+   ========================================================================== */
+(function () {
+  "use strict";
+
+  var App = window.App, C = window.Components;
+  if (!App || !C) return;
+
+  App.ready(function (CFG) {
+    var esc = C.esc;
+    var STORE_KEY = "qr-codes";
+
+    var siteOn = !!(CFG.features && CFG.features.qrCode === true);
+    var wsOn   = !!(CFG.intranettFeatures && CFG.intranettFeatures.qrCode === true);
+    if (!siteOn && !wsOn) return;
+
+    /* =======================================================================
+       LAGRING  (delt datanøkkel — App.store skriv/les via same "store"-tabell
+       på begge overflater sidan begge autentiserer mot same Supabase-prosjekt)
+       ==================================================================== */
+    function getItems() { return App.store.get(STORE_KEY, []) || []; }
+    function setItems(v) { App.store.set(STORE_KEY, v); }
+
+    function genCode(existing) {
+      var alphabet = "abcdefghijkmnpqrstuvwxyz23456789"; // utan 0/o/1/l/i — vanskeleg å forveksle
+      var code;
+      do {
+        code = "";
+        for (var i = 0; i < 8; i++) code += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+      } while (existing.some(function (r) { return r.code === code; }));
+      return code;
+    }
+
+    function slug(s) {
+      return (s || "qr").toLowerCase()
+        .replace(/[æå]/g, "a").replace(/ø/g, "o")
+        .replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "") || "qr";
+    }
+
+    /* =======================================================================
+       STILER  (Web-admin sin index.html definerer .field input/.field
+       textarea sin avrunda styling -- workspace/index.html manglar denne
+       CSS-blokka heilt, sidan Workspace sine eigne moduler hand-rullar
+       inputfelt i staden for å bruke C.field(). Denne modulen BRUKER
+       C.field() på begge overflater (delt render-funksjon), så utan denne
+       injiserte regelen fekk feltet i Workspace skarpe, ustila
+       nettlesar-standard-hjørne -- fanga av brukar i praksis, 2026-08-19.
+       Harmlaus duplikat på Web-admin, som alt har identiske reglar. */
+    function injectStyles() {
+      if (document.getElementById("qr-field-styles")) return;
+      var s = document.createElement("style");
+      s.id = "qr-field-styles";
+      s.textContent =
+        ".field input:not([type=\"color\"]), .field textarea{font:inherit;padding:.7rem .85rem;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);color:var(--color-text);width:100%;box-sizing:border-box;transition:border-color .2s,box-shadow .2s}" +
+        ".field input:not([type=\"color\"]):focus, .field textarea:focus{outline:none;border-color:var(--color-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--color-primary) 18%,transparent)}" +
+        ".field input[type=\"color\"]{width:100%;height:42px;padding:3px 4px;border-radius:10px;border:1.5px solid var(--color-border);background:var(--color-bg);cursor:pointer}" +
+        // .admin-row__actions sin delte base-CSS har flex-shrink:0 (nektar å
+        // krympe) -- på smale skjermar tvingar dette knapperada ned på ei
+        // eiga, full-bredde linje under tittel/lenke i staden for å klemme
+        // seg oppå (sjå qrRow()).
+        "@media (max-width:560px){.qr-row-actions{flex:1 1 100% !important;justify-content:flex-start !important}}";
+      document.head.appendChild(s);
+    }
+
+    /* =======================================================================
+       QR-GENERERING  (window.QRCodeStyling)
+       ==================================================================== */
+    function qrTargetUrl(record) { return window.location.origin + "/qr/" + record.code; }
+
+    var QR_PREVIEW_SIZE = 220;
+
+    function buildQr(record, extra) {
+      var opts = Object.assign({
+        width: QR_PREVIEW_SIZE, height: QR_PREVIEW_SIZE, margin: 10,
+        data: qrTargetUrl(record),
+        qrOptions: { errorCorrectionLevel: "H" },
+        dotsOptions: { color: record.fgColor || "#142033", type: "rounded" },
+        cornersSquareOptions: { type: "extra-rounded", color: record.fgColor || "#142033" },
+        backgroundOptions: { color: record.bgColor || "#ffffff" },
+        // imageSize:0.28 + margin:10 (ned frå 0.35/6) -- ved 0.35 stakk logoen
+        // synleg utanfor den kvite avstandssona rundt QR-modulane i praksis
+        // (brukar-skjermbilete, 2026-08-19), sjølv om talet i seg sjølv er ein
+        // brøkdel av canvas-storleiken -- for lite margin mellom logo og
+        // modular gjorde det visuelt utydeleg kvar koden slutta og logoen
+        // starta. hideBackgroundDots fjernar framleis QR-prikkane bak logoen.
+        imageOptions: { crossOrigin: "anonymous", imageSize: 0.28, margin: 10, hideBackgroundDots: true }
+      }, extra || {});
+      if (record.useLogo && CFG.company && CFG.company.logoUrl) opts.image = CFG.company.logoUrl;
+      return new window.QRCodeStyling(opts);
+    }
+
+    function renderPreview(container, record) {
+      container.innerHTML = "";
+      if (!window.QRCodeStyling) {
+        container.textContent = "QR-biblioteket kunne ikke lastes — sjekk internettforbindelsen.";
+        return;
+      }
+      try { buildQr(record, { type: "canvas" }).append(container); }
+      catch (e) { container.textContent = "Kunne ikke tegne forhåndsvisning."; }
+    }
+
+    function exportQr(record, extension) {
+      if (!window.QRCodeStyling) return;
+      var type = extension === "svg" ? "svg" : "canvas";
+      try {
+        buildQr(record, { type: type }).download({ name: slug(record.label), extension: extension });
+      } catch (e) {
+        console.error("[qrcode] eksport feila", e);
+      }
+    }
+
+    /* =======================================================================
+       DELT UI  (identisk i Web-admin og Workspace — same CSS-klassar finst
+       på begge overflater, sjå .admin-form/.admin-list/.admin-row)
+       ==================================================================== */
+    function renderManager(root) {
+      var items = getItems();
+      root.innerHTML =
+        '<div class="qr-adm__head" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.8rem">' +
+          '<h4 style="margin:0">QR-koder</h4>' +
+          C.button({ label: "Ny QR-kode", icon: "plus", variant: "primary", attrs: "data-qr-new" }) +
+        '</div>' +
+        '<div data-qr-editor></div>' +
+        '<ul class="admin-list" data-qr-list>' +
+          (items.length ? items.map(qrRow).join("") : '<li class="prose prose--muted">Ingen QR-koder ennå.</li>') +
+        '</ul>';
+
+      root.querySelector("[data-qr-new]").addEventListener("click", function () { openEditor(root, null); });
+      root.querySelectorAll("[data-qr-edit]").forEach(function (b) {
+        b.addEventListener("click", function () { openEditor(root, b.getAttribute("data-qr-edit")); });
+      });
+      root.querySelectorAll("[data-qr-toggle]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var id = b.getAttribute("data-qr-toggle");
+          var list = getItems();
+          var idx = list.findIndex(function (x) { return x.id === id; });
+          if (idx < 0) return;
+          list[idx] = Object.assign({}, list[idx], { active: !list[idx].active, updatedAt: new Date().toISOString() });
+          setItems(list);
+          renderManager(root);
+        });
+      });
+      root.querySelectorAll("[data-qr-png]").forEach(function (b) {
+        b.addEventListener("click", function () { exportForId(items, b.getAttribute("data-qr-png"), "png"); });
+      });
+      root.querySelectorAll("[data-qr-svg]").forEach(function (b) {
+        b.addEventListener("click", function () { exportForId(items, b.getAttribute("data-qr-svg"), "svg"); });
+      });
+      root.querySelectorAll("[data-qr-del]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var id = b.getAttribute("data-qr-del");
+          var rec = items.find(function (x) { return x.id === id; });
+          if (!rec) return;
+          if (!window.confirm(
+            'Slette QR-koden «' + rec.label + '»? Den trykte eller delte QR-koden vil da ikke lenger virke ' +
+            '(den peker fortsatt på samme lenke fysisk, men lenken finnes ikke lenger her). Dette kan ikke angres.'
+          )) return;
+          setItems(getItems().filter(function (x) { return x.id !== id; }));
+          renderManager(root);
+        });
+      });
+    }
+
+    function exportForId(items, id, extension) {
+      var rec = items.find(function (x) { return x.id === id; });
+      if (rec) exportQr(rec, extension);
+    }
+
+    function qrRow(r) {
+      // flex-wrap på sjølve raden + qr-row-actions (media query i
+      // injectStyles()) -- utan dette klemte dei fem knappane seg oppå
+      // tittel/lenke-teksten på smale skjermar i staden for å falle ned på
+      // eiga linje, sidan .admin-row__actions sin flex-shrink:0 (delt
+      // base-CSS) nektar å krympe. Fanga av brukar på ekte mobil, 2026-08-19.
+      return '<li class="admin-row" style="align-items:center;gap:.8rem;flex-wrap:wrap">' +
+        '<div class="admin-row__main" style="flex:1 1 200px;min-width:0">' +
+          '<strong>' + esc(r.label) + '</strong>' +
+          (r.active === false ? ' <span class="badge" style="opacity:.6">Deaktivert</span>' : '') +
+          '<span class="admin-row__meta" style="display:block;word-break:break-all">' + esc(r.targetUrl) + '</span>' +
+        '</div>' +
+        '<div class="admin-row__actions qr-row-actions" style="display:flex;flex-wrap:wrap;gap:.4rem">' +
+          C.button({ label: "Rediger",            variant: "ghost", attrs: 'data-qr-edit="'   + esc(r.id) + '"' }) +
+          C.button({ label: "PNG",                 variant: "ghost", attrs: 'data-qr-png="'    + esc(r.id) + '"' }) +
+          C.button({ label: "SVG",                 variant: "ghost", attrs: 'data-qr-svg="'    + esc(r.id) + '"' }) +
+          C.button({ label: r.active === false ? "Aktiver" : "Deaktiver", variant: "ghost", attrs: 'data-qr-toggle="' + esc(r.id) + '"' }) +
+          C.button({ label: "Slett",               variant: "ghost", attrs: 'data-qr-del="'    + esc(r.id) + '"' }) +
+        '</div>' +
+      '</li>';
+    }
+
+    function openEditor(root, id) {
+      var items = getItems();
+      var item = id ? items.find(function (x) { return x.id === id; }) : null;
+      var rec = item ? Object.assign({}, item) : {
+        id: "qr-" + Date.now(), code: genCode(items),
+        label: "", targetUrl: "", active: true, useLogo: true,
+        fgColor: "#142033", bgColor: "#ffffff"
+      };
+
+      var ed = root.querySelector("[data-qr-editor]");
+      ed.innerHTML =
+        '<form class="admin-form admin-form--card" data-qr-form>' +
+          '<h4 style="margin:0">' + (item ? "Rediger QR-kode" : "Ny QR-kode") + '</h4>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:1.4rem;align-items:flex-start">' +
+            '<div style="flex:1;min-width:240px">' +
+              C.field({ id: "qr-label", label: "Navn/merkelapp", required: true, value: rec.label,
+                hint: "Kun til intern bruk — vises ikke når koden skannes." }) +
+              C.field({ id: "qr-url", label: "Mål-lenke", type: "url", required: true, value: rec.targetUrl,
+                help: "Dit QR-koden sender folk. Denne kan endres senere uten at den trykte/delte QR-koden slutter å virke — koden peker alltid på en fast adresse hos oss, som igjen sender videre dit du sier her.",
+                placeholder: "https://…" }) +
+              '<label style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0">' +
+                '<input type="checkbox" data-qr-uselogo' + (rec.useLogo ? " checked" : "") + '> Vis logo midt i QR-koden' +
+              '</label>' +
+              '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin:.4rem 0">' +
+                '<label style="display:flex;align-items:center;gap:.4rem">Forgrunn <input type="color" data-qr-fg value="' + esc(rec.fgColor) + '"></label>' +
+                '<label style="display:flex;align-items:center;gap:.4rem">Bakgrunn <input type="color" data-qr-bg value="' + esc(rec.bgColor) + '"></label>' +
+              '</div>' +
+              '<div class="admin-row__actions" style="margin-top:.6rem">' +
+                C.button({ label: item ? "Oppdater" : "Opprett", type: "submit", variant: "primary" }) +
+                C.button({ label: "Avbryt", variant: "ghost", attrs: "data-qr-cancel" }) +
+              '</div>' +
+              '<p class="field__hint">Fysisk lenke: ' + esc(qrTargetUrl(rec)) + '</p>' +
+              '<p class="form__status" data-qr-status></p>' +
+            '</div>' +
+            '<div data-qr-preview style="flex:0 0 auto;display:flex;justify-content:center;align-items:center;width:' + (QR_PREVIEW_SIZE + 24) + 'px;height:' + (QR_PREVIEW_SIZE + 24) + 'px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;margin:0 auto"></div>' +
+          '</div>' +
+        '</form>';
+
+      var previewEl = ed.querySelector("[data-qr-preview]");
+      function currentDraft() {
+        return Object.assign({}, rec, {
+          label:   ed.querySelector("#qr-label").value.trim() || rec.label,
+          useLogo: ed.querySelector("[data-qr-uselogo]").checked,
+          fgColor: ed.querySelector("[data-qr-fg]").value,
+          bgColor: ed.querySelector("[data-qr-bg]").value
+        });
+      }
+      renderPreview(previewEl, rec);
+      ["[data-qr-uselogo]", "[data-qr-fg]", "[data-qr-bg]"].forEach(function (sel) {
+        ed.querySelector(sel).addEventListener("input", function () { renderPreview(previewEl, currentDraft()); });
+      });
+
+      ed.querySelector("[data-qr-cancel]").addEventListener("click", function () { ed.innerHTML = ""; });
+      ed.querySelector("[data-qr-form]").addEventListener("submit", function (e) {
+        e.preventDefault();
+        var label = ed.querySelector("#qr-label").value.trim();
+        var url   = ed.querySelector("#qr-url").value.trim();
+        var st    = ed.querySelector("[data-qr-status]");
+        if (!label || !url) { st.textContent = "Navn og mål-lenke er påkrevd."; st.className = "form__status is-error"; return; }
+        if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+
+        var list = getItems();
+        var obj = {
+          id: rec.id, code: rec.code, label: label, targetUrl: url,
+          active: item ? rec.active : true,
+          useLogo: ed.querySelector("[data-qr-uselogo]").checked,
+          fgColor: ed.querySelector("[data-qr-fg]").value,
+          bgColor: ed.querySelector("[data-qr-bg]").value,
+          createdAt: item ? item.createdAt : new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        if (item) {
+          var idx = list.findIndex(function (x) { return x.id === item.id; });
+          list[idx] = obj;
+        } else {
+          list.push(obj);
+        }
+        setItems(list);
+        ed.innerHTML = "";
+        renderManager(root);
+      });
+    }
+
+    /* =======================================================================
+       REGISTRERING
+       ==================================================================== */
+    injectStyles();
+    if (siteOn) {
+      App.registerModule({
+        id: "qrcode", label: "QR-koder", order: 999, adminOnly: true,
+        render: function () { return ""; },
+        admin: {
+          label: "QR-koder", category: "innhold",
+          render: function () { return '<div data-qr-root></div>'; },
+          mount: function (body) { renderManager(body.querySelector("[data-qr-root]") || body); }
+        }
+      });
+    }
+
+    if (wsOn && window.Intranet && typeof window.Intranet.registerModule === "function") {
+      window.Intranet.registerModule({
+        id: "qrcode", navLabel: "QR-koder", icon: "qrcode", order: 68,
+        render: function () { return '<div id="qrcode-root" style="padding:1.4rem"></div>'; },
+        mount: function (outlet) { renderManager(outlet.querySelector("#qrcode-root") || outlet); }
+      });
+    }
+  });
+})();
