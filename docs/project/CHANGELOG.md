@@ -32,10 +32,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ## 0.159.2 — 2026-08-20
 
-**Slått sammen `main` (QR-modul + personvern-rettinger, 0.151.0–0.151.4) inn i `arctic-ai-lab-rc` (Arctic/AI Lab-arbeidsflate, tidligere 0.151.1–0.158.1) før felles Security/Privacy/UX-review og PR.** De to grenene hadde uavhengig brukt de samme versjonsnumrene (0.151.1–0.151.3) for helt ulikt innhold siden de forgrenet seg fra samme 0.150.0-punkt. Ingen historiske oppføringer er slettet eller omskrevet innholdsmessig — hele Arctic/AI Lab-serien er omnummerert til å ligge etter denne sammenslåingen (gammelt → nytt): 0.151.1→0.152.0, 0.151.2→0.152.1, 0.151.3→0.152.2, 0.152.0→0.153.0, 0.153.0→0.154.0, 0.154.0→0.155.0, 0.155.0→0.156.0, 0.156.0→0.157.0, 0.157.0→0.158.0, 0.158.0→0.159.0, 0.158.1→0.159.1. Rekkefølgen under er derfor versjonsnummer-fallende, ikke strengt kronologisk — QR-serien (0.151.0–0.151.4, 2026-08-19) er nyere i dato enn deler av Arctic/AI Lab-serien den nå står under, men eldre i versjonsnummer etter omnummereringen.
+**Slått sammen `main` (QR-modul + personvern-rettinger, 0.151.0–0.151.4) inn i `arctic-ai-lab-rc` (Arctic/AI Lab-arbeidsflate, tidligere 0.151.0–0.158.1) før felles Security/Privacy/UX-review og PR.** De to grenene hadde uavhengig brukt de samme versjonsnumrene (0.151.0–0.151.3) for helt ulikt innhold siden de forgrenet seg fra samme 0.150.0-punkt. Ingen historiske oppføringer er slettet eller omskrevet innholdsmessig — hele Arctic/AI Lab-serien er omnummerert til å ligge etter denne sammenslåingen (gammelt → nytt): 0.151.0→0.152.0, 0.151.1→0.152.1, 0.151.2→0.152.2, 0.151.3→0.152.3, 0.152.0→0.153.0, 0.153.0→0.154.0, 0.154.0→0.155.0, 0.155.0→0.156.0, 0.156.0→0.157.0, 0.157.0→0.158.0, 0.158.0→0.159.0, 0.158.1→0.159.1. Rekkefølgen under er derfor versjonsnummer-fallende, ikke strengt kronologisk — QR-serien (0.151.0–0.151.4, 2026-08-19) er nyere i dato enn deler av Arctic/AI Lab-serien den nå står under, men eldre i versjonsnummer etter omnummereringen. **Rettelse same dag**: den første renumereringspassen (denne oppføringa opprinnelig skrevet) glemte den eldste Arctic-oppføringa (Fase 0, 2026-08-13), som fortsatt sto som `0.151.0` og kolliderte med QR-seriens ekte `0.151.0`. Project Historian fanget dette og flagget det i en `<!-- HISTORIAN NOTE -->`; jeg har nå flyttet og renummerert hele klyngen korrekt (over) i stedet for å la merknaden stå.
 
 - Konflikter løst i `console/console-core.js`, `console/index.html`, `middleware.js`, `test-customer-analysis-console.js`, `test-page-builder-console.js`: QR-modulen (main) og Arctic/AI Lab (denne grenen) er begge additive og uavhengige, ingen funksjonalitet fra noen av sidene er fjernet.
-- Ny full testkjøring og uavhengig Security/Privacy/UX/dokumentasjonsgjennomgang av sluttdiffen gjenstår før PR — se `docs/project/CURRENT_STATE.md`.
+- Uavhengig Security-, Privacy- og UX/mobil-gjennomgang av sluttdiffen (2026-08-20) fant ingen blokkerende eller høyalvorlige funn. Full testkjøring (alle hovedsuiter, Arctic/AI Lab-suitene, ekte lokal Gemma-smoke 6/6) bekreftet grønn — se `docs/project/CURRENT_STATE.md`.
 - Ingen database- eller produksjonsendring i denne sammenslåingen i seg selv. Cache-bust: se enkeltfilenes egne `?v=N`-oppdateringer i denne og forrige runde.
 
 ## 0.159.1 — 2026-08-18
@@ -113,22 +113,51 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 - «Stopp» holder kjøreknappene låst til Ollama-adapteren faktisk har frigitt single-flight-jobben. Et nytt, autentisert `provider-idle`-kall bekrefter dette uten å åpne shell, modellvalg eller nye datakilder.
 - AI Lab-, Arctic- og nærliggende Console-tester dekker den nye flyten. Ingen database-, Supabase- eller produksjonsendring. Cache-bust: `console-core.js` 276→277.
 
-## 0.152.2 — 2026-08-18
+## 0.152.3 — 2026-08-18
 
-**Preview-Console lastar no den statiske basiskonfigurasjonen som `core.js` treng.** 0.152.1 sleppte sjølve `/console/` gjennom tenant-porten, men `/config.js` vart framleis omskriven til tenant-config for eit domene som med vilje ikkje er registrert som kunde. Resultatet var `SITE_CONFIG=null`, stopp i `core.js` og den synlege følgjefeilen «core.js / components.js ikkje lasta».
+**Preview-Console lastar no den statiske basiskonfigurasjonen som `core.js` treng.** 0.152.2 sleppte sjølve `/console/` gjennom tenant-porten, men `/config.js` vart framleis omskriven til tenant-config for eit domene som med vilje ikkje er registrert som kunde. Resultatet var `SITE_CONFIG=null`, stopp i `core.js` og den synlege følgjefeilen «core.js / components.js ikkje lasta».
 
 - Berre eksakt Vercel-eigd `VERCEL_URL` i `preview` får den statiske `/config.js` etter SITE_LOCK; vanlege kundedomene brukar framleis tenant-config uendra.
 - Console sine øvrige rotfiler er ordinære statiske ressursar og var ikkje omfatta av middleware-matcharen; ingen brei statisk allowlist eller `*.vercel.app`-regel er innført.
 - API-testen stadfestar eksplisitt `next` utan rewrite for preview-config. Ingen database- eller produksjonsendring. Cache-bust: `console-core.js` 275→276.
 
-## 0.152.1 — 2026-08-17
+## 0.152.2 — 2026-08-17
 
-**Vercel-previewen kan no opne den tenant-uavhengige Console-flata utan å registrere eit flyktig preview-domene som kunde.** Første ekte preview av 0.151.1 vart korrekt stoppa av den generelle ukjent-tenant-porten med «Dette domenet er ikkje registrert som ein Vibeverk-kunde.»
+**Vercel-previewen kan no opne den tenant-uavhengige Console-flata utan å registrere eit flyktig preview-domene som kunde.** Første ekte preview av 0.152.1 vart korrekt stoppa av den generelle ukjent-tenant-porten med «Dette domenet er ikkje registrert som ein Vibeverk-kunde.»
 
 - Middleware slepp berre `/console` gjennom når `VERCEL_ENV` er eksakt `preview` og request-host er eksakt lik Vercel si servereigde `VERCEL_URL`.
 - Den eksisterande SITE_LOCK-kontrollen skjer framleis først, og Console krev framleis eiga control-plane-innlogging og aktiv superadmin for Arctic.
 - Vilkårlege `*.vercel.app`-hostar, Workspace, kundesider og same hostname i produksjonsmiljø får ikkje unntaket og held fram med `404` utan registrert tenant.
 - API-testar dekker alle fire grensene. Ingen tenantregistrering, Supabase-migrasjon eller produksjonsendring er gjort. Cache-bust: `console-core.js` 274→275.
+
+## 0.152.1 — 2026-08-17
+
+*(Renumbert 2026-08-20 frå opphaveleg `0.151.1` — kolliderte med QR-modulens eigen, legitime `0.151.1`-versjon etter samanslåinga i 0.159.2. Sjå toppoppføringa i denne fila. Ingen innhaldsendring.)*
+
+**Produksjons-Console kan no kople AI Lab eksplisitt til lokal Gemma gjennom ein loopback-only SSH-/VS Code-portforward.** Dette er ikkje ein offentleg gateway: nettlesaren treff berre fast `http://127.0.0.1:8081`, Ollama og AI Lab-serveren bind framleis berre loopback, og Arctic-status/kommandoar held fram på den lukka produksjonsseamen.
+
+- Arctic → AI Lab viser ein eigen «Koble til lokal Arctic»-flyt på produksjonsorigin. Lokal token lever berre i fane-minnet; ingenting vert lagra i `localStorage`, `sessionStorage`, URL eller eksport.
+- Før Console-JWT-en vert sendt, må loopback-serveren bevise kjennskap til `AI_LAB_ACCESS_TOKEN` med HMAC-SHA-256 over eksakt Console-origin og ein fersk 256-bits browser-nonce. Identitetsproben sender korkje JWT eller rå lokal token. Deretter gjeld same server-side aktive-superadmin-, CSRF-, lokal-token-, schema- og auditkontroll som ved same-origin lokal bruk.
+- Cross-origin er fail-closed og valfri: serveren svarar berre den eine eksakte HTTPS-originen i `ARCTIC_BRIDGE_ALLOWED_ORIGIN`; wildcard, sti, port, HTTP og ukjende origins vert avviste. CSP tillèt berre den faste loopback-porten 8081. Browserkalla er merkte som lokal nettverkstilgang; Chrome kan krevje at operatøren godkjenner den innebygde Local Network Access-dialogen.
+- «Koble fra» avbryt aktiv straum, disponerer best-effort flyktige handles og tømmer lokal token, økter, innlimt tekst, instruksjon og resultat frå nettlesarminnet.
+- Nye HTTP-/Console-testar dekker origin/CORS/preflight, proof-verifisering, at JWT/token ikkje vert sendt før identitetskontrollen og at riktig superadmin-config opnar AI Lab.
+- Fase 0-releasekontroll 2026-08-17 rebaserte kandidaten på produksjon v0.150.0 utan å miste den nye personvernstandardteksten. Full plattformport, målretta Arctic/AI Lab-/personvernsuitar og ein ny ekte, syntetisk Gemma-smoke passa etter rebasen; browser-spesifikasjonen vart kontrollert mot den no granulære `loopback-network`-policyen. Versjonslinja vart derfor flytta frå den kolliderande 0.150.x-serien til det som på det tidspunktet heitte 0.151.0/0.151.1 (den opphavelege Fase 0-oppføringa er sidan omnummerert til 0.152.0, sjå CHANGELOG.md 0.159.2).
+
+
+## 0.152.0 — 2026-08-13
+
+**Arctic og utvida lokal AI Lab:** Console har fått ei tenant-uavhengig, superadmin-avgrensa internflate for trygg driftsstatus og eit reelt lokalt modellverkstad. Produksjonsseamen kontaktar ingen privat maskin og er ærleg `gateway_not_configured`; AI-funksjonane er framleis loopback-only og krev Console-JWT, aktiv `superadmin`, same-origin/CSRF og lokal handlingstoken.
+
+- Arctic har Oversikt, AI Lab, Arbeidsøkter, Tjenester og Kommandoar. Reelle lokale data er avgrensa til aggregerte maskinmålingar og faste, saniterte tenesteprobar. Kommandofeltet er eit eksakt, lesande allowlist-register, aldri shell; backup, logg, deploy og Claude-/Codex-arbeidsøkter står eksplisitt som ikkje konfigurerte.
+- Metadata-only lokal audit er gitignorert, no-follow/tilgangsavgrensa, storleiksavgrensa og rotert med 30 dagars filretensjon. Innhald, prompt, modelloutput, token og secrets vert ikkje logga. Produksjons-API-et gjer same server-side rollekontroll, men har ingen privat gateway eller kommandoadapter.
+- AI Lab har funksjonelle modusar for Samtale, Analyse og det bevarte Læringsutkastet. Lokal Gemma støttar naturleg chat, analyse, oppsummering og omskriving med eksplisitt innlimt eller allowlista kontekst, avgrensa historikk, strømming og reell avbryting. Inntil ti økter lever berre i nettlesarminnet; ingen database, `localStorage`, fri filtilgang, kodeendring eller automatisk publisering er lagt til.
+- Kontekstar og læringssnapshot er tidsavgrensa, eksplisitt disponible og bundne til operatøren. SSE frå Ollama vert tolka med byte-/teikn-/timeoutgrenser og omsett til servereigde NDJSON-rammer; ufullstendig eller avkorta straum feilar lukka. Haiku krev framleis separat server-side godkjenning og er ikkje aktivert av denne endringa.
+- Ny `npm run smoke:ai-lab` køyrer fem faktiske, syntetiske akseptansetestar mot konfigurert loopback-Gemma utan prosjektfiler eller Anthropic. Siste køyring med `gemma4:26b` passa 5/5: naturleg chat, analyse, oppsummering, omskriving og oppstrøms avbryting. Automatiske AI Lab-/Arctic-suitar og full plattformport er dokumenterte separat i arkitekturdokumenta.
+- Ingen databasemigrasjon, Supabase-endring, push, deploy eller produksjonskonfigurasjon inngår. Ein framtidig fjernkopla Arctic-gateway krev ei eiga least-privilege-arkitektur og sikkerheitsgjennomgang.
+
+
+Ingen offentleg Ollama-port, reverse proxy, privat Arctic-agent, shell, Docker-/SSH-kommando eller produksjonshemmeligheit er lagt til. Cache-bust: `console-core.js` 273→274.
+
 ## 0.151.4 — 2026-08-19
 
 **UI-fiks: knapperada (Rediger/PNG/SVG/Deaktiver/Slett) klemte seg oppå tittel/lenke-teksten i QR-lista på mobil.** Brukertilbakemelding med skjermbilde fra ekte mobilnettleser (Safari iOS). `.admin-row__actions` sin delte base-CSS (`index.html`/`workspace/index.html`) har `flex-shrink:0` — på smale skjermer nektet knapperada å krympe eller falle ned på egen linje, og overlappet i stedet direkte over teksten siden `.admin-row` selv ikke hadde `flex-wrap`. Fikset i `module-qrcode.js`: raden får `flex-wrap:wrap`, og en ny `@media (max-width:560px)`-regel (injisert av modulen selv, samme mønster som 0.151.3 sin `.field`-fiks) tvinger knapperada til en egen full-bredde linje under teksten på smale skjermer. Cache-bust: `module-qrcode.js` 2→3, `console-core.js` 280→281.
@@ -207,29 +236,6 @@ Ny jsdom-regresjonstest som simulerer nøyaktig scenarioet (ein tenant med ein a
 - 6 nye jsdom-testar (3 i `test-privacy-console.js`, 1 i `test-compliance-console.js`, 1 i `test-kundar-console.js`) -- fann undervegs at ein tidlegare kommentar i `test-privacy-console.js` feilaktig hevda "Standardforslag" var for kostbart å teste end-to-end; investeringa (rik-tekst-editor-mock) var alt gjort i 0.149.2, kommentaren var berre ikkje oppdatert.
 
 **Ope, medvite utsett** (brukaren sitt eige spørsmål, ikkje bygd denne runda): om automatisk sletting/retention bør byggjast, gjeve at retention-sweep i dag berre tel (dry-run), aldri slettar -- verdt å sjå på, men eksplisitt utanfor denne runda sitt omfang.
-## 0.151.1 — 2026-08-17
-
-**Produksjons-Console kan no kople AI Lab eksplisitt til lokal Gemma gjennom ein loopback-only SSH-/VS Code-portforward.** Dette er ikkje ein offentleg gateway: nettlesaren treff berre fast `http://127.0.0.1:8081`, Ollama og AI Lab-serveren bind framleis berre loopback, og Arctic-status/kommandoar held fram på den lukka produksjonsseamen.
-
-- Arctic → AI Lab viser ein eigen «Koble til lokal Arctic»-flyt på produksjonsorigin. Lokal token lever berre i fane-minnet; ingenting vert lagra i `localStorage`, `sessionStorage`, URL eller eksport.
-- Før Console-JWT-en vert sendt, må loopback-serveren bevise kjennskap til `AI_LAB_ACCESS_TOKEN` med HMAC-SHA-256 over eksakt Console-origin og ein fersk 256-bits browser-nonce. Identitetsproben sender korkje JWT eller rå lokal token. Deretter gjeld same server-side aktive-superadmin-, CSRF-, lokal-token-, schema- og auditkontroll som ved same-origin lokal bruk.
-- Cross-origin er fail-closed og valfri: serveren svarar berre den eine eksakte HTTPS-originen i `ARCTIC_BRIDGE_ALLOWED_ORIGIN`; wildcard, sti, port, HTTP og ukjende origins vert avviste. CSP tillèt berre den faste loopback-porten 8081. Browserkalla er merkte som lokal nettverkstilgang; Chrome kan krevje at operatøren godkjenner den innebygde Local Network Access-dialogen.
-- «Koble fra» avbryt aktiv straum, disponerer best-effort flyktige handles og tømmer lokal token, økter, innlimt tekst, instruksjon og resultat frå nettlesarminnet.
-- Nye HTTP-/Console-testar dekker origin/CORS/preflight, proof-verifisering, at JWT/token ikkje vert sendt før identitetskontrollen og at riktig superadmin-config opnar AI Lab.
-- Fase 0-releasekontroll 2026-08-17 rebaserte kandidaten på produksjon v0.150.0 utan å miste den nye personvernstandardteksten. Full plattformport, målretta Arctic/AI Lab-/personvernsuitar og ein ny ekte, syntetisk Gemma-smoke passa etter rebasen; browser-spesifikasjonen vart kontrollert mot den no granulære `loopback-network`-policyen. Versjonslinja vart derfor flytta frå den kolliderande 0.150.x-serien til 0.151.0/0.151.1.
-
-Ingen offentleg Ollama-port, reverse proxy, privat Arctic-agent, shell, Docker-/SSH-kommando eller produksjonshemmeligheit er lagt til. Cache-bust: `console-core.js` 273→274.
-
-## 0.151.0 — 2026-08-13
-
-**Arctic og utvida lokal AI Lab:** Console har fått ei tenant-uavhengig, superadmin-avgrensa internflate for trygg driftsstatus og eit reelt lokalt modellverkstad. Produksjonsseamen kontaktar ingen privat maskin og er ærleg `gateway_not_configured`; AI-funksjonane er framleis loopback-only og krev Console-JWT, aktiv `superadmin`, same-origin/CSRF og lokal handlingstoken.
-
-- Arctic har Oversikt, AI Lab, Arbeidsøkter, Tjenester og Kommandoar. Reelle lokale data er avgrensa til aggregerte maskinmålingar og faste, saniterte tenesteprobar. Kommandofeltet er eit eksakt, lesande allowlist-register, aldri shell; backup, logg, deploy og Claude-/Codex-arbeidsøkter står eksplisitt som ikkje konfigurerte.
-- Metadata-only lokal audit er gitignorert, no-follow/tilgangsavgrensa, storleiksavgrensa og rotert med 30 dagars filretensjon. Innhald, prompt, modelloutput, token og secrets vert ikkje logga. Produksjons-API-et gjer same server-side rollekontroll, men har ingen privat gateway eller kommandoadapter.
-- AI Lab har funksjonelle modusar for Samtale, Analyse og det bevarte Læringsutkastet. Lokal Gemma støttar naturleg chat, analyse, oppsummering og omskriving med eksplisitt innlimt eller allowlista kontekst, avgrensa historikk, strømming og reell avbryting. Inntil ti økter lever berre i nettlesarminnet; ingen database, `localStorage`, fri filtilgang, kodeendring eller automatisk publisering er lagt til.
-- Kontekstar og læringssnapshot er tidsavgrensa, eksplisitt disponible og bundne til operatøren. SSE frå Ollama vert tolka med byte-/teikn-/timeoutgrenser og omsett til servereigde NDJSON-rammer; ufullstendig eller avkorta straum feilar lukka. Haiku krev framleis separat server-side godkjenning og er ikkje aktivert av denne endringa.
-- Ny `npm run smoke:ai-lab` køyrer fem faktiske, syntetiske akseptansetestar mot konfigurert loopback-Gemma utan prosjektfiler eller Anthropic. Siste køyring med `gemma4:26b` passa 5/5: naturleg chat, analyse, oppsummering, omskriving og oppstrøms avbryting. Automatiske AI Lab-/Arctic-suitar og full plattformport er dokumenterte separat i arkitekturdokumenta.
-- Ingen databasemigrasjon, Supabase-endring, push, deploy eller produksjonskonfigurasjon inngår. Ein framtidig fjernkopla Arctic-gateway krev ei eiga least-privilege-arkitektur og sikkerheitsgjennomgang.
 
 Arkitektur: `docs/architecture/arctic.md` og `docs/architecture/ai-lab.md`. Manuell akseptansesjekk: `scripts/ai-lab/README.md`. Cache-bust: `console-core.js` 272→273.
 ## 0.149.2 — 2026-08-13
