@@ -13,6 +13,25 @@ window.App = (function () {
 
   const CFG = window.SITE_CONFIG;   // ← all kundekonfig
 
+  // ─── TRACEPARENT (W3C Trace Context) ───────────────────────────────────────
+  // Éin trace-id per sideinnlasting, generert her sidan config.js vert lasta
+  // via ein <script>-tag (ikkje fetch()) og responsheader difor ikkje er
+  // lesbare frå JS. Ikkje lagra nokon stad (ingen cookie/localStorage) —
+  // berre halden i minnet for denne fana si levetid og sendt med på
+  // supabase-js-klienten sine førespurnadar, slik at Supabase sine eigne
+  // loggar (som no forstår denne headeren direkte) kan koplast til akkurat
+  // denne sideinnlastinga. Sjå api/_lib/trace.js for same format brukt på
+  // server-sida, og docs/architecture/tracing.md for heile grunngjevinga.
+  function _generateTraceparent() {
+    function hex(n) {
+      var b = new Uint8Array(n);
+      crypto.getRandomValues(b);
+      return Array.prototype.map.call(b, function (x) { return x.toString(16).padStart(2, "0"); }).join("");
+    }
+    return "00-" + hex(16) + "-" + hex(8) + "-01";
+  }
+  const _traceparent = _generateTraceparent();
+
   // ─── STANDARDSKJEMA FOR NESTA CFG-FELT ─────────────────────────────────────
   // Fase 6-tenantar (api/tenant-config.js) genererer eit minimalt SITE_CONFIG-
   // skjelett (berre supabase/storageKey/productMode/features/intranettFeatures/
@@ -201,7 +220,11 @@ window.App = (function () {
     var cfg = CFG.supabase;
     if (!cfg || !cfg.url || !cfg.anonKey) return;
     if (typeof window.supabase === "undefined") return;
-    try { _sb = window.supabase.createClient(cfg.url, cfg.anonKey); } catch (e) {}
+    try {
+      _sb = window.supabase.createClient(cfg.url, cfg.anonKey, {
+        global: { headers: { traceparent: _traceparent } },
+      });
+    } catch (e) {}
   })();
 
   // Auth-status — oppdaterast av onAuthStateChange, brukast av _flushSync
@@ -5791,6 +5814,7 @@ window.App = (function () {
     init: init,
     ready: ready,                      // ← config-tilgjengelegheit-gate, sjå notatet ved definisjonen
     registerModule: registerModule,   // ← brukes av modulfiler
+    traceId: _traceparent,             // ← W3C traceparent for denne sideinnlastinga, sjå kommentaren ved _generateTraceparent
     // Praktiske kroker for moduler/integrasjoner:
     store: Store,                      // namespacet localStorage (get/set/remove)
     media: Media,                      // bilde-/filhåndtering (put, resolveImage, putFile, ...)

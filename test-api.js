@@ -57,7 +57,9 @@ async function main() {
   // fetch()). Endra mellom seksjonar under, aldri parallelt.
   let scenario = "full-success";
   let tenantSiteLockPassword = "kundepassord";
+  let lastFetchHeaders = null; // W3C traceparent-forwarding-testar (seksjon A0) les denne
   global.fetch = async (url, options) => {
+    lastFetchHeaders = (options && options.headers) || {};
     if (String(url).includes("verify_tenant_site_lock_password")) {
       if (scenario === "tenant-lock-rpc-error") return { ok: false, status: 500 };
       const body = JSON.parse((options && options.body) || "{}");
@@ -208,6 +210,7 @@ async function main() {
     throw new Error("uventa fetch-URL i test: " + url);
   };
 
+  const { generateTraceparent, getOrCreateTraceparent } = await import("./api/_lib/trace.js");
   const { resolveTenantByHostname } = await import("./api/_lib/resolve-tenant.js");
   const { fetchTenantSuperconfig, buildManifest, generateTenantManifestResponse } = await import("./api/_lib/tenant-manifest.js");
   const { default: tenantConfigHandler } = await import("./api/tenant-config.js");
@@ -228,12 +231,33 @@ async function main() {
   const { handleSidetellingEvent } = await import("./supabase/functions/sidetelling-event/handler.js");
 
   /* =========================================================================
+     A0) api/_lib/trace.js -- W3C traceparent-generering og forwarding
+     ====================================================================== */
+  const TRACEPARENT_RE = /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/;
+  assert(TRACEPARENT_RE.test(generateTraceparent()), "a0-1: generateTraceparent() returnerer eit gyldig W3C traceparent-format");
+  assert(generateTraceparent() !== generateTraceparent(), "a0-2: generateTraceparent() returnerer ein ny id kvar gong");
+
+  let incomingTp = generateTraceparent();
+  let reqWithTp = fakeRequest("https://kunde.no/", { traceparent: incomingTp });
+  assert(getOrCreateTraceparent(reqWithTp) === incomingTp, "a0-3: getOrCreateTraceparent() gjenbruker ein gyldig innkomande traceparent uendra");
+
+  let reqNoTp = fakeRequest("https://kunde.no/", {});
+  assert(TRACEPARENT_RE.test(getOrCreateTraceparent(reqNoTp)), "a0-4: getOrCreateTraceparent() genererer ein ny gyldig id når ingen finst");
+
+  let reqBadTp = fakeRequest("https://kunde.no/", { traceparent: "ikkje-eit-gyldig-format" });
+  assert(TRACEPARENT_RE.test(getOrCreateTraceparent(reqBadTp)), "a0-5: getOrCreateTraceparent() forkastar eit misforma innkomande traceparent og genererer nytt");
+
+  /* =========================================================================
      A) api/_lib/resolve-tenant.js
      ====================================================================== */
   scenario = "full-success";
   let tenant = await resolveTenantByHostname("kunde.no");
   assert(tenant && tenant.data_plane_url === "https://tenant.supabase.co", "a1: resolveTenantByHostname returnerer tenant-rad ved treff");
   assert(tenant.data_plane_storage_key === "nordpunkt", "a2: data_plane_storage_key kjem med (kravd for hop 2-filtrering)");
+
+  let ownTp = generateTraceparent();
+  await resolveTenantByHostname("kunde.no", ownTp);
+  assert(lastFetchHeaders.traceparent === ownTp, "a6: resolveTenantByHostname() sender med traceparent-headeren vidare på det utgåande fetch()-kallet");
 
   scenario = "no-tenant";
   tenant = await resolveTenantByHostname("ukjend.no");
@@ -355,6 +379,11 @@ async function main() {
 
   r = await middleware(fakeRequest("https://kunde.no/config.js", { host: "kunde.no", authorization: basicAuthHeader("hemmelig") }));
   assert(r.status === 200, "d5: /config.js vert skrive om til tenant-config (uendra Phase 6-åtferd)");
+  assert(TRACEPARENT_RE.test(r.headers.get("x-middleware-request-traceparent") || ""), "d5b: middleware genererer og sender med ein gyldig traceparent på request-headers til api/tenant-config.js");
+
+  let tpIn = generateTraceparent();
+  r = await middleware(fakeRequest("https://kunde.no/config.js", { host: "kunde.no", authorization: basicAuthHeader("hemmelig"), traceparent: tpIn }));
+  assert(r.headers.get("x-middleware-request-traceparent") === tpIn, "d5c: middleware gjenbruker ein gyldig innkomande traceparent i staden for å generere ein ny");
 
   scenario = "no-tenant";
   r = await middleware(fakeRequest("https://ukjend.no/", { host: "ukjend.no", authorization: basicAuthHeader("hemmelig") }));

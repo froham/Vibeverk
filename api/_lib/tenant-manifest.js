@@ -13,18 +13,18 @@
 
 import { resolveTenantByHostname } from "./resolve-tenant.js";
 
-export async function fetchTenantSuperconfig(tenant) {
+export async function fetchTenantSuperconfig(tenant, traceparent) {
   if (!tenant || !tenant.data_plane_url || !tenant.data_plane_anon_key) return {};
   try {
     var url = tenant.data_plane_url + "/rest/v1/store"
       + "?tenant_id=eq." + encodeURIComponent(tenant.data_plane_storage_key || "default")
       + "&key=eq.superconfig&select=value";
-    var resp = await fetch(url, {
-      headers: {
-        apikey: tenant.data_plane_anon_key,
-        Authorization: "Bearer " + tenant.data_plane_anon_key,
-      },
-    });
+    var headers = {
+      apikey: tenant.data_plane_anon_key,
+      Authorization: "Bearer " + tenant.data_plane_anon_key,
+    };
+    if (traceparent) headers.traceparent = traceparent;
+    var resp = await fetch(url, { headers: headers });
     if (!resp.ok) return {};
     var rows = await resp.json();
     return (Array.isArray(rows) && rows[0] && rows[0].value) || {};
@@ -87,16 +87,16 @@ function respond(manifest) {
 
 // Always returns 200 with a best-effort manifest, even if either hop fails --
 // a broken manifest.json shouldn't be a page-load error, just a missing icon.
-export async function generateTenantManifestResponse(hostHeader, opts) {
+export async function generateTenantManifestResponse(hostHeader, opts, traceparent) {
   var tenant;
   try {
-    tenant = await resolveTenantByHostname(hostHeader);
+    tenant = await resolveTenantByHostname(hostHeader, traceparent);
   } catch (e) {
     console.error("[tenant-manifest] resolve_tenant_by_hostname feila", e);
     return respond(fallbackManifest(opts));
   }
   if (!tenant) return respond(fallbackManifest(opts));
 
-  var superconfig = await fetchTenantSuperconfig(tenant);
+  var superconfig = await fetchTenantSuperconfig(tenant, traceparent);
   return respond(buildManifest(superconfig, opts));
 }

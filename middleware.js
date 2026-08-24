@@ -46,6 +46,7 @@
 // project it was originally developed against.
 
 import { next, rewrite } from "@vercel/functions";
+import { getOrCreateTraceparent } from "./api/_lib/trace.js";
 
 export const config = {
   matcher: [
@@ -112,7 +113,7 @@ function checkSiteLock(request) {
 // fail-open) -- dette er eit ekte passord kunden sjølv har sett, ikkje ei
 // mellombels utviklingssperre, så ein feila RPC-kall skal ALDRI stille som
 // eit ope hol.
-async function checkTenantSiteLock(request, host, controlUrl, controlAnonKey) {
+async function checkTenantSiteLock(request, host, controlUrl, controlAnonKey, traceparent) {
   const auth = request.headers.get("authorization") || "";
   if (!auth.startsWith("Basic ")) return false;
   let decoded;
@@ -126,6 +127,7 @@ async function checkTenantSiteLock(request, host, controlUrl, controlAnonKey) {
         "Content-Type": "application/json",
         apikey: controlAnonKey,
         Authorization: "Bearer " + controlAnonKey,
+        traceparent: traceparent,
       },
       body: JSON.stringify({ p_hostname: host, p_password: pass }),
     });
@@ -137,13 +139,14 @@ async function checkTenantSiteLock(request, host, controlUrl, controlAnonKey) {
   }
 }
 
-async function resolveTenant(controlUrl, controlAnonKey, host) {
+async function resolveTenant(controlUrl, controlAnonKey, host, traceparent) {
   const resp = await fetch(controlUrl + "/rest/v1/rpc/resolve_tenant_by_hostname", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: controlAnonKey,
       Authorization: "Bearer " + controlAnonKey,
+      traceparent: traceparent,
     },
     body: JSON.stringify({ p_hostname: host }),
   });
@@ -167,6 +170,18 @@ function isExactConsolePreview(url, host) {
 export default async function middleware(request) {
   const url = new URL(request.url);
 
+  // W3C Trace Context (traceparent) -- generated once per request here,
+  // since this file fronts every request Vibeverk serves (page loads,
+  // /config.js, manifests, QR redirects). Forwarded on this file's own
+  // outbound fetch()es to the control plane, on the request headers of
+  // every rewrite()/next() so api/*.js can read and forward it too, and on
+  // the response so it's visible in devtools / Supabase's own request logs
+  // (which now parse this header natively). See api/_lib/trace.js and
+  // docs/architecture/tracing.md.
+  const traceparent = getOrCreateTraceparent(request);
+  const forwardHeaders = new Headers(request.headers);
+  forwardHeaders.set("traceparent", traceparent);
+
   // manifest.json vert henta av Chrome/Android sin eigen bakgrunns-
   // installerbarheits-sjekk ved "Legg til på Startskjerm", ikkje som ein
   // vanleg side-førespurnad frå brukaren sin fane -- ho ber IKKJE med seg
@@ -183,13 +198,13 @@ export default async function middleware(request) {
   // treng ikkje dette då han er ei statisk fil utanfor matcher-lista over,
   // og difor aldri når denne funksjonen i det heile.
   if (url.pathname === "/workspace/manifest.json") {
-    return rewrite(new URL("/api/workspace-manifest", request.url));
+    return rewrite(new URL("/api/workspace-manifest", request.url), { request: { headers: forwardHeaders } });
   }
   if (url.pathname === "/manifest.json") {
-    return rewrite(new URL("/api/site-manifest", request.url));
+    return rewrite(new URL("/api/site-manifest", request.url), { request: { headers: forwardHeaders } });
   }
   if (url.pathname === "/admin/manifest.json") {
-    return rewrite(new URL("/api/admin-manifest", request.url));
+    return rewrite(new URL("/api/admin-manifest", request.url), { request: { headers: forwardHeaders } });
   }
 
   const controlUrl = process.env.VIBEVERK_CONTROL_URL;
@@ -199,12 +214,12 @@ export default async function middleware(request) {
   let tenant = null;
   if (controlUrl && controlAnonKey && host) {
     try {
-      tenant = await resolveTenant(controlUrl, controlAnonKey, host);
+      tenant = await resolveTenant(controlUrl, controlAnonKey, host, traceparent);
     } catch (e) {
       console.error("[vibeverk-middleware] tenant-oppslag feila", e);
       return new Response(
         "Mellombels feil — prøv igjen straks.",
-        { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+        { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8", traceparent: traceparent } }
       );
     }
   } else {
@@ -229,12 +244,15 @@ export default async function middleware(request) {
   // site_lock_ever_enabled er monotont og vert kun sant etter ei EKTE
   // PÅ-hending, difor upåverka av eit reint passord-lagre.
   const lockOk = tenant && tenant.site_lock_enabled
-    ? await checkTenantSiteLock(request, host, controlUrl, controlAnonKey)
+    ? await checkTenantSiteLock(request, host, controlUrl, controlAnonKey, traceparent)
     : (tenant && tenant.site_lock_ever_enabled ? true : checkSiteLock(request));
   if (!lockOk) {
     return new Response("Autentisering kravd.", {
       status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="Vibeverk (under utvikling)"' },
+      headers: {
+        "WWW-Authenticate": 'Basic realm="Vibeverk (under utvikling)"',
+        traceparent: traceparent,
+      },
     });
   }
 
@@ -245,8 +263,8 @@ export default async function middleware(request) {
     // SITE_CONFIG=null og få core.js til å stoppe før Console vert montert.
     // SITE_LOCK er allereie kontrollert over. Unntaket gjeld berre denne eine
     // statiske fila på Vercel si servereigde preview-hostname.
-    if (isExactPreviewDeployment(host)) return next();
-    return rewrite(new URL("/api/tenant-config", request.url));
+    if (isExactPreviewDeployment(host)) return next({ request: { headers: forwardHeaders } });
+    return rewrite(new URL("/api/tenant-config", request.url), { request: { headers: forwardHeaders } });
   }
 
   // Console er global og tenant-uavhengig, men den genererte preview-hostname
@@ -258,12 +276,15 @@ export default async function middleware(request) {
   if (controlUrl && controlAnonKey && host && !tenant && !isExactConsolePreview(url, host)) {
     return new Response(
       "Dette domenet er ikkje registrert som ein Vibeverk-kunde.",
-      { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", traceparent: traceparent } }
     );
   }
 
   if (url.pathname === "/console" || url.pathname === "/console/") {
-    return next({ headers: { "Permissions-Policy": "loopback-network=(self)" } });
+    return next({
+      headers: { "Permissions-Policy": "loopback-network=(self)" },
+      request: { headers: forwardHeaders },
+    });
   }
 
   if (url.pathname.indexOf("/qr/") === 0) {
@@ -275,8 +296,13 @@ export default async function middleware(request) {
     // aldri matcha noka lagra rad -- kvar einaste skanna QR-kode enda på
     // ei generisk Vercel-404 i staden for den venlege qr-redirect-sida.
     const qrCode = url.pathname.slice(4).replace(/\/+$/, "");
-    if (qrCode) return rewrite(new URL("/api/qr-redirect?code=" + encodeURIComponent(qrCode), request.url));
+    if (qrCode) {
+      return rewrite(
+        new URL("/api/qr-redirect?code=" + encodeURIComponent(qrCode), request.url),
+        { request: { headers: forwardHeaders } }
+      );
+    }
   }
 
-  return next();
+  return next({ request: { headers: forwardHeaders } });
 }

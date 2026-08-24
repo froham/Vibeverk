@@ -26,6 +26,7 @@
 // regression introduced here, just documented precisely).
 
 import { resolveTenantByHostname } from "../_lib/resolve-tenant.js";
+import { getOrCreateTraceparent } from "../_lib/trace.js";
 import { analyzeSituationInput, generateOverviewAnalysis, validateOverviewResponse } from "../_lib/oversikt-ai.js";
 
 function jsonResponse(body, status) {
@@ -120,7 +121,7 @@ async function handler(request) {
   var hostHeader = request.headers.get("host") || "";
   var tenant;
   try {
-    tenant = await resolveTenantByHostname(hostHeader);
+    tenant = await resolveTenantByHostname(hostHeader, getOrCreateTraceparent(request));
   } catch (e) {
     console.error("[oversikt] resolve_tenant_by_hostname feila", e);
     return errorResponse(502, "Kunne ikkje slå opp installasjonen.");

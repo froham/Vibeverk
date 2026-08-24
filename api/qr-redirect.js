@@ -38,6 +38,7 @@
 // row and return a stale/foreign target_url.
 
 import { resolveTenantByHostname } from "./_lib/resolve-tenant.js";
+import { getOrCreateTraceparent } from "./_lib/trace.js";
 
 export const config = { runtime: "edge" };
 
@@ -64,9 +65,11 @@ export default async function handler(request) {
   var hostHeader = request.headers.get("host") || "";
   if (!hostHeader.split(":")[0]) return notFound();
 
+  var traceparent = getOrCreateTraceparent(request);
+
   var tenant;
   try {
-    tenant = await resolveTenantByHostname(hostHeader);
+    tenant = await resolveTenantByHostname(hostHeader, traceparent);
   } catch (e) {
     console.error("[qr-redirect] resolve_tenant_by_hostname feila", e);
     return notFound();
@@ -82,6 +85,7 @@ export default async function handler(request) {
         "Content-Type": "application/json",
         apikey: tenant.data_plane_anon_key,
         Authorization: "Bearer " + tenant.data_plane_anon_key,
+        traceparent: traceparent,
       },
       body: JSON.stringify({ p_code: code, p_tenant_id: tenant.data_plane_storage_key || "default" }),
     });

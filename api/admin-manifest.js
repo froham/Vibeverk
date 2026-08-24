@@ -4,6 +4,7 @@
 // 2026-07-26.
 
 import { generateTenantManifestResponse } from "./_lib/tenant-manifest.js";
+import { getOrCreateTraceparent } from "./_lib/trace.js";
 
 export const config = { runtime: "edge" };
 
@@ -16,5 +17,5 @@ export default async function handler(request) {
     defaultBackground: "#ffffff",
     defaultTheme: "#2563eb",
     useWorkspaceAccent: false,
-  });
+  }, getOrCreateTraceparent(request));
 }

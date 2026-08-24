@@ -26,6 +26,7 @@
 // Vercel project per Phase 6's design, same as middleware.js today.
 
 import { resolveTenantByHostname } from "./_lib/resolve-tenant.js";
+import { getOrCreateTraceparent } from "./_lib/trace.js";
 
 export const config = { runtime: "edge" };
 
@@ -48,7 +49,7 @@ export default async function handler(request) {
 
   var tenant;
   try {
-    tenant = await resolveTenantByHostname(hostHeader);
+    tenant = await resolveTenantByHostname(hostHeader, getOrCreateTraceparent(request));
   } catch (e) {
     console.error("[tenant-config] resolve_tenant_by_hostname feila", e);
     return new Response(FALLBACK_JS, { status: 502, headers: { "Content-Type": "application/javascript" } });
@@ -83,6 +84,7 @@ export default async function handler(request) {
     headers: {
       "Content-Type": "application/javascript",
       "Cache-Control": "no-store",
+      traceparent: getOrCreateTraceparent(request),
     },
   });
 }

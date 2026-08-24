@@ -10,6 +10,7 @@
 // that file's header comment for the full two-hop trust-boundary rationale.
 
 import { generateTenantManifestResponse } from "./_lib/tenant-manifest.js";
+import { getOrCreateTraceparent } from "./_lib/trace.js";
 
 export const config = { runtime: "edge" };
 
@@ -22,5 +23,5 @@ export default async function handler(request) {
     defaultBackground: "#ffffff",
     defaultTheme: "#2563eb",
     useWorkspaceAccent: true,
-  });
+  }, getOrCreateTraceparent(request));
 }

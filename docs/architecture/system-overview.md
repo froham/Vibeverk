@@ -72,7 +72,7 @@ productMode is read exclusively from the `superconfig` key in the Supabase `stor
 
 ## CI
 
-GitHub Actions runs `node test.js` (jsdom harness for public site), `node test-workspace.js` (jsdom harness for Workspace, renamed 2026-07-07 from `test-intranet.js`), and `node test-api.js` (plain-Node harness for API functions and middleware) on every push to any branch. All three suites were fully green in the local 2026-08-06 verification: **712 OK / 0 FEIL**, **210 OK / 0 FEIL**, and **104 OK / 0 FEIL**, respectively. See `CLAUDE.md`'s Testing section for detail.
+GitHub Actions runs `node test.js` (jsdom harness for public site), `node test-workspace.js` (jsdom harness for Workspace, renamed 2026-07-07 from `test-intranet.js`), and `node test-api.js` (plain-Node harness for API functions and middleware) on every push to any branch. All three suites were fully green in the local 2026-08-24 verification (after the `traceparent` request-tracing addition, see `docs/architecture/tracing.md`): **778 OK / 0 FEIL**, **303 OK / 0 FEIL**, and **132 OK / 0 FEIL**, respectively. See `CLAUDE.md`'s Testing section for detail.
 
 ## Known limitations
 

@@ -38,6 +38,7 @@
 // in package.json).
 
 import { resolveTenantByHostname } from "../_lib/resolve-tenant.js";
+import { getOrCreateTraceparent } from "../_lib/trace.js";
 import {
   identifyRelevantSourceQueries,
   searchApprovedSources,
@@ -149,7 +150,7 @@ async function handler(request) {
   var hostHeader = request.headers.get("host") || "";
   var tenant;
   try {
-    tenant = await resolveTenantByHostname(hostHeader);
+    tenant = await resolveTenantByHostname(hostHeader, getOrCreateTraceparent(request));
   } catch (e) {
     console.error("[annual-wheel] resolve_tenant_by_hostname feila", e);
     return errorResponse(502, "Kunne ikkje slå opp installasjonen.");

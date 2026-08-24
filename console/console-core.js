@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.159.2";
+  var VIBEVERK_VERSION = "0.160.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -82,7 +82,8 @@ window.VwConsole = (function () {
     CFG = freshCFG;
     if (window.supabase) {
       _sbControl = window.supabase.createClient(CONTROL_URL, CONTROL_ANON_KEY, {
-        auth: { persistSession: true, autoRefreshToken: true }
+        auth: { persistSession: true, autoRefreshToken: true },
+        global: { headers: { traceparent: App.traceId } },
       });
       _sbControl.auth.onAuthStateChange(function (_event, session) {
         _session = session;
@@ -221,7 +222,7 @@ window.VwConsole = (function () {
     var cached = _tenantPublicClients[_activeTenant.id];
     if (cached) return cached;
     var client = window.supabase.createClient(_activeTenant.data_plane_url, _activeTenant.data_plane_anon_key,
-      { auth: { persistSession: false } }); // berre anon-lesing, ingen sesjon å halde ved lag
+      { auth: { persistSession: false }, global: { headers: { traceparent: App.traceId } } }); // berre anon-lesing, ingen sesjon å halde ved lag
     _tenantPublicClients[_activeTenant.id] = client;
     return client;
   }

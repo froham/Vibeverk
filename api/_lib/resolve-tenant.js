@@ -11,7 +11,7 @@
 // control-plane failure (network/env/HTTP error) — callers decide how to
 // degrade for their own endpoint.
 
-export async function resolveTenantByHostname(hostHeader) {
+export async function resolveTenantByHostname(hostHeader, traceparent) {
   const controlUrl = process.env.VIBEVERK_CONTROL_URL;
   const controlAnonKey = process.env.VIBEVERK_CONTROL_ANON_KEY;
   if (!controlUrl || !controlAnonKey) {
@@ -20,13 +20,16 @@ export async function resolveTenantByHostname(hostHeader) {
   const host = (hostHeader || "").toLowerCase().split(":")[0];
   if (!host) throw new Error("mangler Host-header");
 
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: controlAnonKey,
+    Authorization: "Bearer " + controlAnonKey,
+  };
+  if (traceparent) headers.traceparent = traceparent;
+
   const resp = await fetch(controlUrl + "/rest/v1/rpc/resolve_tenant_by_hostname", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: controlAnonKey,
-      Authorization: "Bearer " + controlAnonKey,
-    },
+    headers: headers,
     body: JSON.stringify({ p_hostname: host }),
   });
   if (!resp.ok) throw new Error("resolve_tenant_by_hostname HTTP " + resp.status);

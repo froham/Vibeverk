@@ -1185,6 +1185,10 @@ window.Intranet = (function () {
      ====================================================================== */
   return {
     registerModule: registerModule,
+    // App.supabase (over) er same _sb-instans core.js sette opp med ein
+    // traceparent-header allereie -- Workspace treng difor ikkje sin eigen,
+    // berre eksponere den vidare for modular som loggar console.error() sjølv.
+    traceId:        App && App.traceId,
     navigate:       navigate,
     openModal:      openModal,
     closeModal:     closeModal,
