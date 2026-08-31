@@ -113,6 +113,7 @@ CI runs all three on every push. `test.js`/`test-workspace.js` must be fully gre
 - Security-sensitive changes include: authentication, roles, permissions, superadmin access, Supabase RLS, storage, file sharing, APIs, webhooks, third-party integrations, payment-related integrations and customer data.
 - Privacy drafts must match verified functionality and confirmed customer facts — never invent data flows.
 - No agent may claim legal compliance or security assurance solely based on AI review.
+- **Any AI/agent access to customer systems, databases or secrets must follow `docs/decisions/ADR-0015-agent-tool-access-policy.md`**: never a direct DB/secret handed to the agent — every action goes through a named Vibeverk tool/endpoint that verifies caller, tenant and role server-side, acts with minimum scope, and writes an audit-log entry (read/write tools kept distinct; consequential writes gated behind explicit human approval). No production agent exists yet — this governs the *next* one, not a retrofit. The `supabase-control` `broker` Edge Function is the reference implementation to extend, not duplicate.
 - **No `git push`, deployment, remote Supabase changes or production changes without explicit user approval.**
 
 ## Known configuration
