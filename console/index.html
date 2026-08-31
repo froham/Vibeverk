@@ -233,9 +233,13 @@
     .cs-md-body code { background: var(--color-alt); padding: .1rem .35rem; border-radius: 4px; font-size: .88em; }
     .cs-md-body pre { background: var(--color-alt); padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; }
     .cs-md-body pre code { background: none; padding: 0; }
-    .cs-md-body table { border-collapse: collapse; width: 100%; margin: 0 0 1.2rem; font-size: .88rem; }
-    .cs-md-body th, .cs-md-body td { border: 1px solid var(--color-border); padding: .5rem .7rem; text-align: left; vertical-align: top; }
+    .cs-md-table-wrap { overflow-x: auto; margin: 0 0 1.2rem; -webkit-overflow-scrolling: touch; }
+    .cs-md-body table { border-collapse: collapse; width: 100%; min-width: 640px; margin: 0; font-size: .88rem; table-layout: fixed; }
+    .cs-md-body th, .cs-md-body td { border: 1px solid var(--color-border); padding: .5rem .7rem; text-align: left; vertical-align: top; overflow-wrap: break-word; word-break: break-word; }
     .cs-md-body th { background: var(--color-alt); font-weight: 700; }
+    .cs-md-body td code, .cs-md-body th code { word-break: break-all; }
+    .cs-md-svg-wrap { overflow-x: auto; margin: 0 0 1.2rem; -webkit-overflow-scrolling: touch; }
+    .cs-md-svg-wrap svg { display: block; min-width: 780px; width: 100%; height: auto; }
     .cs-md-body a { color: var(--color-primary); }
     .cs-md-body hr { border: none; border-top: 1px solid var(--color-border); margin: 1.5rem 0; }
 
@@ -1301,6 +1305,6 @@
   <script src="../template-klassisk.js?v=1"></script>
   <script src="../template-panorama.js?v=1"></script>
   <script src="../template-scrollstory.js?v=1"></script>
-  <script src="console-core.js?v=286"></script>
+  <script src="console-core.js?v=287"></script>
 </body>
 </html>
