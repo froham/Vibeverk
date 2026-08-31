@@ -1,0 +1,61 @@
+# ADR-0015: AI/agent access to customer systems must always go through a Vibeverk-controlled tool, never direct DB/secret access
+
+**Status:** Accepted
+**Date:** 2026-09-01
+
+## Context
+
+The user asked for a security audit against a specific standing principle: an AI/agent must never get direct access to customer systems, databases, or broad/permanent secrets — every action must instead flow as `Agent → Vibeverk Tool → policy/access check → scoped action → audit log`. No production agent exists yet (see Evidence below); this ADR audits what the platform already does today against that principle and pins it down as a rule for whenever one is actually built, rather than building new infrastructure now with no consumer.
+
+Three genuinely AI/LLM-adjacent things exist in the codebase today, and were each traced end-to-end:
+
+1. **AI Lab** (`scripts/ai-lab/`) — a local-only, `NODE_ENV=development`-gated, `AI_LAB_ENABLED=true`-gated developer tool. It never runs in production/CI/Vercel (enforced by the server's own startup check, and asserted by `test-ai-lab-console.js`). It has no database, no write path of any kind, and no tool-use/agentic-action capability at all — its own contract (`api/_lib/arctic-contract.js`) declares `tools: false, fileAccess: false, codeChanges: false` structurally, not just by convention. Its "Anthropic tool" usage (`scripts/ai-lab/providers/anthropic.js`) uses Claude's `tools`/`tool_choice` parameters only to force a structured JSON *response shape* — never to execute anything. The files it may read for Anthropic specifically are a hardcoded 10-item allowlist, each pinned to an exact sha256 (`scripts/ai-lab/sources.js`) — a modified or unlisted file simply isn't eligible, no glob/wildcard access exists. A regex tripwire (`scripts/ai-lab/sensitive.js`) additionally blocks known credential shapes (private keys, `sk-ant-`/`sk-`/AWS/GitHub/Slack tokens, JWT-shaped strings, embedded basic-auth URLs, `KEY=`/`SECRET=`/`PASSWORD=`-style lines) from ever reaching a paid model call.
+2. **Smart Årshjul and Oversikt** (`api/ai/annual-wheel.js`, `api/ai/oversikt.js`) — the only production, customer-facing Anthropic calls. Both are Node.js Vercel Functions: `ANTHROPIC_API_KEY` is a Vercel env var, read and used server-side only, never sent to or reachable from the browser. Both independently re-verify, server-side, on every call: tenant (resolved by Host header via the same `resolveTenantByHostname` used by `tenant-config.js`), the caller's bearer token against *that tenant's own* Supabase Auth, the caller's role (admin/editor only, looked up from that tenant's own `users` table — never trusted from the client), and — critically — that the tenant's `custom_modules_manifest` (control-plane-authoritative, not client-controlled config) actually has the specific paid module enabled, so an admin on tenant A can't spend tenant B's Anthropic budget by calling the shared endpoint directly. Neither endpoint writes anything to Supabase: both terminate in "return generated suggestions to the browser," and every module's own client code (`workspace/module-smart-aarshjul.js`, `workspace/module-oversikt.js`) requires an explicit human pick-and-save action before anything is persisted. Prompt-building code in both cases (`api/_lib/annual-wheel-ai.js`, `api/_lib/oversikt-ai.js`) never touches the `tenant` object at all — and even if it did, `resolveTenantByHostname`'s underlying RPC returns an explicit column list (`data_plane_url`, `data_plane_anon_key`, `data_plane_storage_key`) that structurally excludes the service-role key/Vault secret id, so there is no field available to leak even by mistake.
+3. **The Console `broker` Edge Function** (`supabase-control/supabase/functions/broker/index.ts`) — not AI-related, but it is already a working, in-production instance of the exact pattern this ADR asks for, built for human Console operators: an anon-key client validates the caller's JWT is real; the `operators` table (control plane) is checked for `status = 'active'`; only then is the target tenant's service-role key pulled — per-request, in-memory only, via a Vault-decrypting `SECURITY DEFINER` RPC (`get_tenant_service_role_key`) that is itself locked down to `service_role`/`postgres` — to build a throwaway client scoped to that single request. Actions are a small explicit allowlist (`get_private_config`, `set_config`, `reset_config`, `upload_logo`, `upload_section_image`, `get_tenant_status`), `set_config` further allowlists which `store` keys may be written. Every action — success, failure, or early rejection (e.g. inactive operator) — writes to `broker_audit_log` (operator, tenant, action, result, non-secret detail, timestamp); mutating actions write and confirm the audit row *before* the mutation runs and abort with a 500 if the audit write itself fails, so there is no way to mutate without a corresponding log entry.
+
+**What's genuinely absent today, confirmed by this audit, not assumed:** there is no code path anywhere that lets an LLM's output trigger a Supabase write, a broker call, or any other customer-system mutation without an explicit human clicking something in between. There is also no generic "agent" scaffold, no agent-specific credential, and no agent-callable subset of the broker's actions — because nothing yet calls the broker except the human-operated Console UI.
+
+## Decision
+
+**This principle is adopted as a standing rule, effective now, for any future AI/agent work on this platform:**
+
+> An AI agent must never hold, receive in its prompt/tool context, or be handed at runtime: a customer's `service_role` key, a raw database connection string, a Vault secret, or any other broadly-scoped/long-lived credential. Every action an agent takes against customer data or systems must be dispatched as a call to a **named, narrow, Vibeverk-owned tool/endpoint** — never a direct Supabase/Postgres client the agent constructs itself — and that tool must, before doing anything else:
+> 1. Verify the caller is who it claims to be (a real, current session/token — not something the agent or its prompt asserts).
+> 2. Resolve and verify the target **tenant** server-side (never trust a tenant id handed to it in the agent's own request/output).
+> 3. Verify the caller's **role/permission** for that specific tenant and that specific action.
+> 4. Act with the **minimum scope the one action needs** — reusing the existing per-tenant, Vault-scoped, `SECURITY DEFINER`-mediated key pattern the broker already uses, not a standing broad credential held by the agent process.
+> 5. Write an **audit log entry** (agent, tenant, user/operator, tool, action, timestamp, result — never secret values or unnecessary personal data) — for a mutating action, the log entry must be durably recorded before or atomically with the mutation, matching the broker's existing `auditStart`/`auditFinish` discipline, so a failed audit write blocks the action rather than silently allowing an unlogged one.
+> 6. Distinguish **read** tools from **write** tools explicitly in how they're named/registered — never one endpoint that both reads and writes based on an agent-suppliable flag.
+> 7. Allow write actions with real consequence to require a **separate, explicit human approval step** before executing — this does not need to exist as generic infrastructure today (see "Deferred" below), but the tool layer must be built so that gate can be added later without an architecture change.
+
+**The broker (`supabase-control/supabase/functions/broker/index.ts`) is the reference implementation for points 1–5 above** and should be extended, not replaced or duplicated, when an agent eventually needs to perform a Console-adjacent action — the same tenant-resolution → operator/role-check → Vault-scoped-client → allowlisted-action → audit-before-mutate pipeline applies whether the caller is a human operator's browser or a future agent process, with the caller's *identity* (human vs. agent, and which agent) simply becoming another field the auth check and audit log record.
+
+**AI Lab's existing containment model** (no production reachability, sha256-pinned read-only source allowlist, secret-pattern tripwire, structurally-declared `tools: false`/`fileAccess: false`/`codeChanges: false` contract) already satisfies this ADR for the one AI surface that could theoretically be tempted to read broadly from the repo, and needs no change.
+
+**Smart Årshjul/Oversikt's existing per-call tenant+role+feature-flag re-verification** already satisfies points 1–3 for the one AI surface that's customer-facing in production, and needs no change.
+
+## Consequences
+
+- No new infrastructure was built by this ADR — see "What changed" below, this is a documented policy plus a CLAUDE.md pointer, not new code.
+- Any future PR that adds an agent-callable action must be reviewed against this ADR specifically (in addition to the normal Security Auditor gate for anything auth/RLS/API-adjacent) — a reviewer's first question should be "does this go through a Vibeverk tool with tenant+role+audit, or does it hand the agent a client/key it can use on its own."
+- The broker's current design accepts a known, previously-documented trade-off that this ADR does **not** ask to fix now: once auth/role checks pass, the broker's per-request client is `service_role` (bypasses that tenant's RLS entirely), which is broader than the specific allowlisted action strictly needs — a stricter, per-action-scoped credential would be more minimal, but building that now, with no agent yet consuming it, would be speculative infrastructure the platform doesn't need yet.
+
+## What changed as a result of this audit
+
+1. This ADR.
+2. A short, concrete pointer added to `CLAUDE.md`'s "AI agent workflow" section, so this rule is loaded into context automatically for any future session that touches agent/AI work — not just discoverable by someone who happens to read `docs/decisions/`.
+3. No application code, RLS policy, migration, or broker action was changed — the audit found the existing architecture already satisfies the requested principle for everything that exists today; see the Context section above for the specific evidence per surface.
+
+## Deferred to when a real agent is actually introduced (do not build speculatively now)
+
+- A generic agent-callable action registry/scaffold in the broker (or a sibling function) — there is exactly one caller today (human-operated Console), so a generic multi-caller-type abstraction has no second consumer to validate its shape against yet.
+- A distinct "pending approval" backend state/second API call for write actions (today's human-approval gate is a client-side `confirm()` dialog before the call, which is suf­ficient while every caller is a human operator who already passed the operator/role checks) — building a real approval queue now, before any agent exists that would need one, would be exactly the kind of premature abstraction this repo's own conventions warn against.
+- Narrowing the broker's per-action credential scope below `service_role` (see Consequences) — worth doing if/when an agent becomes a broker consumer, since an agent process is a meaningfully different trust boundary than a human operator's authenticated browser session, but not before then.
+- Any agent-specific credential/service-account concept — none is needed until an agent exists to hold one.
+
+## Evidence
+
+- `scripts/ai-lab/` (config.js, sensitive.js, sources.js, providers/anthropic.js) + `scripts/ai-lab/README.md` (lines documenting `AI Lab skriv aldri til desse dokumenta, Supabase, App.store, localStorage eller ein database`) + `test-ai-lab-console.js` (production-unreachability assertions) + `api/_lib/arctic-contract.js` (declared capability contract).
+- `api/ai/annual-wheel.js`, `api/ai/oversikt.js`, `api/_lib/annual-wheel-ai.js`, `api/_lib/oversikt-ai.js`, `api/_lib/resolve-tenant.js` (explicit-column RPC return shape).
+- `supabase-control/supabase/functions/broker/index.ts` (full read, all six actions and the auth/Vault/audit pipeline preceding them).
+- `docs/decisions/ADR-0008-control-plane-data-plane-split.md`, `docs/decisions/ADR-0009-console-control-plane-auth-and-broker-actions.md` (the broker's own design history and the `service_role`-scope trade-off already discussed there).

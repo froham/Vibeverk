@@ -45,7 +45,7 @@ Sjå [`docs/architecture/tenant-onboarding-runbook.md`](tenant-onboarding-runboo
 
 ## 7. Lansering / publisering
 
-- [ ] `node test.js` og `node test-workspace.js` er begge grøne (berre dei to dokumenterte, kjende feila, ingen nye — sjå `CLAUDE.md` sin Testing-seksjon).
+- [ ] `node test.js`, `node test-workspace.js` og `node test-api.js` er alle grøne (berre dei to dokumenterte, kjende feila i dei to fyrste — `test-api.js` har ingen aksepterte feil, sjå `CLAUDE.md` sin Testing-seksjon).
 - [ ] Ruting er stadfesta (Console sin onboarding-sjekkliste steg 9) — kunden sitt faktiske vertsnamn løyser opp korrekt.
 - [ ] Eksplisitt lanseringsgodkjenning er innhenta før Console sin «Set aktiv» vert trykt — dette gjer at kunden sin nettstad svarar på ekte besøkjande umiddelbart, per `CLAUDE.md` sin deployment-safeguard.
 

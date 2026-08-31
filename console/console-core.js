@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.159.2";
+  var VIBEVERK_VERSION = "0.159.3";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -6610,7 +6610,18 @@ window.VwConsole = (function () {
     }).then(function (md) {
       if (!document.getElementById("cs-md-body")) return; // brukar navigerte vekk medan henting pågjekk
       if (window.marked) {
-        document.getElementById("cs-md-body").innerHTML = window.marked.parse(md);
+        var mdBody = document.getElementById("cs-md-body");
+        mdBody.innerHTML = window.marked.parse(md);
+        // Pakk kvar tabell i ein scrollbar wrapper -- lange, ubrytbare
+        // `code`-strengar (t.d. filstiar) kan framleis presse ein kolonne
+        // breiare enn tilgjengeleg plass sjølv med word-break, så tabellen
+        // skal kunne scrolle horisontalt i staden for å øydeleggje layouten.
+        mdBody.querySelectorAll("table").forEach(function (table) {
+          var tableWrap = document.createElement("div");
+          tableWrap.className = "cs-md-table-wrap";
+          table.parentNode.insertBefore(tableWrap, table);
+          tableWrap.appendChild(table);
+        });
       } else {
         // marked lasta ikkje (t.d. CDN utilgjengeleg) -- vis rå tekst i staden
         // for ei tom side.

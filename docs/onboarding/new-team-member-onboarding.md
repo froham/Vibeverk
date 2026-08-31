@@ -25,6 +25,61 @@ Vibeverk består av fire ting som ser heilt forskjellige ut, men deler mestepart
 
 Sjå `docs/architecture/system-overview.md` for den tekniske skildringa av alle fire.
 
+### Teknisk oversikt (illustrasjon)
+
+Forenkla — sjå `docs/architecture/system-overview.md` og ADR-0007/ADR-0008 for full detalj, inkludert unntak (t.d. at Console sjølv er tenant-uavhengig fram til ein kunde er vald i kundeveljaren).
+
+<div class="cs-md-svg-wrap">
+<svg viewBox="0 0 920 400" role="img" aria-labelledby="arch-illustration-title">
+  <title id="arch-illustration-title">Vibeverk — dei fire flatene, ruting og kontrollplan/dataplan-oppdelinga</title>
+  <defs>
+    <marker id="arch-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--color-primary)"></path>
+    </marker>
+  </defs>
+  <style>
+    .arch-box { fill: var(--color-alt); stroke: var(--color-border); stroke-width: 1.5; rx: 8; }
+    .arch-label { fill: var(--color-text); font-size: 16px; }
+    .arch-label tspan { fill: var(--color-text); }
+    .arch-edge { fill: none; stroke: var(--color-primary); stroke-width: 1.5; marker-end: url(#arch-arrow); }
+    .arch-edge--dashed { stroke-dasharray: 4 3; }
+    .arch-edge-label { fill: var(--color-muted); font-size: 14px; }
+  </style>
+  <rect class="arch-box" x="20" y="18" width="180" height="42"></rect>
+  <text class="arch-label" x="110" y="44" text-anchor="middle">Besøkjande (anonym)</text>
+  <rect class="arch-box" x="370" y="18" width="180" height="42"></rect>
+  <text class="arch-label" x="460" y="44" text-anchor="middle">Tilsette (innlogga)</text>
+  <rect class="arch-box" x="720" y="18" width="180" height="42"></rect>
+  <text class="arch-label" x="810" y="44" text-anchor="middle">Vibeverk (superadmin)</text>
+  <path class="arch-edge" d="M110,60 L110,100"></path>
+  <path class="arch-edge" d="M460,60 L460,100"></path>
+  <path class="arch-edge" d="M810,60 L810,100"></path>
+  <rect class="arch-box" x="20" y="102" width="180" height="46"></rect>
+  <text class="arch-label" x="110" y="129" text-anchor="middle">Offentleg nettside (/)</text>
+  <rect class="arch-box" x="370" y="102" width="180" height="46"></rect>
+  <text class="arch-label" x="460" y="129" text-anchor="middle">Workspace (/workspace/)</text>
+  <rect class="arch-box" x="720" y="102" width="180" height="46"></rect>
+  <text class="arch-label" x="810" y="129" text-anchor="middle">Console (/console/)</text>
+  <path class="arch-edge" d="M110,148 L110,185"></path>
+  <path class="arch-edge" d="M460,148 L460,185"></path>
+  <rect class="arch-box" x="20" y="188" width="530" height="42"></rect>
+  <text class="arch-label" x="285" y="212" text-anchor="middle" font-size="14">middleware.js — hostname → tenant</text>
+  <path class="arch-edge" d="M285,230 L285,270"></path>
+  <path class="arch-edge" d="M810,148 C 810,240 640,255 545,270" fill="none"></path>
+  <text class="arch-edge-label" x="700" y="200">OTP + broker (audit-logga)</text>
+  <rect class="arch-box" x="20" y="272" width="430" height="108"></rect>
+  <text class="arch-label" x="235" y="296" text-anchor="middle" font-weight="700">Dataplan</text>
+  <text class="arch-label" x="235" y="316" text-anchor="middle" font-size="14"><tspan x="235" dy="0">Éin isolert Supabase</tspan><tspan x="235" dy="18">per kunde — RLS,</tspan><tspan x="235" dy="18">anon/auth-nøklar</tspan></text>
+  <rect class="arch-box" x="470" y="272" width="430" height="108"></rect>
+  <text class="arch-label" x="685" y="296" text-anchor="middle" font-weight="700">Kontrollplan</text>
+  <text class="arch-label" x="685" y="316" text-anchor="middle" font-size="14"><tspan x="685" dy="0">vibeverk-control —</tspan><tspan x="685" dy="18">tenant-register, operatørar,</tspan><tspan x="685" dy="18">Vault-hemmelege nøklar</tspan></text>
+  <path class="arch-edge arch-edge--dashed" d="M685,272 C 685,240 450,240 450,272"></path>
+  <text class="arch-edge-label" x="500" y="248" text-anchor="middle">service_role via Vault, per tenant</text>
+</svg>
+</div>
+
+**Slik les du illustrasjonen**: dei tre øvste flatene snakkar med sitt eige inngangspunkt (offentleg sida, Workspace, Console). `middleware.js` løyser kva kunde ein førespurnad til nettsida/Workspace gjeld ut frå domenet, og peikar vidare til den kunden sin eigen, isolerte database (dataplanet). Console autentiserer i staden mot eit heilt separat, felles kontrollplan (`vibeverk-control`) og hentar/skriv kunde-konfigurasjon gjennom den audit-logga `broker`-funksjonen der — han er også den som held (via Supabase Vault) nøkkelen kontrollplanet treng for å nå inn i kvar kunde sitt eige dataplan. Sjå «Kontrollplan vs. dataplan» i `README.md` og ADR-0008 for full detalj.
+
 ## Kvar data blir lagra (kort versjon)
 
 - **Supabase** er databasen — éin heilt separat database per kunde (aldri delt mellom kundar). Alt som skal vare (kundeforhold, henvendingar, brukarkontoar, chat) hamnar her til slutt.
@@ -50,7 +105,7 @@ Sjå [`safe-changes-guide.md`](safe-changes-guide.md) for ei konkret oversikt ov
 
 ## Testing, deploy og tilbakerulling
 
-- Vibeverk har to automatiske testpakkar (`node test.js`, `node test-workspace.js`) som køyrer ved kvar endring i koden (sjå `CLAUDE.md` sin "Testing"-seksjon for kva dei faktisk dekker og kva dei IKKJE dekker).
+- Vibeverk har tre automatiske testpakkar (`node test.js`, `node test-workspace.js`, `node test-api.js`) som køyrer ved kvar endring i koden (sjå `CLAUDE.md` sin "Testing"-seksjon for kva dei faktisk dekker og kva dei IKKJE dekker).
 - All ekte utrulling skjer via Git — ein `git push` til `main`-greina. **Ingen utrulling skjer utan eksplisitt godkjenning frå systemeigar**, uansett kven som ber om det (`CLAUDE.md` sin "Deployment safeguard").
 - Tilbakerulling er alltid mogleg via Git (finn siste fungerande commit, revert til han) — sjå [`docs/security/incident-and-escalation-guide.md`](../security/incident-and-escalation-guide.md) for korleis dette skal gjerast i praksis om noko går gale.
 
