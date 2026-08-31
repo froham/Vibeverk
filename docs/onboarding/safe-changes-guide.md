@@ -20,7 +20,7 @@
 | Opprette/redigere kundedata (leads, CRM, booking) | Ja | Ingen spesiell test utover vanleg bruk | Nei | Låg | — |
 | Administrere brukarar (invitere/fjerne) | Berre `admin`-rolle, aldri nivå 1 | At den nye brukaren faktisk kan logge inn med rett rolle | Nei for éin kunde sin eigen `admin`, JA om det er ein Vibeverk-operatør som gjer det via Console | Medium | — |
 | **Endre roller eller tilgangar** | **ALDRI nivå 1/2 sjølv** | Full re-testing av alle rolle-avhengige flytar | **JA, alltid** | **Høg** | `docs/architecture/roles-and-tenants.md` |
-| **Endre modul-logikk (kode)** | **ALDRI utan kode-kunnskap** | `node test.js`/`node test-workspace.js` + manuell test | **JA, alltid** | **Høg** | `docs/project/CHANGELOG.md`, evt. modul-dokumentasjon |
+| **Endre modul-logikk (kode)** | **ALDRI utan kode-kunnskap** | `node test.js`/`node test-workspace.js`/`node test-api.js` + manuell test | **JA, alltid** | **Høg** | `docs/project/CHANGELOG.md`, evt. modul-dokumentasjon |
 | **Endre database eller lagringsstruktur** | **ALDRI** | Direkte mot `vibeverk-staging` FØR produksjon | **JA, alltid** | **Kritisk** | `docs/architecture/storage-and-data-flow.md` |
 | **Endre Supabase-policyar/RLS** | **ALDRI** | Direkte SQL-verifisering (`pg_policies`), ALDRI berre stole på ei "Success"-melding | **JA, alltid** | **Kritisk** | `docs/security/security-baseline.md` |
 | **Endre miljøvariablar** | **ALDRI** | Stadfest verdien faktisk landa rett (t.d. via ein test-kalling) | **JA, alltid** | **Høg** | — |
