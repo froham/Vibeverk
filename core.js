@@ -1712,7 +1712,14 @@ window.App = (function () {
     const newQuotes = leads.filter(function (l) {
       return isTilbud(l) && (l.status || "ny") === "ny";
     }).length;
-    setTabBadge(root, "quotes", newQuotes);
+    setTabBadge(root, "mod-tilbud", newQuotes);
+    // New bookings
+    if (window.BookingAdmin) {
+      const newBookings = window.BookingAdmin.getBookings().filter(function (b) {
+        return (b.status || "ny") === "ny";
+      }).length;
+      setTabBadge(root, "mod-booking", newBookings);
+    }
   }
   function setTabBadge(root, tabId, count) {
     const btn = root && root.querySelector("[data-tab='" + tabId + "']");

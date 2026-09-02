@@ -30,6 +30,29 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.6 — 2026-09-02
+
+**Web-admin Henvendelser: nye/ubehandla bookingar viste ingen varsel på fanen, i motsetning til Kontakt.** Meldt av brukar (skjermbilde): «der det er elementer som er ubehandlet (nye) så må det markeres med rødt tall i fanen, slik som på kontakt».
+
+- **`core.js` `doAdminBadgeRefresh()`**: lagt til ein ny badge-teljing for booking-fana (`mod-booking`) — tel `window.BookingAdmin.getBookings()`-rader med `status === "ny"`, same mønster som Kontakt/Tilbud.
+- **Fann og retta same runde**: den eksisterande «nye tilbod»-badgen kalla `setTabBadge(root, "quotes", …)`, men fana sin faktiske `data-tab`-id er `mod-tilbud` (sett i `adminTabs()`) — `"quotes"` finst ikkje som noko fane-id nokon stad, så badgen var reelt sett daud kode og synte aldri på Tilbud-fana. Retta til `setTabBadge(root, "mod-tilbud", …)`.
+- Kunder-fana (`mod-crm`) har ikkje eit tilsvarande «ny»-status-omgrep på kundar, difor ingen badge lagt til der.
+- Ingen database- eller produksjonsendring. `test.js` (778/778) grønt. Cache-bust: `core.js` 96→97 (`index.html`, `workspace/index.html`, `admin/index.html`, `console/index.html`).
+
+## 0.159.5 — 2026-09-02
+
+**CRM: «AI-assistent»-kortet (Oppsummer kunde / Lag svarutkast, «Kommer snart») skjult på kundekortet, etter ønske frå Frode.** Ikkje sletta — koden ligg urørt bak `AI_ASSISTANT_CARD_ENABLED = false` i `module-crm.js`, slå på att ved å setje flagget til `true` når funksjonen er klar til å visast.
+
+- Ingen database- eller produksjonsendring. `test.js` (778/778) og `test-workspace.js` (303/303) grøne. Cache-bust: `module-crm.js` 33→34 (`index.html`, `workspace/index.html`, `admin/index.html`).
+
+## 0.159.4 — 2026-09-02
+
+**Fiks: teksten ein besøkjande skreiv i chat-vindauget forsvann av seg sjølv etter nokre sekund, før meldinga vart sendt.** Meldt av brukar (video, «teksten bare detter ut etter noen sekunder»).
+
+- **Rotårsak** (`module-chat.js`): `render()` — kalla frå tilgjengelegheit-sjekken like etter at chatten opnast, og frå `pollVisitorMsgs()` sitt 5-sekunders poll-intervall når nye meldingar kjem inn — bygde alltid ei heilt ny, tom `<textarea id="vw-inp">` via `renderInputArea()`. Alt den besøkjande hadde skrive, men ikkje sendt enda, vart dermed sletta utan varsel — akkurat i tidsvindauget («nokre sekund») brukaren melde.
+- **Fiks**: innført `draftText`, ein modul-scoped variabel som held den usendte teksten, oppdatert på `input`-eventet og på emoji-klikk, og gjenoppretta inn i den nye textareaen kvar gong `renderInputArea()` byggjer henne på nytt. Nullstilt ved vellykka sending; sett attende (saman med `inp.value`) ved feila sending slik at retry-flyten framleis fungerer.
+- Ingen database- eller produksjonsendring. `test.js` (778/778) og `test-workspace.js` (303/303) grøne. Cache-bust: `module-chat.js` 23→24 (`index.html`, `workspace/index.html`, `admin/index.html`).
+
 ## 0.159.3 — 2026-08-31
 
 **Console «Læring» oppdatert: reell tabell-layoutbug retta, og ny arkitektur-illustrasjon lagt til.** (Porta frå `arctic-ai-lab-rc` sin `0.161.0` — omnummerert til `main` sin eigen versjonssekvens sidan den branchen sine mellomliggande versjonar, inkl. `0.160.0` traceparent-arbeidet, ikkje finst på `main`.)
