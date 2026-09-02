@@ -61,7 +61,20 @@
   if (CFG_FEAT.chat === false) return; // heile modulen av — ingenting lastar
 
   function saveWidgetConfig(cfg) {
-    try { localStorage.setItem(_cfgKey, JSON.stringify(Object.assign(_storedCfg, cfg))); } catch(e) {}
+    var merged = Object.assign(_storedCfg, cfg);
+    try { localStorage.setItem(_cfgKey, JSON.stringify(merged)); } catch(e) {}
+    // Skreiv tidlegare BERRE til localStorage — ei innstilling lagra av éin admin
+    // synte seg difor aldri for nokon andre nettlesar/enhet (inkl. inkognito),
+    // sidan boot() sin Supabase-fetch berre køyrer når localStorage manglar
+    // nøkkelen. Må skrivast gjennom til Supabase for reelt å vere delt, live-tilstand.
+    if (!_sb) return Promise.resolve(merged);
+    return _sb.from("store").upsert(
+      {tenant_id: _CHAT_NS || "site", key: "chat-config", value: merged},
+      {onConflict: "tenant_id,key"}
+    ).then(function (r) {
+      if (r.error) return Promise.reject(new Error(r.error.message));
+      return merged;
+    });
   }
 
   /* ── SUPABASE KLIENT ────────────────────────────────────────────────────── */
@@ -1517,11 +1530,22 @@
           offlineMsg:   container.querySelector("#cfg-offline").value.trim(),
           position:     (container.querySelector("input[name='cfg-pos']:checked") || {value:"right"}).value
         };
-        saveWidgetConfig(cfg);
-        Object.assign(OPT, cfg);
         var st = container.querySelector("#vwca-cfg-status");
-        st.style.color = "var(--color-primary)"; st.textContent = "✓ Lagret!";
-        setTimeout(function () { if (st) st.textContent = ""; }, 2500);
+        var saveBtn = container.querySelector("#vwca-cfg-save");
+        saveBtn.disabled = true;
+        st.style.color = "var(--color-muted)"; st.textContent = "Lagrer …";
+        saveWidgetConfig(cfg).then(function () {
+          Object.assign(OPT, cfg);
+          if (!st) return;
+          st.style.color = "var(--color-primary)"; st.textContent = "✓ Lagret!";
+          setTimeout(function () { if (st) st.textContent = ""; }, 2500);
+        }, function (err) {
+          console.error("[chat] lagring av innstillingar feila:", err.message);
+          if (!st) return;
+          st.style.color = "#ef4444"; st.textContent = "Lagring mislyktes. Prøv igjen.";
+        }).finally(function () {
+          if (saveBtn) saveBtn.disabled = false;
+        });
       });
     }
 
