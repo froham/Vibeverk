@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.7 — 2026-09-02
+
+**Fiks: chat-innstillingar lagra i Web-admin ("AI-assistent"-fana → Chat → Innstillinger) synte seg berre i den nettlesaren dei vart lagra i — aldri på tvers av enheter/nettlesarar, aldri i inkognito.** Meldt av brukar mot Sunnvask-demo: «endra chat-innstillingar på web admin … når eg opner i inkognito så får eg ikkje endringer».
+
+- **Rotårsak** (`module-chat.js` `saveWidgetConfig()`): skreiv historisk BERRE til `localStorage`, aldri til Supabase — sjølv om `boot()` sin oppstartslogikk hentar `chat-config` FRÅ Supabase når `localStorage` manglar nøkkelen (typisk tilfelle: inkognito eller ei anna enhet). Sidan lagring aldri skreiv attende, fekk desse alltid det gamle/tomme svaret frå Supabase, medan nettlesaren som faktisk lagra synte «✓ Lagret!» og verka som om alt fungerte normalt.
+- **Fiks**: `saveWidgetConfig()` skriv no gjennom til `store`-tabellen (`upsert` på `tenant_id`+`key:"chat-config"`, same mønster som `chat-availability`/heartbeat), i tillegg til `localStorage`-cachen. Lagre-knappen i innstillingspanelet ventar no på denne skrivinga, viser «Lagrer …» undervegs og ei ekte feilmelding («Lagring mislyktes. Prøv igjen.») dersom Supabase-kallet feilar, i staden for å alltid vise «✓ Lagret!» uansett utfall.
+- **Viktig for eksisterande data**: innstillingar som ALT er lagra via denne buggen (t.d. på Sunnvask-demo) ligg framleis berre i den opphavlege nettlesaren sin `localStorage` — dei er ikkje automatisk pusha til Supabase av denne fiksen. Må lagrast éin gong til (opne Chat → Innstillinger i same nettlesar som sist, trykk Lagre på nytt) for faktisk å nå Supabase og dermed andre enheter/inkognito.
+- Ingen database- eller produksjonsendring i seg sjølv (berre kodefiks — ingen migrasjon involvert). `test.js` (778/778) og `test-workspace.js` (303/303) grøne. Cache-bust: `module-chat.js` 24→25 (`index.html`, `workspace/index.html`, `admin/index.html`).
+
 ## 0.159.6 — 2026-09-02
 
 **Web-admin Henvendelser: nye/ubehandla bookingar viste ingen varsel på fanen, i motsetning til Kontakt.** Meldt av brukar (skjermbilde): «der det er elementer som er ubehandlet (nye) så må det markeres med rødt tall i fanen, slik som på kontakt».
