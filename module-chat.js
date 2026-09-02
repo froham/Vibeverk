@@ -579,6 +579,8 @@
     var lastReadAt = convId ? ((Chat.getConv(convId) || {}).visitorReadAt || 0) : 0;
     var vname   = Chat.getVname();
     var vemail  = Chat.getVemail();
+    var draftText = ""; // ikkje-sendt tekst i vw-inp — må overleve render()-kall (poll, tilgjengelegheit-sjekk)
+                         // som elles byggjer ei ny, tom textarea og slettar det den besøkande har skrive
 
     /* ── RENDER ── */
     function render() {
@@ -825,6 +827,12 @@
       var inp         = bottom.querySelector("#vw-inp");
       var sendBtn     = bottom.querySelector("#vw-send");
 
+      if (draftText) {
+        inp.value = draftText;
+        inp.style.height = "auto";
+        inp.style.height = Math.min(inp.scrollHeight, 80) + "px";
+      }
+
       /* Emoji-picker */
       emojiPicker.innerHTML = EMOJIS.map(function (e) {
         return '<button class="vw-emoji-btn" data-emoji="'+e+'">'+e+'</button>';
@@ -832,6 +840,7 @@
       emojiPicker.querySelectorAll("[data-emoji]").forEach(function (b) {
         b.addEventListener("click", function () {
           inp.value += b.getAttribute("data-emoji");
+          draftText = inp.value;
           emojiPicker.classList.remove("is-open");
           inp.focus();
         });
@@ -845,6 +854,7 @@
       inp.addEventListener("input", function () {
         this.style.height = "auto";
         this.style.height = Math.min(this.scrollHeight,80) + "px";
+        draftText = this.value;
       });
 
       function doSend() {
@@ -852,6 +862,7 @@
         if (!txt || !convId) return;
         sendBtn.disabled = true;
         inp.value = ""; inp.style.height = "auto";
+        draftText = "";
         Chat.addMsg(convId, txt, "visitor", Chat.getVid()).then(function() {
           render();
         }, function(err) {
@@ -869,7 +880,7 @@
             bottom.insertBefore(errEl, bottom.firstChild);
           }
           errEl.textContent = "Sending mislyktes. Prøv igjen.";
-          inp.value = txt; // restore for retry
+          inp.value = txt; draftText = txt; // restore for retry
           setTimeout(function(){if(errEl)errEl.textContent="";},4000);
         }).finally(function() {
           sendBtn.disabled = false;

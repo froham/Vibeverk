@@ -22,6 +22,9 @@
   var App = window.App, C = window.Components;
   if (!App || !C) return;
 
+  // "AI-assistent"-kortet på kundekortet er mellombels skjult (ikkje slettet) etter ønske frå Frode 2026-09-02.
+  var AI_ASSISTANT_CARD_ENABLED = false;
+
   App.ready(function (CFG) {
   if (CFG.features && CFG.features.crm === false) return;
 
@@ -1166,11 +1169,13 @@
           : '<div data-tl-wrap></div>') +
       '</div>' +
 
+      // AI-assistent-kortet er mellombels skjult (ikkje fjerna) — sjå AI_ASSISTANT_CARD_ENABLED
+      (AI_ASSISTANT_CARD_ENABLED ?
       '<div style="background:var(--color-surface,#fff);border:1px solid var(--color-border);border-radius:12px;padding:.85rem 1rem;margin-bottom:.7rem">' +
         '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.7rem"><div style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-sparkles" style="font-size:.7rem;color:#fff"></i></div><span style="font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted)">AI-assistent</span><span style="font-size:.65rem;font-weight:700;padding:.1rem .35rem;border-radius:999px;background:var(--color-alt,#f3f4f6);color:var(--color-muted)">Kommer snart</span></div>' +
         '<div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.6rem">'+["Oppsummer kunde","Lag svarutkast"].map(function(l){return'<button disabled style="display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .7rem;border:1.5px solid var(--color-border);border-radius:999px;background:transparent;cursor:not-allowed;font:inherit;font-size:.78rem;font-weight:600;color:var(--color-muted);opacity:.55"><i class="ti ti-sparkles"></i> '+esc(l)+'</button>';}).join("")+'</div>' +
         '<div style="background:var(--color-alt,#f9fafb);border-radius:8px;padding:.6rem .8rem;font-size:.8rem;color:var(--color-muted)">Koble til Claude API under Innstillinger for å aktivere.</div>' +
-      '</div>';
+      '</div>' : "");
 
     body.querySelector("[data-crm-back]").addEventListener("click",function(){
       if (opts.fromBedrift) renderBedrift(body,opts.fromBedrift); else renderAdmin(body);
