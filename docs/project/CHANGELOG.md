@@ -30,6 +30,15 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.8 — 2026-09-02
+
+**Driftsfiks (ikkje kode): `ANTHROPIC_API_KEY` mangla på BEGGE Vercel-prosjekt (`vibeverk`/produksjon og `vibeverk-j1yg`/Sunnvask-demo), sjølv om `api/ai/oversikt.js` og `api/ai/annual-wheel.js` (Oversikt- og Smart Årshjul-modulane i Workspace) begge føreset han.** Oppdaga då brukar fekk `500 "Oversikt er ikkje ferdig sett opp på denne installasjonen."` etter å ha slått på Oversikt-modulen for Sunnvask via Console. Direkte `vercel env ls` mot begge prosjekt stadfesta nøkkelen var fråverande i alle miljø (Production og Preview) på BÅDE prosjekt — dette var altså ikkje ein Sunnvask-spesifikk mangel, men eit hol som ville ramma Oversikt/Smart Årshjul i ekte produksjon også, uavhengig av tenant.
+
+- **Kvifor to separate Vercel-prosjekt i det heile**: `vibeverk` (produksjon, `vibeverk.no`) og `vibeverk-j1yg` (Sunnvask-demo sin produksjons-URL er `sunnvask-demo.vercel.app`) er to FRÅSKILDE Vercel-prosjekt som begge auto-byggjer frå same GitHub-repo (jf. `docs/architecture/system-overview.md`) — kode held seg difor alltid synkronisert på tvers, men miljøvariablar er PER PROSJEKT og vert aldri kopiert automatisk. Dette var den underliggjande årsaka til at brukar opplevde fleire ting (QR, AI-modul) som å "henge etter" på Sunnvask tidlegare same dag — ikkje forseinka kode-deploy, men manglande per-prosjekt-konfigurasjon.
+- **Fiks**: brukar la sjølv til `ANTHROPIC_API_KEY` (Production) på begge prosjekt via `vercel env add` (nøkkelen gjekk aldri gjennom eit Claude-verktøykall eller vart skriven til disk av agenten — sandkassa sin auto-mode-klassifikator blokkerte begge forsøk på det, med vilje, sidan det er eit ekte hemmeleg API-key). Sunnvask vart automatisk redeploya av eit `vercel --prod`-forsøk undervegs; `vibeverk` (produksjon) treng denne versjonsbumpen sin push for å plukke opp nøkkelen, sidan miljøvariablar først gjeld frå NESTE deploy.
+- **Kjend usikkerheit att**: tidlegare interne notat hevda Oversikt var "confirmed working in real use" (kring v0.96.0) — det stemmer ikkje overeins med at nøkkelen var heilt fråverande på produksjonsprosjektet ved dette funnet. Anten vart nøkkelen fjerna/rotert utan at nokon oppdaterte notatet, eller den opphavlege stadfestinga galdt sjølve UI-/datauflyten og ikkje ein ekte Anthropic-generering. Ikkje etterforska vidare her — berre dokumentert som eit usikkert punkt, ikkje anteke.
+- Ingen kode endra i denne oppføringa. `test.js`/`test-workspace.js` upåverka (ingen fil endra utanom denne changelogen + versjonsbumpen som utløyser redeploy).
+
 ## 0.159.7 — 2026-09-02
 
 **Fiks: chat-innstillingar lagra i Web-admin ("AI-assistent"-fana → Chat → Innstillinger) synte seg berre i den nettlesaren dei vart lagra i — aldri på tvers av enheter/nettlesarar, aldri i inkognito.** Meldt av brukar mot Sunnvask-demo: «endra chat-innstillingar på web admin … når eg opner i inkognito så får eg ikkje endringer».
