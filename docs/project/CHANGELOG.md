@@ -30,6 +30,10 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.20 — 2026-09-03
+
+**Plumbing-test for den nye per-tenant designmal-mekanismen (0.159.19), før det ekte "Vedvik Studio"-malarbeidet startar.** Lagt til `template-vedvik-test.js` — ein midlertidig, tydeleg merkt (oransje "PLUMBING-TEST"-banner) `window.SiteTemplates["vedvik-test"]`-registrering, som følgjer nøyaktig same `hero/about/services`-kontrakt som `template-klassisk.js` og faktisk les frå det delte `content`-objektet (tittel/undertittel/tenester-kort), for å bevise at heile kjeda — ny fil → `resolveTemplate()` → Console sitt "Design-mal (avansert)"-felt → éin namngjeven tenant — fungerer i praksis før noko reelt designarbeid vert bygd inn i produksjonskode. Meint å bli tildelt `phase6-canary`-testtenanten (data-plane `vibeverk-staging`, ikkje ein ekte kunde), aldri ein ekte tenant. Skal fjernast (fil + `<script>`-linje i `index.html`) når det ekte "vedvik"-malarbeidet startar — det ekte designarbeidet (interaktiv HTML-mockup bygd på kunden sine eigne bilete/logo/fargepalett, sjå `docs/marketing/assets/Vedvik Studio/`, lokalt og gitignora) held fram parallelt, uavhengig av denne testen.
+
 ## 0.159.19 — 2026-09-03
 
 **Ny Console-styring av design-mal per tenant, fyrste steg i eit planlagt "bespoke editorial-mal per fotograf-/portefølje-kunde"-arbeid.** Følgjer opp Design-modul-vurderinga tidlegare same dag: konklusjonen der var at ein AI-forfatta, kundespesifikk mal bør vere ein 4. `window.SiteTemplates`-registrert fil (som Klassisk/Panorama/Scroll-story), lesande frå det same delte `content`-objektet — IKKJE noko som går via "Sider"/blocks-systemet (strukturelt inkompatibelt, sjå same runde sin analyse). Denne oppføringa byggjer styringsmekanismen ein operatør treng for å faktisk setje ein slik bespoke mal-ID for éin namngjeven kunde, utan å måtte gå via kunden sin eigen Web-admin (som medvite berre listar dei tre faste, delte vala).
