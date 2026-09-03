@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.15 — 2026-09-03
+
+**Sidebygger-biletopplasting: bytt frå deno.land til jsdelivr for imagescript-importen — retry (0.159.14) hjelpte ikkje, viste seg vedvarande, ikkje forbigåande.** Brukar stadfesta at feilen heldt fram sjølv etter retry-utrullinga: alle 3 forsøk feila identisk med "Module not found", synleg direkte i `broker_audit_log`. Det beviste dette ikkje var ein forbigåande CDN-glipp, men eit vedvarande problem spesifikt inne i Supabase sitt Edge-runtime-nettverk (nøyaktig same URL svarer korrekt via reint HTTP-kall utanfrå, stadfesta fleire gonger).
+
+- **Fiks**: bytt primær-URL til `cdn.jsdelivr.net` sin GitHub-spegel av `matmen/ImageScript` — SAME, alt etablerte og pinna CDN-mønster resten av plattforma bruker for eksterne avhengigheiter (supabase-js, marked, tabler-icons, html2canvas, sjå CLAUDE.md), ikkje ein tilfeldig ny leverandør. Stadfesta med ekte `curl`-kall (HTTP 200, korrekt `x-jsd-version: 1.3.0`-header) at BÅDE `mod.ts` og biblioteket sin transitive `ImageScript.js`-import løyser seg korrekt der. `deno.land` står att som siste utveg i same forsøksrekkje (jsdelivr fyrst, deno.land som fallback), i tilfelle jsdelivr sjølv ein dag skulle ha eit forbigåande problem.
+- **Kunde-observasjon undervegs**: brukar melde at ein manuelt JPEG-konvertert versjon av same bilete lykkast — presisert at dette mest sannsynleg var fordi den konverterte fila vart liten nok til å hamne UNDER 600KB-grensa og difor aldri trigga kompresjonssteget (og dermed aldri nådde den øydelagde importen) i det heile, ikkje fordi PNG i seg sjølv var problemet. Stadfesta i denne runda: feilen skjedde uavhengig av filformat, FØR koden nokon gong såg på biletinnhaldet.
+- Utrulla direkte til `vibeverk-control` sin `broker`-funksjon. Ingen kodeendring i hovudrepoet utover changelog/versjon.
+
 ## 0.159.14 — 2026-09-03
 
 **Rotårsak til Sidebygger-biletopplastingsbugen endeleg funne — det var aldri gjennomsikt.** Brukar melde at feilen heldt fram sjølv etter går-runda sin skaleringsfiks. Med den utvida feilloggen frå same dag synte det seg at faktisk feil var: `komprimeringsbiblioteket kunne ikkje lastast ... Module not found: https://deno.land/x/imagescript@1.3.0/mod.ts`.

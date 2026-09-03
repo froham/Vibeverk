@@ -281,20 +281,25 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
   // statisk import ville.
   // deno-lint-ignore no-explicit-any -- sjå notatet ved hasTransparency().
   let Image: any;
-  // Brukarfunn 2026-09-03 (runde 3): denne same pakken/CDN-en feila igjen,
-  // no med "Module not found" i staden for 2026-08-13 sin brotli-feil --
-  // andre gong dette same CDN-avhengige importet har feila i drift, ikkje
-  // fyrste. Sidan eit vanleg HTTP-kall mot nøyaktig same URL lykkast
-  // (stadfesta manuelt), er dette meir truleg ein forbigåande CDN-glipp enn
-  // ei permanent daud lenke -- prøver difor opptil 3 gonger med kort pause
-  // FØR funksjonen gjev opp og fell tilbake til feilmeldinga. Prøvde å byte
-  // til esm.sh/JSR som meir robuste alternativ, men begge feila også ved
-  // direkte test (esm.sh: 500, JSR: 403 mot ubotta klientar) -- ikkje trygt
-  // å blindt byte CDN utan å kunne verifisere det faktisk virkar frå INNI
-  // Supabase sitt eige Edge-runtime-nettverk, difor retry i staden for byte.
-  const imagescriptUrl = "https://deno.land" + "/x/imagescript@1.3.0/mod.ts";
+  // Brukarfunn 2026-09-03 (runde 4): retry mot berre deno.land (runde 3)
+  // hjelpte IKKJE -- alle 3 forsøk feila identisk med "Module not found",
+  // stadfesta via broker_audit_log sin detail-tekst. Det åleine viser dette
+  // IKKJE var ein forbigåande glipp, men eit vedvarande, systematisk problem
+  // spesifikt inne i Supabase sitt Edge-runtime-nettverk (same URL svarer
+  // korrekt via eit vanleg HTTP-kall utanfrå, stadfesta manuelt fleire
+  // gonger). Bytt difor PRIMÆR-URL til jsdelivr sin GitHub-spegel (same,
+  // alt etablerte og pinna CDN-mønster resten av plattforma bruker for
+  // eksterne avhengigheiter, sjå CLAUDE.md) -- stadfesta med ekte curl-kall
+  // (HTTP 200, rett `x-jsd-version`-header) at BÅDE mod.ts og biblioteket
+  // sin transitive ImageScript.js-import løyser seg korrekt der. deno.land
+  // står att som siste utveg i same forsøksrekkje, i tilfelle jsdelivr sjølv
+  // skulle ha eit forbigåande problem ein dag.
+  const imagescriptUrls = [
+    "https://cdn.jsdelivr.net" + "/gh/matmen/ImageScript@1.3.0/mod.ts",
+    "https://deno.land" + "/x/imagescript@1.3.0/mod.ts",
+  ];
   let lastImportError: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < imagescriptUrls.length; attempt++) {
     try {
       // URL-en bygd frå samanslåtte delar (ikkje éin bokstaveleg streng) --
       // Supabase sin bundlar prøver elles å STATISK løyse/pre-bundle kvar
@@ -302,16 +307,16 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
       // sjølv om han er dynamisk, som gjorde den fyrste versjonen av denne
       // fiksen verdilaus (bundlinga feila likevel). Sundeling hindrar den
       // statiske analysen, og tvingar fram ei ekte, lat køyretidshenting.
-      Image = (await import(imagescriptUrl) as any).Image;
+      Image = (await import(imagescriptUrls[attempt]) as any).Image;
       lastImportError = null;
       break;
     } catch (e) {
       lastImportError = e;
-      if (attempt < 2) await new Promise(function (r) { setTimeout(r, 300); });
+      if (attempt < imagescriptUrls.length - 1) await new Promise(function (r) { setTimeout(r, 300); });
     }
   }
   if (lastImportError) {
-    return { reason: "komprimeringsbiblioteket kunne ikkje lastast etter 3 forsøk (mellombels driftsproblem hos ein ekstern leverandør) -- " + (lastImportError instanceof Error ? lastImportError.message : String(lastImportError)) };
+    return { reason: "komprimeringsbiblioteket kunne ikkje lastast frå nokon av dei kjende kjeldene (mellombels driftsproblem hos ein ekstern leverandør) -- " + (lastImportError instanceof Error ? lastImportError.message : String(lastImportError)) };
   }
   let img;
   try {
