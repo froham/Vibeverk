@@ -76,7 +76,7 @@
     if (!items.length && !fc.intro && !fc.image) return "";   // ingen innhold → skjul
 
     var img = App.media.resolveImage(fc.image);
-    var imgHtml = img.src ? '<img class="faq-img" src="' + esc(img.src) + '" alt="' + esc(img.alt || "") + '" loading="lazy" style="object-position:' + esc(img.pos || "50% 50%") + '">' : "";
+    var imgHtml = img.src ? C.coverImg(img, "faq-img") : "";
     var introHtml = fc.intro ? '<p class="faq-intro">' + esc(fc.intro) + '</p>' : "";
 
     var listHtml = items.length
