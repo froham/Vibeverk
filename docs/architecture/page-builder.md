@@ -2,7 +2,7 @@
 
 **Navnemerknad:** «Sidebygger» er navnet brukt i commit-meldingar og `CHANGELOG.md` for denne funksjonen. I Console sjølve heiter fana **«Sider»** (`sidebygger-sider`-id i `console/console-core.js`). Dette er **ikkje** same funksjon som `features.sidebygger` (det betalte flagget for dei tre nettsidedesignmalane Klassisk/Panorama/Scroll-story, sjå `docs/project/CURRENT_STATE.md`) -- to ulike funksjonar deler diverre same namn. «Sider»/side-seksjonsbyggaren er tilgjengeleg for ALLE tenantar, uavhengig av `features.sidebygger`-flagget.
 
-Status per v0.136.0 (2026-08-12): 9 seksjonstypar implementert og testa (`test.js`, `test-page-builder-console.js`), Console-only redigering (ingen kundesjølvbetening enno).
+Status per v0.159.13 (2026-09-03): 9 seksjonstypar implementert og testa (`test.js`, `test-page-builder-console.js`), Console-only redigering (ingen kundesjølvbetening enno). Hero-typen fekk valfrie høgde-/fullbredde-felt same dato, sjå eigen seksjon under.
 
 ## Komponentar
 
@@ -47,6 +47,21 @@ section.data = {
 ## Biletform (v0.136.0)
 
 Valfri `imageShape` (`rounded` (standard) | `square` | `circle`) på biletfelt i `image-text`, `big-image`, `grid` (eitt val for HEILE rutenettet, ikkje per rute) og blokk-typen `image`. **Medvite utelate frå `hero`**: hero sitt bilete er ein full-bleed absolutt-posisjonert bakgrunn, eit strukturelt anna bruksmønster -- heile hero-boksen sitt eige `border-radius` styrer klippinga, ikkje biletet sjølv. Delt CSS-modifikatorpar (`.pb-img-shape--square`/`--circle`) på tvers av alle fire kontekstane. Manglande `imageShape` (alt eksisterande lagra innhald) fell trygt attende til `rounded`, ingen visuell endring for uendra innhald.
+
+## Hero: høgde og fullbredde (v0.159.13, 2026-09-03)
+
+Fyrste steg i den avtalte editorial-design-utviklinga (fotograf-/portefølje-bruk, sjå brukarønske same dag) -- ei UTVIDING av eksisterande hero-datamodell, ikkje ein ny seksjonstype. Nye, valfrie felt på `hero` sin `data`:
+
+```
+data.height:    "auto" (standard, uendra åtferd) | "tall" | "full"
+data.fullBleed: boolean (standard false)
+```
+
+- **`height`** styrer `min-height` (ALDRI `height`, for å aldri klippe innhald) via ein `pb-hero--h-*`-klasse på sjølve `.pb-hero`. `tall` = `max(70dvh,420px)`, `full` = `100dvh`. `dvh`, ikkje `vh`, for adressefelt-trygg mobilhandsaming.
+- **`fullBleed`** er hero-spesifikt, IKKJE ein tredje verdi på den delte `variant.width`-enumen (Arkitekt-vurdering: `width` vert tilbydd identisk for KVAR seksjonstype, "full" gjev berre meining for biletberande typar). Handsamast i `pageSection()` (`components.js`), som legg til `pb-sect--bleed` på den ytre `<section>` når `s.type === "hero" && s.data.fullBleed` -- nullstiller `.pb-sect` sin padding og `.pb-sect__inner` sin `max-width`.
+- **To hand-vedlikehaldne CSS-kopiar** (`module-page-builder.js` -- den ekte offentlege sida, og `console-core.js` sin `pbPreviewCss()` -- Console sin førehandsvisings-iframe) må halde dei same fire reglane synkroniserte manuelt. Same, alt-eksisterande dupliseringsmønster som resten av page-builder-CSS-en -- ikkje noko nytt strukturelt problem denne runda innfører, berre fire fleire reglar i den same, kjende risikoen.
+- **Console-skjemaet deaktiverer** (viser, men gjer inerte -- ikkje skjuler) «Bredde»/«Luft»-nedtrekkslistene når Fullbredde er kryssa av, både ved opning og i sanntid (UX/Mobile Reviewer-funn, retta same runde).
+- **Kjend, medvite avgrensing**: Console sin førehandsvisings-iframe kan ikkje simulere ei ekte mobileining sin skjermhøgde eller adressefelt-kollaps nøyaktig (`dvh` løyser seg mot iframen sin eigen boks) -- mobil-etiketten i førehandsvisinga seier dette rett ut i staden for å late som visinga er eit presist mål. Ekte mobilverifisering krev framleis eit ekte nettlesar-/einingstest.
 
 ## Kva som IKKJE er implementert enno
 
