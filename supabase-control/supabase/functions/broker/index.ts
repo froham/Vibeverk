@@ -255,21 +255,30 @@ function hasTransparency(img: any): boolean {
   return false;
 }
 
-async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: number): Promise<{ bytes: Uint8Array; ext: string } | null> {
-  // Avvis mistenkjeleg store pikseldimensjonar FØR dekoding -- sjølve OOM-
-  // risikoen oppstår INNI Image.decode(), så ein sjekk ETTERPÅ er for seint.
+interface CompressResult { bytes: Uint8Array; ext: string; }
+interface CompressFailure { reason: string; }
+
+async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: number): Promise<CompressResult | CompressFailure> {
+  // Brukarfunn 2026-09-03 (runde 2): alle fire ulike feilårsaker i denne
+  // funksjonen returnerte tidlegare berre "null", og kallarane skreiv difor
+  // ALLTID den same generiske "kunne ikkje komprimerast"-detaljen til
+  // broker_audit_log -- umogleg å skilje "biletet er genuint for stort/
+  // detaljert" frå "imagescript-importen frå deno.land feila" eller "decode
+  // feila". Ein fyrste retting (utvida skaleringssteg) løyste IKKJE det
+  // brukaren faktisk opplevde, nettopp fordi rotårsaka kunne vere ei av dei
+  // andre tre. No returnerer funksjonen ei konkret årsak, logga direkte.
   const MAX_PIXELS = 25_000_000; // ~25 megapiksel -- rikeleg for ein logo
   const MAX_DIMENSION = 10000;
   const dims = readImageDimensions(bytes, ext);
   if (!dims || dims.width <= 0 || dims.height <= 0 ||
       dims.width > MAX_DIMENSION || dims.height > MAX_DIMENSION ||
       dims.width * dims.height > MAX_PIXELS) {
-    return null;
+    return { reason: "pikseldimensjonane kunne ikkje lesast, eller er over grensa (maks " + MAX_DIMENSION + "px per side / " + (MAX_PIXELS / 1_000_000) + "MP)" };
   }
   // Dynamisk, lat import (INCIDENT 2026-08-13, sjå fila sin toppkommentar) --
-  // om deno.land sitt CDN framleis er nede, fell dette trygt tilbake til den
-  // alt eksisterande "kunne ikkje komprimerast"-feilmeldinga (400) lenger
-  // nede i staden for å krasje heile funksjonen slik eit statisk import ville.
+  // om deno.land sitt CDN framleis er nede, fell dette trygt tilbake til ein
+  // tydeleg feilmelding i staden for å krasje heile funksjonen slik eit
+  // statisk import ville.
   // deno-lint-ignore no-explicit-any -- sjå notatet ved hasTransparency().
   let Image: any;
   try {
@@ -281,14 +290,14 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
     // analysen, og tvingar fram ei ekte, lat køyretidshenting i staden.
     const imagescriptUrl = "https://deno.land" + "/x/imagescript@1.3.0/mod.ts";
     Image = (await import(imagescriptUrl) as any).Image;
-  } catch (_e) {
-    return null;
+  } catch (e) {
+    return { reason: "komprimeringsbiblioteket kunne ikkje lastast (mellombels driftsproblem hos ein ekstern leverandør) -- " + (e instanceof Error ? e.message : String(e)) };
   }
   let img;
   try {
     img = await Image.decode(bytes);
-  } catch (_e) {
-    return null;
+  } catch (e) {
+    return { reason: "biletfila kunne ikkje dekodast -- " + (e instanceof Error ? e.message : String(e)) };
   }
   const isJpeg = ext === "jpg";
   // Brukarfunn 2026-08-12: PNG er tapsfritt og har ingen kvalitets-handtak i
@@ -325,7 +334,7 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
       if (encoded.length <= targetBytes) return { bytes: encoded, ext: outExt };
     }
   }
-  return null;
+  return { reason: "nådde ikkje under " + Math.round(targetBytes / 1024) + "KB sjølv etter fleire forsøk på omskalering" + (useJpegEncoding ? "/kvalitetsreduksjon" : " (tapsfritt PNG-spor, ingen kvalitets-handtak tilgjengeleg)") };
 }
 
 serve(async (req: Request) => {
@@ -580,8 +589,8 @@ serve(async (req: Request) => {
       uploadContentType = "image/svg+xml";
     } else if (isCompressible && bytes.length > MAX_BYTES) {
       const compressed = await compressRasterImage(bytes, ext, MAX_BYTES);
-      if (compressed === null) {
-        await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under 300KB");
+      if ("reason" in compressed) {
+        await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under 300KB: " + compressed.reason);
         return json({ error: "Biletet er for stort og kunne ikkje komprimerast nok automatisk. Prøv eit mindre bilete, eller last opp som JPEG." }, 400);
       }
       uploadBytes = compressed.bytes;
@@ -688,8 +697,8 @@ serve(async (req: Request) => {
       uploadContentType = "image/svg+xml";
     } else if (isCompressible && bytes.length > MAX_BYTES) {
       const compressed = await compressRasterImage(bytes, ext, MAX_BYTES);
-      if (compressed === null) {
-        await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under " + Math.round(MAX_BYTES / 1024) + "KB");
+      if ("reason" in compressed) {
+        await audit(tenant.id, action, "error", "biletet kunne ikkje komprimerast under " + Math.round(MAX_BYTES / 1024) + "KB: " + compressed.reason);
         return json({ error: "Biletet er for stort og kunne ikkje komprimerast nok automatisk. Prøv eit mindre bilete, eller last opp som JPEG." }, 400);
       }
       uploadBytes = compressed.bytes;
