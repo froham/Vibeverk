@@ -11,3 +11,10 @@ supabase/.temp/
 .env*
 scripts/ai-lab.env.local
 .runtime/
+
+# Ekte kunde-/pilot-materiale (foto, logo, fargepalett) -- repoet er PUBLIC
+# på GitHub, og desse høyrer aldri heime i sjølve kodebasen (jf. prinsippet
+# om at kundeinnhald bur i tenanten sin eigen Supabase Storage, aldri
+# hardkoda i delt kode). Lagt til 2026-09-03 då fyrste slikt materiale
+# (Vedvik Studio, fotograf-pilot) vart lagt lokalt for designarbeid.
+docs/marketing/assets/Vedvik Studio/
