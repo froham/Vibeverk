@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.14 — 2026-09-03
+
+**Rotårsak til Sidebygger-biletopplastingsbugen endeleg funne — det var aldri gjennomsikt.** Brukar melde at feilen heldt fram sjølv etter går-runda sin skaleringsfiks. Med den utvida feilloggen frå same dag synte det seg at faktisk feil var: `komprimeringsbiblioteket kunne ikkje lastast ... Module not found: https://deno.land/x/imagescript@1.3.0/mod.ts`.
+
+- **Dette er IKKJE ein ny feil** — det er andre gong nøyaktig same eksterne avhengigheit (`imagescript@1.3.0` frå `deno.land`) feilar i drift. Fyrste gong (INCIDENT 2026-08-13, dokumentert i fila sin eigen toppkommentar) var ein brotli-dekomprimeringsfeil på pakken sin WASM-ressurs, retta ved å gjere importen dynamisk+lat med eit try/catch-fall-tilbake i staden for eit statisk import som tok ned heile funksjonen. Denne runda er feilen "Module not found" i staden — same ustabile CDN-avhengigheit, ny feilform.
+- **Stadfesta at nøyaktig same URL faktisk svarer korrekt** via eit reint HTTP-kall utanfrå — dette peikar mot ein forbigåande CDN-glipp/rate-avgrensing spesifikt inne i Supabase sitt Edge-runtime-nettverk, ikkje ei permanent daud lenke. Prøvde å byte til meir robuste alternativ (esm.sh, JSR) — begge feila ved direkte test (esm.sh: 500, JSR: 403 mot ubotta klientar) — difor ikkje trygt å blindt byte CDN utan å kunne stadfeste det faktisk virkar frå INNI Supabase sitt eige nettverk.
+- **Fiks**: importen prøver no opptil 3 gonger med kort pause (300ms) før han gjev opp, i staden for å feile på fyrste forsøk. Same "sundelt streng, ikkje éin bokstaveleg" bundlar-omgåing frå 2026-08-13-fiksen er halden uendra.
+- **Ærleg atterhald**: dette er ei resiliens-forbetring mot ein truleg forbigåande CDN-glipp, ikkje ein garanti mot at akkurat denne eksterne avhengigheita aldri feilar igjen — det er andre gong på under ein månad. Dersom dette held fram å dukke opp, er neste, meir robuste steg å pakke `imagescript` sin eigen kjeldekode inn i repoet (vendoring) i staden for å hente han live frå ein ekstern CDN kvar gong, som fjernar denne heile klassen feil heilt — ikkje gjort no, sidan det er eit større steg enn det denne runda sitt funn åleine grunngjev.
+- Utrulla direkte til `vibeverk-control` sin `broker`-funksjon. Ingen kodeendring i hovudrepoet utover changelog/versjon — `test.js`/`test-workspace.js` upåverka.
+
 ## 0.159.13 — 2026-09-03
 
 **Ny «Fullbredde/høgde»-eigenskap på hero-seksjonen i Console sitt Sider/blocks-system (page-builder), fyrste steg i den avtalte editorial-design-utviklinga.** Følgjer opp ei brei arkitekturvurdering same dag (sjå PR-skildringane) av korleis Design-modulen kan verte meir fleksibel for kundar som fotografar, utan å byggje ein Squarespace/Webflow-liknande page builder for sluttkunden. Strategi stadfesta med brukar: utvikle internt i Console/Sider-systemet fyrst, berre vurdere kundemodul seinare dersom det provast stabilt og bra.
