@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.16 — 2026-09-03
+
+**Sidebygger-biletopplasting: sannsynleg reell rotårsak funnen — Content-Type, ikkje CDN-tilgjenge.** jsdelivr sin GitHub-spegel (0.159.15) hjalp heller ikkje — brukar stadfesta same feil på nytt, sjølv om eit vanleg `curl`-kall mot akkurat den URL-en synte HTTP 200 heile tida. Løysinga var ikkje at fila var utilgjengeleg, men at han vart servert med feil Content-Type.
+
+- **Stadfesta ved å samanlikne `curl`-headers direkte**: GitHub-spegelen (og truleg `deno.land` sitt eige `/x/`-register, gitt den vedvarande feilen der óg) returnerer `content-type: text/plain` for `.ts`-filer — Deno sin modul-lastar kan avvise dette som "Module not found" sjølv om sjølve bytes er heilt gyldig JavaScript/TypeScript. jsdelivr sin NPM-sti (`https://cdn.jsdelivr.net/npm/imagescript@1.3.0/+esm`) returnerer derimot stadfesta `content-type: application/javascript` — den forma Deno sin modul-lastar faktisk godtek.
+- **Same URL bunter i tillegg heile pakken til éi fil** (jsdelivr sin `+esm`-transformasjon), som fjernar den underliggjande KLASSEN feil frå det opphavlege 2026-08-13-incidentet (eit sundre fleirfils-modulgraf-oppslag der ein transitiv import kunne feile separat), ikkje berre dagens symptom.
+- `imagescript` stadfesta publisert på npm (`registry.npmjs.org`, siste 1.3.1, 1.3.0 finst) — ikkje ein antaking.
+- `deno.land` sin eigen `/x/`-sti står att som siste utveg i forsøksrekkja.
+- Utrulla direkte til `vibeverk-control` sin `broker`-funksjon. Ingen kodeendring i hovudrepoet utover changelog/versjon. Ikkje verifisert ende-til-ende av agenten sjølv (krev ein reell operatør-autentisert biletopplasting) — ventar på brukar sitt neste forsøk.
+
 ## 0.159.15 — 2026-09-03
 
 **Sidebygger-biletopplasting: bytt frå deno.land til jsdelivr for imagescript-importen — retry (0.159.14) hjelpte ikkje, viste seg vedvarande, ikkje forbigåande.** Brukar stadfesta at feilen heldt fram sjølv etter retry-utrullinga: alle 3 forsøk feila identisk med "Module not found", synleg direkte i `broker_audit_log`. Det beviste dette ikkje var ein forbigåande CDN-glipp, men eit vedvarande problem spesifikt inne i Supabase sitt Edge-runtime-nettverk (nøyaktig same URL svarer korrekt via reint HTTP-kall utanfrå, stadfesta fleire gonger).

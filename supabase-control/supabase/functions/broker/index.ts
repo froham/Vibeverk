@@ -281,21 +281,24 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
   // statisk import ville.
   // deno-lint-ignore no-explicit-any -- sjå notatet ved hasTransparency().
   let Image: any;
-  // Brukarfunn 2026-09-03 (runde 4): retry mot berre deno.land (runde 3)
-  // hjelpte IKKJE -- alle 3 forsøk feila identisk med "Module not found",
-  // stadfesta via broker_audit_log sin detail-tekst. Det åleine viser dette
-  // IKKJE var ein forbigåande glipp, men eit vedvarande, systematisk problem
-  // spesifikt inne i Supabase sitt Edge-runtime-nettverk (same URL svarer
-  // korrekt via eit vanleg HTTP-kall utanfrå, stadfesta manuelt fleire
-  // gonger). Bytt difor PRIMÆR-URL til jsdelivr sin GitHub-spegel (same,
-  // alt etablerte og pinna CDN-mønster resten av plattforma bruker for
-  // eksterne avhengigheiter, sjå CLAUDE.md) -- stadfesta med ekte curl-kall
-  // (HTTP 200, rett `x-jsd-version`-header) at BÅDE mod.ts og biblioteket
-  // sin transitive ImageScript.js-import løyser seg korrekt der. deno.land
-  // står att som siste utveg i same forsøksrekkje, i tilfelle jsdelivr sjølv
-  // skulle ha eit forbigåande problem ein dag.
+  // Brukarfunn 2026-09-03 (runde 5): jsdelivr sin GitHub-spegel (runde 4)
+  // HJALP HELLER IKKJE -- brukar stadfesta same feil på nytt. Rotårsaka var
+  // ikkje CDN-tilgjenge i seg sjølv (eit vanleg curl-kall mot begge URL-ane
+  // synte HTTP 200 heile tida), men CONTENT-TYPE: GitHub-spegelen (og truleg
+  // deno.land sitt eige `/x/`-register, gitt den vedvarande feilen der óg)
+  // returnerer `text/plain`, som Deno sin modul-lastar KAN avvise som "Module
+  // not found" sjølv om bytes faktisk er gyldig JS/TS -- stadfesta ved å
+  // samanlikne curl-headers direkte. jsdelivr sin NPM-sti (`/npm/…/+esm`)
+  // returnerer derimot `content-type: application/javascript` (stadfesta med
+  // curl) OG bunter heile pakken (inkl. den transitive ImageScript.js-
+  // importen) til éi fil -- fjernar samstundes den underliggjande klassen
+  // feil frå 2026-08-13-incidenten (eit sundre fleirfils-modulgraf-oppslag),
+  // ikkje berre denne eine symptomen. `imagescript` er stadfesta publisert
+  // på npm (registry.npmjs.org, siste versjon 1.3.1, 1.3.0 finst). deno.land
+  // sin eigen `/x/`-sti står att som siste utveg i tilfelle npm-stien sjølv
+  // ein dag skulle feile.
   const imagescriptUrls = [
-    "https://cdn.jsdelivr.net" + "/gh/matmen/ImageScript@1.3.0/mod.ts",
+    "https://cdn.jsdelivr.net" + "/npm/imagescript@1.3.0/+esm",
     "https://deno.land" + "/x/imagescript@1.3.0/mod.ts",
   ];
   let lastImportError: unknown = null;
