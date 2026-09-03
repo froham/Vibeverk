@@ -56,12 +56,30 @@
       ".pb-sect--bg-dark{background:var(--color-text);color:#fff}",
       ".pb-sect--bg-branded{background:var(--color-primary);color:#fff}",
       ".pb-sect--al-center .pb-sect__inner{text-align:center}",
+      // Fullbredde-hero (2026-09-03): modifikator på sjølve .pb-sect (ikkje
+      // .pb-hero) sidan effekten gjeld DEN YTRE innramminga -- padding og
+      // .pb-sect__inner sin max-width -- ikkje sjølve hero-elementet. To
+      // klassar på same element (.pb-sect.pb-sect--bleed) held spesifisiteten
+      // over --sp-*/--w-narrow uansett rekkjefølgje i denne CSS-lista.
+      ".pb-sect.pb-sect--bleed{padding:0}",
+      ".pb-sect.pb-sect--bleed .pb-sect__inner{max-width:none;margin:0}",
 
       /* Hero */
       ".pb-hero{position:relative}",
       ".pb-hero.has-image{border-radius:12px;overflow:hidden}",
       ".pb-hero__img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}",
       ".pb-hero.has-image::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.3));z-index:0}",
+      // min-height (ALDRI height) -- lèt innhald som er høgare enn
+      // høgdesteget likevel aldri klippast; .pb-hero__img sin inset:0 fyller
+      // uansett hendene boksen som faktisk vert løyst ut. dvh (ikkje vh) for
+      // adressefelt-trygg mobilhandsaming -- alt i bruk andre stader i
+      // kodebasen (module-workspaceship.js), ikkje fyrste gong her. "tall"
+      // har eit px-golv (max()) sidan 70dvh på ein kort liggjande mobil elles
+      // vert urimeleg lite -- "full" har medvite INGEN golv, sidan heile
+      // poenget er å fylle den faktiske skjermhøgda uansett storleik.
+      ".pb-hero--h-tall{min-height:max(70dvh,420px)}",
+      ".pb-hero--h-full{min-height:100dvh}",
+      ".pb-hero--h-tall,.pb-hero--h-full{display:flex;flex-direction:column;justify-content:center}",
       ".pb-hero__body{position:relative;z-index:1;padding:3rem 1.5rem}",
       ".pb-hero.has-image .pb-hero__body{color:#fff}",
       ".pb-hero__title{font-family:var(--font-display);font-size:clamp(1.5rem,4vw,2.4rem);font-weight:700;margin:0 0 .6rem}",

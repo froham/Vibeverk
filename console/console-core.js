@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.159.12";
+  var VIBEVERK_VERSION = "0.159.13";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -2438,8 +2438,8 @@ window.VwConsole = (function () {
     }
     return clone;
   }
-  function pbSelectField(id, label, options, value) {
-    return '<div class="field"><label for="' + id + '">' + C.esc(label) + '</label><select id="' + id + '">' +
+  function pbSelectField(id, label, options, value, disabled) {
+    return '<div class="field"><label for="' + id + '">' + C.esc(label) + '</label><select id="' + id + '"' + (disabled ? " disabled" : "") + '>' +
       options.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === value ? " selected" : "") + '>' + C.esc(o[1]) + '</option>'; }).join("") +
     '</select></div>';
   }
@@ -2566,7 +2566,10 @@ window.VwConsole = (function () {
         '<div class="pbc-field-grid">' +
           C.field({ id: "pb-sec-btn-label", label: "Knapptekst (valgfritt)", value: (d.button && d.button.label) || "" }) +
           C.field({ id: "pb-sec-btn-url", label: "Knapplenke", value: (d.button && d.button.url) || "" }) +
-        '</div>';
+        '</div>' +
+        pbSelectField("pb-sec-height", "Høyde", [["auto", "Vanlig (standard)"], ["tall", "Høy"], ["full", "Fyller skjermen"]], d.height || "auto") +
+        '<label><input type="checkbox" id="pb-sec-fullbleed"' + (d.fullBleed ? " checked" : "") + '> Fullbredde</label>' +
+        '<p class="field__hint">Bildet og teksten fyller hele skjermbredden, uten luft rundt. Overstyrer «Bredde» og «Luft» for denne seksjonen.</p>';
     }
     if (type === "text") {
       return C.field({ id: "pb-sec-heading", label: "Overskrift (valgfritt)", value: d.heading || "" }) +
@@ -2704,7 +2707,9 @@ window.VwConsole = (function () {
         image: pbReadImageField(ed, "pb-sec-img"),
         heading: ed.querySelector("#pb-sec-heading").value.trim(),
         text: ed.querySelector("#pb-sec-text").value.trim(),
-        button: (hbl && hbu) ? { label: hbl, url: hbu } : null
+        button: (hbl && hbu) ? { label: hbl, url: hbu } : null,
+        height: ed.querySelector("#pb-sec-height").value,
+        fullBleed: ed.querySelector("#pb-sec-fullbleed").checked
       };
     }
     if (type === "text") {
@@ -2847,10 +2852,20 @@ window.VwConsole = (function () {
       ".pb-sect--bg-dark{background:var(--color-text);color:#fff}",
       ".pb-sect--bg-branded{background:var(--color-primary);color:#fff}",
       ".pb-sect--al-center .pb-sect__inner{text-align:center}",
+      // Speglar EKSAKT dei same fire fullbredde-/høgde-regelane som
+      // module-page-builder.js (den offentlege sida sin faktiske renderar)
+      // -- to separate, handhaldne CSS-kopiar for førehandsvisings-iframe-en
+      // vs. den ekte sida, sjå fila sin eigen kommentar der for full
+      // grunngjeving. MÅ haldast synkronisert manuelt ved framtidige endringar.
+      ".pb-sect.pb-sect--bleed{padding:0}",
+      ".pb-sect.pb-sect--bleed .pb-sect__inner{max-width:none;margin:0}",
       ".pb-hero{position:relative}",
       ".pb-hero.has-image{border-radius:12px;overflow:hidden}",
       ".pb-hero__img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}",
       ".pb-hero.has-image::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.3));z-index:0}",
+      ".pb-hero--h-tall{min-height:max(70dvh,420px)}",
+      ".pb-hero--h-full{min-height:100dvh}",
+      ".pb-hero--h-tall,.pb-hero--h-full{display:flex;flex-direction:column;justify-content:center}",
       ".pb-hero__body{position:relative;z-index:1;padding:3rem 1.5rem}",
       ".pb-hero.has-image .pb-hero__body{color:#fff}",
       ".pb-hero__title{font-family:var(--font-display);font-size:clamp(1.5rem,4vw,2.4rem);font-weight:700;margin:0 0 .6rem}",
@@ -2964,10 +2979,17 @@ window.VwConsole = (function () {
 
     function sectionEditorFieldsHtml(section) {
       var v = section.variant || {};
+      // UX/Mobile Reviewer-funn (2026-09-03): Fullbredde-avkryssinga
+      // overstyrer Bredde/Luft heilt, men dei to felta synte seg framleis
+      // som fullt verksame og redigerbare -- ein operatør hadde ingen måte
+      // å sjå frå skjemaet åleine om dei faktisk gjorde noko. Deaktiverer
+      // (ikkje skjuler) dei to felta i staden, jf. same "disabled, ikkje
+      // hidden"-mønster (sjå kredittfeltet i C.imageField()).
+      var bleedActive = section.type === "hero" && section.data && section.data.fullBleed;
       return '<div class="pbc-variant-row">' +
           pbSelectField("pb-sec-bg", "Bakgrunn", [["light", "Lys"], ["dark", "Mørk"], ["branded", "Merkefarge"]], v.background || "light") +
-          pbSelectField("pb-sec-width", "Bredde", [["wide", "Bred"], ["narrow", "Smal"]], v.width || "wide") +
-          pbSelectField("pb-sec-spacing", "Luft", [["small", "Liten"], ["normal", "Normal"], ["large", "Stor"]], v.spacing || "normal") +
+          pbSelectField("pb-sec-width", "Bredde", [["wide", "Bred"], ["narrow", "Smal"]], v.width || "wide", bleedActive) +
+          pbSelectField("pb-sec-spacing", "Luft", [["small", "Liten"], ["normal", "Normal"], ["large", "Stor"]], v.spacing || "normal", bleedActive) +
           pbSelectField("pb-sec-align", "Justering", [["left", "Venstre"], ["center", "Sentrert"]], v.align || "left") +
         '</div>' +
         pbSectionDataFieldsHtml(section.type, section.data || {}) +
@@ -3008,6 +3030,24 @@ window.VwConsole = (function () {
       });
       if (section.type === "hero" || section.type === "image-text" || section.type === "big-image") {
         pbBindImageField(ed, "pb-sec-img", tenantId, onFieldChange);
+      }
+      // Fullbredde-avkryssinga er IKKJE fanga av den generiske
+      // selectoren over (den matchar berre select/text/url/textarea,
+      // ikkje checkbox) -- utan denne ville han sjå ut til å fungere
+      // (visuelt haka av) men aldri faktisk lagrast.
+      if (section.type === "hero") {
+        var fbEl = ed.querySelector("#pb-sec-fullbleed");
+        if (fbEl) fbEl.addEventListener("change", function () {
+          // UX/Mobile Reviewer-funn: deaktiver Bredde/Luft med det same,
+          // ikkje berre ved neste fulle skjema-rendring -- ein operatør
+          // som hakar av/på skal sjå felta bli inerte i sanntid, same
+          // "disabled, ikkje hidden"-prinsipp som ved fyrste opning.
+          var wEl = ed.querySelector("#pb-sec-width");
+          var sEl = ed.querySelector("#pb-sec-spacing");
+          if (wEl) wEl.disabled = fbEl.checked;
+          if (sEl) sEl.disabled = fbEl.checked;
+          onFieldChange();
+        });
       }
       if (section.type === "text" || section.type === "image-text") {
         App.ui.bindRichTextFields(ed);
@@ -3587,7 +3627,7 @@ window.VwConsole = (function () {
         btn.addEventListener("click", function () {
           var type = btn.getAttribute("data-pb-add-type");
           var defaults = {
-            hero: { image: null, heading: "Ny overskrift", text: "", button: null },
+            hero: { image: null, heading: "Ny overskrift", text: "", button: null, height: "auto", fullBleed: false },
             text: { heading: "", text: "" },
             "image-text": { image: null, imagePosition: "left", imageShape: "rounded", heading: "", text: "" },
             "big-image": { image: null, imageShape: "rounded", caption: "" },
@@ -3617,7 +3657,12 @@ window.VwConsole = (function () {
       wrap.querySelector("#pbc-preview-iframe").classList.add("w-mobile");
       this.classList.add("is-active");
       wrap.querySelector("#pbc-pv-desktop").classList.remove("is-active");
-      wrap.querySelector("#pbc-pv-width-label").textContent = "Mobil (~380px)";
+      // UX/Mobile Reviewer-funn (2026-09-03): 100dvh/70dvh i eit hero-
+      // element løyser seg mot IFRAME-en sin eigen boks, ikkje mot ei ekte
+      // mobileining sin skjerm -- verken skjermstorleik eller adressefelt-
+      // kollaps kan simulerast nøyaktig her. Seier det rett ut i staden for
+      // å late som førehandsvisinga er eit presist mål.
+      wrap.querySelector("#pbc-pv-width-label").textContent = "Mobil (~380px, høgde er berre rettleiande)";
     });
     wrap.querySelector("#pbc-pv-toggle").addEventListener("click", function () {
       var panel = wrap.querySelector("#pbc-preview-panel");

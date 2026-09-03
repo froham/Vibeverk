@@ -445,8 +445,13 @@ window.Components = (function () {
 
   function pbHero(d) {
     var img = d.image && d.image.src ? d.image : null;
+    // height: "auto" (default, uendra åtferd) | "tall" | "full" -- ukjend/
+    // manglande verdi les trygt som "auto", same fallback-mønster som
+    // pbVariantClass() alt bruker for sine eigne enum-felt.
+    var height = (d.height === "tall" || d.height === "full") ? d.height : "auto";
+    var heightClass = height !== "auto" ? " pb-hero--h-" + height : "";
     return (
-      '<div class="pb-hero' + (img ? " has-image" : "") + '">' +
+      '<div class="pb-hero' + (img ? " has-image" : "") + heightClass + '">' +
         (img ? coverImg(img, "pb-hero__img") : "") +
         '<div class="pb-hero__body">' +
           (d.heading ? '<h2 class="pb-hero__title">' + esc(d.heading) + '</h2>' : "") +
@@ -674,7 +679,12 @@ window.Components = (function () {
     if (!s || !s.type || !PB_RENDERERS[s.type]) return "";
     var body = PB_RENDERERS[s.type](s.data || {});
     if (!body) return "";
-    return '<section id="' + esc(s.id || "") + '" class="pb-sect ' + pbVariantClass(s.variant) + '">' +
+    // Fullbredde-hero (2026-09-03): eit hero-spesifikt data-felt, ikkje ein
+    // ny verdi på den delte variant.width-enumen -- sjå Arkitekt-notatet i
+    // PR-skildringa for kvifor (bl.a. at "full" ville dukka opp som eit val
+    // for KVAR seksjonstype, ikkje berre hero, om det låg i pbVariantClass()).
+    var bleed = (s.type === "hero" && s.data && s.data.fullBleed) ? " pb-sect--bleed" : "";
+    return '<section id="' + esc(s.id || "") + '" class="pb-sect ' + pbVariantClass(s.variant) + bleed + '">' +
       '<div class="pb-sect__inner">' + body + '</div>' +
     '</section>';
   }
