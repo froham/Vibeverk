@@ -5763,9 +5763,23 @@ window.App = (function () {
   // sine eigne forwarder-funksjonar (C.hero/C.about/C.services) dersom
   // window.SiteTemplates av ein eller annan grunn ikkje er lasta i det heile.
   function activeTemplate() { return (content && content.designTemplate) || "klassisk"; }
+  // Security Auditor-funn (MEDIUM, 2026-09-03, sjå PR-skildringa for
+  // set_design_template i broker/index.ts): eit vanleg `reg[key]`-oppslag
+  // ARVAR frå Object.prototype -- ein designTemplate-verdi som
+  // "constructor"/"toString"/"valueOf"/"__proto__" ville difor IKKJE falle
+  // trygt attende til klassisk (dei er alle TRUTHY, arva funksjonar/objekt),
+  // sjølv om koden sin eigen kommentar tidlegare hevda det. Server-side
+  // validering (kvitlista teiknformat i set_design_template) reduserer
+  // risikoen for NYE innslag, men denne funksjonen er den faktiske staden
+  // heile problemklassen faktisk løysast -- uavhengig av kva veg ein
+  // uventa verdi kom inn frå. hasOwnProperty sikrar at berre EKTE
+  // registrerte malar (window.SiteTemplates.foo = {...}, alltid ein
+  // eigen, ikkje arva, eigenskap) nokon gong vert returnert.
   function resolveTemplate() {
     var reg = window.SiteTemplates || {};
-    return reg[activeTemplate()] || reg.klassisk || C;
+    var id = activeTemplate();
+    if (Object.prototype.hasOwnProperty.call(reg, id)) return reg[id];
+    return reg.klassisk || C;
   }
 
   function registerBuiltinSections() {
