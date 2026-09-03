@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.17 — 2026-09-03
+
+**Sidebygger-biletopplasting: mellombels praktisk mottiltak — heva grensa for når komprimering i det heile vert forsøkt, i staden for endå eit CDN-gjettespel.** Sjølv jsdelivr sin content-type-korrigerte NPM-sti (0.159.16) hjalp ikkje — stadfesta ved å lese `broker` sin faktiske deploy-tidsstempel direkte (ikkje eit stale-deploy-problem) at feilen heldt fram identisk. Tre uavhengig `curl`-verifiserte kjelder (deno.land, jsdelivr GitHub-spegel, jsdelivr NPM+esm) har no alle feila likt i drift — dette tyder på at problemet ligg djupare enn sjølve CDN-valet/content-type, truleg at dynamiske eksterne imports ikkje fungerer i det heile i dette funksjons-miljøet akkurat no. Vidare CDN-gjetting er difor forlate til fordel for eit brukarforeslått, stegvis mottiltak.
+
+- **`upload_section_image` sin `MAX_BYTES`** (grensa for når komprimering vert forsøkt i det heile) heva frå 600KB til **1MB, stegvis** — brukar sitt eige forslag ("prøve gradvis? f.eks. 1mb, så 1,5 etc."). Ei fil UNDER grensa hoppar heilt over det no ustabile komprimeringssporet og lastar opp direkte, uavhengig av om biblioteket kan lastast — dei fleste vanlege JPEG-eksportar (telefon/kamera) hamnar under dette. Filer STØRRE enn grensa treffer framleis det ustabile sporet.
+- **Ærleg atterhald, uendra frå førre runder**: dette løyser IKKJE det underliggjande imagescript-CDN-problemet, berre reduserer kor ofte brukarar faktisk treff det. Neste, meir grundige steg (vurdert, ikkje starta) er å pakke sjølve biblioteket inn i funksjonen (vendoring, ingen kjøretids-nettverkskall i det heile) — større arbeid enn dagens mottiltak grunngjev åleine.
+- Utrulla direkte til `vibeverk-control` sin `broker`-funksjon.
+
 ## 0.159.16 — 2026-09-03
 
 **Sidebygger-biletopplasting: sannsynleg reell rotårsak funnen — Content-Type, ikkje CDN-tilgjenge.** jsdelivr sin GitHub-spegel (0.159.15) hjalp heller ikkje — brukar stadfesta same feil på nytt, sjølv om eit vanleg `curl`-kall mot akkurat den URL-en synte HTTP 200 heile tida. Løysinga var ikkje at fila var utilgjengeleg, men at han vart servert med feil Content-Type.
