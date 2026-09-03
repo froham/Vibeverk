@@ -27,7 +27,7 @@ Each check is a boolean (`pass`/`fail`) with a `weight` (relative importance wit
 | H1 (hovudoverskrift) er fylt ut | `content.hero.title` | 3 |
 | Open Graph-bilde er sett | `superconfig.company.ogImage` | 2 |
 | Strukturert data (Schema.org) kan genererast | `company.name` + `contact.address` + `contact.phone` all present | 2 |
-| Alt-tekst på alle bilete | `Media.norm()` over hero/about/services/news images | 2 |
+| Alt-tekst på alle bilete | `Media.norm()` over hero/about/services/news images, PLUS Mediebank (`Store.get("mediabank-images")`), Karusell (`Store.get("carousels")[].slides[].image`), Booking-ressursar (`Store.get("booking-assets")`), FAQ-intro (`Store.get("faq-content").image`) og Referansar (`ref-items`, already fetched for the trust check below) — utvida 2026-09-03, sjå `docs/project/CHANGELOG.md`; tidlegare versjon skanna kun hero/about/services/news og var difor blind for manglande alt-tekst i desse fem andre modulane | 2 |
 | robots.txt hindrar Google frå å crawle interne sider | always true (platform-provided, see `robots.txt` at repo root) | 1 |
 
 ### Innhald
@@ -70,7 +70,7 @@ The top 5 *failing* checks with a `tip`, sorted by `weight` descending. Since th
 
 The user later asked whether the customer/consultant model this feature is built around ("a customer without the design module doesn't see this; Vibeverk can offer it as a paid consulting service instead") should be completed with an operator-facing view — approved narrowly ("Ja, ordne console-visning"), with CWV/JSON-LD-hours/AI extensions explicitly still deferred.
 
-`computeWebsiteHealth()`, `renderNettsidehelseSection()` and `wchCollectImages()`/`wchCollectImagesFrom()` were refactored to accept an optional `opts` object (`superconfig`, `content`, `enabledModules`, `faqItems`, `refItems`, `privacyText`), falling back to the existing closure-based Web-admin state when `opts` is omitted — zero behavior change for the existing no-args call site. Both functions are exposed on `window.App`.
+`computeWebsiteHealth()`, `renderNettsidehelseSection()` and `wchCollectImages()`/`wchCollectImagesFrom()` were refactored to accept an optional `opts` object (`superconfig`, `content`, `enabledModules`, `faqItems`, `refItems`, `privacyText`, and — since 2026-09-03 — `mediabankImages`, `carousels`, `bookingAssets`, `faqContent`), falling back to the existing closure-based Web-admin state (direct `Store.get(...)` reads) when `opts` is omitted — zero behavior change for the existing no-args call site. `wchCollectImagesFrom()`/`wchCollectImages()` also take a second `extra` argument carrying these same four new fields, mirroring how `computeWebsiteHealth()` already threaded `refItems` through. Both `computeWebsiteHealth`/`wchCollectImages` are exposed on `window.App`.
 
 Console's `renderWeb()` (the combined Firma/SEO/Fargar/Fontar tab) now fetches `content`/`faq-items`/`ref-items` for whichever tenant is currently selected via the existing generic `getStoreKey()` (a direct, anon-key read against that tenant's own Supabase project — the same mechanism `getSC()` already used for `superconfig`), and renders the health section into the "SEO og deling" fieldset, in the same "right below the metadata fields" position used in Web-admin. This works **regardless of whether that tenant has `feat("sidebygger")`** — Console is not gated by the customer's own paid-module status, which is the entire point (an operator can run this as a consulting deliverable for a customer who hasn't bought the design module).
 

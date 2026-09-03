@@ -96,7 +96,7 @@
           var tagsAttr = esc((it.tags || []).join(","));
           return '<button type="button" class="mb-thumb" data-mb-open="' + esc(it.id) + '" data-mb-item ' +
             'data-search="' + searchText + '" data-tags="' + tagsAttr + '" aria-label="Åpne bilde">' +
-            '<img src="' + esc(img.src) + '" alt="" loading="lazy" style="object-position:' + esc(img.pos || "50% 50%") + '">' +
+            '<img src="' + esc(img.src) + '" alt="' + esc(img.alt || "") + '" loading="lazy" style="object-position:' + esc(img.pos || "50% 50%") + '">' +
             (C.creditBadge(img)) +
           '</button>';
         }).join("") + '</div>' +
@@ -153,7 +153,7 @@
       back.className = "mb-lightbox-back";
       back.innerHTML =
         '<div class="mb-lightbox">' +
-          (img.src ? '<img class="mb-lightbox__img" src="' + esc(img.src) + '" alt="">' : '') +
+          (img.src ? '<img class="mb-lightbox__img" src="' + esc(img.src) + '" alt="' + esc(img.alt || "") + '">' : '') +
           '<div class="mb-lightbox__body">' +
             (it.description ? '<div class="mb-lightbox__desc">' + C.sanitizeRichHtml(it.description) + '</div>' : '') +
             (img.caption    ? '<p class="mb-lightbox__credit">' + esc(img.caption) + '</p>' : '') +

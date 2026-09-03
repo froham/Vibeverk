@@ -4011,16 +4011,26 @@ window.App = (function () {
 
   // Samlar alle redigerbare bilete på tvers av forside/tenester/aktuelt, sidan
   // alt-tekst-dekning skal gjelde heile nettsida, ikkje berre éin seksjon.
-  function wchCollectImagesFrom(ct) {
+  // extra (valfritt) tek med biletberande data som IKKJE ligg i `ct`/content
+  // sjølv, men i eigne Store-nøklar (Mediebank, Karusell, Booking-ressursar,
+  // FAQ-intro, Referansar) -- utan desse var helsesjekken sin "Alt-tekst på
+  // alle bilete"-sjekk blind for alt utanom hero/about/tenester/aktuelt.
+  function wchCollectImagesFrom(ct, extra) {
+    extra = extra || {};
     var imgs = [];
     function add(v) { if (v && (typeof v === "string" ? v : v.src)) imgs.push(Media.norm(v)); }
     add(ct.hero.image);
     add(ct.about.image);
     (ct.services || []).forEach(function (s) { add(s.image); });
     (ct.news || []).forEach(function (n) { add(n.image); });
+    (extra.mediabankImages || []).forEach(function (it) { add(it.image); });
+    (extra.carousels || []).forEach(function (c) { (c.slides || []).forEach(function (sl) { if (sl.image) add(sl.image); }); });
+    (extra.bookingAssets || []).forEach(function (a) { add(a.image); });
+    if (extra.faqContent) add(extra.faqContent.image);
+    (extra.refItems || []).forEach(function (r) { add(r.image); });
     return imgs;
   }
-  function wchCollectImages() { return wchCollectImagesFrom(content); }
+  function wchCollectImages(extra) { return wchCollectImagesFrom(content, extra); }
 
   // opts (valfritt) let denne funksjonen brukast for ein ANNAN tenant enn
   // sida sjølv er lasta for -- naudsynt for Console (2026-07-27), som må
@@ -4030,7 +4040,8 @@ window.App = (function () {
   // CFG/content. Utan opts (Web-admin sin vanlege bruk) fell alt tilbake
   // til nøyaktig same kjelder som før -- uendra åtferd.
   //   opts.superconfig, opts.content, opts.enabledModules ({faq, referanser}),
-  //   opts.faqItems, opts.refItems, opts.privacyText
+  //   opts.faqItems, opts.refItems, opts.privacyText,
+  //   opts.mediabankImages, opts.carousels, opts.bookingAssets, opts.faqContent
   function computeWebsiteHealth(opts) {
     opts = opts || {};
     var sc  = opts.superconfig || getSuperConfig();
@@ -4045,6 +4056,10 @@ window.App = (function () {
     var faqItems = opts.faqItems !== undefined ? opts.faqItems : (Store.get("faq-items", []) || []);
     var refItems = opts.refItems !== undefined ? opts.refItems : (Store.get("ref-items", []) || []);
     var privacyText = opts.privacyText !== undefined ? opts.privacyText : ((CFG.privacy && CFG.privacy.text) || "");
+    var mediabankImages = opts.mediabankImages !== undefined ? opts.mediabankImages : (Store.get("mediabank-images", []) || []);
+    var carousels = opts.carousels !== undefined ? opts.carousels : (Store.get("carousels", []) || []);
+    var bookingAssets = opts.bookingAssets !== undefined ? opts.bookingAssets : (Store.get("booking-assets", []) || []);
+    var faqContent = opts.faqContent !== undefined ? opts.faqContent : Store.get("faq-content", null);
 
     var checks = []; // { category, label, pass, tip, weight }
     function check(category, label, pass, tip, weight) {
@@ -4065,7 +4080,8 @@ window.App = (function () {
     check("seo", "Nettsida kan vise firmainfo direkte i Google-søk",
       !!((com.name || "").trim() && (ct.contact.address || "").trim() && (ct.contact.phone || "").trim()),
       "Fyll ut firmanamn, adresse og telefon, så kan Google vise namn, adresse og telefon direkte i søkeresultatet.", 2);
-    var wchImgs = opts.content ? wchCollectImagesFrom(ct) : wchCollectImages();
+    var wchExtra = { mediabankImages: mediabankImages, carousels: carousels, bookingAssets: bookingAssets, faqContent: faqContent, refItems: refItems };
+    var wchImgs = opts.content ? wchCollectImagesFrom(ct, wchExtra) : wchCollectImages(wchExtra);
     var wchImgsWithAlt = wchImgs.filter(function (i) { return !!(i.alt || "").trim(); });
     check("seo", "Alt-tekst på alle bilete", wchImgs.length === 0 || wchImgsWithAlt.length === wchImgs.length,
       "Legg til alt-tekst på bileta som manglar det (" + wchImgsWithAlt.length + " av " + wchImgs.length + " har det i dag).", 2);

@@ -150,9 +150,7 @@
         '</button>';
     } else {
       var img = App.media.resolveImage(sl.image);
-      mediaHtml = img.src
-        ? '<img class="crsl-media" src="' + esc(img.src) + '" style="object-position:' + esc(img.pos || "50% 50%") + '" alt="' + esc(img.alt || "") + '" loading="lazy">'
-        : '<div class="crsl-media"></div>';
+      mediaHtml = img.src ? C.coverImg(img, "crsl-media") : '<div class="crsl-media"></div>';
     }
 
     return '<div class="crsl-slide' + (i === 0 ? " is-active" : "") + '" data-crsl-slide="' + esc(sl.id) + '">' +
