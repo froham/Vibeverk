@@ -684,17 +684,20 @@ serve(async (req: Request) => {
       await audit(tenant.id, action, "error", "manglar fildata");
       return json({ error: "Manglar fildata" }, 400);
     }
-    // Brukarønske 2026-09-03: heva stegvis frå 600KB (fyrste steg: 1MB) som
-    // eit mellombels praktisk mottiltak medan komprimeringsbiblioteket
-    // (imagescript) sin CDN-import framleis feilar i drift (sjå changelog
-    // 0.159.14-0.159.16 for full feilsøkingshistorikk -- tre uavhengig
-    // curl-verifiserte kjelder feila likevel identisk, som tyder på at
-    // problemet ligg djupare enn sjølve CDN-valet). Ei fil UNDER denne
-    // grensa hoppar heilt over komprimeringssteget og lastar opp direkte,
-    // uavhengig av om biblioteket faktisk kan lastast -- dei fleste vanlege
-    // JPEG-eksportar (telefon/kamera) hamnar under dette. Filer STØRRE enn
-    // grensa treffer framleis det (no ustabile) komprimeringssporet.
-    const MAX_BYTES = 1024 * 1024; // 1MB -- steg 1 av fleire, aukast vidare om dette held mål
+    // Brukarønske 2026-09-03: heva stegvis frå 600KB som eit mellombels
+    // praktisk mottiltak medan komprimeringsbiblioteket (imagescript) sin
+    // CDN-import framleis feilar i drift (sjå changelog 0.159.14-0.159.17
+    // for full feilsøkingshistorikk -- tre uavhengig curl-verifiserte
+    // kjelder feila likevel identisk, som tyder på at problemet ligg djupare
+    // enn sjølve CDN-valet). Steg 1 (1MB) var ikkje nok for det konkrete
+    // biletet brukaren testa mot (stadfesta < 2MB i det opphavlege
+    // brukarfunnet) -- hoppa difor direkte til 2,5MB (med god margin over
+    // dei stadfesta < 2MB) i staden for eit nytt, truleg utilstrekkeleg
+    // mellomsteg. Ei fil UNDER denne grensa hoppar heilt over
+    // komprimeringssteget og lastar opp direkte, uavhengig av om biblioteket
+    // faktisk kan lastast. Filer STØRRE enn grensa treffer framleis det
+    // (no ustabile) komprimeringssporet.
+    const MAX_BYTES = 2.5 * 1024 * 1024; // 2,5MB -- steg 2, hoppa over 1,5MB-mellomsteget med grunngjeving over
     const isCompressible = ext === "png" || ext === "jpg";
     const RAW_MAX_BYTES = 8 * 1024 * 1024;
     const rawCeiling = isCompressible ? RAW_MAX_BYTES : MAX_BYTES;

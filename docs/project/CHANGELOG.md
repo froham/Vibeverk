@@ -30,6 +30,14 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.159.18 — 2026-09-03
+
+**Sidebygger-biletopplasting: heva grensa vidare til 2,5MB — 1MB (0.159.17) var ikkje nok for det konkrete biletet brukaren testa mot.** Brukar hadde alt stadfesta i det opphavlege funnet at fila var under 2MB — hoppa difor direkte til 2,5MB (god margin over det) i staden for eit nytt, truleg utilstrekkeleg mellomsteg (1,5MB).
+
+- **`upload_section_image` sin `MAX_BYTES`** heva frå 1MB til 2,5MB. Uendra prinsipp frå førre runde: ei fil under grensa hoppar heilt over det no ustabile komprimeringssporet.
+- Ærleg atterhald uendra: løyser ikkje det underliggjande imagescript-CDN-problemet.
+- Utrulla direkte til `vibeverk-control` sin `broker`-funksjon.
+
 ## 0.159.17 — 2026-09-03
 
 **Sidebygger-biletopplasting: mellombels praktisk mottiltak — heva grensa for når komprimering i det heile vert forsøkt, i staden for endå eit CDN-gjettespel.** Sjølv jsdelivr sin content-type-korrigerte NPM-sti (0.159.16) hjalp ikkje — stadfesta ved å lese `broker` sin faktiske deploy-tidsstempel direkte (ikkje eit stale-deploy-problem) at feilen heldt fram identisk. Tre uavhengig `curl`-verifiserte kjelder (deno.land, jsdelivr GitHub-spegel, jsdelivr NPM+esm) har no alle feila likt i drift — dette tyder på at problemet ligg djupare enn sjølve CDN-valet/content-type, truleg at dynamiske eksterne imports ikkje fungerer i det heile i dette funksjons-miljøet akkurat no. Vidare CDN-gjetting er difor forlate til fordel for eit brukarforeslått, stegvis mottiltak.
