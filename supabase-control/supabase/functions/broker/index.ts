@@ -305,7 +305,17 @@ async function compressRasterImage(bytes: Uint8Array, ext: string, targetBytes: 
   const useJpegEncoding = isJpeg || pngFallbackToJpeg;
   const outExt = useJpegEncoding ? "jpg" : ext;
   const qualities = useJpegEncoding ? [85, 70, 55, 40, 25] : [null];
-  const scales = [1, 0.85, 0.7, 0.55, 0.4];
+  // Brukarfunn 2026-09-03: ei PNG med FAKTISK (om enn kanskje utilsikta,
+  // t.d. eit einskilt halvgjennomsiktig piksel frå eksport-verktøyet) alfa-
+  // bruk held fram i tapsfri modus (sjå pngFallbackToJpeg over) og hadde
+  // difor berre 40% som lågaste storleik å prøve -- ei fotografisk PNG med
+  // ekte gjennomsikt kunne då feile med "kunne ikkje komprimerast nok"
+  // sjølv på eit heilt vanleg foto, fordi tapsfri PNG-komprimering av eit
+  // detaljert bilete ofte ikkje kjem under 600KB før på eit mykje mindre
+  // steg enn 40%. Utvida med to mindre steg -- ufarleg for JPEG-vegen (som
+  // så godt som alltid lykkast lenge før 40% uansett), gir reelt meir rom
+  // for det tapsfrie sporet før funksjonen gjev opp.
+  const scales = [1, 0.85, 0.7, 0.55, 0.4, 0.25, 0.15];
   for (const scale of scales) {
     const w = Math.max(64, Math.round(img.width * scale));
     const h = Math.max(64, Math.round(img.height * scale));
