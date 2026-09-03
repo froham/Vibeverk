@@ -535,6 +535,87 @@ serve(async (req: Request) => {
     return json({ success: true });
   }
 
+  // ── get_design_template / set_design_template ───────────────────────────
+  // Brukarønske 2026-09-03: la ein operatør setje kva design-mal
+  // (window.SiteTemplates-ID, t.d. ein bespoke mal skriven for éin
+  // navngjeven kunde) ei side skal bruke, direkte frå Console -- utan å
+  // måtte gå via kunden sin eigen Web-admin "Design"-fane (som medvite
+  // berre listar dei tre faste, delte malane). content.designTemplate er
+  // ikkje validert mot noka liste av FAKTISKE mal-ID-ar (den lista finst
+  // ikkje her, berre i window.SiteTemplates på klientsida) -- men
+  // set_design_template KREV eit kvitlista teiknformat (kun a-z/A-Z/0-9/
+  // bindestrek, sjå validTemplateFormat under). Security Auditor pre-
+  // deploy-funn (MEDIUM, 2026-09-03): utan dette ville t.d. "__proto__"
+  // eller "constructor" IKKJE falle trygt attende til klassisk slik core.js
+  // sin eigen resolveTemplate()-kommentar hevda -- reg["__proto__"] arvar
+  // frå Object.prototype (eit vanleg JS-objekt-oppslag, ikkje Object.create(
+  // null)), som er eit TRUTHY, men feil, resultat -- og tok ned heile den
+  // offentlege sida for tenanten. Kvitlista teiknformat hindrar heile
+  // klassen problem (ikkje berre dei kjende farlege namna), ikkje berre
+  // ein enkelt skrivefeil.
+  //
+  // Medvite IKKJE gjort via set_config med "content" lagt til
+  // ALLOWED_CONFIG_KEYS: set_config gjer ein FULL erstatning av heile
+  // verdien for nøkkelen, ikkje ei samanslåing -- content vert redigert av
+  // KUNDEN sjølv mykje oftare enn superconfig (som alt har ei tilsvarande,
+  // berre-åtvara-om kollisjonsrisiko i renderWeb()), så ein operatør sin
+  // eldre nettlesar-kopi av HEILE content-objektet kunne stille overskrive
+  // ekte, nyleg kundetekst. Desse to handlingane gjer i staden ei ekte
+  // les-endre-skriv HEILT server-side, og rører aldri noko anna felt enn
+  // designTemplate.
+  if (action === "get_design_template") {
+    const { data, error } = await tenantSrvSb
+      .from("store").select("value")
+      .eq("tenant_id", storageKey).eq("key", "content")
+      .maybeSingle();
+    if (error) {
+      await audit(tenant.id, action, "error", error.message);
+      return json({ error: "Lesing feila" }, 500);
+    }
+    const current = (data && data.value && data.value.designTemplate) || "klassisk";
+    await audit(tenant.id, action, "success");
+    return json({ success: true, design_template: current });
+  }
+  if (action === "set_design_template") {
+    const { design_template } = body;
+    const trimmedTemplate = typeof design_template === "string" ? design_template.trim() : "";
+    // Security Auditor pre-deploy finding (2026-09-03), MEDIUM: resolveTemplate()
+    // i core.js gjer `window.SiteTemplates[activeTemplate()]` -- eit vanleg
+    // JS-objekt-oppslag som ARVAR frå Object.prototype. Ein design_template-
+    // verdi som "__proto__"/"constructor"/"prototype" ville difor IKKJE falle
+    // trygt attende til klassisk slik koden sin eigen kommentar (og UI-teksten
+    // i Console) hevdar -- ho ville returnert eit arva Object.prototype-objekt,
+    // som `.hero(...)` så krasjar mot, og teke ned HEILE den offentlege sida
+    // for tenanten. Eksplisitt kvit-liste-tillate teikn (bokstavar/tal/bindestrek)
+    // er tryggare enn ei denylist her -- hindrar denne heile klassen problem,
+    // ikkje berre dei kjende farlege namna.
+    const validTemplateFormat = /^[a-zA-Z0-9-]+$/.test(trimmedTemplate);
+    if (!trimmedTemplate || trimmedTemplate.length > 60 || !validTemplateFormat) {
+      await audit(tenant.id, action, "error", "ugyldig design_template");
+      return json({ error: "Ugyldig mal-ID (kun bokstavar, tal og bindestrek er tillate)" }, 400);
+    }
+    const auditId = await auditStart(tenant.id, action);
+    if (!auditId) return json({ error: "Audit-logg kunne ikkje skrivast — handling avbrote" }, 500);
+    const { data: existing, error: readErr } = await tenantSrvSb
+      .from("store").select("value")
+      .eq("tenant_id", storageKey).eq("key", "content")
+      .maybeSingle();
+    if (readErr) {
+      await auditFinish(auditId, "error", readErr.message);
+      return json({ error: "Lesing feila" }, 500);
+    }
+    const merged = Object.assign({}, existing && existing.value, { designTemplate: trimmedTemplate });
+    const { error: writeErr } = await tenantSrvSb
+      .from("store")
+      .upsert({ tenant_id: storageKey, key: "content", value: merged }, { onConflict: "tenant_id,key" });
+    if (writeErr) {
+      await auditFinish(auditId, "error", writeErr.message);
+      return json({ error: "Skriving feila" }, 500);
+    }
+    await auditFinish(auditId, "success", "designTemplate=" + trimmedTemplate);
+    return json({ success: true });
+  }
+
   // ── upload_logo ──────────────────────────────────────────────────────────
   // Console (renderWeb()) sitt logo-opplastingsfelt. Kryssar inn i KUNDEN sitt
   // eige Storage-prosjekt via service_role (same "media"-bukett som core.js

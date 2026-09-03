@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.159.18";
+  var VIBEVERK_VERSION = "0.159.19";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -1221,7 +1221,42 @@ window.VwConsole = (function () {
           '</div>' +
         '</fieldset>' +
         saveBtn() +
-      '</form>';
+      '</form>' +
+      // Eiga, uavhengig lita form -- MEDVITE ikkje ein del av cs-form over.
+      // designTemplate ligg på content-nøkkelen, ikkje superconfig, og
+      // set_design_template gjer si eiga les-endre-skriv server-side (sjå
+      // broker/index.ts) -- å bunte dette inn i cs-form sin store,
+      // sjeldnare "lagre heile fargar/fontar"-handling ville berre auka
+      // faren for at nokon trur denne handlar om farge/font-lagringa sin
+      // kjende kollisjonsrisiko, som IKKJE gjeld her.
+      '<fieldset class="admin-group"><legend>Design-mal (avansert)</legend>' +
+        '<p class="prose prose--muted" style="font-size:.85rem;margin:0 0 .8rem">Normalt vel kunden sjølv mellom Klassisk/Panorama/Scroll-story i sin eigen Web-admin. Her kan du setje ein ANNAN mal-ID direkte -- t.d. ein bespoke mal skriven for nettopp denne kunden, som ikkje skal dukke opp som eit val for andre kundar. Berre bokstavar, tal og bindestrek er tillate. Ein mal-ID som ikkje finst fell trygt attende til Klassisk.</p>' +
+        '<form id="cs-design-template-form">' +
+          C.field({ id: "cs-design-template", label: "Mal-ID", value: "", placeholder: "klassisk / panorama / scrollstory / bespoke-ID" }) +
+          C.button({ label: "Lagre mal-ID", type: "submit", variant: "ghost" }) +
+          ' <span class="form__status" id="cs-design-template-status"></span>' +
+        '</form>' +
+      '</fieldset>';
+
+    (function loadDesignTemplate() {
+      var input = wrap.querySelector("#cs-design-template");
+      var status = wrap.querySelector("#cs-design-template-status");
+      brokerCall("get_design_template", {}, function (r) {
+        if (webRenderGen !== _renderGen) return; // brukar rakk å byte tenant/fane
+        if (r.error) { statusMsg(status, "Kunne ikkje hente gjeldande mal.", false); return; }
+        input.value = r.design_template || "klassisk";
+      });
+    })();
+    wrap.querySelector("#cs-design-template-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var status = wrap.querySelector("#cs-design-template-status");
+      var val = wrap.querySelector("#cs-design-template").value.trim();
+      if (!val) { statusMsg(status, "Skriv inn ein mal-ID først.", false); return; }
+      brokerCall("set_design_template", { design_template: val }, function (r) {
+        if (r.error) { statusMsg(status, "Lagring feila: " + r.error, false); return; }
+        statusMsg(status, "Lagret.", true);
+      });
+    });
 
     bindFontPreview("cs-dfont", "cs-dweights", "cs-dfont-preview");
     bindFontPreview("cs-bfont", "cs-bweights", "cs-bfont-preview");
