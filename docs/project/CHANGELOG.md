@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.161.1 — 2026-09-08
+
+**Fiksa `template-vibeverk-cinema.js` etter live-bruk avdekte to reelle feil og eit for stort avvik frå mockupen.**
+
+1. **Terminal-teksten var alltid tom på den faktiske sida** (fungerte i lokal jsdom-røyktesten, men ikkje live). Rotårsak: hero()/about()/services() har ikkje noko `mount()`-steg i malkontrakten, og eit tidlegare forsøk starta terminal-animasjonen frå eit eingongs `DOMContentLoaded`-kall — men core.js sin `App.init()` LYTTER SJØLV på `DOMContentLoaded` og gjer så asynkron henting av innhald FØR seksjonane sin HTML vert sett inn i `#main`. Terminal-elementet fanst difor rett og slett ikkje enno i DOM-en når koden leita etter det. Fiksa med ein `MutationObserver` på `#main` som startar animasjonen når `[data-vc-terminal-body]` faktisk dukkar opp — fungerer likt ved fyrste sidelasting og ved seinare tilbake-navigering (som gjev ein heilt ny DOM-node kvar gong, sidan `render()` erstattar `#main` sitt innhald i sin heilskap per rute).
+2. **`--color-accent` finst ikkje i core.js sin `applyTheme()`** — brukt feilaktig i "Bak Vibeverk"-eyebrowen, falt alltid attende til det hardkoda CSS-standardverdien, aldri faktisk kunde-konfigurerbart. Retta til `--color-secondary`, den faktiske, eksisterande andrefarge-variabelen.
+3. **Tenester avvik for mykje frå mockupen** — fyrste versjon fann opp ein eigen interaktiv fane-veljar (klikk for å byte panel) som ikkje finst i mockupen i det heile. Bytt ut med mockupen sitt faktiske `tj-band`-mønster: stabla, fullbreidde nummerbånd (num/tittel/tekst i tre kolonnar, delelinje mellom kvart), generalisert til vilkårleg mange `content.services.cards` (mockupen viste berre 3, sykler gjennom same tre fargane — primær/sekundær/eit fast tredje raudfiolett tal — for fleire).
+
+Stadfesta via ein jsdom-røyktest som spesifikt simulerer den REELLE timing-rekkjefølgja (seksjon-HTML sett inn ETTER `DOMContentLoaded` alt har fyrt) — terminalen no faktisk skriv tekst i det scenariet, ikkje berre i den tidlegare, for enkle testoppsettet der HTML alt fanst før `DOMContentLoaded`. Fargespørsmålet (skrifter/primær-/sekundærfarge frå mockupen: Poppins+Nunito Sans, `#005cff`/`#ff7a00`) er IKKJE ein kodeendring — det er eit spørsmål om kva som faktisk er sett i Vibeverk AS-tenanten sin eigen Web-admin (Farger/Skrift-fanene), som brukaren sjølv må stadfeste/setje.
+
+**Avklart, ikkje ein kodefeil**: brukaren spurde om Sidebygger ("sider"-funksjonen i Console) kunne dekke behovet i staden. Sjekka faktisk blokkregister (`components.js` `PB_BLOCK_RENDERERS`): kun `heading`/`richtext`/`image`/`button`/`contact-item`/`spacer` — ingen tilpassa CSS/JS/animasjon-blokk, og Sidebygger byggjer FRISTÅANDE ekstra-sider, ikkje ei overstyring av hjem/om-oss/tjenester. Ikkje eit alternativ til denne bespoke malen for dette føremålet.
+
 ## 0.161.0 — 2026-09-08
 
 **Ny bespoke designmal: `template-vibeverk-cinema.js` — "(Bespoke) Vibeverk — Cinematisk".** Portert frå det same `vibeverk-template`-mockup-arbeidet som gav opphav til [[module-quiz.js]] (0.160.0), etter mange rundar med pin-basert tilbakemelding på mockupen sjølv. IKKJE ein av dei tre kundevalbare malane i `adminDesignMal()` (klassisk/panorama/scrollstory) — dette er ein bespoke mal for Vibeverk AS sin eigen framtidige nettside, registrert i `window.SiteTemplates["vibeverk-cinema"]` og meint tildelt via Console sitt frittekst-felt "Design-mal (avansert)" (same mekanisme som `template-vedvik-test.js` demonstrerte var mogleg), IKKJE lagt til i den kundevalbare radioknapp-lista.
