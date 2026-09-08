@@ -187,10 +187,16 @@ window.SITE_CONFIG = {
                           //   knappen berre ei kryptisk Supabase-feilmelding. Skru på i Console →
                           //   Modular ETTER at oppsettet er gjort, ikkje før.
     oauthGoogle:    false, // ← "Logg inn med Google", same føresetnad som oauthMicrosoft over.
-    qrCode:         false  // ← QR-modul (generer/eksporter QR-kodar til PNG/SVG). Krever
+    qrCode:         false, // ← QR-modul (generer/eksporter QR-kodar til PNG/SVG). Krever
                           //   module-qrcode.js. MÅ vere eksplisitt false som standard
                           //   (nytt/uprøvd, 2026-08-19) -- delt datasett med Workspace sin
                           //   intranettFeatures.qrCode (same App.store-nøkkel "qr-codes").
+    quiz:           false  // ← Quiz-modul (interaktiv "kjapp sjekk", module-quiz.js). MÅ vere
+                          //   eksplisitt false som standard (nytt/uprøvd, 2026-09-08). Samlar
+                          //   ALDRI inn eller lagrar besøkjande sine svar -- kun poengsum
+                          //   utrekna i nettlesarminnet, aldri sendt nokon stad. Difor ingen
+                          //   samtykke-/personvernkrav knytt til denne, sjå module-quiz.js sin
+                          //   eigen kommentar øvst for grunngjevinga.
   },
 
   /* --- Workspace-funksjoner (skru av/på) ------------------------------------
@@ -241,6 +247,14 @@ window.SITE_CONFIG = {
   faq: {
     heading: "Ofte stilte spørsmål",
     intro:   ""          // valgfri ingress — tomt = vises ikke
+  },
+
+  /* --- Quiz (modul) -----------------------------------------------------------
+     Kun standardverdier ved første oppstart -- selve spørsmålene/resultatnivåa
+     redigeres i admin under fanen «Quiz» (lagres separat, se module-quiz.js). */
+  quiz: {
+    heading: "Kjapp sjekk",
+    intro:   ""
   },
 
   /* --- Referanser (modul) --------------------------------------------------- */

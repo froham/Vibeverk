@@ -92,7 +92,7 @@ window.localStorage.setItem("nordpunkt:custom-pages", JSON.stringify([
 ]));
 
 // Last filene i samme rekkefølge som index.html
-["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-crm.js", "module-mediabank.js", "module-page-builder.js", "module-sidetelling.js"].forEach(f => {
+["config.js", "components.js", "core.js", "template-klassisk.js", "template-panorama.js", "template-scrollstory.js", "template-vibeverk-cinema.js", "module-booking.js", "module-quote.js", "module-references.js", "module-faq.js", "module-quiz.js", "module-crm.js", "module-mediabank.js", "module-page-builder.js", "module-sidetelling.js"].forEach(f => {
   const code = fs.readFileSync(f, "utf8");
   window.eval(code);
 });
@@ -112,6 +112,20 @@ const assert = (cond, msg) => { if (!cond) { globalThis.__err=(globalThis.__err|
 assert(typeof window.VwSidetelling === "undefined", "sidetelling er av som standard -- ingen VwSidetelling eksponert");
 assert(typeof window.App.getAnalyticsSessionId === "undefined",
   "App eksponerer ikkje lenger ein klient-side analyse-ID -- sesjonsgrupperinga skjer berre på serveren");
+
+// 1c) module-quiz.js: av som standard (features.quiz: false i config.js) --
+// modulen skal ikkje vise nokon seksjon i det heile, sjølv utan spørsmål
+// lagra (og her: fordi flagget er av, ikkje berre fordi lista er tom).
+assert(!doc.getElementById("quiz"), "quiz er av som standard -- ingen quiz-seksjon vist");
+
+// 1d) template-vibeverk-cinema.js: bespoke mal registrert (ikke aktiv som
+// standard -- dette er ikke ein av dei 3 kundevalbare malane), men filen
+// skal evaluere reint og registrere seg korrekt i window.SiteTemplates.
+assert(window.SiteTemplates && typeof window.SiteTemplates["vibeverk-cinema"] === "object",
+  "template-vibeverk-cinema registrert i window.SiteTemplates");
+["hero", "about", "services"].forEach(fn =>
+  assert(window.SiteTemplates && typeof window.SiteTemplates["vibeverk-cinema"][fn] === "function",
+    "template-vibeverk-cinema." + fn + " er ein funksjon"));
 
 // 2) Nav har 5 lenker i rekkefølge
 const navIds = [...doc.querySelectorAll(".nav__link")].map(a => a.getAttribute("data-nav"));

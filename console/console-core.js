@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.159.20";
+  var VIBEVERK_VERSION = "0.161.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -440,7 +440,12 @@ window.VwConsole = (function () {
     // "qr-codes" med intranettFeatures sin qrCode under -- IFEAT_LABELS/
     // IFEAT_HELP har difor si eiga oppføring for Workspace-sida, sjølv om
     // dataa er delt (sjå module-qrcode.js).
-    qrCode:"QR-koder"
+    qrCode:"QR-koder",
+    // quiz (2026-09-08): interaktiv "kjapp sjekk"-modul, module-quiz.js.
+    // Ingen Workspace-motpart -- samlar aldri inn eller lagrar besøkjande
+    // sine svar, difor ingen IFEAT_LABELS-oppføring naudsynt (sjå modulen
+    // sin eigen kommentar for grunngjevinga).
+    quiz:"Quiz"
   };
   // Opt-in-brytarar -- MÅ defaulte til AV for ein kunde som aldri har lagra
   // features eksplisitt, i motsetnad til alle andre brytarar over (som er
@@ -451,7 +456,7 @@ window.VwConsole = (function () {
   // lagra verdien er av. Det ville i tillegg lagra "true" stille inn viss
   // operatøren trykte "Lagra" av ein heilt annan grunn (t.d. skrudde på
   // FAQ), sidan skjemaet skriv HEILE features-objektet på nytt kvar gong.
-  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true, oauthMicrosoft: true, oauthGoogle: true, qrCode: true };
+  var OPT_IN_FEATURES = { sidebygger: true, sidetelling: true, oauthMicrosoft: true, oauthGoogle: true, qrCode: true, quiz: true };
   // Kva kvar bryter faktisk gjer -- rendrast som ein helpIcon() ved sida av
   // kvar checkbox (copy-clarity-initiativet, fase 4, 2026-07-13). Vald i
   // staden for å gjette meining frå den korte labelen åleine, sidan fleire
@@ -475,7 +480,8 @@ window.VwConsole = (function () {
     sidetelling: "Aktiverer Vibeverk sin eigen, cookiefrie analyse (sidevisningar, henvisningar og klikk på knappar), synleg for kunden i den eigne Innsikt-fana i Web-admin (var underfane under Innstillinger, no ei eiga fane i adminpanelet). Kan ikkje brukast saman med eit eksternt verktøy (t.d. Plausible) sett opp i Analyse-fana her i Console — er begge slått på, vinn Plausible automatisk, og denne interne analysen samlar ikkje inn noko.",
     oauthMicrosoft: "Viser «Logg inn med Microsoft» i BÅDE Web-admin og Workspace sine innloggingsskjema. Krev at kunden (eller Vibeverk på deira vegne) har registrert ein app i Azure/Entra ID og lagt inn klient-ID/-hemmelegheit i kundens eige Supabase-prosjekt (Authentication → Providers) FØRST — denne brytaren viser berre knappen, ho set ikkje opp sjølve leverandøren. Fungerer kun for e-postar som alt er invitert som brukar frå før — kan ikkje brukast til å opprette nye kontoar.",
     oauthGoogle: "Same som «Innlogging med Microsoft», men for Google. Krev tilsvarande oppsett i Google Cloud Console + kundens Supabase-prosjekt.",
-    qrCode: "Gjev kunden ei «QR-koder»-fane i Web-admin der dei kan generere og laste ned QR-kodar (PNG/SVG). Kvar kode peikar på ei fast adresse hos oss som videresender vidare -- kunden kan byte mål-lenka seinare utan å skrive ut koden på nytt."
+    qrCode: "Gjev kunden ei «QR-koder»-fane i Web-admin der dei kan generere og laste ned QR-kodar (PNG/SVG). Kvar kode peikar på ei fast adresse hos oss som videresender vidare -- kunden kan byte mål-lenka seinare utan å skrive ut koden på nytt.",
+    quiz: "Aktiverer ein interaktiv quiz-seksjon tidleg på forsida (rett under heltebiletet). Kunden definerer sjølv spørsmål, svaralternativ (med poengverdi) og resultatnivå i Web-admin. Samlar aldri inn eller lagrar besøkjande sine svar -- ingen samtykkeboks trengst."
   };
   var IFEAT_LABELS = {
     announcements:"Aktuelt", notes:"Notatar", kb:"Kunnskapsbase",
