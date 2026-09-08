@@ -12,7 +12,13 @@
    "vibeverk-template" på heimeserveren, IKKJE ein del av dette repoet) etter
    fleire tilbakemeldingsrundar med Frode. Same hero/about/services-kontrakt
    som template-klassisk.js/-panorama.js — kun desse tre er malstyrbare i
-   dagens arkitektur.
+   dagens arkitektur. Retta 2026-09-08 etter tilbakemelding om at fyrste
+   versjon avvik for mykje frå mockupen: Tenester var opphavleg ein
+   sjølvoppfunnen fane-veljar (ikkje i mockupen), no bytt ut med mockupen sin
+   faktiske "tj-band"-stabla nummerbånd-layout. Fargane bruka òg feil/ikkje-
+   eksisterande CSS-variabel (--color-accent, finst ikkje i core.js sin
+   applyTheme() — retta til --color-secondary, som er den faktiske,
+   kunde-konfigurerbare andrefargen).
 
    Bevisst UTELATE frå denne malen (finst i mockupen, men er IKKJE mogleg å
    style per mal i dagens kode — Referansar/Aktuelt/Quiz rendrast av sine
@@ -29,6 +35,19 @@
    "vibeverk deploy ..."-tekst) — reint dekorativt, ingen kundedata, del av
    MALEN sin faste stil, ikkje noko ein administrator treng redigere. Same
    grunngjeving som i mockupen sin eigen historikk.
+
+   VIKTIG oppstart-mekanisme: hero()/about()/services() returnerer berre HTML-
+   strengar (ingen mount()-steg i denne malkontrakten, sjå core.js sine
+   registerBuiltinSections()-kall for hjem/om-oss/tjenester -- dei sender
+   berre `render`, aldri `mount`). App sin eigen render() set `main.innerHTML`
+   EIN GONG PER RUTE, lenge etter at DOMContentLoaded alt har fyrt (App.init()
+   sjølv ventar på asynkron henting av innhald fyrst). Eit tidlegare forsøk på
+   å starte terminal-animasjonen frå eit eingongs DOMContentLoaded-kall feila
+   difor stille -- elementet fanst rett og slett ikkje enno i DOM-en når koden
+   køyrde. Fiksa ved å observere #main med MutationObserver og starte
+   animasjonen når terminal-elementet faktisk dukkar opp (handterer òg at
+   heile heltseksjonen vert bytt ut med ein FERSK DOM-node kvar gong brukaren
+   navigerer attende til framsida via ankerlenker).
    ========================================================================== */
 (function () {
   "use strict";
@@ -46,8 +65,6 @@
     '.vc-hero__scrim{position:absolute;inset:0;' +
       'background:radial-gradient(ellipse at center, rgba(6,12,32,.55) 0%, rgba(6,12,32,.4) 45%, rgba(6,12,32,.78) 100%);}' +
     '.vc-hero__inner{position:relative;z-index:2;max-width:900px;margin:0 auto;display:flex;flex-direction:column;align-items:center;}' +
-    '.vc-hero__eyebrow{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;' +
-      'color:#fff;opacity:.75;margin-bottom:20px;}' +
     '.vc-hero__title{font-weight:800;font-size:clamp(2.4rem,6vw,4.4rem);line-height:1.05;letter-spacing:-.03em;' +
       'margin:0 0 20px;color:#fff;}' +
     '.vc-hero__subtitle{font-size:1.1rem;line-height:1.6;color:rgba(255,255,255,.85);max-width:600px;margin:0 0 34px;}' +
@@ -60,6 +77,7 @@
     '.vc-terminal__bar span:nth-child(3){background:#28c840;}' +
     '.vc-terminal__body{padding:22px 20px;font-size:.88rem;line-height:1.9;color:#8be9c1;height:210px;overflow:hidden;}' +
     '.vc-terminal__body .prompt{color:#6c8fff;}' +
+    '.vc-terminal__body .out{color:#c6cfe8;}' +
     /* Bak Vibeverk (about) — mørk sitat-/portrettseksjon */
     '.vc-about{background:var(--vc-deep-bg);color:#fff;overflow:hidden;position:relative;}' +
     '.vc-about__grid-bg{position:absolute;inset:0;z-index:0;' +
@@ -71,40 +89,28 @@
       'background:linear-gradient(115deg, transparent 30%, rgba(0,92,255,.25) 45%, rgba(255,122,0,.18) 52%, transparent 65%);' +
       'animation:vc-sweep-move 14s ease-in-out infinite;}' +
     '@keyframes vc-sweep-move{0%,100%{transform:translateX(-18%) translateY(-4%);}50%{transform:translateX(18%) translateY(4%);}}' +
+    '@media (prefers-reduced-motion: reduce){.vc-about__grid-bg,.vc-about__sweep{animation:none;}}' +
     '.vc-about__grid{position:relative;z-index:2;display:grid;grid-template-columns:1fr 1.1fr;gap:6vw;align-items:center;' +
       'max-width:1160px;margin:0 auto;padding:12vh 6vw;}' +
     '.vc-about__grid.vc-about__grid--noimg{grid-template-columns:1fr;text-align:center;max-width:760px;}' +
     '.vc-about__photo img{width:100%;height:auto;max-height:70vh;object-fit:contain;border-radius:16px;' +
       'box-shadow:0 24px 70px rgba(0,0,0,.4);}' +
-    '.vc-about__body .eyebrow{color:var(--color-accent,#ff7a00);}' +
+    '.vc-about__body .eyebrow{color:var(--color-secondary,#ff7a00);}' +
     '.vc-about__body h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:0 0 20px;color:#fff;}' +
     '.vc-about__body .prose{color:var(--vc-deep-muted);line-height:1.7;}' +
-    /* Tenester (services) — interaktiv fane-veljar */
+    /* Tenester (services) — stabla nummerbånd, éin band per teneste (som mockupen sin tj-band) */
     '.vc-services{padding:clamp(2.5rem,6vw,5rem) 6vw;max-width:1160px;margin:0 auto;}' +
-    '.vc-services__intro{text-align:center;margin-bottom:2.5rem;}' +
+    '.vc-services__intro{margin-bottom:1rem;}' +
     '.vc-services__intro h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:.4rem 0 0;}' +
-    '.vc-tabs{display:grid;grid-template-columns:.85fr 1.15fr;gap:0;border:1px solid var(--color-border,#e2e9f5);' +
-      'border-radius:14px;overflow:hidden;background:var(--color-surface,#fff);min-height:260px;}' +
-    '.vc-tabs__list{display:flex;flex-direction:column;border-right:1px solid var(--color-border,#e2e9f5);}' +
-    '.vc-tabs__btn{display:flex;align-items:center;gap:14px;padding:20px 22px;background:none;border:none;' +
-      'border-bottom:1px solid var(--color-border,#e2e9f5);cursor:pointer;text-align:left;font:600 .96rem/1.3 inherit;' +
-      'color:var(--color-muted,#5c6b80);transition:background .2s,color .2s;}' +
-    '.vc-tabs__btn:last-child{border-bottom:none;}' +
-    '.vc-tabs__btn .ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;' +
-      'font-size:17px;flex:none;background:var(--color-tint,rgba(0,92,255,.08));}' +
-    '.vc-tabs__btn.is-active{background:var(--color-tint,rgba(0,92,255,.06));color:var(--color-text,#142033);' +
-      'box-shadow:inset 3px 0 0 var(--color-primary,#005cff);}' +
-    '.vc-tabs__panel{position:relative;padding:34px 32px;}' +
-    '.vc-tabs__item{display:none;}' +
-    '.vc-tabs__item.is-active{display:block;}' +
-    '.vc-tabs__item h3{font-size:1.2rem;margin:0 0 12px;}' +
-    '.vc-tabs__item .prose{color:var(--color-muted,#5c6b80);}' +
+    '.vc-tj-band{display:grid;grid-template-columns:.5fr 1fr 1fr;gap:4vw;align-items:start;padding:6vh 0;' +
+      'border-top:1px solid var(--color-border,#e2e9f5);}' +
+    '.vc-tj-band:first-of-type{border-top:none;}' +
+    '.vc-tj-band__num{font-weight:800;font-size:clamp(2.4rem,4vw,3.6rem);line-height:1;opacity:.7;}' +
+    '.vc-tj-band h3{font-size:1.3rem;margin:0 0 12px;}' +
+    '.vc-tj-band .prose{font-size:.98rem;line-height:1.65;color:var(--color-muted,#5c6b80);}' +
     '@media (max-width:700px){' +
       '.vc-about__grid{grid-template-columns:1fr;gap:2rem;padding:8vh 6vw;}' +
-      '.vc-tabs{grid-template-columns:1fr;}' +
-      '.vc-tabs__list{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--color-border,#e2e9f5);}' +
-      '.vc-tabs__btn{border-bottom:none;white-space:nowrap;}' +
-      '.vc-tabs__btn.is-active{box-shadow:inset 0 -3px 0 var(--color-primary,#005cff);}' +
+      '.vc-tj-band{grid-template-columns:1fr;gap:12px;}' +
     '}';
 
   function injectCss() {
@@ -128,13 +134,12 @@
       '<section id="hjem" class="vc-hero reveal">' +
         '<div class="vc-hero__visual">' + bgHtml + '<div class="vc-hero__scrim"></div></div>' +
         '<div class="vc-hero__inner">' +
-          '<span class="vc-hero__eyebrow">' + C.esc(d.subtitle ? "" : "") + '</span>' +
           '<h1 class="vc-hero__title">' + C.esc(d.title) + '</h1>' +
           (d.subtitle ? '<p class="vc-hero__subtitle">' + C.esc(d.subtitle) + '</p>' : "") +
           (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : "") +
           '<div class="vc-terminal" id="vcTerminal">' +
             '<div class="vc-terminal__bar"><span></span><span></span><span></span></div>' +
-            '<div class="vc-terminal__body" id="vcTerminalBody"></div>' +
+            '<div class="vc-terminal__body" data-vc-terminal-body></div>' +
           '</div>' +
         '</div>' +
         (img ? C.creditBadge(img) : "") +
@@ -165,146 +170,148 @@
   }
 
   /* =========================================================================
-     TENESTER (services) — interaktiv fane-veljar
+     TENESTER (services) — stabla nummerbånd, som mockupen sin "tj-band"
      ====================================================================== */
+  // Same tre fargar som mockupen (primær/sekundær/eit tredje, fast rosa-tal),
+  // syklar vidare for tenester utover tre -- mockupen viste berre 3 kort, men
+  // content.services sin lengde er ikkje fast i den faktiske datamodellen.
+  var TJ_COLORS = ["var(--color-primary,#005cff)", "var(--color-secondary,#ff7a00)", "#ff1072"];
   function services(d) {
     injectCss();
     var cards = d.cards || [];
-    var tabsHtml = cards.map(function (c, i) {
-      return '<button type="button" class="vc-tabs__btn' + (i === 0 ? " is-active" : "") + '" data-vc-tab="' + i + '">' +
-        '<span class="ic">' + C.icon(c.icon || "check") + '</span><span>' + C.esc(c.title) + '</span>' +
-      '</button>';
-    }).join("");
-    var panelsHtml = cards.map(function (c, i) {
-      return '<div class="vc-tabs__item' + (i === 0 ? " is-active" : "") + '" data-vc-panel="' + i + '">' +
+    var bandsHtml = cards.map(function (c, i) {
+      var num = i < 9 ? "0" + (i + 1) : String(i + 1);
+      return '<div class="vc-tj-band reveal">' +
+        '<div class="vc-tj-band__num" style="color:' + TJ_COLORS[i % TJ_COLORS.length] + '">' + num + '</div>' +
         '<h3>' + C.esc(c.title) + '</h3>' +
         '<div class="prose">' + C.sanitizeRichHtml(c.text) + '</div>' +
       '</div>';
     }).join("");
     return (
-      '<section id="tjenester" class="vc-services reveal">' +
-        '<div class="vc-services__intro">' +
+      '<section id="tjenester" class="vc-services">' +
+        '<div class="vc-services__intro reveal">' +
           C.eyebrow(d.intro || d.heading) +
           '<h2>' + C.esc(d.heading) + '</h2>' +
         '</div>' +
-        (cards.length
-          ? '<div class="vc-tabs" data-vc-tabs><div class="vc-tabs__list">' + tabsHtml + '</div>' +
-            '<div class="vc-tabs__panel">' + panelsHtml + '</div></div>'
-          : '') +
+        bandsHtml +
       '</section>'
     );
   }
 
   /* =========================================================================
-     ATFERD — terminal-loop (dekorativ) + fane-veksling
-     Bindast via ein delegert, dokument-global click-lyttar (registrert éin
-     gong), same mønster som App sin eigen bindMainBehaviors() — sidan
-     hero/about/services-funksjonane over berre returnerer HTML-strengar,
-     ikkje har noko eige mount()-steg i denne malkontrakten.
+     ATFERD — terminal-loop (dekorativ)
+     Ingen mount()-steg finst for hjem/om-oss/tjenester (sjå filoverskrifta),
+     så vi kan ikkje vente på eit mount-kall frå App. I staden observerer vi
+     #main med MutationObserver og startar animasjonen når
+     [data-vc-terminal-body] faktisk dukkar opp i DOM-en -- fungerer likt anten
+     dette er fyrste sidelasting eller brukaren navigerer attende til
+     framsida seinare (som gjev ein HEILT NY DOM-node kvar gong, sidan App
+     sin render() erstattar #main sitt innhald i sin heilskap per rute).
      ====================================================================== */
-  var boundOnce = false;
-  function bindBehaviors() {
-    if (boundOnce) return;
-    boundOnce = true;
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var TERMINAL_SEQUENCES = [
+    [
+      { type: "prompt", text: "$ vibeverk deploy --tenant=di-bedrift" },
+      { type: "out", text: "→ set opp heimeside, arbeidsplattform og modular …" },
+      { type: "out", text: "→ eiga database, EU-lagring ✓" },
+      { type: "out", text: "→ personvernstekst generert ✓" },
+      { type: "out", text: "✓ live om ca. 3 veker" }
+    ],
+    [
+      { type: "prompt", text: "$ vibeverk status --tenant=di-bedrift" },
+      { type: "out", text: "→ 12 nye bookingar denne veka" },
+      { type: "out", text: "→ 3 tilbod sendt automatisk" },
+      { type: "out", text: "→ 0 timar brukt på manuell oppfølging" },
+      { type: "out", text: "✓ alt samla på éin stad" }
+    ],
+    [
+      { type: "prompt", text: "$ vibeverk ai --analyser drift" },
+      { type: "out", text: "→ identifiserer repeterande oppgåver …" },
+      { type: "out", text: "→ foreslår automatisering for fakturering og oppfølging" },
+      { type: "out", text: "✓ spart tid: ca. 6 t/veke" }
+    ],
+    [
+      { type: "prompt", text: "$ vibeverk sikkerheit --sjekk" },
+      { type: "out", text: "→ eiga database per kunde ✓" },
+      { type: "out", text: "→ EU-lagring stadfesta ✓" },
+      { type: "out", text: "→ ingen delte data med andre kundar" },
+      { type: "out", text: "✓ personvern tilpassa dykkar modular" }
+    ]
+  ];
 
-    document.addEventListener("click", function (e) {
-      var tabBtn = e.target.closest("[data-vc-tab]");
-      if (tabBtn) {
-        var tabs = tabBtn.closest("[data-vc-tabs]");
-        var idx = tabBtn.getAttribute("data-vc-tab");
-        tabs.querySelectorAll("[data-vc-tab]").forEach(function (b) { b.classList.toggle("is-active", b === tabBtn); });
-        tabs.querySelectorAll("[data-vc-panel]").forEach(function (p) {
-          p.classList.toggle("is-active", p.getAttribute("data-vc-panel") === idx);
-        });
+  function startTerminal(termBody) {
+    if (reduceMotion) {
+      termBody.innerHTML = TERMINAL_SEQUENCES[0].map(function (l) {
+        return '<div class="' + l.type + '">' + C.esc(l.text) + '</div>';
+      }).join("");
+      return;
+    }
+    (function runTerminal(seqIdx) {
+      if (!termBody.isConnected) return; // heltseksjonen vart bytt ut -- stopp loopen for denne noden
+      var lines = TERMINAL_SEQUENCES[seqIdx];
+      var lineIdx = 0, charIdx = 0;
+      termBody.innerHTML = "";
+      function typeNext() {
+        if (!termBody.isConnected) return;
+        if (lineIdx >= lines.length) { setTimeout(typeClear, 2200); return; }
+        var line = lines[lineIdx];
+        var lineEl = termBody.children[lineIdx];
+        if (!lineEl) { lineEl = document.createElement("div"); lineEl.className = line.type; termBody.appendChild(lineEl); }
+        charIdx++;
+        lineEl.textContent = line.text.slice(0, charIdx);
+        if (charIdx < line.text.length) setTimeout(typeNext, line.type === "prompt" ? 38 : 16);
+        else { lineIdx++; charIdx = 0; setTimeout(typeNext, 260); }
       }
+      function typeClear() {
+        if (!termBody.isConnected) return;
+        var clearEl = document.createElement("div");
+        clearEl.className = "prompt";
+        termBody.appendChild(clearEl);
+        var CLEAR_CMD = "$ clear", i = 0;
+        (function typeChar() {
+          if (!termBody.isConnected) return;
+          i++;
+          clearEl.textContent = CLEAR_CMD.slice(0, i);
+          if (i < CLEAR_CMD.length) setTimeout(typeChar, 38);
+          else setTimeout(function () { runTerminal((seqIdx + 1) % TERMINAL_SEQUENCES.length); }, 450);
+        })();
+      }
+      typeNext();
+    })(0);
+  }
+
+  function scanForNewElements() {
+    document.querySelectorAll("[data-vc-terminal-body]:not([data-vc-bound])").forEach(function (el) {
+      el.setAttribute("data-vc-bound", "1");
+      startTerminal(el);
     });
+  }
 
-    var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    var TERMINAL_SEQUENCES = [
-      [
-        { type: "prompt", text: "$ vibeverk deploy --tenant=di-bedrift" },
-        { type: "out", text: "→ set opp heimeside, arbeidsplattform og modular …" },
-        { type: "out", text: "→ eiga database, EU-lagring ✓" },
-        { type: "out", text: "→ personvernstekst generert ✓" },
-        { type: "out", text: "✓ live om ca. 3 veker" }
-      ],
-      [
-        { type: "prompt", text: "$ vibeverk status --tenant=di-bedrift" },
-        { type: "out", text: "→ 12 nye bookingar denne veka" },
-        { type: "out", text: "→ 3 tilbod sendt automatisk" },
-        { type: "out", text: "→ 0 timar brukt på manuell oppfølging" },
-        { type: "out", text: "✓ alt samla på éin stad" }
-      ],
-      [
-        { type: "prompt", text: "$ vibeverk ai --analyser drift" },
-        { type: "out", text: "→ identifiserer repeterande oppgåver …" },
-        { type: "out", text: "→ foreslår automatisering for fakturering og oppfølging" },
-        { type: "out", text: "✓ spart tid: ca. 6 t/veke" }
-      ],
-      [
-        { type: "prompt", text: "$ vibeverk sikkerheit --sjekk" },
-        { type: "out", text: "→ eiga database per kunde ✓" },
-        { type: "out", text: "→ EU-lagring stadfesta ✓" },
-        { type: "out", text: "→ ingen delte data med andre kundar" },
-        { type: "out", text: "✓ personvern tilpassa dykkar modular" }
-      ]
-    ];
-    var termBody = document.getElementById("vcTerminalBody");
-    if (termBody) {
-      if (reduceMotion) {
-        termBody.innerHTML = TERMINAL_SEQUENCES[0].map(function (l) {
-          return '<div class="' + l.type + '">' + l.text + '</div>';
-        }).join("");
-      } else {
-        (function runTerminal(seqIdx) {
-          var lines = TERMINAL_SEQUENCES[seqIdx];
-          var lineIdx = 0, charIdx = 0;
-          termBody.innerHTML = "";
-          function typeNext() {
-            if (lineIdx >= lines.length) { setTimeout(typeClear, 2200); return; }
-            var line = lines[lineIdx];
-            var lineEl = termBody.children[lineIdx];
-            if (!lineEl) { lineEl = document.createElement("div"); lineEl.className = line.type; termBody.appendChild(lineEl); }
-            charIdx++;
-            lineEl.textContent = line.text.slice(0, charIdx);
-            if (charIdx < line.text.length) setTimeout(typeNext, line.type === "prompt" ? 38 : 16);
-            else { lineIdx++; charIdx = 0; setTimeout(typeNext, 260); }
-          }
-          function typeClear() {
-            var clearEl = document.createElement("div");
-            clearEl.className = "prompt";
-            termBody.appendChild(clearEl);
-            var CLEAR_CMD = "$ clear", i = 0;
-            (function typeChar() {
-              i++;
-              clearEl.textContent = CLEAR_CMD.slice(0, i);
-              if (i < CLEAR_CMD.length) setTimeout(typeChar, 38);
-              else setTimeout(function () { runTerminal((seqIdx + 1) % TERMINAL_SEQUENCES.length); }, 450);
-            })();
-          }
-          typeNext();
-        })(0);
-      }
-    }
-
-    var heroBg = document.getElementById("vcHeroBg");
-    if (heroBg && !reduceMotion) {
-      var ticking = false;
-      window.addEventListener("scroll", function () {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(function () {
-          var y = window.scrollY || 0;
-          heroBg.style.transform = "translateY(" + (y * 0.15) + "px)";
-          ticking = false;
-        });
-      }, { passive: true });
-    }
+  function bindObserver() {
+    scanForNewElements();
+    var target = document.getElementById("main") || document.body;
+    new MutationObserver(scanForNewElements).observe(target, { childList: true, subtree: true });
   }
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bindBehaviors);
+    document.addEventListener("DOMContentLoaded", bindObserver);
   } else {
-    bindBehaviors();
+    bindObserver();
+  }
+
+  // Parallax på hero-bakgrunnen -- spør DOM-en på nytt for kvar scroll-tick
+  // i staden for å cache éin referanse, sidan #vcHeroBg vert bytt ut med ein
+  // fersk node kvar gong brukaren navigerer attende til framsida.
+  if (!reduceMotion) {
+    var ticking = false;
+    window.addEventListener("scroll", function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () {
+        var heroBg = document.getElementById("vcHeroBg");
+        if (heroBg) heroBg.style.transform = "translateY(" + ((window.scrollY || 0) * 0.15) + "px)";
+        ticking = false;
+      });
+    }, { passive: true });
   }
 
   window.SiteTemplates = window.SiteTemplates || {};
