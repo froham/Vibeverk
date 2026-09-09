@@ -55,14 +55,34 @@
      - Søkje-overlayet (`.srch-*`, kjernefunksjon i core.js) mørk/cinematisk
        reskin.
      - Mørkt, utheva "kort"-utsjåande (som mockupen sin `.kontakt-form-card`)
-       på Kontakt-skjemaet (`.contact__form`), Quiz-boksen (`.quiz-box`) og
-       Referansar-korta (`.rf-card`) -- berre farge/typografi/bakgrunn via
-       CSS mot EKSISTERANDE klassenamn, ingen ny DOM-struktur (flip-korta
-       sin 3D-vend-mekanikk er framleis ikkje porta, det krev ny markup).
+       på Kontakt-skjemaet (`.contact__form`) og Quiz-boksen (`.quiz-box`)
+       -- berre farge/typografi/bakgrunn via CSS mot EKSISTERANDE
+       klassenamn, ingen ny DOM-struktur.
    - Fiksa reell midtstillings-bug: brukte hardkoda 1160px i staden for
      plattforma sin faktiske `--maxw`-breidde-variabel (1080px, brukt av
      toppmenyen), som gjorde at seksjonane mine ikkje stemte breiddemessig
      med resten av sida.
+
+   Retta ytterlegare same dag (2026-09-09), etter ei ny tilbakemeldingsrunde:
+   - Referansar (`.rf-card`) FÅR IKKJE lenger den mørke kort-stilen -- eksplisitt
+     fråvalt av brukaren, held seg til plattforma sin vanlege, lyse kort-stil.
+   - `.nav__search` var framleis berre eit ikon-berre-knapp, ikkje mockupen sin
+     pille-forma "Søk"-utløysar med kant/bakgrunn/tekstetikett. Restylt via
+     CSS åleine (`::after{content:"Søk"}`) sidan platform-markupen ikkje har
+     noko eige element for etiketten -- ingen tastatur-hint-badge (`<kbd>`)
+     sidan CSS `content` ikkje kan skape eit eige, individuelt stilbart
+     underelement, berre tekst.
+   - Alle seksjonane sin horisontale padding bytt frå ein eigenprodusert
+     `6vw`-formel til plattforma sin faktiske `.container`-padding-formel
+     (`clamp(1.1rem,4vw,2rem)`), slik at venstre/høgre kant faktisk stemmer
+     nøyaktig med Kontakt/Aktuelt/Referansar under -- tidlegare `--maxw`-fiksen
+     retta berre den YTRE breidda, ikkje den INDRE paddinga, så kantane var
+     framleis ulikt plasserte.
+   - Det kvite feltet synleg øvst på mobil (bak logoen, over hero-biletet) er
+     IKKJE stadfesta løyst i denne runda -- venta på avklaring om det er
+     sjølve `.site-header` (nav-toggle-logikken over) eller noko heilt anna
+     (t.d. PWA-manifestet sin `background_color`/splash, som ligg i
+     `api/_lib/tenant-manifest.js`, HEILT utanfor denne malfila sin kontroll).
 
    VIKTIG oppstart-mekanisme: hero()/about()/services() returnerer berre HTML-
    strengar (ingen mount()-steg i denne malkontrakten, sjå core.js sine
@@ -119,7 +139,7 @@
     '@keyframes vc-sweep-move{0%,100%{transform:translateX(-18%) translateY(-4%);}50%{transform:translateX(18%) translateY(4%);}}' +
     '@media (prefers-reduced-motion: reduce){.vc-about__grid-bg,.vc-about__sweep{animation:none;}}' +
     '.vc-about__grid{position:relative;z-index:2;display:grid;grid-template-columns:1fr 1.1fr;gap:6vw;align-items:center;' +
-      'max-width:var(--maxw,1080px);margin:0 auto;padding:12vh 6vw;}' +
+      'max-width:var(--maxw,1080px);margin:0 auto;padding:12vh clamp(1.1rem,4vw,2rem);}' +
     '.vc-about__grid.vc-about__grid--noimg{grid-template-columns:1fr;text-align:center;max-width:760px;}' +
     '.vc-about__photo img{width:100%;height:auto;max-height:70vh;object-fit:contain;border-radius:16px;' +
       'box-shadow:0 24px 70px rgba(0,0,0,.4);}' +
@@ -127,14 +147,14 @@
     '.vc-about__body h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:0 0 20px;color:#fff;}' +
     '.vc-about__body .prose{color:var(--vc-deep-muted);line-height:1.7;}' +
     /* Om Vibeverk — tre grunnar, hardkoda tekst-kort (sjå VC_REASONS under) */
-    '.vc-reasons{max-width:var(--maxw,1080px);margin:0 auto;padding:clamp(2.5rem,6vw,5rem) 6vw 0;}' +
+    '.vc-reasons{max-width:var(--maxw,1080px);margin:0 auto;padding:clamp(2.5rem,6vw,5rem) clamp(1.1rem,4vw,2rem) 0;}' +
     '.vc-reasons__intro{max-width:64ch;}' +
     '.vc-reasons__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2.5rem;margin-top:2.5rem;}' +
     '.vc-reason__num{font-weight:800;font-size:1.6rem;color:var(--color-primary,#005cff);margin-bottom:.6rem;}' +
     '.vc-reason h3{font-size:1.1rem;margin:0 0 .6rem;}' +
     '.vc-reason .prose{font-size:.94rem;line-height:1.6;color:var(--color-muted,#5c6b80);}' +
     /* Tenester (services) — stabla nummerbånd, éin band per teneste (som mockupen sin tj-band) */
-    '.vc-services{padding:clamp(2.5rem,6vw,5rem) 6vw;max-width:var(--maxw,1080px);margin:0 auto;}' +
+    '.vc-services{padding:clamp(2.5rem,6vw,5rem) clamp(1.1rem,4vw,2rem);max-width:var(--maxw,1080px);margin:0 auto;}' +
     '.vc-services__intro{margin-bottom:1rem;}' +
     '.vc-services__intro h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:.4rem 0 0;}' +
     '.vc-tj-band{display:grid;grid-template-columns:.5fr 1fr 1fr;gap:4vw;align-items:start;padding:6vh 0;' +
@@ -148,10 +168,30 @@
        nedst i fila). Gjeld berre når hero-seksjonen faktisk finst i DOM-en
        (JS-en legg klassen på <body>, ikkje permanent i CSS), så andre
        sider/ruter (artikkel, arkiv, admin) er upåverka. */
-    '.vc-on-image .site-header{background:transparent;box-shadow:none;transition:background .25s,box-shadow .25s;}' +
-    '.vc-on-image .site-header .brand__name,.vc-on-image .site-header .nav__link,.vc-on-image .site-header .nav__search{color:#fff;}' +
-    '.vc-on-image .site-header .nav__search{opacity:.85;}' +
+    /* .site-header er `position:sticky` (index.html), difor i vanleg
+       dokumentflyt OVER hero -- ikkje overlappande han -- heilt til brukaren
+       scrollar forbi sin eigen naturlege posisjon. Difor er nav-en STATISK
+       og kvit heilt til scroll gjer han "sticky". For å faktisk overlappe
+       hero frå fyrste augekast må han takast heilt ut av flyten: `fixed` i
+       staden for `sticky` medan `vc-on-image` er aktiv (hero sin eigen
+       120px topp-padding gjev då rett avstand under den flytande menyen).
+       Byter attende til vanleg `sticky`-åtferd automatisk når klassen
+       fjernast (etter hero, eller på andre ruter som aldri set klassen). */
+    '.vc-on-image .site-header{position:fixed;top:0;left:0;right:0;' +
+      'background:transparent;box-shadow:none;transition:background .25s,box-shadow .25s;}' +
+    '.vc-on-image .site-header .brand__name,.vc-on-image .site-header .nav__link{color:#fff;}' +
     '.site-header{transition:background .25s,box-shadow .25s;}' +
+    /* Søkje-utløysar (.nav__search er berre eit ikon-berre-knapp i plattforma
+       sin faste markup) restylt som mockupen sin pille-forma "Søk"-utløysar
+       via CSS åleine (::after-tekst) -- ingen ny markup, difor ingen
+       kbd-tastatur-hint (det krev eit eige element, ikkje berre CSS content). */
+    '.nav__search{display:flex;align-items:center;gap:8px;background:rgba(0,92,255,.06);' +
+      'border:1px solid var(--color-border,#e2e9f5);border-radius:999px;padding:.4rem .9rem;' +
+      'font-size:1rem;transition:border-color .2s,background .2s,color .2s;}' +
+    '.nav__search::after{content:"Søk";font:700 .85rem inherit;}' +
+    '.nav__search:hover{border-color:var(--color-primary,#005cff);}' +
+    '.vc-on-image .site-header .nav__search{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3);color:rgba(255,255,255,.85);}' +
+    '.vc-on-image .site-header .nav__search:hover{color:#fff;border-color:#fff;}' +
     /* Søkje-overlay (core.js sin eigen `.srch-*`-funksjon) -- mørk/cinematisk reskin */
     '.srch-panel{background:var(--vc-deep-bg);color:#fff;}' +
     '.srch-head{border-bottom:1px solid var(--vc-deep-line);}' +
@@ -166,12 +206,13 @@
     '.srch-hit__meta,.srch-hit__text{color:var(--vc-deep-muted);}' +
     '.srch-hit__text mark{background:rgba(0,92,255,.35);color:#fff;}' +
     /* Mørkt, utheva "kort"-utsjåande (som mockupen sin .kontakt-form-card) på
-       Kontakt-skjema, Quiz-boks og Referansar-kort -- berre farge/typografi
-       mot EKSISTERANDE klassenamn frå core.js/module-quiz.js/
-       module-references.js, ingen ny DOM-struktur. */
-    '.contact__form,.quiz-box,.rf-card{position:relative;background:var(--vc-deep-bg);color:#fff;' +
+       Kontakt-skjema og Quiz-boks -- berre farge/typografi mot EKSISTERANDE
+       klassenamn frå core.js/module-quiz.js, ingen ny DOM-struktur.
+       IKKJE Referansar (.rf-card) -- eksplisitt fråvalt 2026-09-09, held seg
+       til plattforma sin vanlege, lyse kort-stil der. */
+    '.contact__form,.quiz-box{position:relative;background:var(--vc-deep-bg);color:#fff;' +
       'border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.22);}' +
-    '.contact__form::before,.quiz-box::before,.rf-card::before{content:"";position:absolute;top:0;left:0;right:0;' +
+    '.contact__form::before,.quiz-box::before{content:"";position:absolute;top:0;left:0;right:0;' +
       'height:4px;background:linear-gradient(90deg,var(--color-primary,#005cff),var(--color-secondary,#ff7a00));}' +
     '.contact__form{padding:2rem;}' +
     '.contact__form label{color:#fff;}' +
@@ -184,11 +225,8 @@
     '.quiz-intro{color:var(--vc-deep-muted);}' +
     '.quiz-choice{background:rgba(255,255,255,.03);border:1.5px solid var(--vc-deep-line);color:#fff;}' +
     '.quiz-choice:hover{background:rgba(255,255,255,.08);}' +
-    '.rf-card__name{color:#fff;}' +
-    '.rf-card__text,.rf-card__quote,.rf-card__by{color:var(--vc-deep-muted);}' +
-    '.rf-card__body{padding:1.1rem 1.25rem 1.4rem;}' +
     '@media (max-width:700px){' +
-      '.vc-about__grid{grid-template-columns:1fr;gap:2rem;padding:8vh 6vw;}' +
+      '.vc-about__grid{grid-template-columns:1fr;gap:2rem;padding:8vh clamp(1.1rem,4vw,2rem);}' +
       '.vc-tj-band{grid-template-columns:1fr;gap:12px;}' +
       '.vc-reasons__grid{grid-template-columns:1fr;gap:1.75rem;}' +
     '}';
