@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.162.0 — 2026-09-09
+
+**`template-vibeverk-cinema.js` gjort meir "førande" for heilskapen, etter tilbakemelding om at malen burde styre meir enn berre hero/om-oss/tenester.**
+
+Nøkkelinnsikt: malen sin eigen injiserte `<style>`-blokk gjeld HEILE sida (den vert limt inn i `<head>` og cascadar globalt), ikkje berre dei tre malstyrbare seksjonane. Tidlegare versjonar av denne fila hevda difor feilaktig at nav/søk/Kontakt/Quiz/Referansar sin STIL "ikkje er mogleg å style per mal" — det var berre noko som ikkje var gjort enno. Berre den interaktive DOM-strukturen/JS-åtferda deira (t.d. Referansar sine flip-cards) krev framleis ei arkitektonisk større endring.
+
+Tre konkrete tilføyingar:
+1. **"Om Vibeverk" (tre grunnar) attende**: mockupen sin `id="om"` er ein heilt eigen seksjon, skilt frå "Bak Vibeverk"/founder-cinema — men content-modellen har berre éin `about()`-plass. Løyst ved å hardkode Vibeverk sin eigen, generiske verdiproposisjon-tekst (ikkje kundedata, same grunngjeving som terminal-sekvensane) og stable han over "Bak Vibeverk" inni same `about()`-funksjonen.
+2. **Toppmeny + søk restylt**: `.site-header` er gjennomsiktig med kvit tekst over hero (`vc-on-image`-klasse på `<body>`, sett/fjerna av ein scroll-lyttar basert på om `#hjem.vc-hero` faktisk finst og kor langt brukaren har scrolla — solid att så snart hero er passert, og aldri sett på andre ruter som artikkel/arkiv/admin). Søkje-overlayet (core.js sin eigen `.srch-*`) fekk mørk/cinematisk reskin.
+3. **Mørkt, utheva "kort"-utsjåande** (som mockupen sin `.kontakt-form-card`) lagt til på Kontakt-skjemaet (`.contact__form`), Quiz-boksen (`.quiz-box`) og Referansar-korta (`.rf-card`) — berre farge/typografi/bakgrunn-CSS mot eksisterande klassenamn frå core.js/module-quiz.js/module-references.js, ingen ny DOM-struktur.
+
+Fiksa i same runde: reell midtstillings-bug (hardkoda `1160px` i staden for plattforma sin faktiske `--maxw`-breidde-variabel, `1080px`, brukt av toppmenyen — retta konsekvent på alle malen sine seksjonar).
+
+**Stadfesta via jsdom-røyktest**: hero+about rendrast med hardkoda `scrollY=0` → `vc-on-image`-klassen sett korrekt; "Om Vibeverk" viser alle 3 hardkoda grunnar; simulert scroll til `scrollY=1000` (forbi ein 800px høg hero) → klassen fjerna korrekt att. Full suite: 783/303/124 OK, 0 FEIL.
+
 ## 0.161.1 — 2026-09-08
 
 **Fiksa `template-vibeverk-cinema.js` etter live-bruk avdekte to reelle feil og eit for stort avvik frå mockupen.**
