@@ -148,11 +148,44 @@
       'letter-spacing:-.015em;margin:0 0 26px;color:#fff;}' +
     '.vc-about__who{font-size:.95rem;color:var(--vc-deep-muted);font-weight:600;margin:0 0 22px;}' +
     '.vc-about__who b{color:#fff;}' +
-    '.vc-about__extra{font-size:1rem;line-height:1.7;color:var(--vc-deep-muted);max-width:560px;margin:0;}' +
+    /* .vc-about .vc-about__extra (to klassar, ikkje éin) -- vinn medvite over
+       den globale .prose{color:...} (index.html), sidan .vc-about__extra
+       sjølv òg ber klassen "prose" og elles ville tapt mot ho ved lik
+       spesifisitet. Fargen på SJØLVE TEKSTNODANE inni treng i tillegg
+       !important: content.about.text kjem frå riktekst-redigeringa i
+       Web-admin, som kan bake inn EKSPLISITTE inline style="color:..."-
+       spans (stadfesta reelt via skjermbilete 2026-09-09 -- teksten var
+       reint usynleg, mørk inline-farge tenkt for ein LYS bakgrunn, sidan
+       denne malen er den fyrste nokosinne som viser dette feltet på mørk
+       botn). Inline style vinn alltid over ein vanleg klasseregel, difor
+       !important her -- denne seksjonen er PERMANENT mørk i denne malen,
+       så å alltid tvinge lys tekst er korrekt, ikkje eit hack. */
+    '.vc-about .vc-about__extra{font-size:1rem;line-height:1.7;color:var(--vc-deep-muted);max-width:560px;margin:0;}' +
+    '.vc-about .vc-about__extra,.vc-about .vc-about__extra *{color:var(--vc-deep-muted) !important;}' +
     /* Om Vibeverk — tre grunnar, vekselvis bilde+tekst-rader (som mockupen
        sin .reason-row) -- sjå VC_REASONS under for hardkoda tekst+bilde. */
     '.vc-reasons{max-width:var(--maxw,1080px);margin:0 auto;padding:clamp(2.5rem,6vw,5rem) clamp(1.1rem,4vw,2rem) 0;}' +
-    '.vc-reasons__intro{max-width:64ch;}' +
+    /* Seksjons-INTRO (eyebrow/h2/lede) midtstilt -- ikkje kvar rad sin eigen
+       brødtekst (les dårlegare midtstilt i ei 3-kolonne rad). Same regel som
+       mockupen sjølv enda opp med etter tilbakemeldinga "midtstill alt":
+       berre kicker/h2/lede-blokka, aldri innhaldet i kvar enkelt rad/kort. */
+    /* .eyebrow (components.js) er display:flex -- som blokk-boks fyller han
+       FULL BREIDD av forelderen sin som standard (display:flex strekker seg
+       som ein vanleg div, ikkje krymper til innhald), difor gjer IKKJE ein
+       forelder sin text-align:center noko som helst -- det styrer berre
+       INLINE-nivå boksar/tekstinnhald, og påverkar aldri kor ein blokk-boks
+       (sjølv ein flex-boks) sit i sin eigen forelder. Stadfesta reelt via
+       skjermbilete 2026-09-09: Om Vibeverk sin eyebrow såg "centrert" ut
+       berre FORDI sjølve boksen hans (.vc-reasons__intro) alt hadde eigen,
+       smalare max-width+margin:auto -- Tenester/Aktuelt sin eyebrow, utan
+       den ekstra boks-innsnevringa, forblei heilt venstrejustert. Retta ved
+       å gje eyebrow-en sjølv krymp-til-innhald-breidd + eigne auto-marginar
+       INNI desse spesifikke boksane, i staden for å stole på nedarva
+       text-align. */
+    '.vc-reasons__intro .eyebrow,.vc-services__intro .eyebrow,' +
+      '#referanser-preview > .container > .eyebrow,#referanser > .container > .eyebrow,#aktuelt > .container > .eyebrow' +
+      '{width:fit-content;margin-left:auto;margin-right:auto;}' +
+    '.vc-reasons__intro{max-width:64ch;margin:0 auto;text-align:center;}' +
     '.vc-reason-row{display:grid;grid-template-columns:1fr 1fr;gap:6vw;align-items:center;padding:5vh 0;}' +
     '.vc-reason-row.vc-rev .vc-reason-media{order:2;}' +
     '.vc-reason-media{overflow:hidden;border-radius:18px;aspect-ratio:4/3;}' +
@@ -162,8 +195,17 @@
     '.vc-reason-text .prose{font-size:1rem;line-height:1.7;color:var(--color-muted,#5c6b80);max-width:440px;}' +
     /* Tenester (services) — stabla nummerbånd, éin band per teneste (som mockupen sin tj-band) */
     '.vc-services{padding:clamp(2.5rem,6vw,5rem) clamp(1.1rem,4vw,2rem);max-width:var(--maxw,1080px);margin:0 auto;}' +
-    '.vc-services__intro{margin-bottom:1rem;}' +
+    '.vc-services__intro{margin-bottom:1rem;text-align:center;}' +
     '.vc-services__intro h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:.4rem 0 0;}' +
+    /* Referansar/Aktuelt sine seksjons-intro (delte modular, ikkje denne
+       malen sin eigen markup) -- CSS cascadar likevel over heile sida, så
+       same midtstilling kan leggjast til her utan å røre module-references.js
+       eller components.js sin news(). Berre eyebrow/h2, ALDRI korta/nfc-lista
+       under (dei skal halde fram venstrejustert). */
+    '#referanser-preview > .container > .eyebrow,#referanser-preview > .container > .section__title,' +
+      '#referanser > .container > .eyebrow,#referanser > .container > .section__title,' +
+      '#aktuelt > .container > .eyebrow,#aktuelt > .container > .section__title' +
+      '{margin-left:auto;margin-right:auto;text-align:center;}' +
     '.vc-tj-band{display:grid;grid-template-columns:.5fr 1fr 1fr;gap:4vw;align-items:start;padding:6vh 0;' +
       'border-top:1px solid var(--color-border,#e2e9f5);}' +
     '.vc-tj-band:first-of-type{border-top:none;}' +

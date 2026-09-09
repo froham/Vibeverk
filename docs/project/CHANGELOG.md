@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.163.1 — 2026-09-09
+
+**Reell visuell verifikasjon (Playwright-skjermbilete, ikkje berre jsdom-testar) avdekte tre ekte, ikkje-trivielle feil i `template-vibeverk-cinema.js`, retta i denne runda.**
+
+Brukaren melde "midtstill alle seksjonar slik som i malen". Fann mockupen sin EIGEN kommentar (`v2.html`, skriven under den opphavlege "midstill alt"-tilbakemeldinga): berre seksjons-INTRO-blokka (kicker/h2/lede) skal midtstillast, ALDRI kvart einskild rad/kort sin eigen brødtekst — same regel er no lagt til her:
+
+1. **Seksjons-intro midtstilt**: `.vc-reasons__intro` (Om Vibeverk) og `.vc-services__intro` (Tenester) manglar midtstilling heilt (venstrejustert flush mot kanten). Retta.
+2. **`.eyebrow`-komponenten (components.js) er `display:flex`** — ein BLOKK-nivå boks som fyller full breidd som standard. Ein forelder sin `text-align:center` har difor ALDRI nokon effekt på sjølve eyebrow-boksen sin posisjon (kun på inline-nivå innhald) — retta ved å gje eyebrow-en krymp-til-innhald-breidd + eigne auto-marginar, ikkje ved å stole på nedarva `text-align`. Same feil gjaldt òg Referansar og Aktuelt sine eyebrow-element -- desse er delte modular (`module-references.js`/`C.news()`), men sidan malen sin CSS cascadar over heile sida, kunne midtstillinga leggjast til her óg, utan å røre dei delte filene.
+3. **"Bak Vibeverk" sin ekstra-tekst var praktisk usynleg** (mørk skrift på mørk botn) -- IKKJE ein CSS-feil, men EKSPLISITT `style="color:..."` bake inn i sjølve riktekst-innhaldet frå Web-admin (tenkt for ein lys bakgrunn, sidan denne malen er fyrste gong feltet vert vist på mørk botn). Inline style vinn alltid over ein vanleg klasseregel -- retta med eit medvite, grunngjeve `!important` sidan denne seksjonen ALLTID er mørk i denne malen.
+
+**Metode-notat**: alle tre feila var usynlege i `node test.js` (jsdom, ingen ekte CSS-cascade/layout) OG i tidlegare, enklare jsdom-røyktestar. Fanga først ved å faktisk starte ein lokal server, aktivere malen med `localStorage`, og ta eit ekte Playwright full-page-skjermbilete av kvar seksjon (med `emulateMedia({reducedMotion:"reduce"})` for å unngå at `.reveal`-fade-innhald under fyrste skjermbilete framstår tomt/usynleg pga. IntersectionObserver aldri trigga). Denne verifikasjonsmetoden bør brukast før framtidige "ser det rett ut?"-påstandar om denne malen, ikkje berre testsuite-status.
+
+**Ikkje ein kodefeil, treng brukarhandling**: "Bak Vibeverk" manglar framleis bilete på den faktiske sida -- IKKJE eit malproblem (malen fell korrekt tilbake til ein midtstilt, biletlaus variant når `content.about.image` er tom), men eit reint innhaldsspørsmål. Eit ferdig komprimert Frode-portrett finst alt committa (`docs/marketing/assets/fh-portrait-720.jpg`) og kan lastast opp via Web-admin sitt Om oss-bilete-felt.
+
+Full suite: 783/303/124 OK, 0 FEIL.
+
 ## 0.163.0 — 2026-09-09
 
 **Flip-kort på Referansar + ekte bilete/sitat-layout på "Om Vibeverk"/"Bak Vibeverk", etter direkte ønske om at desse to seksjonane skal matche mockupen skikkeleg.**
