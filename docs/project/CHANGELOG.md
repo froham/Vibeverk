@@ -30,6 +30,24 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.163.0 — 2026-09-09
+
+**Flip-kort på Referansar + ekte bilete/sitat-layout på "Om Vibeverk"/"Bak Vibeverk", etter direkte ønske om at desse to seksjonane skal matche mockupen skikkeleg.**
+
+**Flip-kort — konsulterte Arkitekt-agenten fyrst** sidan dette krev endring i `module-references.js`, ein delt fil brukt av ALLE tenantar (ikkje berre Vibeverk AS), ulikt tidlegare CSS-berre endringar. Arkitekten sitt konkrete forslag vart følgt:
+- Nytt, opt-in `CFG.references.cardStyle: "flip"`-felt (default `undefined` → 100% uendra åtferd/markup for alle andre tenantar — koden for det gamle, flate kortet står urørt som eigen gren i `cardHtml()`).
+- Sett til `"flip"` i dette repoet sitt `config.js` — stadfesta (ved å lese `api/tenant-config.js` sin eigen kommentar) at dette FAKTISK er kva som vert servert for den live sida i dag; den dynamiske per-tenant-config-endepunktet er eksplisitt merkt "Phase 6, mechanism-proof... never touches vibeverk.no" i eiga fil, altså ikkje i produksjon enno.
+- Kortet får no front/back-flater (`rotateY`/`backface-visibility`), vend ved hover (skrivebord) og ved klikk (touch, via ny JS-veksling i `mountPage()`).
+- **Reell åtferdsregresjon fanga og retta før merge**: fyrste utkast viste "Les mer"-CTA-en (og dermed einaste veg til detaljsida) KUN når `hasMoreContent` var sant — det gamle, flate kortet let derimot ALLTID heile kortet vere klikkbart til detaljsida, uavhengig av tekstlengd. Retta ved å alltid rendre CTA-en på baksida.
+- **Reell dobbel-lyttar-bug fanga og retta**: `mountPage()` bind ein NY click-lyttar på kvart kall utan å fjerne den førre (eksisterande, urørt mønster) — usynleg for den gamle alltid-naviger-åtferda, men fekk min nye `.toggle("is-flipped")` til å reversere seg sjølv INNANFOR same klikk (éin lyttar snur på, neste identiske lyttar snur av att). Retta med ein eingongs-markør på sjølve klikk-hendinga (`e.__vcFlipTarget`) som gjer alle gjentekne kall for same klikk idempotente, i staden for å endre `mountPage()` sin delte lyttar-livssyklus for alle tenantar.
+- Stadfesta via jsdom-røyktest (ikkje berre `node test.js`): kort med KORT tekst har framleis CTA, klikk på framsida vender kortet (`is-flipped` sant→usant→sant korrekt over fleire klikk), klikk på CTA-en navigerer framleis til `#referanser/<id>` som før.
+
+**"Om Vibeverk"**: bytt frå ein sjølvoppfunnen 3-kolonne tal+tekst-rutenett til mockupen sitt faktiske vekselvis bilde+tekst-radoppsett (`.reason-row`-mønsteret, biletet byter side kvar rad). Bileta er ekte Vibeverk-foto henta frå det lokale marknadsføringsarkivet (`docs/marketing/assets/Vibeverk AS/`) — komprimerte/skalerte til ≤1400px/JPEG q78 og lagt til som nye, commita filer under `asset/vibeverk-cinema/` (same GitHub-raw-URL-mønster som `config.js` sin eksisterande `logoUrl` alt brukar for `asset/Logo Icon.png`). Originalfilnamna (Flø/Hjørundfjorden/Portugal) stadfesta at dette var nøyaktig dei bileta mockupen sine `wide-rocks.jpg`/`wide-fjord.jpg`/`wide-portugal.jpg`-plassholdarar var meint å bli erstatta med.
+
+**"Bak Vibeverk"**: bytt frå generisk overskrift+brødtekst til mockupen sin faktiske sitat-sentrerte layout — `d.heading` vert no vist som eit stort, feittypografert `<blockquote>`, med ei hardkoda "who"-signatur ("Frode Hammerseth — Vibeverk", Vibeverk sin eigen identitet, ikkje kundedata) og `d.text` som eit mindre ekstra-avsnitt under.
+
+Full suite: 783/303/124 OK, 0 FEIL.
+
 ## 0.162.1 — 2026-09-09
 
 **Fiksa fire punkt frå ei ny tilbakemeldingsrunde på `template-vibeverk-cinema.js`, same dag som 0.162.0.**
