@@ -183,7 +183,8 @@
        INNI desse spesifikke boksane, i staden for å stole på nedarva
        text-align. */
     '.vc-reasons__intro .eyebrow,.vc-services__intro .eyebrow,' +
-      '#referanser-preview > .container > .eyebrow,#referanser > .container > .eyebrow,#aktuelt > .container > .eyebrow' +
+      '#referanser-preview > .container > .eyebrow,#referanser > .container > .eyebrow,#aktuelt > .container > .eyebrow,' +
+      '#quiz > .container > .eyebrow' +
       '{width:fit-content;margin-left:auto;margin-right:auto;}' +
     '.vc-reasons__intro{max-width:64ch;margin:0 auto;text-align:center;}' +
     '.vc-reason-row{display:grid;grid-template-columns:1fr 1fr;gap:6vw;align-items:center;padding:5vh 0;}' +
@@ -204,8 +205,13 @@
        under (dei skal halde fram venstrejustert). */
     '#referanser-preview > .container > .eyebrow,#referanser-preview > .container > .section__title,' +
       '#referanser > .container > .eyebrow,#referanser > .container > .section__title,' +
-      '#aktuelt > .container > .eyebrow,#aktuelt > .container > .section__title' +
+      '#aktuelt > .container > .eyebrow,#aktuelt > .container > .section__title,' +
+      '#quiz > .container > .eyebrow,#quiz > .container > .section__title' +
       '{margin-left:auto;margin-right:auto;text-align:center;}' +
+    /* Quiz-boksen sjølv (module-quiz.js, fast max-width:640px) manglar
+       margin:auto i sin eigen kjeldefil -- flush venstrejustert i .container
+       elles, akkurat som .eyebrow-feilen over. */
+    '.quiz-box{margin:0 auto;}' +
     '.vc-tj-band{display:grid;grid-template-columns:.5fr 1fr 1fr;gap:4vw;align-items:start;padding:6vh 0;' +
       'border-top:1px solid var(--color-border,#e2e9f5);}' +
     '.vc-tj-band:first-of-type{border-top:none;}' +

@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.163.2 — 2026-09-09
+
+**Quiz-seksjonen fekk same midtstillings-fiks som Referansar/Aktuelt i 0.163.1 — ikkje dekt i den runda sidan Quiz sitt eyebrow/h2/boks-mønster berre vart oppdaga no.**
+
+`module-quiz.js` sin `renderSection()` følgjer nøyaktig same struktur som Referansar/Aktuelt (`#quiz > .container > .eyebrow/.section__title`), pluss ein eigen `.quiz-box` (fast `max-width:640px`) som mangla `margin:auto` i kjeldefila si eiga CSS — flush venstrejustert, akkurat same rotårsak (`display:flex`-eyebrow som ikkje svarar på nedarva `text-align`) som dei tre andre seksjonane. Retta med same mønster: `#quiz > .container > .eyebrow{width:fit-content;margin:auto}`, `#quiz > .container > .section__title{text-align:center}`, `.quiz-box{margin:0 auto}`.
+
+Stadfesta via eit ekte Playwright-skjermbilete av `#quiz` (mot verkeleg produksjonsinnhald, sidan `localhost:8080` koplar til den faktiske Supabase-databasen) — eyebrow, overskrift og sjølve quiz-boksen er no alle midtstilte på sida.
+
+Full suite: 783/303/124 OK, 0 FEIL.
+
 ## 0.163.1 — 2026-09-09
 
 **Reell visuell verifikasjon (Playwright-skjermbilete, ikkje berre jsdom-testar) avdekte tre ekte, ikkje-trivielle feil i `template-vibeverk-cinema.js`, retta i denne runda.**
