@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.162.1 — 2026-09-09
+
+**Fiksa fire punkt frå ei ny tilbakemeldingsrunde på `template-vibeverk-cinema.js`, same dag som 0.162.0.**
+
+1. **Det kvite toppmeny-feltet over hero-biletet, stadfesta av brukaren (skjermbilete) som "gamle" nav-en, statisk, retta seg sjølv etter scroll.** Rotårsak funnen: `.site-header` er `position:sticky` (definert i `index.html`, delt av alle sider). Ved `scrollY=0` reserverer eit sticky-element framleis sin eigen boks i vanleg dokumentflyt (ulikt `fixed`, som tek det heilt ut av flyten) — hero-seksjonen starta difor alltid RETT UNDER nav-en sin 68px-høge boks, aldri overlappande han, sjølv om `vc-on-image`-klassen var korrekt sett og `background:transparent` var korrekt brukt. Fiksa ved å byte `.site-header` til `position:fixed` MEDAN `vc-on-image` er aktiv (hero sin eigne 120px topp-padding gjev då rett klaring under den flytande menyen) — reverterer automatisk til vanleg `sticky`-åtferd når klassen fjernast (etter hero, eller på ruter som aldri set klassen i det heile).
+2. **Referansar (`.rf-card`) fekk IKKJE lenger den mørke kort-stilen** — eksplisitt fråvalt av brukaren, held seg no til plattforma sin vanlege, lyse kort-stil.
+3. **Søkje-utløysaren restylt** til å faktisk matche mockupen sin pille-forma "Søk"-knapp (bakgrunn, kant, tekstetikett via CSS `::after{content:"Søk"}`) i staden for berre eit umerkt ikon — tidlegare runde restylte berre SØKJE-OVERLAYET (resultatlista), ikkje sjølve UTLØYSAR-KNAPPEN i nav-en, som brukaren rett peika på var stilistisk urelatert til resten.
+4. **Konsekvent kant-justering**: alle seksjonane sin eigenprodusert `6vw`-horisontalpadding bytt til plattforma sin faktiske `.container`-formel (`clamp(1.1rem,4vw,2rem)`) — den tidlegare `--maxw`-fiksen (0.161.1) retta berre YTRE breidd, ikkje INDRE padding, så venstre/høgre kant stemte framleis ikkje nøyaktig med Kontakt/Aktuelt/Referansar under.
+
+**Kjend, ikkje-løyst biverknad**: å veksle `.site-header` mellom `fixed`/`sticky` midt i sida fjernar/gjenopprettar nav-en sin reserverte flyt-plass, som i teorien kan gje eit lite, kortvarig innhaldshopp akkurat i det brukaren scrollar forbi hero-grensa. Vurdert som eit mindre polish-punkt, ikkje følgt opp vidare i denne runda.
+
+Full suite: 783/303/124 OK, 0 FEIL.
+
 ## 0.162.0 — 2026-09-09
 
 **`template-vibeverk-cinema.js` gjort meir "førande" for heilskapen, etter tilbakemelding om at malen burde styre meir enn berre hero/om-oss/tenester.**
