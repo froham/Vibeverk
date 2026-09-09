@@ -20,21 +20,49 @@
    applyTheme() — retta til --color-secondary, som er den faktiske,
    kunde-konfigurerbare andrefargen).
 
-   Bevisst UTELATE frå denne malen (finst i mockupen, men er IKKJE mogleg å
-   style per mal i dagens kode — Referansar/Aktuelt/Quiz rendrast av sine
-   eigne delte modular/komponentar (module-references.js/C.news()/
-   module-quiz.js), uavhengig av kva designmal som er aktiv):
-     - Referansar sine flip-cards
-     - Aktuelt sitt eige rutenett
-     - Quiz sin mørke kort-stil
-   Desse tre seksjonane vil vise seg med plattforma sin vanlege, delte stil
-   uansett kva mal som er valt. Å gjere dei malstyrbare krev ei eiga,
-   arkitektonisk større endring (per-modul malhooks) — ikkje gjort her.
+   Bevisst UTELATE frå denne malen (finst i mockupen, men krev ny DOM-
+   struktur/JS-åtferd som IKKJE kan leggjast til frå ei CSS-fil åleine --
+   Referansar/Aktuelt/Quiz sin faktiske MARKUP kjem frå sine eigne delte
+   modular (module-references.js/C.news()/module-quiz.js), uavhengig av kva
+   designmal som er aktiv):
+     - Referansar sine flip-cards (3D-vend-mekanikken sjølv, ikkje fargen)
+     - Aktuelt sitt eige rutenett-oppsett
+   Fargar/typografi/mørk stemning på desse ER derimot malstyrt her (sjå
+   retting 2026-09-09 over) -- det er berre den interaktive STRUKTUREN som
+   framleis krev ei eiga, arkitektonisk større endring (per-modul malhooks)
+   for å kunne portast heilt.
 
    Terminal-animasjonen i heroet ER bevisst hardkoda (Vibeverk-spesifikk
    "vibeverk deploy ..."-tekst) — reint dekorativt, ingen kundedata, del av
    MALEN sin faste stil, ikkje noko ein administrator treng redigere. Same
    grunngjeving som i mockupen sin eigen historikk.
+
+   Retta 2026-09-09 etter tilbakemelding om at malen burde vere meir
+   FØRANDE for heilskapen, ikkje berre hero/om-oss/tenester:
+   - "Om Vibeverk" (tre-grunnar-banda frå mockupen) fanst ikkje i den
+     opphavlege versjonen, sidan det er ein HEILT EIGEN seksjon i mockupen
+     (id="om", skilt frå "Bak Vibeverk"/founder-cinema), og content-modellen
+     berre har éin about()-plass. Løyst ved å hardkode teksten (Vibeverk sin
+     eigen, generiske verdiproposisjon -- ikkje kundedata, difor trygt å
+     hardkode akkurat som terminal-sekvensane) INNI same about()-funksjonen,
+     stabla over "Bak Vibeverk".
+   - Oppdaga at malen sin eigen injiserte CSS FAKTISK gjeld heile sida (nav,
+     søk, Kontakt, Quiz, Referansar), ikkje berre hero/om-oss/tenester --
+     tidlegare fila sin eigen påstand om at desse "ikkje er mogleg å style
+     per mal" var difor for bastant. Retta ved å faktisk leggje til CSS for:
+     - Toppmenyen gjennomsiktig over hero, kvit tekst, solid ved scroll
+       (same idé som mockupen sin `.nav.on-image`).
+     - Søkje-overlayet (`.srch-*`, kjernefunksjon i core.js) mørk/cinematisk
+       reskin.
+     - Mørkt, utheva "kort"-utsjåande (som mockupen sin `.kontakt-form-card`)
+       på Kontakt-skjemaet (`.contact__form`), Quiz-boksen (`.quiz-box`) og
+       Referansar-korta (`.rf-card`) -- berre farge/typografi/bakgrunn via
+       CSS mot EKSISTERANDE klassenamn, ingen ny DOM-struktur (flip-korta
+       sin 3D-vend-mekanikk er framleis ikkje porta, det krev ny markup).
+   - Fiksa reell midtstillings-bug: brukte hardkoda 1160px i staden for
+     plattforma sin faktiske `--maxw`-breidde-variabel (1080px, brukt av
+     toppmenyen), som gjorde at seksjonane mine ikkje stemte breiddemessig
+     med resten av sida.
 
    VIKTIG oppstart-mekanisme: hero()/about()/services() returnerer berre HTML-
    strengar (ingen mount()-steg i denne malkontrakten, sjå core.js sine
@@ -91,15 +119,22 @@
     '@keyframes vc-sweep-move{0%,100%{transform:translateX(-18%) translateY(-4%);}50%{transform:translateX(18%) translateY(4%);}}' +
     '@media (prefers-reduced-motion: reduce){.vc-about__grid-bg,.vc-about__sweep{animation:none;}}' +
     '.vc-about__grid{position:relative;z-index:2;display:grid;grid-template-columns:1fr 1.1fr;gap:6vw;align-items:center;' +
-      'max-width:1160px;margin:0 auto;padding:12vh 6vw;}' +
+      'max-width:var(--maxw,1080px);margin:0 auto;padding:12vh 6vw;}' +
     '.vc-about__grid.vc-about__grid--noimg{grid-template-columns:1fr;text-align:center;max-width:760px;}' +
     '.vc-about__photo img{width:100%;height:auto;max-height:70vh;object-fit:contain;border-radius:16px;' +
       'box-shadow:0 24px 70px rgba(0,0,0,.4);}' +
     '.vc-about__body .eyebrow{color:var(--color-secondary,#ff7a00);}' +
     '.vc-about__body h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:0 0 20px;color:#fff;}' +
     '.vc-about__body .prose{color:var(--vc-deep-muted);line-height:1.7;}' +
+    /* Om Vibeverk — tre grunnar, hardkoda tekst-kort (sjå VC_REASONS under) */
+    '.vc-reasons{max-width:var(--maxw,1080px);margin:0 auto;padding:clamp(2.5rem,6vw,5rem) 6vw 0;}' +
+    '.vc-reasons__intro{max-width:64ch;}' +
+    '.vc-reasons__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2.5rem;margin-top:2.5rem;}' +
+    '.vc-reason__num{font-weight:800;font-size:1.6rem;color:var(--color-primary,#005cff);margin-bottom:.6rem;}' +
+    '.vc-reason h3{font-size:1.1rem;margin:0 0 .6rem;}' +
+    '.vc-reason .prose{font-size:.94rem;line-height:1.6;color:var(--color-muted,#5c6b80);}' +
     /* Tenester (services) — stabla nummerbånd, éin band per teneste (som mockupen sin tj-band) */
-    '.vc-services{padding:clamp(2.5rem,6vw,5rem) 6vw;max-width:1160px;margin:0 auto;}' +
+    '.vc-services{padding:clamp(2.5rem,6vw,5rem) 6vw;max-width:var(--maxw,1080px);margin:0 auto;}' +
     '.vc-services__intro{margin-bottom:1rem;}' +
     '.vc-services__intro h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:.4rem 0 0;}' +
     '.vc-tj-band{display:grid;grid-template-columns:.5fr 1fr 1fr;gap:4vw;align-items:start;padding:6vh 0;' +
@@ -108,9 +143,54 @@
     '.vc-tj-band__num{font-weight:800;font-size:clamp(2.4rem,4vw,3.6rem);line-height:1;opacity:.7;}' +
     '.vc-tj-band h3{font-size:1.3rem;margin:0 0 12px;}' +
     '.vc-tj-band .prose{font-size:.98rem;line-height:1.65;color:var(--color-muted,#5c6b80);}' +
+    /* Toppmeny gjennomsiktig over hero, kvit tekst -- solid att så snart brukaren
+       scroller forbi hero (klasse `vc-on-image` sett/fjerna av scroll-lyttaren
+       nedst i fila). Gjeld berre når hero-seksjonen faktisk finst i DOM-en
+       (JS-en legg klassen på <body>, ikkje permanent i CSS), så andre
+       sider/ruter (artikkel, arkiv, admin) er upåverka. */
+    '.vc-on-image .site-header{background:transparent;box-shadow:none;transition:background .25s,box-shadow .25s;}' +
+    '.vc-on-image .site-header .brand__name,.vc-on-image .site-header .nav__link,.vc-on-image .site-header .nav__search{color:#fff;}' +
+    '.vc-on-image .site-header .nav__search{opacity:.85;}' +
+    '.site-header{transition:background .25s,box-shadow .25s;}' +
+    /* Søkje-overlay (core.js sin eigen `.srch-*`-funksjon) -- mørk/cinematisk reskin */
+    '.srch-panel{background:var(--vc-deep-bg);color:#fff;}' +
+    '.srch-head{border-bottom:1px solid var(--vc-deep-line);}' +
+    '.srch-icon{color:var(--vc-deep-muted);}' +
+    '.srch-input{color:#fff;}' +
+    '.srch-input::placeholder{color:var(--vc-deep-muted);}' +
+    '.srch-x{color:var(--vc-deep-muted);}' +
+    '.srch-empty{color:var(--vc-deep-muted);}' +
+    '.srch-group__label{color:var(--vc-deep-muted);}' +
+    '.srch-hit{color:#fff;}' +
+    '.srch-hit:hover{background:rgba(255,255,255,.06);}' +
+    '.srch-hit__meta,.srch-hit__text{color:var(--vc-deep-muted);}' +
+    '.srch-hit__text mark{background:rgba(0,92,255,.35);color:#fff;}' +
+    /* Mørkt, utheva "kort"-utsjåande (som mockupen sin .kontakt-form-card) på
+       Kontakt-skjema, Quiz-boks og Referansar-kort -- berre farge/typografi
+       mot EKSISTERANDE klassenamn frå core.js/module-quiz.js/
+       module-references.js, ingen ny DOM-struktur. */
+    '.contact__form,.quiz-box,.rf-card{position:relative;background:var(--vc-deep-bg);color:#fff;' +
+      'border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.22);}' +
+    '.contact__form::before,.quiz-box::before,.rf-card::before{content:"";position:absolute;top:0;left:0;right:0;' +
+      'height:4px;background:linear-gradient(90deg,var(--color-primary,#005cff),var(--color-secondary,#ff7a00));}' +
+    '.contact__form{padding:2rem;}' +
+    '.contact__form label{color:#fff;}' +
+    '.contact__form .field input,.contact__form .field textarea{' +
+      'background:rgba(255,255,255,.04);border:1.5px solid var(--vc-deep-line);color:#fff;}' +
+    '.contact__form .field input::placeholder,.contact__form .field textarea::placeholder{color:var(--vc-deep-muted);}' +
+    '.contact__form .field__hint{color:var(--vc-deep-muted);}' +
+    '.quiz-box{padding:1.75rem;}' +
+    '.quiz-q,.quiz-result h3{color:#fff;}' +
+    '.quiz-intro{color:var(--vc-deep-muted);}' +
+    '.quiz-choice{background:rgba(255,255,255,.03);border:1.5px solid var(--vc-deep-line);color:#fff;}' +
+    '.quiz-choice:hover{background:rgba(255,255,255,.08);}' +
+    '.rf-card__name{color:#fff;}' +
+    '.rf-card__text,.rf-card__quote,.rf-card__by{color:var(--vc-deep-muted);}' +
+    '.rf-card__body{padding:1.1rem 1.25rem 1.4rem;}' +
     '@media (max-width:700px){' +
       '.vc-about__grid{grid-template-columns:1fr;gap:2rem;padding:8vh 6vw;}' +
       '.vc-tj-band{grid-template-columns:1fr;gap:12px;}' +
+      '.vc-reasons__grid{grid-template-columns:1fr;gap:1.75rem;}' +
     '}';
 
   function injectCss() {
@@ -148,21 +228,51 @@
   }
 
   /* =========================================================================
-     BAK VIBEVERK (about)
+     OM VIBEVERK (tre grunnar) + BAK VIBEVERK (about)
+     Mockupen sitt "Om Vibeverk" (id="om") er ein HEILT EIGEN seksjon, skilt
+     frå "Bak Vibeverk"/founder-cinema -- men content-modellen har berre éin
+     about()-plass (id="om-oss"). Løysing: begge stablast inni same
+     seksjonen. Tre-grunnar-teksten er Vibeverk sin eigen, generiske
+     verdiproposisjon -- ikkje kundedata, difor trygt hardkoda her, same
+     grunngjeving som terminal-sekvensane i heroet.
      ====================================================================== */
+  var VC_REASONS = [
+    { title: "Bygd for å tilpassast", text: "Ved å byggje på ei felles plattform med gjennomprøvde modular kan vi levere profesjonelle løysingar som samtidig vert tilpassa den enkelte verksemda — til ein fornuftig pris." },
+    { title: "Kontroll, ikkje avhengigheit", text: "Løysingane har eit enkelt og brukarvennleg publiseringsverktøy, slik at du kan handtere det daglege innhaldet sjølv. Målet er å gje deg kontroll, ikkje gjere deg avhengig av kostbart etterarbeid." },
+    { title: "Personvern på alvor", text: "Vi prioriterer datalagring innanfor EU og separate databasar for kvar kunde, kombinert med tydeleg tilgangsstyring og relevante sikkerheitstiltak." }
+  ];
   function about(d) {
     injectCss();
     var hasImg = d.image && d.image.src;
     var photoHtml = hasImg ? '<div class="vc-about__photo reveal">' + C.coverImg(d.image, "") + '</div>' : "";
+    var reasonsHtml = '<div class="vc-reasons">' +
+      '<div class="vc-reasons__intro reveal">' +
+        C.eyebrow("Om Vibeverk") +
+        '<h2>Tre grunnar til å nytte Vibeverk.</h2>' +
+        '<p class="prose">Vibeverk er ein skreddarsydd digital plattform — modulbasert og tilpassa, levert som ei personleg forvalta teneste. Vi trur på at kundane våre er unike og har stoltheit for sitt produkt og varemerke.</p>' +
+      '</div>' +
+      '<div class="vc-reasons__grid">' +
+        VC_REASONS.map(function (r, i) {
+          return '<div class="vc-reason reveal">' +
+            '<div class="vc-reason__num">0' + (i + 1) + '</div>' +
+            '<h3>' + C.esc(r.title) + '</h3>' +
+            '<div class="prose">' + C.esc(r.text) + '</div>' +
+          '</div>';
+        }).join("") +
+      '</div>' +
+    '</div>';
     return (
-      '<section id="om-oss" class="vc-about">' +
-        '<div class="vc-about__grid-bg"></div><div class="vc-about__sweep"></div>' +
-        '<div class="vc-about__grid' + (hasImg ? "" : " vc-about__grid--noimg") + '">' +
-          photoHtml +
-          '<div class="vc-about__body reveal">' +
-            C.eyebrow(d.intro || d.heading) +
-            '<h2>' + C.esc(d.heading) + '</h2>' +
-            '<div class="prose">' + C.sanitizeRichHtml(d.text) + '</div>' +
+      '<section id="om-oss">' +
+        reasonsHtml +
+        '<div class="vc-about">' +
+          '<div class="vc-about__grid-bg"></div><div class="vc-about__sweep"></div>' +
+          '<div class="vc-about__grid' + (hasImg ? "" : " vc-about__grid--noimg") + '">' +
+            photoHtml +
+            '<div class="vc-about__body reveal">' +
+              C.eyebrow(d.intro || d.heading) +
+              '<h2>' + C.esc(d.heading) + '</h2>' +
+              '<div class="prose">' + C.sanitizeRichHtml(d.text) + '</div>' +
+            '</div>' +
           '</div>' +
         '</div>' +
       '</section>'
@@ -280,11 +390,25 @@
     })(0);
   }
 
+  // Gjennomsiktig-toppmeny-over-hero (`vc-on-image`-klassen på <body>, sjå
+  // CSS) -- spør DOM-en på nytt kvar gong i staden for å cache ein referanse,
+  // sidan heile heltseksjonen vert bytt ut med ein fersk node kvar gong
+  // brukaren navigerer attende til framsida, og forsvinn heilt på andre
+  // ruter (artikkel/arkiv/admin), der body difor aldri får klassen.
+  function updateOnImage() {
+    var hero = document.querySelector("#hjem.vc-hero");
+    document.body.classList.toggle("vc-on-image", !!hero && (window.scrollY || 0) < hero.offsetHeight - 80);
+  }
+
+  // Éin felles skanning køyrer både ved kvar #main-mutasjon (nye seksjonar
+  // etter rute-/innhaldsendring) OG ved kvar scroll-tick (nav-toggle) --
+  // terminal-oppstart skjer berre for nye, ubundne element.
   function scanForNewElements() {
     document.querySelectorAll("[data-vc-terminal-body]:not([data-vc-bound])").forEach(function (el) {
       el.setAttribute("data-vc-bound", "1");
       startTerminal(el);
     });
+    updateOnImage();
   }
 
   function bindObserver() {
@@ -298,21 +422,20 @@
     bindObserver();
   }
 
-  // Parallax på hero-bakgrunnen -- spør DOM-en på nytt for kvar scroll-tick
-  // i staden for å cache éin referanse, sidan #vcHeroBg vert bytt ut med ein
-  // fersk node kvar gong brukaren navigerer attende til framsida.
-  if (!reduceMotion) {
-    var ticking = false;
-    window.addEventListener("scroll", function () {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(function () {
+  // Parallax på hero-bakgrunnen + nav-toggle ved scroll.
+  var ticking = false;
+  window.addEventListener("scroll", function () {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      updateOnImage();
+      if (!reduceMotion) {
         var heroBg = document.getElementById("vcHeroBg");
         if (heroBg) heroBg.style.transform = "translateY(" + ((window.scrollY || 0) * 0.15) + "px)";
-        ticking = false;
-      });
-    }, { passive: true });
-  }
+      }
+      ticking = false;
+    });
+  }, { passive: true });
 
   window.SiteTemplates = window.SiteTemplates || {};
   window.SiteTemplates["vibeverk-cinema"] = { id: "vibeverk-cinema", label: "(Bespoke) Vibeverk — Cinematisk", hero: hero, about: about, services: services };
