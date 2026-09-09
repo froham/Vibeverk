@@ -261,7 +261,13 @@ window.SITE_CONFIG = {
   references: {
     heading:      "Referanser",
     intro:        "Her er noen av kundene vi har hatt gleden av å jobbe med.",
-    previewCount: 3        // antall kort som vises inline på forsiden
+    previewCount: 3,       // antall kort som vises inline på forsiden
+    // cardStyle:"flip" -- 3D-vend-kort (framside/bakside), berre lest av
+    // module-references.js sin eigen cardHtml()-funksjon når verdien er
+    // NØYAKTIG strengen "flip". Bygd for den bespoke template-vibeverk-
+    // cinema.js sin skuld -- fjern denne linja (eller sett verdien til noko
+    // anna) om ein annan mal/kunde nokon gong deler denne config.js-fila.
+    cardStyle:    "flip"
   },
 
   /* --- Mediebank (modul) ------------------------------------------------------

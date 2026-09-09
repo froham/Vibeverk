@@ -164,6 +164,40 @@
       : "";
     var hasMoreContent = (showQuoteOnly && !!plainText) ||
       plainText.length > CARD_MAXLEN || plainQuote.length > CARD_MAXLEN;
+    // cardStyle:"flip" (sett i config.js sitt CFG.references -- p.t. berre
+    // brukt av den bespoke template-vibeverk-cinema.js sin eigen tenant, sjå
+    // RCF ovanfor) byter frå eit flatt kort til eit 3D-vend-kort: framsida
+    // syner bilde+namn+kort tekst som før, baksida syner sitatet i sin
+    // heilskap pluss ei eiga "Les mer"-lenke. Ikkje meint å endre noko for
+    // andre tenantar -- RCF.cardStyle er alltid undefined for dei, så denne
+    // heile grena køyrer aldri og cardHtml() sitt vanlege innhald under
+    // held fram uendra.
+    if (RCF.cardStyle === "flip") {
+      return '<article class="rf-card rf-card--flip">' +
+        '<div class="rf-card__flip-inner">' +
+          '<div class="rf-card__front">' +
+            imgHtml +
+            '<div class="rf-card__body">' + catHtml + '<h3 class="rf-card__name">' + esc(item.name) + '</h3>' + '</div>' +
+          '</div>' +
+          '<div class="rf-card__back">' +
+            '<div class="rf-card__body">' +
+              catHtml +
+              '<h3 class="rf-card__name">' + esc(item.name) + '</h3>' +
+              textHtml +
+              quoteHtml +
+              byHtml +
+              // Alltid ei "Les mer"-lenke, IKKJE berre når hasMoreContent --
+              // det flate (ikkje-flip) kortet under gjer det same (data-rf-open
+              // ligg alltid på sjølve <article>-en uansett trunkering), sidan
+              // detaljsida òg kan ha felt (t.d. fleire bilde) som ikkje syner
+              // seg på sjølve kortet. Utan dette har eit kort med kort tekst
+              // ingen veg til detaljsida i det heile i vend-modus.
+              '<button type="button" class="rf-readmore" data-rf-open="' + esc(item.id) + '">Les mer →</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</article>';
+    }
     return '<article class="rf-card" data-rf-open="' + esc(item.id) + '">' +
       imgHtml +
       '<div class="rf-card__body">' +
@@ -280,6 +314,23 @@
       var card = e.target.closest("[data-rf-open]");
       if (card) {
         window.location.hash = "#referanser/" + card.getAttribute("data-rf-open");
+        return;
+      }
+      // Vend-kort (cardStyle:"flip"): klikk KVAR SOM HELST på sjølve kortet
+      // (utanom "Les mer"-lenka på baksida, fanga over) vender det -- CSS
+      // :hover gjev same effekt gratis på skrivebord, men touch-skjermar har
+      // ingen hover-tilstand, difor treng vi denne JS-veksleen for mobil.
+      // mountPage() vert kalla på nytt for kvar rute/re-render UTAN å fjerne
+      // førre lyttar (eksisterande mønster, urørt her) -- container kan difor
+      // ha FLEIRE identiske click-lyttarar bunde over tid. Eit reint
+      // `.toggle()` ville då reversere seg sjølv innanfor same klikk (ein
+      // lyttar snur PÅ, neste identiske lyttar snur AV att). SET (via ein
+      // eingongs data-attributt-markør på sjølve hendinga) i staden for
+      // TOGGLE gjer alle gjentekne kall for same klikk idempotente.
+      var flipCard = e.target.closest(".rf-card--flip");
+      if (flipCard) {
+        if (e.__vcFlipTarget === undefined) e.__vcFlipTarget = !flipCard.classList.contains("is-flipped");
+        flipCard.classList.toggle("is-flipped", e.__vcFlipTarget);
         return;
       }
       // Kategori-filter

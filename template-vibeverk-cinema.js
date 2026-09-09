@@ -144,15 +144,22 @@
     '.vc-about__photo img{width:100%;height:auto;max-height:70vh;object-fit:contain;border-radius:16px;' +
       'box-shadow:0 24px 70px rgba(0,0,0,.4);}' +
     '.vc-about__body .eyebrow{color:var(--color-secondary,#ff7a00);}' +
-    '.vc-about__body h2{font-size:clamp(1.6rem,3vw,2.4rem);margin:0 0 20px;color:#fff;}' +
-    '.vc-about__body .prose{color:var(--vc-deep-muted);line-height:1.7;}' +
-    /* Om Vibeverk — tre grunnar, hardkoda tekst-kort (sjå VC_REASONS under) */
+    '.vc-about__quote{font-family:inherit;font-weight:800;font-size:clamp(1.5rem,3vw,2.3rem);line-height:1.3;' +
+      'letter-spacing:-.015em;margin:0 0 26px;color:#fff;}' +
+    '.vc-about__who{font-size:.95rem;color:var(--vc-deep-muted);font-weight:600;margin:0 0 22px;}' +
+    '.vc-about__who b{color:#fff;}' +
+    '.vc-about__extra{font-size:1rem;line-height:1.7;color:var(--vc-deep-muted);max-width:560px;margin:0;}' +
+    /* Om Vibeverk — tre grunnar, vekselvis bilde+tekst-rader (som mockupen
+       sin .reason-row) -- sjå VC_REASONS under for hardkoda tekst+bilde. */
     '.vc-reasons{max-width:var(--maxw,1080px);margin:0 auto;padding:clamp(2.5rem,6vw,5rem) clamp(1.1rem,4vw,2rem) 0;}' +
     '.vc-reasons__intro{max-width:64ch;}' +
-    '.vc-reasons__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2.5rem;margin-top:2.5rem;}' +
-    '.vc-reason__num{font-weight:800;font-size:1.6rem;color:var(--color-primary,#005cff);margin-bottom:.6rem;}' +
-    '.vc-reason h3{font-size:1.1rem;margin:0 0 .6rem;}' +
-    '.vc-reason .prose{font-size:.94rem;line-height:1.6;color:var(--color-muted,#5c6b80);}' +
+    '.vc-reason-row{display:grid;grid-template-columns:1fr 1fr;gap:6vw;align-items:center;padding:5vh 0;}' +
+    '.vc-reason-row.vc-rev .vc-reason-media{order:2;}' +
+    '.vc-reason-media{overflow:hidden;border-radius:18px;aspect-ratio:4/3;}' +
+    '.vc-reason-media img{width:100%;height:100%;object-fit:cover;display:block;}' +
+    '.vc-reason-num{font-weight:800;font-size:1.4rem;color:var(--color-primary,#005cff);margin-bottom:.6rem;}' +
+    '.vc-reason-text h3{font-size:1.5rem;margin:0 0 14px;letter-spacing:-.01em;}' +
+    '.vc-reason-text .prose{font-size:1rem;line-height:1.7;color:var(--color-muted,#5c6b80);max-width:440px;}' +
     /* Tenester (services) — stabla nummerbånd, éin band per teneste (som mockupen sin tj-band) */
     '.vc-services{padding:clamp(2.5rem,6vw,5rem) clamp(1.1rem,4vw,2rem);max-width:var(--maxw,1080px);margin:0 auto;}' +
     '.vc-services__intro{margin-bottom:1rem;}' +
@@ -225,10 +232,33 @@
     '.quiz-intro{color:var(--vc-deep-muted);}' +
     '.quiz-choice{background:rgba(255,255,255,.03);border:1.5px solid var(--vc-deep-line);color:#fff;}' +
     '.quiz-choice:hover{background:rgba(255,255,255,.08);}' +
+    /* Referansar sine flip-kort (module-references.js sitt cardStyle:"flip",
+       sett i config.js -- sjå CHANGELOG for grunngjeving). Framsida (bilde+
+       namn) og baksida (sitat/tekst+"Les mer") er to separate DOM-element
+       rotert med rotateY -- sjølve markup-strukturen ligg i den delte
+       module-references.js, denne malen legg berre til det visuelle
+       vend-oppsettet. */
+    '.rf-card--flip{perspective:1400px;background:none;box-shadow:none;border-radius:0;}' +
+    '.rf-card--flip .rf-card__flip-inner{position:relative;width:100%;height:100%;min-height:340px;' +
+      'transition:transform .6s cubic-bezier(.4,.2,.2,1);transform-style:preserve-3d;}' +
+    '.rf-card--flip:hover .rf-card__flip-inner,.rf-card--flip.is-flipped .rf-card__flip-inner{transform:rotateY(180deg);}' +
+    '.rf-card--flip .rf-card__front,.rf-card--flip .rf-card__back{position:absolute;inset:0;' +
+      'backface-visibility:hidden;border-radius:16px;overflow:hidden;background:var(--color-surface,#fff);' +
+      'box-shadow:0 8px 28px rgba(0,0,0,.12);cursor:pointer;}' +
+    '.rf-card--flip .rf-card__back{transform:rotateY(180deg);background:linear-gradient(135deg,var(--color-text,#142033),var(--vc-deep-bg));' +
+      'color:#fff;display:flex;align-items:center;}' +
+    '.rf-card--flip .rf-card__back .rf-card__name{color:#fff;}' +
+    '.rf-card--flip .rf-card__back .rf-card__text,.rf-card--flip .rf-card__back .rf-card__quote,' +
+      '.rf-card--flip .rf-card__back .rf-card__by{color:var(--vc-deep-muted);}' +
+    '.rf-card--flip .rf-card__back .rf-card__body{padding:1.25rem 1.4rem;}' +
+    '@media (prefers-reduced-motion: reduce){' +
+      '.rf-card--flip .rf-card__flip-inner{transition:none;}' +
+    '}' +
     '@media (max-width:700px){' +
       '.vc-about__grid{grid-template-columns:1fr;gap:2rem;padding:8vh clamp(1.1rem,4vw,2rem);}' +
       '.vc-tj-band{grid-template-columns:1fr;gap:12px;}' +
-      '.vc-reasons__grid{grid-template-columns:1fr;gap:1.75rem;}' +
+      '.vc-reason-row{grid-template-columns:1fr;gap:1.25rem;padding:3vh 0;}' +
+      '.vc-reason-row.vc-rev .vc-reason-media{order:0;}' +
     '}';
 
   function injectCss() {
@@ -274,10 +304,18 @@
      verdiproposisjon -- ikkje kundedata, difor trygt hardkoda her, same
      grunngjeving som terminal-sekvensane i heroet.
      ====================================================================== */
+  // Statiske biletfiler, commita i repoet under asset/vibeverk-cinema/ (same
+  // GitHub-raw-URL-mønster som config.js sin logoUrl allereie brukar for
+  // asset/Logo Icon.png) -- ekte Vibeverk-foto henta frå det lokale
+  // marknadsførings-biletearkivet (docs/marketing/assets/Vibeverk AS/), som
+  // sjølve namna på originalfilene (Flø/Hjørundfjorden/Portugal) stadfesta
+  // var akkurat dei bileta mockupen sine "wide-rocks/wide-fjord/wide-
+  // portugal"-plassholdarar var meint å bli erstatta med.
+  var VC_ASSET_BASE = "https://github.com/froham/Vibeverk/blob/main/asset/vibeverk-cinema/";
   var VC_REASONS = [
-    { title: "Bygd for å tilpassast", text: "Ved å byggje på ei felles plattform med gjennomprøvde modular kan vi levere profesjonelle løysingar som samtidig vert tilpassa den enkelte verksemda — til ein fornuftig pris." },
-    { title: "Kontroll, ikkje avhengigheit", text: "Løysingane har eit enkelt og brukarvennleg publiseringsverktøy, slik at du kan handtere det daglege innhaldet sjølv. Målet er å gje deg kontroll, ikkje gjere deg avhengig av kostbart etterarbeid." },
-    { title: "Personvern på alvor", text: "Vi prioriterer datalagring innanfor EU og separate databasar for kvar kunde, kombinert med tydeleg tilgangsstyring og relevante sikkerheitstiltak." }
+    { title: "Bygd for å tilpassast", text: "Ved å byggje på ei felles plattform med gjennomprøvde modular kan vi levere profesjonelle løysingar som samtidig vert tilpassa den enkelte verksemda — til ein fornuftig pris.", img: "reason-01-rocks.jpg" },
+    { title: "Kontroll, ikkje avhengigheit", text: "Løysingane har eit enkelt og brukarvennleg publiseringsverktøy, slik at du kan handtere det daglege innhaldet sjølv. Målet er å gje deg kontroll, ikkje gjere deg avhengig av kostbart etterarbeid.", img: "reason-02-fjord.jpg" },
+    { title: "Personvern på alvor", text: "Vi prioriterer datalagring innanfor EU og separate databasar for kvar kunde, kombinert med tydeleg tilgangsstyring og relevante sikkerheitstiltak.", img: "reason-03-portugal.jpg" }
   ];
   function about(d) {
     injectCss();
@@ -289,30 +327,39 @@
         '<h2>Tre grunnar til å nytte Vibeverk.</h2>' +
         '<p class="prose">Vibeverk er ein skreddarsydd digital plattform — modulbasert og tilpassa, levert som ei personleg forvalta teneste. Vi trur på at kundane våre er unike og har stoltheit for sitt produkt og varemerke.</p>' +
       '</div>' +
-      '<div class="vc-reasons__grid">' +
-        VC_REASONS.map(function (r, i) {
-          return '<div class="vc-reason reveal">' +
-            '<div class="vc-reason__num">0' + (i + 1) + '</div>' +
+      VC_REASONS.map(function (r, i) {
+        var num = "0" + (i + 1);
+        return '<div class="vc-reason-row' + (i % 2 === 1 ? " vc-rev" : "") + ' reveal">' +
+          '<div class="vc-reason-media"><img src="' + VC_ASSET_BASE + encodeURIComponent(r.img) + '?raw=true" alt="" loading="lazy"></div>' +
+          '<div class="vc-reason-text">' +
+            '<div class="vc-reason-num">' + num + '</div>' +
             '<h3>' + C.esc(r.title) + '</h3>' +
             '<div class="prose">' + C.esc(r.text) + '</div>' +
-          '</div>';
-        }).join("") +
+          '</div>' +
+        '</div>';
+      }).join("") +
+    '</div>';
+    // "Bak Vibeverk" -- sitat-sentrert layout som mockupen (blockquote +
+    // "who"-signatur + ekstra avsnitt), i staden for generisk overskrift+
+    // brødtekst. d.heading vert brukt SOM sitatet (stor, feit typografi),
+    // d.text som det ekstra avsnittet under. "Who"-signaturen er hardkoda
+    // (Vibeverk sin eigen identitet, ikkje kundedata via content-modellen).
+    var founderHtml = '<div class="vc-about">' +
+      '<div class="vc-about__grid-bg"></div><div class="vc-about__sweep"></div>' +
+      '<div class="vc-about__grid' + (hasImg ? "" : " vc-about__grid--noimg") + '">' +
+        photoHtml +
+        '<div class="vc-about__body reveal">' +
+          C.eyebrow(d.intro || "Bak Vibeverk") +
+          '<blockquote class="vc-about__quote">' + C.esc(d.heading) + '</blockquote>' +
+          '<p class="vc-about__who"><b>Frode Hammerseth</b> — Vibeverk</p>' +
+          '<div class="vc-about__extra prose">' + C.sanitizeRichHtml(d.text) + '</div>' +
+        '</div>' +
       '</div>' +
     '</div>';
     return (
       '<section id="om-oss">' +
         reasonsHtml +
-        '<div class="vc-about">' +
-          '<div class="vc-about__grid-bg"></div><div class="vc-about__sweep"></div>' +
-          '<div class="vc-about__grid' + (hasImg ? "" : " vc-about__grid--noimg") + '">' +
-            photoHtml +
-            '<div class="vc-about__body reveal">' +
-              C.eyebrow(d.intro || d.heading) +
-              '<h2>' + C.esc(d.heading) + '</h2>' +
-              '<div class="prose">' + C.sanitizeRichHtml(d.text) + '</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
+        founderHtml +
       '</section>'
     );
   }
