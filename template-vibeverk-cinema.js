@@ -307,7 +307,20 @@
       '.vc-tj-band{grid-template-columns:1fr;gap:12px;}' +
       '.vc-reason-row{grid-template-columns:1fr;gap:1.25rem;padding:3vh 0;}' +
       '.vc-reason-row.vc-rev .vc-reason-media{order:0;}' +
-    '}';
+    '}' +
+    /* Scroll-framdriftslinje (henta frå mockupen sin #scrollProgress) --
+       z-index:60, STRENGT over .site-header sin z-index:50 (index.html),
+       så linja alltid ligg synleg oppå nav-en, uansett vc-on-image-status.
+       .site-header sin eigen top vert flytta til 3px (både vanleg sticky-
+       og vc-on-image sin fixed-variant) for å ALDRI overlappe linja sine
+       eigne 3px -- retta reell bug 2026-09-17 stadfesta i mockupen (linja
+       og nav-en delte akkurat same top:0 og overlappa kvarandre sine
+       øvste 3px når nav-en sat fastlima ved scroll). */
+    '.vc-scroll-progress{position:fixed;top:0;left:0;height:3px;width:0%;z-index:60;' +
+      'background:linear-gradient(90deg,var(--color-primary,#005cff),var(--color-secondary,#ff7a00));' +
+      'transition:width .1s linear;}' +
+    '.site-header{top:3px;}' +
+    '.vc-on-image .site-header{top:3px;}';
 
   function injectCss() {
     if (document.getElementById("tmpl-vibeverk-cinema-css")) return;
@@ -533,6 +546,25 @@
     document.body.classList.toggle("vc-on-image", !!hero && (window.scrollY || 0) < hero.offsetHeight - 80);
   }
 
+  // Scroll-framdriftslinje (henta frå mockupen sin #scrollProgress) -- eitt
+  // delt element, oppretta lat (idempotent via id-sjekk) sidan #main kan
+  // bli bytt ut/mutert av rutenavigasjon, men linja sjølv skal ALDRI
+  // fjernast eller lagast fleire gongar.
+  function ensureProgressBar() {
+    var bar = document.getElementById("vcScrollProgress");
+    if (bar) return bar;
+    bar = document.createElement("div");
+    bar.id = "vcScrollProgress";
+    bar.className = "vc-scroll-progress";
+    document.body.appendChild(bar);
+    return bar;
+  }
+  function updateProgressBar() {
+    var bar = ensureProgressBar();
+    var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (docHeight > 0 ? Math.min(100, ((window.scrollY || 0) / docHeight) * 100) : 0) + "%";
+  }
+
   // Éin felles skanning køyrer både ved kvar #main-mutasjon (nye seksjonar
   // etter rute-/innhaldsendring) OG ved kvar scroll-tick (nav-toggle) --
   // terminal-oppstart skjer berre for nye, ubundne element.
@@ -542,6 +574,7 @@
       startTerminal(el);
     });
     updateOnImage();
+    updateProgressBar();
   }
 
   function bindObserver() {
@@ -562,6 +595,7 @@
     ticking = true;
     requestAnimationFrame(function () {
       updateOnImage();
+      updateProgressBar();
       if (!reduceMotion) {
         var heroBg = document.getElementById("vcHeroBg");
         if (heroBg) heroBg.style.transform = "translateY(" + ((window.scrollY || 0) * 0.15) + "px)";
