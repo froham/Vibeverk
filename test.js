@@ -1310,6 +1310,25 @@ const __asyncTests = (async () => {
     assert(heroTitle2b.textContent === "Ny tittel frå testen", "tomt felt + blur gjenopprettar original tekst, står IKKJE tomt");
     assert(window.App.getContent().hero.title === "Ny tittel frå testen", "content.hero.title er UENDRA etter eit tomt lagringsforsøk");
 
+    // (1d) Utvida 2026-09-17 (same dag) til tre fleire PLAIN TEXT-felt --
+    // kompakt sjekk (same mekanisme, alt djuptesta over) at kvar av dei har
+    // data-content-key, vert redigerbar, og lagrar korrekt til RETT
+    // content-sti på blur.
+    [
+      { key: "hero.subtitle", getPath: function () { return window.App.getContent().hero.subtitle; } },
+      { key: "about.heading", getPath: function () { return window.App.getContent().about.heading; } },
+      { key: "servicesSection.heading", getPath: function () { return window.App.getContent().servicesSection.heading; } }
+    ].forEach(function (f) {
+      var el = doc.querySelector('[data-content-key="' + f.key + '"]');
+      assert(!!el, f.key + ": elementet finst med data-content-key");
+      el.dispatchEvent(new window.Event("click", { bubbles: true }));
+      assert(el.getAttribute("contenteditable") === "true", f.key + ": vert redigerbar ved klikk");
+      var newVal = "Testverdi for " + f.key;
+      el.textContent = newVal;
+      el.dispatchEvent(new window.Event("blur", { bubbles: false }));
+      assert(f.getPath() === newVal, f.key + ": ny verdi lagra til rett content-sti på blur");
+    });
+
     // (2) Ukjend nøkkel -- skal vere ein reint no-op, aldri bli redigerbar
     var ghost = doc.createElement("h2");
     ghost.setAttribute("data-content-key", "about.secretField"); // finst ikkje i LIVE_EDIT_FIELDS

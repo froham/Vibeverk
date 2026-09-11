@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.165.2 — 2026-09-17
+
+**"Rediger direkte på sida" utvida frå éitt til fire felt på Klassisk-malen: `hero.title`, `hero.subtitle`, `about.heading`, `servicesSection.heading`.**
+
+Frode godkjente å gå breitt på fleire TEKSTFELT (billig, same gjennomgåtte mekanisme) FØR nye funksjonstypar som flytting/rik-tekst-redigering (dyrare, kvar sin eigen mekanisme/gjennomgang) -- sjå diskusjonen same dag. Denne runda avgrensa MEDVITE til reine, éintydige plain-text-felt:
+
+- **Utelate frå denne runda** (dokumentert i template-klassisk.js sin eigen kommentar): `about.text`/`services[].text` (RIK TEKST, `C.sanitizeRichHtml()`-rendra -- ville anten øydelagt formatering eller kravd ein eigen saneringsveg via ein rik-tekst-redigeringsmekanisme, som er sitt eige, større steg), `about.intro`/`servicesSection.intro` (`C.eyebrow()` viser `d.intro || d.heading` -- ikkje eit reint 1:1-tilhøve når intro er tomt), og enkelt-kort-titlar i `services[]` (dynamisk liste med eigen id per kort -- krev eit anna oppløysingsmønster enn den flate LIVE_EDIT_FIELDS-kvitelista).
+
+**Reell funn undervegs (Playwright mot ekte produksjonsinnhald)**: `servicesSection.heading` var faktisk TOM i det verkelege innhaldet for denne kunden -- eit tomt `<h2>` har ingen synleg storleik i det heile, så elementet var ikkje klikkbart korkje for testautomatisering ELLER ein ekte kunde som ville fylt det ut. Retta: `[data-content-key]:empty` får no ein minimumsstorleik og ein plasshaldar-tekst ("Klikk for å skrive inn tekst") medan live-redigering er aktiv, pluss ei betre `aria-label`-melding for tomme felt.
+
+Ingen ny Security Auditor-/UX-runde denne gongen -- same, alt gjennomgåtte mekanisme (kviteliste + `get()`/`set()` mot `content` + `saveContent()`/`render()`), berre fleire oppføringar i tabellen. Stadfesta lokalt (jsdom + Playwright mot ekte produksjonsinnhald, INGEN Supabase-skriving -- stadfesta via fersk sideinnlasting etter testen).
+
+Full suite: 813/303/124 OK, 0 FEIL (804 → 813 i `test.js`, 9 nye assert for dei tre nye felta).
+
 ## 0.165.1 — 2026-09-17
 
 **Retta "Rediger direkte på sida" til å faktisk redigere DIREKTE PÅ SIDA — 0.165.0 hoppa berre til det eksisterande skjemaet i staden.**
