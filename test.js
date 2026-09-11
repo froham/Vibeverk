@@ -1250,6 +1250,66 @@ const __asyncTests = (async () => {
   assert(!doc.querySelector(".site-footer__info") || doc.querySelector(".site-footer__info").children.length === 0, "tom footer viser ingen info-linjer");
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
+  // --- "Rediger direkte på sida" (fyrste skive, 2026-09-17) ---
+  // Security Auditor-funn (LOW): LIVE_EDIT_FIELDS-kviteliste-oppslaget og
+  // "ukjend nøkkel er ein no-op"-oppførselen hadde ingen regresjonstest,
+  // sjølv om heile tryggleiksargumentet for funksjonen kviler på akkurat
+  // det. Retta her -- to case: (1) ein kjend, kvitelista nøkkel opnar rett
+  // admin-fane og fokuserer rett felt, (2) ein ukjend nøkkel gjer ingenting.
+  await (async function () {
+    console.log("\n— \"Rediger direkte på sida\" (live-edit, fyrste skive) —");
+    var _origSidebygger = window.SITE_CONFIG.features.sidebygger;
+    window.SITE_CONFIG.features.sidebygger = true;
+
+    window.App.openAdmin();
+    clickCat("design");
+    clickTab("design-mal");
+    var liveEditBtn = doc.querySelector("[data-live-edit-start]");
+    assert(!!liveEditBtn, "«Rediger direkte på sida»-knappen finst i Design → Mal (Klassisk er standardmalen)");
+    liveEditBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("admin-root"), "klikk på knappen lukkar adminpanelet");
+    assert(doc.body.classList.contains("vc-live-edit"), "body får vc-live-edit-klassen (live-redigeringsmodus aktiv)");
+    assert(!!doc.getElementById("vc-live-edit-exit"), "«Avslutt redigering»-knappen vises");
+
+    // (1) Kjend, kvitelista nøkkel -- skal opne Innhold-fana med rett felt fokusert.
+    // Sjølve fokuseringa skjer inni ein setTimeout(...,60) i core.js (let DOM-en
+    // roe seg etter openAdmin() sin re-render) -- må vente lenger enn det her.
+    var heroTitle = doc.querySelector('[data-content-key="hero.title"]');
+    assert(!!heroTitle, "hero-tittelen har data-content-key=\"hero.title\" (Klassisk-malen)");
+    heroTitle.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.body.classList.contains("vc-live-edit"), "klikk på kjend nøkkel avsluttar live-redigeringsmodus");
+    assert(!!doc.getElementById("admin-root"), "klikk på kjend nøkkel opnar adminpanelet att");
+    assert(doc.querySelector(".tab.is-active").textContent === "Innhold", "hoppar til Innhold-fana (dit hero.title-skjemafeltet ligg)");
+    await new Promise(function (r) { setTimeout(r, 120); });
+    assert(doc.activeElement && doc.activeElement.id === "f-hero-title", "det faktiske skjemafeltet (#f-hero-title) får fokus");
+
+    // (2) Ukjend nøkkel -- skal vere ein reint no-op, IKKJE gjette seg til noko
+    window.App.openAdmin();
+    clickCat("design");
+    clickTab("design-mal");
+    doc.querySelector("[data-live-edit-start]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    var ghost = doc.createElement("h2");
+    ghost.setAttribute("data-content-key", "about.secretField"); // finst ikkje i LIVE_EDIT_FIELDS
+    ghost.textContent = "Ukjend nøkkel";
+    doc.body.appendChild(ghost);
+    ghost.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("admin-root"), "klikk på IKKJE-kvitelista nøkkel opnar IKKJE adminpanelet (kviteliste handhevast)");
+    assert(doc.body.classList.contains("vc-live-edit"), "framleis i live-redigeringsmodus etter eit ukjend-nøkkel-klikk (ingenting skjedde)");
+    ghost.remove();
+    doc.getElementById("vc-live-edit-exit").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.body.classList.contains("vc-live-edit"), "«Avslutt redigering» fjernar vc-live-edit-klassen att");
+
+    window.SITE_CONFIG.features.sidebygger = _origSidebygger;
+    // Rydd opp delt adminpanel-tilstand (activeCategory/activeTab er modul-
+    // interne let-variablar i core.js, ikkje eksponerte) -- utan dette ville
+    // seinare testseksjonar (t.d. "referanser-fane i admin", som berre sjekkar
+    // synlege .tab-element UTAN å velje kategori sjølv) arva "design"-fana
+    // dette blokka sist stod i, og feile sidan Referansar-fana ikkje finst der.
+    window.App.openAdmin();
+    clickCat("innhold");
+    clickTab("innhold");
+  })();
+
   // --- Referanser-modul ---
   console.log("\n— Referanser-modul —");
 

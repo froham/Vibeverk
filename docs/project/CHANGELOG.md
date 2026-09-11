@@ -30,6 +30,22 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.165.0 — 2026-09-17
+
+**Fyrste skive av "Rediger direkte på sida" — klikk-og-vel-redigering i Web-admin sin Design-fane, avgrensa til hero-tittelen på Klassisk-malen.**
+
+Etter ei omfattande, fleire-timars sesjon med å prototype eit live redigeringsverktøy på ein separat mockup (`vibeverk-template`-prosjektet, ikkje del av dette repoet), bad Frode om å vurdere å ta konseptet inn i det ekte produktet. To Architect-rundar (fyrste feilaktig retta mot Console sitt "Sider"/`custom-pages`-system, retta etter Frode sin korreksjon: Sider er for NYE, ekstra sider, ikkje for å redigere sjølve heimesida) landa på: Web-admin sin `features.sidebygger`-gata Design-fane er rett heim, éin mal (Klassisk) og éitt felt (`hero.title`) om gongen, sidan malane er strukturelt ulike (t.d. har `template-vibeverk-cinema.js` hardkoda, ikkje-redigerbart innhald blanda inn i same seksjon som ekte kundeinnhald).
+
+**Mekanisme**: `data-content-key="hero.title"` på hero-`<h1>`-en i `template-klassisk.js`, kopla mot ei HARDKODA kviteliste (`LIVE_EDIT_FIELDS` i core.js) -- klikk-handteraren les ALDRI DOM-attributtverdien inn i ei lagringssti, berre som eit oppslag i denne faste tabellen. Ein ukjend/ikkje-kvitelista nøkkel er ein reint no-op. Ingen ny lagringsveg -- eit klikk opnar berre det *eksisterande* `adminContent()`-skjemaet på rett fane, fokuserer rett felt; lagring skjer framleis via det uendra, alt gjennomgåtte skjema-lagringsstiget.
+
+**Gjennomgang før denne runda vart rekna klar** (per Architect si eiga tilråding): Security Auditor fann ingen blokkerande funn (whitelist-integritet, ingen ny skrivevei, korrekt auth-gating via eksisterande `isAuthed()`, ingen XSS-flate -- alt stadfesta via kodelesing) -- éin LOW-merknad (manglande regresjonstest for kviteliste-/no-op-oppførselen), retta same runde (`test.js`, to nye test-case). UX/Mobile Reviewer fann ingen blokkerande funn -- éin HIGH-merknad retta same runde (avslutt-knappen sin faste `bottom:24px` mangla `env(safe-area-inset-bottom)`, risiko for overlapp med iOS/Android sine system-navigasjonssoner på mobil). Attverande funn (ingen synleg overgangsanimasjon ved modus-byte, ingen tastatur-/skjermlesar-tilgjenge på sjølve klikkmålet, tyngre "rundtur" tilbake til live-redigering etter lagring) er medvite utsett til neste skive, sidan dei ikkje hindrar denne smale fyrste versjonen i å fungere trygt.
+
+Stadfesta lokalt (Playwright mot ekte produksjonsinnhald via `localhost:8080`, INGEN Supabase-skriving -- `designTemplate` sett berre i minnet via `window.App.getContent()`, aldri lagra): heile flyten (knapp → live-redigeringsmodus → klikk på tittel → adminpanel opnar på Innhold-fana med feltet fokusert og kortvarig framheva) fungerer som forventa, og ein ukjend `data-content-key` vert korrekt ignorert.
+
+**Neste skive** (per Architect): utvid til `about`/`services` på Klassisk, deretter `panorama`/`scrollstory` -- `template-vibeverk-cinema.js` sist, og berre etter ein ny Architect-gjennomgang av kva som faktisk har eit ekte innhaldsfelt bak seg der.
+
+Full suite: 795/303/124 OK, 0 FEIL (783 → 795 i `test.js`, 12 nye assert-kall i det nye live-edit-testblokka).
+
 ## 0.164.2 — 2026-09-11
 
 **Forenkla scroll-framdriftslinja i `template-vibeverk-cinema.js` etter tilbakemelding frå Frode.**
