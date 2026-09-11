@@ -1675,8 +1675,20 @@ window.App = (function () {
      vert tekne inn -- sjå Architect-vurderinga (docs-samtale 2026-09-17)
      for kvifor template-vibeverk-cinema.js sitt hardkoda "tre grunnar"-band
      og terminal ALDRI skal få ein eigen data-content-key i det heile. */
+  // Retta 2026-09-17 (Frode: "må kunne redigere direkte på sida", ikkje berre
+  // hoppe til skjemaet): kvar oppføring har no get()/set() -- direkte lesing/
+  // skriving mot DEN SAME `content`-lukka alle andre admin-skjema alt brukar
+  // (same closure-scope, ingen ny lagringsmekanisme). Sjølve skrivinga skjer
+  // FRAMLEIS berre via saveContent() (identisk kall til det adminContent()
+  // sin skjema-innsending alt gjer) -- retta MEN dette ER no ein NY skriveveg
+  // frå sjølve den live sida (tidlegare versjon skreiv ALDRI noko sjølv, berre
+  // navigerte til skjemaet) -- må gjennom ein ny Security Auditor-runde før
+  // dette vert rekna klart, sjå eiga vurdering i PR-skildringa.
   var LIVE_EDIT_FIELDS = {
-    "hero.title": { category: "innhold", tab: "innhold", fieldId: "f-hero-title" }
+    "hero.title": {
+      get: function () { return content.hero.title; },
+      set: function (v) { content.hero.title = v; }
+    }
   };
   var liveEditMode = false;
   var liveEditBound = false;
@@ -1689,23 +1701,114 @@ window.App = (function () {
     style.textContent =
       'body.vc-live-edit [data-content-key]{outline:1.5px dashed var(--color-primary,#005cff);outline-offset:4px;cursor:pointer;transition:outline-color .15s,background .15s;}' +
       'body.vc-live-edit [data-content-key]:hover{outline-color:var(--color-primary,#005cff);background:color-mix(in srgb, var(--color-primary,#005cff) 6%, transparent);}' +
+      '.vc-live-edit-editing{outline:2px solid var(--color-primary,#005cff) !important;outline-offset:4px;cursor:text;background:color-mix(in srgb, var(--color-primary,#005cff) 5%, transparent);}' +
       // bottom bruker env(safe-area-inset-bottom) -- retta funn frå UX/Mobile
       // Reviewer 2026-09-17: ein rein 24px-avstand kunne sitje ubehageleg
       // nært iOS sin heim-indikator/Android sin gest-navigasjon på telefonar
       // utan trygg-sone-støtte elles i dette faste 24px-talet.
+      // min-height:44px -- retta funn frå UX/Mobile Reviewer 2026-09-17
+      // (tap-flata var ca. 37px, under 44px-minimumet for touch-mål).
       '.vc-live-edit-exit{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:9999;' +
-        'background:var(--color-text,#142033);color:#fff;border:none;border-radius:999px;padding:.7rem 1.3rem;' +
+        'background:var(--color-text,#142033);color:#fff;border:none;border-radius:999px;padding:.7rem 1.3rem;min-height:44px;' +
         'font:600 .92rem/1 var(--font-body,sans-serif);cursor:pointer;box-shadow:0 12px 32px rgba(0,0,0,.28);' +
-        'display:flex;align-items:center;gap:.5rem;}' +
-      '.vc-live-edit-exit:hover{opacity:.9;}' +
-      '.vc-live-edit-target{box-shadow:0 0 0 3px var(--color-primary,#005cff);border-radius:8px;transition:box-shadow .3s;}';
+        'display:flex;align-items:center;justify-content:center;gap:.5rem;text-align:center;}' +
+      '.vc-live-edit-exit:hover{opacity:.9;}';
     document.head.appendChild(style);
+  }
+
+  // tabindex/role/aria-label KUN på kvitelista nøklar, KUN medan
+  // live-redigering er aktiv -- UX/Mobile Reviewer-funn 2026-09-17 (ingen
+  // tastatur-/skjermlesar-tilgjenge på sjølve klikkmålet). MÅ callast på
+  // nytt etter KVAR render() medan liveEditMode er aktiv -- retta reell bug
+  // 2026-09-17 (stadfesta via ekte nettlesar-test): render() byggjer heile
+  // hero()-markupen på nytt frå malen, som ALDRI kjenner til desse
+  // attributta -- utan denne re-applikasjonen mista elementet tastatur-
+  // tilgjenget sitt STRAKS etter fyrste vellukka lagring.
+  function applyLiveEditA11y(on) {
+    Object.keys(LIVE_EDIT_FIELDS).forEach(function (key) {
+      var el = document.querySelector('[data-content-key="' + key + '"]');
+      if (!el) return;
+      if (on) {
+        el.setAttribute("tabindex", "0");
+        el.setAttribute("role", "button");
+        el.setAttribute("aria-label", "Rediger: " + el.textContent.trim());
+      } else {
+        el.removeAttribute("tabindex");
+        el.removeAttribute("role");
+        el.removeAttribute("aria-label");
+      }
+    });
+  }
+
+  // Gjer sjølve elementet redigerbart PÅ STADEN (contenteditable), ikkje
+  // hopp til skjemaet -- lagrar på blur/Enter, kan angrast med Escape.
+  // saveContent()/render() er dei NØYAKTIG same kalla adminContent() sin
+  // skjema-innsending alt gjer -- ingen ny lagringsmekanisme, berre ein ny
+  // UTLØYSAR for han (klikk direkte på sida i staden for eit skjema-"Lagre").
+  function startInlineEdit(el, target) {
+    // Les original-verdien frå CONTENT-MODELLEN (target.get()), ikkje frå
+    // DOM-en -- retta Security Auditor-funn (LOW, 2026-09-17): get() var
+    // definert men aldri kalla. Denne er òg meir korrekt enn el.textContent
+    // ville vore dersom dei to nokon gong skulle divergere.
+    var original = target.get();
+    el.setAttribute("contenteditable", "true");
+    el.classList.add("vc-live-edit-editing");
+    el.focus();
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    // Mellombels hint på avslutt-knappen MEDAN redigering er aktiv -- retta
+    // UX/Mobile Reviewer-funn 2026-09-17 (HIGH: ingen synleg lagre/avbryt-
+    // affordance). Ingen ny knapp, berre gjenbrukar teksten på den eine
+    // faste kontrollen som alt er synleg heile tida.
+    var exitBtnDuringEdit = document.getElementById("vc-live-edit-exit");
+    var exitBtnOrigText = exitBtnDuringEdit ? exitBtnDuringEdit.textContent : null;
+    if (exitBtnDuringEdit) exitBtnDuringEdit.textContent = "Esc for å angre · klikk utanfor for å lagre";
+
+    function finish(save) {
+      el.removeEventListener("blur", onBlur);
+      el.removeEventListener("keydown", onKeydown);
+      el.removeAttribute("contenteditable");
+      el.classList.remove("vc-live-edit-editing");
+      if (exitBtnDuringEdit && document.body.contains(exitBtnDuringEdit)) exitBtnDuringEdit.textContent = exitBtnOrigText;
+      var newVal = el.textContent.trim();
+      if (save && newVal && newVal !== original) {
+        target.set(newVal);
+        saveContent();
+        // Re-rendrar heile sida -- t.d. <title>/SEO kan òg vise same verdien.
+        // Trygt no: verdien er alt lesen ut av DOM-en og lagra før dette køyrer.
+        render();
+        if (liveEditMode) applyLiveEditA11y(true);
+      } else {
+        // Ingen lagring skjedde -- anten fordi brukaren avbraut med Escape
+        // (save===false), ELLER fordi feltet vart tomt/uendra ved blur
+        // (save===true, men newVal var falsy/lik original). Gjenopprett DOM-en
+        // til original verdi i BEGGE tilfelle. Retta reell bug (UX/Mobile
+        // Reviewer, BLOCKER, 2026-09-17): denne greina køyrde tidlegare berre
+        // for eksplisitt save===false, så å slette all tekst og klikke vekk
+        // (eit svært sannsynleg fyrste-gongs uhell) let den live sida stå att
+        // med ein synleg TOM overskrift heilt til noko anna tilfeldigvis
+        // trigga ein full render().
+        el.textContent = original;
+      }
+    }
+    function onBlur() { finish(true); }
+    function onKeydown(ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); el.blur(); }
+      else if (ev.key === "Escape") { ev.preventDefault(); finish(false); el.blur(); }
+    }
+    el.addEventListener("blur", onBlur);
+    el.addEventListener("keydown", onKeydown);
   }
 
   function setLiveEditMode(on) {
     liveEditMode = on;
     liveEditStyleTag();
     document.body.classList.toggle("vc-live-edit", on);
+    applyLiveEditA11y(on);
     var exitBtn = document.getElementById("vc-live-edit-exit");
     if (on && !exitBtn) {
       exitBtn = document.createElement("button");
@@ -1718,30 +1821,35 @@ window.App = (function () {
     } else if (!on && exitBtn) {
       exitBtn.remove();
     }
+    function resolveTarget(el) {
+      if (!el) return null;
+      var key = el.getAttribute("data-content-key");
+      return Object.prototype.hasOwnProperty.call(LIVE_EDIT_FIELDS, key) ? LIVE_EDIT_FIELDS[key] : null;
+    }
     if (!liveEditBound) {
       liveEditBound = true;
       document.addEventListener("click", function (e) {
         if (!liveEditMode) return;
         var el = e.target.closest("[data-content-key]");
-        if (!el) return;
-        var key = el.getAttribute("data-content-key");
-        var target = Object.prototype.hasOwnProperty.call(LIVE_EDIT_FIELDS, key) ? LIVE_EDIT_FIELDS[key] : null;
+        if (!el || el.getAttribute("contenteditable") === "true") return; // ukjent nøkkel ELLER alt under redigering
+        var target = resolveTarget(el);
         if (!target) return; // ukjent/ikkje-kviteliste nøkkel -- ignorer, ikkje gjett
         e.preventDefault();
         e.stopPropagation();
-        setLiveEditMode(false);
-        activeCategory = target.category;
-        activeTab = target.tab;
-        openAdmin();
-        setTimeout(function () {
-          var root = document.getElementById("admin-root");
-          var field = root && document.getElementById(target.fieldId);
-          if (!field) return;
-          field.scrollIntoView({ block: "center" });
-          field.focus();
-          field.classList.add("vc-live-edit-target");
-          setTimeout(function () { field.classList.remove("vc-live-edit-target"); }, 1800);
-        }, 60);
+        startInlineEdit(el, target);
+      });
+      // Enter/Mellomrom på eit fokusert (tastatur-nådd) element -- same
+      // kviteliste-sjekk som klikk-handteraren, berre eit anna utløysar-steg.
+      document.addEventListener("keydown", function (e) {
+        if (!liveEditMode) return;
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var el = document.activeElement;
+        if (!el || !el.hasAttribute || !el.hasAttribute("data-content-key")) return;
+        if (el.getAttribute("contenteditable") === "true") return;
+        var target = resolveTarget(el);
+        if (!target) return;
+        e.preventDefault();
+        startInlineEdit(el, target);
       });
     }
   }

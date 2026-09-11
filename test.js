@@ -1251,15 +1251,16 @@ const __asyncTests = (async () => {
   window.location.hash = ""; window.dispatchEvent(new window.Event("hashchange"));
 
   // --- "Rediger direkte på sida" (fyrste skive, 2026-09-17) ---
-  // Security Auditor-funn (LOW): LIVE_EDIT_FIELDS-kviteliste-oppslaget og
-  // "ukjend nøkkel er ein no-op"-oppførselen hadde ingen regresjonstest,
-  // sjølv om heile tryggleiksargumentet for funksjonen kviler på akkurat
-  // det. Retta her -- to case: (1) ein kjend, kvitelista nøkkel opnar rett
-  // admin-fane og fokuserer rett felt, (2) ein ukjend nøkkel gjer ingenting.
+  // Retta same dag etter tilbakemelding: fyrste versjon hoppa berre til
+  // skjemaet i adminpanelet -- brukaren skal kunne redigere DIREKTE PÅ
+  // SIDA (contenteditable på sjølve elementet, lagring på blur). Security
+  // Auditor-funnet (LOW, manglande regresjonstest for kviteliste-/no-op-
+  // oppførselen) er framleis dekt her, berre mot den nye mekanismen.
   await (async function () {
     console.log("\n— \"Rediger direkte på sida\" (live-edit, fyrste skive) —");
     var _origSidebygger = window.SITE_CONFIG.features.sidebygger;
     window.SITE_CONFIG.features.sidebygger = true;
+    var _origHeroTitle = window.App.getContent().hero.title;
 
     window.App.openAdmin();
     clickCat("design");
@@ -1271,31 +1272,62 @@ const __asyncTests = (async () => {
     assert(doc.body.classList.contains("vc-live-edit"), "body får vc-live-edit-klassen (live-redigeringsmodus aktiv)");
     assert(!!doc.getElementById("vc-live-edit-exit"), "«Avslutt redigering»-knappen vises");
 
-    // (1) Kjend, kvitelista nøkkel -- skal opne Innhold-fana med rett felt fokusert.
-    // Sjølve fokuseringa skjer inni ein setTimeout(...,60) i core.js (let DOM-en
-    // roe seg etter openAdmin() sin re-render) -- må vente lenger enn det her.
+    // (1) Kjend, kvitelista nøkkel -- klikk skal gjere ELEMENTET SJØLV
+    // redigerbart, IKKJE opne adminpanelet. Lagring skjer på blur.
     var heroTitle = doc.querySelector('[data-content-key="hero.title"]');
     assert(!!heroTitle, "hero-tittelen har data-content-key=\"hero.title\" (Klassisk-malen)");
+    assert(heroTitle.getAttribute("tabindex") === "0" && heroTitle.getAttribute("role") === "button",
+      "hero-tittelen får tabindex/role medan live-redigering er aktiv (tastatur-/skjermlesar-tilgjenge)");
     heroTitle.dispatchEvent(new window.Event("click", { bubbles: true }));
-    assert(!doc.body.classList.contains("vc-live-edit"), "klikk på kjend nøkkel avsluttar live-redigeringsmodus");
-    assert(!!doc.getElementById("admin-root"), "klikk på kjend nøkkel opnar adminpanelet att");
-    assert(doc.querySelector(".tab.is-active").textContent === "Innhold", "hoppar til Innhold-fana (dit hero.title-skjemafeltet ligg)");
-    await new Promise(function (r) { setTimeout(r, 120); });
-    assert(doc.activeElement && doc.activeElement.id === "f-hero-title", "det faktiske skjemafeltet (#f-hero-title) får fokus");
+    assert(doc.body.classList.contains("vc-live-edit"), "klikk på hero-tittelen ENDRAR IKKJE modus -- framleis i live-redigering");
+    assert(!doc.getElementById("admin-root"), "adminpanelet vert IKKJE opna -- redigering skjer direkte på sida, ikkje via skjema");
+    assert(heroTitle.getAttribute("contenteditable") === "true", "hero-tittelen vert sjølv redigerbar (contenteditable)");
+    assert(heroTitle.classList.contains("vc-live-edit-editing"), "får eigen redigerings-utheving medan aktiv");
 
-    // (2) Ukjend nøkkel -- skal vere ein reint no-op, IKKJE gjette seg til noko
-    window.App.openAdmin();
-    clickCat("design");
-    clickTab("design-mal");
-    doc.querySelector("[data-live-edit-start]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    heroTitle.textContent = "Ny tittel frå testen";
+    heroTitle.dispatchEvent(new window.Event("blur", { bubbles: false }));
+    assert(heroTitle.getAttribute("contenteditable") !== "true", "contenteditable fjernast att etter blur");
+    assert(window.App.getContent().hero.title === "Ny tittel frå testen", "ny verdi lagra til content.hero.title på blur");
+    assert(doc.querySelector(".hero__title").textContent === "Ny tittel frå testen", "sida sjølv (etter render()) viser den nye tittelen");
+
+    // (1b) Escape skal ANGRE, ikkje lagre -- render() over bytte ut noden, må hente på nytt
+    var heroTitle2 = doc.querySelector('[data-content-key="hero.title"]');
+    heroTitle2.dispatchEvent(new window.Event("click", { bubbles: true }));
+    heroTitle2.textContent = "Dette skal forkastast";
+    heroTitle2.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    assert(heroTitle2.textContent === "Ny tittel frå testen", "Escape forkastar endringa og gjenopprettar opphavleg tekst");
+    assert(window.App.getContent().hero.title === "Ny tittel frå testen", "content.hero.title er UENDRA etter Escape (ingen lagring)");
+
+    // (1c) Tømmer feltet og klikkar vekk (blur, IKKJE Escape) -- retta reell
+    // BLOCKER-bug (UX/Mobile Reviewer, 2026-09-17): tidlegare vart den live
+    // sida ståande med ein TOM overskrift, sidan "gjenopprett original"-
+    // greina berre køyrde for eksplisitt Escape, ikkje for eit tomt/blur-
+    // "lagringsforsøk". Skal gjenopprette original tekst, ALDRI stå tom.
+    var heroTitle2b = doc.querySelector('[data-content-key="hero.title"]');
+    heroTitle2b.dispatchEvent(new window.Event("click", { bubbles: true }));
+    heroTitle2b.textContent = "";
+    heroTitle2b.dispatchEvent(new window.Event("blur", { bubbles: false }));
+    assert(heroTitle2b.textContent === "Ny tittel frå testen", "tomt felt + blur gjenopprettar original tekst, står IKKJE tomt");
+    assert(window.App.getContent().hero.title === "Ny tittel frå testen", "content.hero.title er UENDRA etter eit tomt lagringsforsøk");
+
+    // (2) Ukjend nøkkel -- skal vere ein reint no-op, aldri bli redigerbar
     var ghost = doc.createElement("h2");
     ghost.setAttribute("data-content-key", "about.secretField"); // finst ikkje i LIVE_EDIT_FIELDS
     ghost.textContent = "Ukjend nøkkel";
     doc.body.appendChild(ghost);
     ghost.dispatchEvent(new window.Event("click", { bubbles: true }));
-    assert(!doc.getElementById("admin-root"), "klikk på IKKJE-kvitelista nøkkel opnar IKKJE adminpanelet (kviteliste handhevast)");
-    assert(doc.body.classList.contains("vc-live-edit"), "framleis i live-redigeringsmodus etter eit ukjend-nøkkel-klikk (ingenting skjedde)");
+    assert(ghost.getAttribute("contenteditable") !== "true", "IKKJE-kvitelista nøkkel vert ALDRI redigerbar (kviteliste handhevast)");
+    assert(!doc.getElementById("admin-root"), "og opnar heller ikkje adminpanelet");
     ghost.remove();
+
+    // Rydd opp: gjenopprett opphavleg tittel (via same mekanisme -- stadfestar
+    // samtidig at fleire redigeringar etter kvarandre fungerer normalt)
+    var heroTitle3 = doc.querySelector('[data-content-key="hero.title"]');
+    heroTitle3.dispatchEvent(new window.Event("click", { bubbles: true }));
+    heroTitle3.textContent = _origHeroTitle;
+    heroTitle3.dispatchEvent(new window.Event("blur", { bubbles: false }));
+    assert(window.App.getContent().hero.title === _origHeroTitle, "opphavleg tittel gjenoppretta att (rydding)");
+
     doc.getElementById("vc-live-edit-exit").dispatchEvent(new window.Event("click", { bubbles: true }));
     assert(!doc.body.classList.contains("vc-live-edit"), "«Avslutt redigering» fjernar vc-live-edit-klassen att");
 
