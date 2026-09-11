@@ -1664,6 +1664,88 @@ window.App = (function () {
   // seg ved neste faneklikk.
   let adminFullscreen = Store.get("admin-panel-fullscreen", false);
 
+  /* ── "Rediger direkte på sida" (2026-09-17, fyrste skive) ────────────────
+     Kvitelista er den eine tingen som gjer dette trygt: klikk-handteraren
+     under les ALDRI data-content-key-verdien direkte inn i ei lagringssti
+     -- han berre bruker han til å slå opp i denne faste, hardkoda tabellen.
+     Ein DOM-verdi ein brukar aldri kan kontrollere sjølv (t.d. via ein
+     kompromittert avhengigheit) kan difor i verste fall opne feil FANE i
+     adminpanelet, aldri skrive til ein vilkårleg content-nøkkel. Utvid
+     denne tabellen éin nøkkel om gongen etter kvart som fleire malar/felt
+     vert tekne inn -- sjå Architect-vurderinga (docs-samtale 2026-09-17)
+     for kvifor template-vibeverk-cinema.js sitt hardkoda "tre grunnar"-band
+     og terminal ALDRI skal få ein eigen data-content-key i det heile. */
+  var LIVE_EDIT_FIELDS = {
+    "hero.title": { category: "innhold", tab: "innhold", fieldId: "f-hero-title" }
+  };
+  var liveEditMode = false;
+  var liveEditBound = false;
+
+  function liveEditStyleTag() {
+    var id = "vc-live-edit-css";
+    if (document.getElementById(id)) return;
+    var style = document.createElement("style");
+    style.id = id;
+    style.textContent =
+      'body.vc-live-edit [data-content-key]{outline:1.5px dashed var(--color-primary,#005cff);outline-offset:4px;cursor:pointer;transition:outline-color .15s,background .15s;}' +
+      'body.vc-live-edit [data-content-key]:hover{outline-color:var(--color-primary,#005cff);background:color-mix(in srgb, var(--color-primary,#005cff) 6%, transparent);}' +
+      // bottom bruker env(safe-area-inset-bottom) -- retta funn frå UX/Mobile
+      // Reviewer 2026-09-17: ein rein 24px-avstand kunne sitje ubehageleg
+      // nært iOS sin heim-indikator/Android sin gest-navigasjon på telefonar
+      // utan trygg-sone-støtte elles i dette faste 24px-talet.
+      '.vc-live-edit-exit{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:9999;' +
+        'background:var(--color-text,#142033);color:#fff;border:none;border-radius:999px;padding:.7rem 1.3rem;' +
+        'font:600 .92rem/1 var(--font-body,sans-serif);cursor:pointer;box-shadow:0 12px 32px rgba(0,0,0,.28);' +
+        'display:flex;align-items:center;gap:.5rem;}' +
+      '.vc-live-edit-exit:hover{opacity:.9;}' +
+      '.vc-live-edit-target{box-shadow:0 0 0 3px var(--color-primary,#005cff);border-radius:8px;transition:box-shadow .3s;}';
+    document.head.appendChild(style);
+  }
+
+  function setLiveEditMode(on) {
+    liveEditMode = on;
+    liveEditStyleTag();
+    document.body.classList.toggle("vc-live-edit", on);
+    var exitBtn = document.getElementById("vc-live-edit-exit");
+    if (on && !exitBtn) {
+      exitBtn = document.createElement("button");
+      exitBtn.type = "button";
+      exitBtn.id = "vc-live-edit-exit";
+      exitBtn.className = "vc-live-edit-exit";
+      exitBtn.textContent = "✕ Avslutt redigering";
+      exitBtn.addEventListener("click", function () { setLiveEditMode(false); });
+      document.body.appendChild(exitBtn);
+    } else if (!on && exitBtn) {
+      exitBtn.remove();
+    }
+    if (!liveEditBound) {
+      liveEditBound = true;
+      document.addEventListener("click", function (e) {
+        if (!liveEditMode) return;
+        var el = e.target.closest("[data-content-key]");
+        if (!el) return;
+        var key = el.getAttribute("data-content-key");
+        var target = Object.prototype.hasOwnProperty.call(LIVE_EDIT_FIELDS, key) ? LIVE_EDIT_FIELDS[key] : null;
+        if (!target) return; // ukjent/ikkje-kviteliste nøkkel -- ignorer, ikkje gjett
+        e.preventDefault();
+        e.stopPropagation();
+        setLiveEditMode(false);
+        activeCategory = target.category;
+        activeTab = target.tab;
+        openAdmin();
+        setTimeout(function () {
+          var root = document.getElementById("admin-root");
+          var field = root && document.getElementById(target.fieldId);
+          if (!field) return;
+          field.scrollIntoView({ block: "center" });
+          field.focus();
+          field.classList.add("vc-live-edit-target");
+          setTimeout(function () { field.classList.remove("vc-live-edit-target"); }, 1800);
+        }, 60);
+      });
+    }
+  }
+
   function openAdmin() {
     closeAdmin(); // unngå dobbel
     const root = document.createElement("div");
@@ -2872,7 +2954,21 @@ window.App = (function () {
       { id: "scrollstory", label: "Scroll-story", desc: "Sida les som ein sekvens av store augeblikk som opnar seg idet du scrollar — fungerer best med eit moderat tal tenestekort (om lag 3–6)." }
     ];
     var current = activeTemplate();
+    // "Rediger direkte på sida" -- fyrste, medvite avgrensa skive (2026-09-17,
+    // sjå Architect-vurderinga): berre hovudtittelen på forsida, berre på
+    // Klassisk-malen (dei andre malane manglar enno data-content-key i det
+    // heile). Knappen syner difor berre når Klassisk faktisk er aktiv --
+    // å vise han uansett mal ville late brukaren klikke rundt på ei side
+    // der ingenting responderer, som ser ut som ein feil, ikkje ei avgrensing.
+    var liveEditSection = current === "klassisk"
+      ? '<div class="admin-group" style="margin-bottom:1.2rem">' +
+          '<strong style="display:block;margin-bottom:.3rem">Rediger direkte på sida</strong>' +
+          '<p class="prose prose--muted" style="margin:0 0 .6rem">Foreløpig kan du klikke direkte på hovedtittelen på forsida for å endre den. Flere felt kommer etter hvert.</p>' +
+          C.button({ label: "Rediger direkte på sida", variant: "ghost", attrs: 'data-live-edit-start' }) +
+        '</div>'
+      : '';
     body.innerHTML =
+      liveEditSection +
       '<p class="prose prose--muted">Vel design-mal for nettsida. Kvar mal gjev heile sida eit anna visuelt uttrykk.</p>' +
       '<form data-design-mal class="admin-form">' +
         '<div class="admin-group" style="display:grid;gap:.6rem">' +
@@ -2887,6 +2983,12 @@ window.App = (function () {
         C.button({ label: "Lagre", type: "submit", variant: "primary" }) +
         '<p class="form__status" data-design-mal-status role="status" aria-live="polite"></p>' +
       '</form>';
+
+    var liveEditBtn = body.querySelector("[data-live-edit-start]");
+    if (liveEditBtn) liveEditBtn.addEventListener("click", function () {
+      closeAdmin();
+      setLiveEditMode(true);
+    });
 
     body.querySelector("[data-design-mal]").addEventListener("submit", function (e) {
       e.preventDefault();
