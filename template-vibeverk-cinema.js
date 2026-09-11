@@ -317,19 +317,17 @@
       '.vc-reason-row{grid-template-columns:1fr;gap:1.25rem;padding:3vh 0;}' +
       '.vc-reason-row.vc-rev .vc-reason-media{order:0;}' +
     '}' +
-    /* Scroll-framdriftslinje (henta frå mockupen sin #scrollProgress) --
-       z-index:60, STRENGT over .site-header sin z-index:50 (index.html),
-       så linja alltid ligg synleg oppå nav-en, uansett vc-on-image-status.
-       .site-header sin eigen top vert flytta til 3px (både vanleg sticky-
-       og vc-on-image sin fixed-variant) for å ALDRI overlappe linja sine
-       eigne 3px -- retta reell bug 2026-09-17 stadfesta i mockupen (linja
-       og nav-en delte akkurat same top:0 og overlappa kvarandre sine
-       øvste 3px når nav-en sat fastlima ved scroll). */
+    /* Scroll-framdriftslinje (henta frå mockupen sin #scrollProgress).
+       Forenkla 2026-09-17 etter tilbakemelding frå Frode: fyrste versjon
+       flytta .site-header sin eigen top til 3px for å RESERVERE eigen
+       plass til linja over nav-en -- teknisk korrekt (stadfesta), men
+       Frode ville heller ha den enklare løysinga: linja ligg REINT OPPÅ
+       nav-en (z-index:60 over .site-header sin z-index:50 held henne
+       alltid synleg), ingen eigen reservert stripe, ingen .site-header-
+       top-overstyring i det heile trengst lenger. */
     '.vc-scroll-progress{position:fixed;top:0;left:0;height:3px;width:0%;z-index:60;' +
       'background:linear-gradient(90deg,var(--color-primary,#005cff),var(--color-secondary,#ff7a00));' +
-      'transition:width .1s linear;}' +
-    '.site-header{top:3px;}' +
-    '.vc-on-image .site-header{top:3px;}';
+      'transition:width .1s linear;}';
 
   function injectCss() {
     if (document.getElementById("tmpl-vibeverk-cinema-css")) return;

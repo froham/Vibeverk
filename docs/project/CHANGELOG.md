@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.164.2 — 2026-09-11
+
+**Forenkla scroll-framdriftslinja i `template-vibeverk-cinema.js` etter tilbakemelding frå Frode.**
+
+Stadfesta at 0.164.1 sin fiks faktisk var live (henta `template-vibeverk-cinema.js?v=9` direkte frå `vibeverk.no`, verifiserte `lastOnImage`/opacity-koden var til stades) -- Frode hadde hard-refresha og testa den ekte sida rett, det var ikkje ein utrullings- eller mellomlagringsfeil. I staden ville han heller ha ei enklare løysing enn "reserver eigen 3px topp-plass til linja": linja skal berre liggje REINT OPPÅ toppmenyen (høgare z-index), ikkje dytte menyen ned. Fjerna `.site-header{top:3px}`/`.vc-on-image .site-header{top:3px}`-overstyringane heilt -- `.vc-scroll-progress` sin eigen `z-index:60` (over `.site-header` sin `z-index:50`) held henne uansett synleg oppå, utan at nokon ekstra plass-reservasjon trengst. 0.164.1 sin opacity-blend-fiks for fixed/sticky-overgangen ved hero-grensa er urørt og framleis i kraft.
+
+Stadfesta lokalt via Playwright (mot ekte produksjonsinnhald via `localhost:8080`): linje og meny deler no nøyaktig same `top:0`, linja tydeleg synleg oppå menyen, ingen overlapp-artefakt.
+
+Full suite (`node test.js`): 783/783 OK, 0 FEIL.
+
 ## 0.164.1 — 2026-09-11
 
 **Fann og retta ein reell, transient visuell glitch ved hero-grensa i `template-vibeverk-cinema.js`, meldt av Frode med skjermbilete rett etter 0.164.0 sin utrulling.**
