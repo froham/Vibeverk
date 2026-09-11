@@ -30,6 +30,23 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.165.1 — 2026-09-17
+
+**Retta "Rediger direkte på sida" til å faktisk redigere DIREKTE PÅ SIDA — 0.165.0 hoppa berre til det eksisterande skjemaet i staden.**
+
+Frode korrigerte same dag: "Det den gjer då er at den opner opp feltet i Web-admin, men man må kunne redigere direkte på sida." 0.165.0 sin mekanisme (klikk på hero-tittelen → adminpanelet opnar på Innhold-fana med feltet fokusert) var ein medvite avgrensa fyrste-versjon frå Architect-vurderinga, men leverte ikkje sjølve kravet.
+
+**Ny mekanisme**: klikk på hero-tittelen gjer no ELEMENTET SJØLV redigerbart på staden (`contenteditable`), utan å forlate den live sida i det heile. Lagring skjer på blur (klikk vekk) eller Enter; Escape angrar og gjenopprettar original tekst. `LIVE_EDIT_FIELDS`-kviteliste-oppføringane har no `get()`/`set()`-lukkingar mot `content`-objektet i staden for admin-fane-/felt-id-ar. `saveContent()`/`render()` er framleis dei EINASTE, uendra persisterings-primitiva -- ingen ny Supabase-veg, berre ein ny UTLØYSAR for det same kallet.
+
+**Dette ER ein ny skriveveg** (0.165.0 skreiv ALDRI noko sjølv, berre navigerte) -- difor ein heilt ny Security Auditor- og UX/Mobile Reviewer-runde, uavhengig av førre runde sine funn:
+
+- **Security Auditor**: ingen BLOCKER/HIGH/MEDIUM. To LOW: (1) `get()` var definert men aldri kalla -- retta, brukt no som kjelde for "original"-verdien; (2) fleirlinje-/lim-inn-innhald vert ikkje normalisert (`textContent` kan slå saman blokkelement utan mellomrom) -- ikkje eit tryggleiksproblem (framleis rein tekst, framleis escapa med `C.esc()` på utskrift), notert som datakvalitets-finpuss.
+- **UX/Mobile Reviewer**: éin reell **BLOCKER**, retta same runde -- å tømme feltet og klikke vekk (eit svært sannsynleg fyrste-gongs uhell) let den live sida stå att med ein SYNLEG TOM overskrift, sidan "gjenopprett original"-koden berre køyrde ved eksplisitt Escape, ikkje ved eit tomt/uendra blur-lagringsforsøk. Retta: gjenopprettar original tekst i BEGGE tilfelle. To HIGH retta same runde: ingen synleg lagre/avbryt-affordance (retta -- avslutt-knappen syner no "Esc for å angre · klikk utanfor for å lagre" MEDAN redigering er aktiv), og avslutt-knappen sin tap-flate var under 44px-minimumet (retta med `min-height:44px`). Attverande punkt (auto-merk-alt-ved-fokus som potensiell fallgruve ved "rett eitt ord"-redigering, kontrast over eit sterkt fotobakteppe utan mørklegging, `aria-label` som inneheld heile teksten) er medvite utsett -- ingen av dei hindrar trygg bruk av denne smale fyrste skiven.
+
+Stadfesta lokalt (Playwright, mobilstorleik 390×844, mot ekte produksjonsinnhald, INGEN Supabase-skriving): heile flyten (klikk → redigerbar på staden → tøm+blur gjenopprettar korrekt → Escape angrar → hint-tekst syner/forsvinn korrekt → 44px tap-mål stadfesta) fungerer som forventa.
+
+Full suite: 804/303/124 OK, 0 FEIL (795 → 804 i `test.js`: 2 nye assert for tomt-felt-regresjonen, resten frå omskriven testblokk).
+
 ## 0.165.0 — 2026-09-17
 
 **Fyrste skive av "Rediger direkte på sida" — klikk-og-vel-redigering i Web-admin sin Design-fane, avgrensa til hero-tittelen på Klassisk-malen.**
