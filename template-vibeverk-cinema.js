@@ -233,9 +233,18 @@
        Byter attende til vanleg `sticky`-åtferd automatisk når klassen
        fjernast (etter hero, eller på andre ruter som aldri set klassen). */
     '.vc-on-image .site-header{position:fixed;top:0;left:0;right:0;' +
-      'background:transparent;box-shadow:none;transition:background .25s,box-shadow .25s;}' +
+      'background:transparent;box-shadow:none;transition:background .25s,box-shadow .25s,opacity .08s;}' +
     '.vc-on-image .site-header .brand__name,.vc-on-image .site-header .nav__link{color:#fff;}' +
-    '.site-header{transition:background .25s,box-shadow .25s;}' +
+    /* opacity .08s -- retta reell bug 2026-09-17 (skjermbilete frå Frode):
+       `position` kan IKKJE CSS-animerast/mjukast opp slik farge/skygge kan,
+       så byte mellom fixed (vc-on-image) og sticky smalt brått ved rask
+       scroll gjennom hero-grensa -- eit kort augeblink synte innhaldet BAK
+       nav-en, sidan positions-byte og eit potensielt reflow skjedde midt i
+       eit scroll-steg. Ekte fiks (updateOnImage() i JS-en nedst) blendar
+       nav-en KORT til usynleg FØR sjølve klasse-/positions-byte, og attende
+       synleg like etter -- smellet skjer framleis, men aldri medan auget
+       faktisk kan sjå det. */
+    '.site-header{transition:background .25s,box-shadow .25s,opacity .08s;}' +
     /* Søkje-utløysar (.nav__search er berre eit ikon-berre-knapp i plattforma
        sin faste markup) restylt som mockupen sin pille-forma "Søk"-utløysar
        via CSS åleine (::after-tekst) -- ingen ny markup, difor ingen
@@ -541,9 +550,32 @@
   // sidan heile heltseksjonen vert bytt ut med ein fersk node kvar gong
   // brukaren navigerer attende til framsida, og forsvinn heilt på andre
   // ruter (artikkel/arkiv/admin), der body difor aldri får klassen.
+  // lastOnImage: null = "ikkje målt enno" -- fyrste kall (sideinnlasting)
+  // set klassen DIREKTE utan å blende, sidan det ikkje er nokon synleg
+  // overgang å skjule på det tidspunktet (ingen brukar ser sida endre seg,
+  // dei ser berre resultatet av FYRSTE render). Blendinga skal berre skje
+  // ved EKTE tilstandsbyte under scroll.
+  var lastOnImage = null;
   function updateOnImage() {
     var hero = document.querySelector("#hjem.vc-hero");
-    document.body.classList.toggle("vc-on-image", !!hero && (window.scrollY || 0) < hero.offsetHeight - 80);
+    var next = !!hero && (window.scrollY || 0) < hero.offsetHeight - 80;
+    if (next === lastOnImage) return;
+    var isFirstMeasure = lastOnImage === null;
+    lastOnImage = next;
+    if (isFirstMeasure) {
+      document.body.classList.toggle("vc-on-image", next);
+      return;
+    }
+    // Blend nav-en usynleg FØR position byter (fixed<->sticky, som ikkje
+    // kan CSS-animerast), synleg att like etter -- sjå CSS-kommentaren ved
+    // .site-header sin opacity-transition for kvifor dette trengst.
+    var header = document.querySelector(".site-header");
+    if (!header) { document.body.classList.toggle("vc-on-image", next); return; }
+    header.style.opacity = "0";
+    setTimeout(function () {
+      document.body.classList.toggle("vc-on-image", next);
+      requestAnimationFrame(function () { header.style.opacity = ""; });
+    }, 90);
   }
 
   // Scroll-framdriftslinje (henta frå mockupen sin #scrollProgress) -- eitt

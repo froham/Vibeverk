@@ -30,6 +30,18 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.164.1 — 2026-09-11
+
+**Fann og retta ein reell, transient visuell glitch ved hero-grensa i `template-vibeverk-cinema.js`, meldt av Frode med skjermbilete rett etter 0.164.0 sin utrulling.**
+
+Skjermbiletet synte ein mørk, avrunda "spøkelses-boks" flytande under toppmenyen — fyrst mistenkt å vere ein ny bug frå framdriftslinja (0.164.0), men grundig Playwright-gransking (statiske geometrisjekkar, synkron klasse-toggling, og til slutt gradvis simulert musehjul-scroll gjennom hero-grensa) stadfesta at sjølve posisjoneringa (framdriftslinje + `.site-header{top:3px}`) var heilt korrekt i alle målte tilstandar. Det ekte, PRE-EKSISTERANDE problemet: `.site-header` byter mellom `position:fixed` (over hero, "vc-on-image") og `position:sticky` (vanleg) -- `position` kan IKKJE CSS-animerast slik farge/skygge alt vart mjuka opp. Ved rask scroll gjennom hero-grensa smalt dette byte brått, og eit augeblink synte innhaldet bak nav-en gjennom (spøkelses-effekten).
+
+**Fiks**: `updateOnImage()` blendar no nav-en usynleg (`opacity:0`, 90ms) RETT FØR sjølve klasse-/position-byte, og attende synleg like etter -- smellet skjer framleis under panseret, men aldri medan auget faktisk kan sjå det. Berre EKTE tilstandsbyte (ikkje kvar scroll-tick) triggar blendinga, via ein ny `lastOnImage`-tilstand; fyrste måling ved sideinnlasting set klassen direkte utan å blende (ingen synleg overgang å skjule der).
+
+Stadfesta retta: same gradvise musehjul-scroll-simulering gjennom hero-grensa (30-60 små `mouse.wheel()`-steg, skjermbilete tatt kontinuerleg gjennom heile overgangssona) synte INGEN ghosting/mørk boks i nokon av dei 12 fanga overgangsrammene, mot tydeleg synleg i same test før fiksen.
+
+Full suite (`node test.js`): 783/783 OK, 0 FEIL.
+
 ## 0.164.0 — 2026-09-11
 
 **Scroll-framdriftslinje lagt til i `template-vibeverk-cinema.js`, henta over frå det separate mockup-prosjektet ("vibeverk-template") sin eigen live-redigeringstest-økt.**
