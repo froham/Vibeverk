@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.164.0 — 2026-09-11
+
+**Scroll-framdriftslinje lagt til i `template-vibeverk-cinema.js`, henta over frå det separate mockup-prosjektet ("vibeverk-template") sin eigen live-redigeringstest-økt.**
+
+Frode melde (skjermbilete) at framdriftslinja i mockupen overlappa toppmenyen stygt der dei møttest. Feilsøkt og retta FØRST i mockupen (linja og nav-en delte begge `top:0` -- linja si eiga 3px vart delvis oppslukt av nav-en sin eigen boks når nav-en sat fastlima ved scroll), deretter bekrefta at den ekte Vibeverk-sida ikkje hadde nokon tilsvarande funksjon i det heile (verken framdriftslinje eller fungerande gjennomsiktig-nav-over-hero var venta -- sistnemnde fanst faktisk alt her, fungerer korrekt). Etter eksplisitt godkjenning, porta framdriftslinja over til denne malen:
+
+- Nytt delt element `#vcScrollProgress` (`.vc-scroll-progress`, `position:fixed;z-index:60`), oppdatert på kvar scroll-tick (delar `requestAnimationFrame`-throttlinga med den eksisterande parallax-/nav-toggle-logikken).
+- `.site-header{top:3px}` (både vanleg sticky- og `.vc-on-image` sin fixed-variant) -- reserverer dei øvste 3 pikslane til linja, akkurat same retting som mockupen fekk, no gjort her FØR malen nokon gong render for ein ekte brukar.
+
+Stadfesta via ein isolert, lokal test-harness (statisk HTML + `template-vibeverk-cinema.js` sin eigen `hero()`-funksjon, ingen Supabase-kall) sidan denne malen berre er aktiv når `content.designTemplate === "vibeverk-cinema"` i produksjonsdatabasen -- ville kravd å mellombels endre ekte tenant-konfigurasjon berre for eit visuelt sjekk, noko som ikkje var naudsynt her. Playwright-skjermbilete stadfesta ingen overlapp verken ved sideinnlasting (linje usynleg, 0% breidd, nav gjennomsiktig over hero) eller etter scroll (linje synleg med framdrift, nav solid).
+
+Full suite (`node test.js`): 783/783 OK, 0 FEIL (uendra sidan denne endringa er rein CSS/JS i ein enkelt, isolert designmal-fil).
+
 ## 0.163.2 — 2026-09-09
 
 **Quiz-seksjonen fekk same midtstillings-fiks som Referansar/Aktuelt i 0.163.1 — ikkje dekt i den runda sidan Quiz sitt eyebrow/h2/boks-mønster berre vart oppdaga no.**
