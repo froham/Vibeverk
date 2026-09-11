@@ -1684,10 +1684,27 @@ window.App = (function () {
   // frå sjølve den live sida (tidlegare versjon skreiv ALDRI noko sjølv, berre
   // navigerte til skjemaet) -- må gjennom ein ny Security Auditor-runde før
   // dette vert rekna klart, sjå eiga vurdering i PR-skildringa.
+  // Utvida 2026-09-17 (same dag) frå berre hero.title til fire PLAIN TEXT-
+  // felt -- sjå eigen kommentar i template-klassisk.js for kvifor rik
+  // tekst (about.text/services[].text), eyebrow-felt (about.intro/
+  // servicesSection.intro) og enkelt-kort-titlar i services[] ALLE er
+  // medvite utelatne frå denne runda.
   var LIVE_EDIT_FIELDS = {
     "hero.title": {
       get: function () { return content.hero.title; },
       set: function (v) { content.hero.title = v; }
+    },
+    "hero.subtitle": {
+      get: function () { return content.hero.subtitle; },
+      set: function (v) { content.hero.subtitle = v; }
+    },
+    "about.heading": {
+      get: function () { return content.about.heading; },
+      set: function (v) { content.about.heading = v; }
+    },
+    "servicesSection.heading": {
+      get: function () { return content.servicesSection.heading; },
+      set: function (v) { content.servicesSection.heading = v; }
     }
   };
   var liveEditMode = false;
@@ -1701,6 +1718,12 @@ window.App = (function () {
     style.textContent =
       'body.vc-live-edit [data-content-key]{outline:1.5px dashed var(--color-primary,#005cff);outline-offset:4px;cursor:pointer;transition:outline-color .15s,background .15s;}' +
       'body.vc-live-edit [data-content-key]:hover{outline-color:var(--color-primary,#005cff);background:color-mix(in srgb, var(--color-primary,#005cff) 6%, transparent);}' +
+      // Tomme felt (t.d. eit valfritt felt kunden aldri fylte ut) har elles
+      // INGEN synleg storleik å klikke på -- korkje for ein ekte kunde eller
+      // for testautomatisering. Retta reell funn 2026-09-17 (stadfesta:
+      // servicesSection.heading var tom i faktisk produksjonsinnhald).
+      'body.vc-live-edit [data-content-key]:empty{min-height:1.4em;min-width:120px;display:block;}' +
+      'body.vc-live-edit [data-content-key]:empty::before{content:"Klikk for å skrive inn tekst";opacity:.5;font-style:italic;}' +
       '.vc-live-edit-editing{outline:2px solid var(--color-primary,#005cff) !important;outline-offset:4px;cursor:text;background:color-mix(in srgb, var(--color-primary,#005cff) 5%, transparent);}' +
       // bottom bruker env(safe-area-inset-bottom) -- retta funn frå UX/Mobile
       // Reviewer 2026-09-17: ein rein 24px-avstand kunne sitje ubehageleg
@@ -1731,7 +1754,7 @@ window.App = (function () {
       if (on) {
         el.setAttribute("tabindex", "0");
         el.setAttribute("role", "button");
-        el.setAttribute("aria-label", "Rediger: " + el.textContent.trim());
+        el.setAttribute("aria-label", el.textContent.trim() ? "Rediger: " + el.textContent.trim() : "Tomt felt, klikk for å skrive inn tekst");
       } else {
         el.removeAttribute("tabindex");
         el.removeAttribute("role");
@@ -3071,7 +3094,7 @@ window.App = (function () {
     var liveEditSection = current === "klassisk"
       ? '<div class="admin-group" style="margin-bottom:1.2rem">' +
           '<strong style="display:block;margin-bottom:.3rem">Rediger direkte på sida</strong>' +
-          '<p class="prose prose--muted" style="margin:0 0 .6rem">Foreløpig kan du klikke direkte på hovedtittelen på forsida for å endre den. Flere felt kommer etter hvert.</p>' +
+          '<p class="prose prose--muted" style="margin:0 0 .6rem">Foreløpig kan du klikke direkte på noen overskrifter på forsida (hovedtittel, undertittel, «Om oss» og «Tjenester») for å endre dem. Flere felt kommer etter hvert.</p>' +
           C.button({ label: "Rediger direkte på sida", variant: "ghost", attrs: 'data-live-edit-start' }) +
         '</div>'
       : '';
