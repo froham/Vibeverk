@@ -1393,6 +1393,123 @@ const __asyncTests = (async () => {
     heroTitleRichCleanup.textContent = "Ny tittel frå testen";
     heroTitleRichCleanup.dispatchEvent(new window.Event("blur", { bubbles: false }));
 
+    // (1d-iv) hero.ctaLabel -- retta 2026-09-12 (Frode: "sørge for at man kan
+    // redigere all endringsbar tekst"): det siste synlege tekstfeltet utan
+    // data-content-key. REIN TEKST (ikkje rik), sidan C.button() sin esc()
+    // aldri tolkar HTML i knappeteksten. Ligg INNI ein ekte <a href>-lenke
+    // (C.button()) -- dekker difor OGSÅ den nye preventDefault()-fiksen:
+    // eit klikk skal ALDRI trigge lenkje-navigasjon medan live-redigering
+    // er aktiv, korkje ved fyrste klikk ELLER eit klikk midt i redigeringa.
+    var ctaEl = doc.querySelector('[data-content-key="hero.ctaLabel"]');
+    assert(!!ctaEl, "hero.ctaLabel: elementet finst (ligg inni CTA-knappen sin <a href>)");
+    assert(ctaEl.tagName === "A", "hero.ctaLabel: er ei ekte lenke, ikkje eit nøytralt element");
+    // dispatchEvent() returnerer FALSE viss NOKON handterar i kjeda kalla
+    // preventDefault() -- meir pålitande enn ein eigen lyttar på ctaEl sjølv,
+    // sidan ein slik lyttar (mål-fasen) uansett ville fyrt FØR document sin
+    // eigen (bubble-fasen), altså før preventDefault() faktisk skjer.
+    var notPrevented1 = ctaEl.dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
+    assert(!notPrevented1, "hero.ctaLabel: fyrste klikk (opnar redigering) trigga IKKJE lenkje-navigasjon");
+    assert(ctaEl.getAttribute("contenteditable") === "true", "hero.ctaLabel: vert redigerbar ved klikk");
+    // Eit ANDRE klikk MIDT I ei pågåande redigering (t.d. for å flytte
+    // markøren) -- regresjonstest for fiksen over.
+    var notPrevented2 = ctaEl.dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
+    assert(!notPrevented2, "hero.ctaLabel: eit klikk MIDT I redigeringa trigga IKKJE lenkje-navigasjon (regresjon)");
+    ctaEl.textContent = "Ny knappetekst";
+    ctaEl.dispatchEvent(new window.Event("blur", { bubbles: false }));
+    assert(window.App.getContent().hero.ctaLabel === "Ny knappetekst", "hero.ctaLabel: ny verdi lagra på blur");
+    var ctaElCleanup = doc.querySelector('[data-content-key="hero.ctaLabel"]');
+    ctaElCleanup.dispatchEvent(new window.Event("click", { bubbles: true }));
+    ctaElCleanup.textContent = "Ta kontakt";
+    ctaElCleanup.dispatchEvent(new window.Event("blur", { bubbles: false }));
+
+    // (1h) Biletbyte via "Rediger direkte på sida" -- retta 2026-09-12
+    // (Frode: "...og bytte ut bilder?"). EIGE system (data-content-image-key,
+    // resolveLiveEditImageTarget()), heilt adskilt frå tekst-mekanismen over
+    // -- sjå LIVE_EDIT_IMAGE_FIELDS-kommentaren i core.js. hero.image vart
+    // alt sett tidlegare i suiten ("Bilder & fokuspunkt"-seksjonen), så den
+    // testast direkte; about.image/services[].image må setjast opp her
+    // fyrst via den vanlege admin-vegen (same mønster som den seksjonen),
+    // sidan swap-knappen berre vises når eit bilete ALT finst (hasImg) --
+    // live-edit kan BYTE eit eksisterande bilete, ikkje leggje til eit nytt
+    // frå tomt (den vegen går framleis via Web-admin-skjemaet).
+    // Eigen, lokalt fanga id -- IKKJE den seinare firstServiceId (deklarert
+    // med `var` lenger nede i same funksjonsscope, i (1f)) sidan `var` sin
+    // hoisting elles ville gjeve `undefined` her (deklarasjonen er hoista,
+    // men VERDITILORDNINGA skjer ikkje før koden faktisk køyrer der nede).
+    var imgTestServiceId = window.App.getContent().services[0].id;
+    window.App.openAdmin();
+    clickCat("innhold"); clickTab("innhold");
+    var aboutImgWrap = [...doc.querySelectorAll("[data-imgfield]")].find(function (w) { return w.querySelector("#f-about-image"); });
+    aboutImgWrap.querySelector("[data-imgfield-url]").value = "https://eksempel.no/om-oss.jpg";
+    aboutImgWrap.querySelector("[data-imgfield-url]").dispatchEvent(new window.Event("input", { bubbles: true }));
+    doc.querySelector("[data-content]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+    clickCat("innhold"); clickTab("tjenester");
+    doc.querySelector('[data-edit="' + imgTestServiceId + '"]').dispatchEvent(new window.Event("click", { bubbles: true }));
+    var svcImgWrap = [...doc.querySelectorAll("[data-imgfield]")].find(function (w) { return w.querySelector("#s-image"); });
+    svcImgWrap.querySelector("[data-imgfield-url]").value = "https://eksempel.no/kort-bilete.jpg";
+    svcImgWrap.querySelector("[data-imgfield-url]").dispatchEvent(new window.Event("input", { bubbles: true }));
+    doc.querySelector("[data-svc]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+    doc.getElementById("admin-root") && doc.getElementById("admin-root").remove();
+
+    [
+      { key: "hero.image", get: function () { return window.App.getContent().hero.image; } },
+      { key: "about.image", get: function () { return window.App.getContent().about.image; } },
+      { key: "services." + imgTestServiceId + ".image", get: function () { return window.App.getContent().services.find(function (c) { return c.id === imgTestServiceId; }).image; } }
+    ].forEach(function (f) {
+      var btn = doc.querySelector('[data-content-image-key="' + f.key + '"]');
+      assert(!!btn, f.key + ": «Bytt bilete»-knappen finst (eksisterande bilete er sett)");
+      assert(btn.tagName === "BUTTON", f.key + ": er ein ekte <button>, ikkje eit reint dekorativt element");
+      btn.dispatchEvent(new window.Event("click", { bubbles: true }));
+      var modal = doc.getElementById("vc-live-edit-image-modal");
+      assert(!!modal, f.key + ": klikk opnar biletbyte-modalen");
+      var urlInput = modal.querySelector("[data-imgfield-url]");
+      assert(!!urlInput, f.key + ": modalen har det vanlege imgField()-URL-feltet (gjenbrukt mekanisme)");
+      var before = f.get();
+      urlInput.value = "https://eksempel.no/nytt-" + f.key.replace(/[^a-z]/gi, "") + ".jpg";
+      urlInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+      modal.querySelector("[data-live-edit-image-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+      assert(!doc.getElementById("vc-live-edit-image-modal"), f.key + ": modalen lukkast att etter lagring");
+      var after = f.get();
+      assert(after.src !== before.src && after.src.indexOf("nytt-") !== -1, f.key + ": nytt bilete lagra til content-modellen: " + after.src);
+    });
+
+    // (1h-ii) Avbryt-knappen skal IKKJE lagre noka endring.
+    var aboutBtnAgain = doc.querySelector('[data-content-image-key="about.image"]');
+    var beforeCancel = window.App.getContent().about.image.src;
+    aboutBtnAgain.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var modalToCancel = doc.getElementById("vc-live-edit-image-modal");
+    modalToCancel.querySelector("[data-imgfield-url]").value = "https://eksempel.no/skal-ikkje-lagrast.jpg";
+    modalToCancel.querySelector("[data-imgfield-url]").dispatchEvent(new window.Event("input", { bubbles: true }));
+    modalToCancel.querySelector("[data-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("vc-live-edit-image-modal"), "Avbryt lukkar modalen");
+    assert(window.App.getContent().about.image.src === beforeCancel, "Avbryt lagrar IKKJE endringa i modalen");
+
+    // (1h-iii) Oppdikta/ikkje-eksisterande kort-id -- same tryggleiksprinsipp
+    // som for tekst-felta (1g): skal ALDRI matche noko.
+    var fakeImgBtn = doc.createElement("button");
+    fakeImgBtn.setAttribute("data-content-image-key", "services.dette-kortet-finst-ikkje.image");
+    doc.body.appendChild(fakeImgBtn);
+    fakeImgBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("vc-live-edit-image-modal"), "services.<oppdikta-id>.image: matchar ALDRI, opnar ingen modal");
+    fakeImgBtn.remove();
+
+    // (1h-iv) "✕ Avslutt redigering" medan biletbyte-modalen er open --
+    // regresjonstest for Security Auditor-funn (LOW/MEDIUM, 2026-09-12):
+    // setLiveEditMode(false) visste tidlegare ingenting om ein ope modal, så
+    // BÅDE DOM-noden og keydown-lyttaren vart ståande att for alltid.
+    var heroImgBtnAgain = doc.querySelector('[data-content-image-key="hero.image"]');
+    heroImgBtnAgain.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!!doc.getElementById("vc-live-edit-image-modal"), "biletbyte-modalen er open før avslutt-testen");
+    doc.getElementById("vc-live-edit-exit").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("vc-live-edit-image-modal"), "«Avslutt redigering» ryddar òg opp ein ope biletbyte-modal, ikkje berre live-redigeringsmodus");
+    assert(!doc.body.classList.contains("vc-live-edit"), "«Avslutt redigering» slo av live-redigeringsmodus som normalt");
+    // Live-redigering vart avslutta av testen over -- må slåast på att for at
+    // resten av denne testblokka (1e)-(1g) held fram som forventa.
+    window.App.openAdmin();
+    clickCat("design"); clickTab("design-mal");
+    doc.querySelector("[data-live-edit-start]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(doc.body.classList.contains("vc-live-edit"), "live-redigering slått på att for resten av testblokka");
+
     // (1e) RIK TEKST-felt (about.text) -- les/skriv innerHTML, ikkje
     // textContent, så FORMATERING må overleve. Verktøylinja skal visast
     // medan aktiv, og Enter skal IKKJE lagre/avslutte (motsett av plain text).

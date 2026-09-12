@@ -55,11 +55,12 @@
       : "";
     return (
       '<section id="hjem" class="section section--hero reveal ' + (img ? "has-image" : "") + '"' + style + '>' +
+        (img ? C.liveEditImageBtn("hero.image") : "") +
         '<div class="container hero">' +
           '<h1 class="hero__title" data-content-key="hero.title">' + C.sanitizeRichHtml(d.title) + '</h1>' +
           '<p class="hero__subtitle" data-content-key="hero.subtitle">' + C.sanitizeRichHtml(d.subtitle) + '</p>' +
           '<div class="hero__actions">' +
-            (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : "") +
+            (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary", attrs: 'data-content-key="hero.ctaLabel"' }) : "") +
           '</div>' +
         '</div>' +
         (img ? C.creditBadge(img) : "") +
@@ -70,7 +71,7 @@
   function about(d) {
     var hasImg = d.image && d.image.src;
     var media = hasImg
-      ? '<div class="about__media">' + C.coverImg(d.image, "about__img") + '</div>'
+      ? '<div class="about__media">' + C.coverImg(d.image, "about__img") + C.liveEditImageBtn("about.image") + '</div>'
       : "";
     return (
       '<section id="om-oss" class="section reveal">' +
@@ -90,7 +91,7 @@
     var cards = (d.cards || []).map(function (c) {
       var hasImg = c.image && c.image.src;
       var media = hasImg
-        ? C.coverImg(c.image, "card__media")
+        ? C.coverImg(c.image, "card__media") + C.liveEditImageBtn("services." + c.id + ".image")
         : '<span class="card__icon">' + C.icon(c.icon) + '</span>';
       return (
         '<article class="card ' + (hasImg ? "card--media" : "") + '">' +

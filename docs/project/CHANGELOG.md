@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.165.5 — 2026-09-12
+
+**"Rediger direkte på sida" utvida med det siste tekstfeltet (`hero.ctaLabel`) og eit heilt nytt biletbyte-system for `hero.image`/`about.image`/`services[].image`.**
+
+Frode: *"Kanskje sørge for at man kan redigere all endringsbar tekst og bytte ut bilder?"*
+
+- **`hero.ctaLabel`** (CTA-knappeteksten) lagt til som siste manglande tekstfelt -- REIN tekst (ikkje rik), sidan `C.button()` sin `esc()` aldri tolkar HTML i knappeteksten. Dette var det fyrste editerbare feltet inni ein ekte `<a href>`-lenke, som avdekte ein reell risiko: eit klikk MIDT I ei pågåande redigering (for å flytte markøren) kunne trigge nettlesaren sin eigen lenkje-navigasjon og forlate sida med ei ulagra endring. Fiksa ved å flytte `preventDefault()` til FØR "alt under redigering"-sjekken i klikk-handteraren.
+- **Nytt, separat biletbyte-system** (`data-content-image-key`, `LIVE_EDIT_IMAGE_FIELDS`/`resolveDynamicImageField()`, `openLiveEditImageModal()`): ein liten "Bytt bilete"-knapp vises no øvst i hjørnet på bilete som ALT finst (hero-bakgrunn, om oss-bilete, tenestekort-bilete), og opnar ein modal som gjenbruker det EKSISTERANDE `imgField()`/`bindImageFields()`-verktøyet frå Web-admin (opplasting, URL, fokuspunkt-beskjering, kreditering) -- ingen ny opplastingsmekanisme. Arkitekt-vurdert (2026-09-12) før implementering. Avgrensa til å BYTE eksisterande bilete, ikkje leggje til nye frå tomt (den vegen går framleis via Web-admin-skjemaet).
+- **Security Auditor-funn retta før merge**: ein ope biletbyte-modal vart ikkje rydda opp (verken DOM-node eller keydown-lyttar) dersom "✕ Avslutt redigering" vart klikka medan modalen var open -- retta ved å spore aktiv modal sin `close()` i eit modul-scope-felt og kalle det frå `setLiveEditMode(false)`.
+- **UX/Mobile Reviewer-funn retta før merge**: modalen sine Lagre/Avbryt-knappar arva ein kompakt admin-liste-stil under 44px touch-mål -- fekk eigen, dedikert CSS-klasse med 44px minimumshøgd. Design-fana sin hint-tekst nemnde ikkje bilete i det heile -- utvida til å forklare biletbyte-avgrensinga (kun eksisterande bilete).
+- **Kjent, ikkje-nytt avgrensing flagga av Security Auditor (HIGH)**: den delte `imgField()`/`Media.free()`-mekanismen frigjer det GAMLE biletet UMIDDELBART ved kvar tastetrykk/filval (ikkje ved lagring) -- dette betyr at "Avbryt" i biletbyte-modalen kan late att sjølve LAGRINGSOBJEKTET er sletta sjølv om `content`-modellen framleis peikar på den gamle URL-en, dersom admin skreiv/valde ei erstatning og deretter angra. Dette er EI EKSISTERANDE åtferd som alt gjaldt Web-admin sitt Innhald-skjema og tenestekort-editoren -- ikkje noko denne runda innfører -- men denne runda AUKAR eksponeringa monaleg ved å gje same handling ein ny, meir tilfeldig/eksperimenterande inngang direkte på den live sida. Krev ei djupare, koordinert endring i `setSrc()`/`Media.free()`-tidspunktet på tvers av alle tre forbrukarane (Web-admin Innhald, tenestekort-editor, denne nye modalen) -- eige, Architect-verdig steg, ikkje teke i denne runda.
+- `test.js` utvida til 878 OK / 0 FEIL (nye seksjonar 1h/1h-ii/1h-iii/1h-iv).
+
 ## 0.165.4 — 2026-09-12
 
 **To reelle brukarrapporterte feil retta, deretter rik-tekst-formatering utvida frå berre brødtekst til ALLE 7 "Rediger direkte på sida"-felt.**
