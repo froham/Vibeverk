@@ -1691,20 +1691,46 @@ window.App = (function () {
   // (about.intro/servicesSection.intro). Framleis IKKJE dynamisk her --
   // services[].title/.text (per-kort, ulik id kvar gong) løysast via
   // resolveDynamicField() lenger nede, ikkje som faste oppføringar.
+  // Alle 7 felt nedanfor vart konvertert til rich-text 2026-09-12 (Frode:
+  // ba eksplisitt om formateringsverktøylinje på ALLE felt, ikkje berre
+  // brødtekst, etter at fargeval på about.text synte seg å fungere). Dette
+  // er ei ekte datamodell-endring (Architect-vurdering same dag): felta
+  // lagrar no sanert HTML, ikkje rein tekst -- ALLE andre stader desse
+  // felta vert lesne/rendra måtte difor oppdaterast i SAME runde (elles
+  // ville rå HTML-tagar synast som tekst): components.js sin eyebrow()
+  // (about.intro/servicesSection.intro), Web-admin sitt Innhold-skjema
+  // og tenestekort-editoren (begge under, no C.richTextField() i staden
+  // for C.field()), søkeindeksen (gatherSearchData() strippar no HTML før
+  // indeksering), og dei tre malane som deler same innhaldsmodell utan å
+  // vere del av live-edit sjølv (template-panorama.js/-scrollstory.js/
+  // -vedvik-test.js -- same C.esc() -> C.sanitizeRichHtml()-endring der).
+  // singleLine:true -- retta UX/Mobile Reviewer-funn 2026-09-12: desse felta
+  // ER rik tekst (treng formatering), MEN er semantisk éin-line-overskrifter
+  // (H1/H2/kort-titlar), ikkje fleire-avsnitt-brødtekst. Utan dette flagget
+  // ville Enter (same åtferd som for about.text) sett inn eit linjeskift i
+  // staden for å lagre -- eit linjeskift som SANERAST OG LAGRAST inni t.d.
+  // <h1>, og produserer ei ekte, vedvarande øydelagd overskrift på sida (ikkje
+  // berre eit kosmetisk avvik). onKeydown() i startInlineEdit() sjekkar difor
+  // BÅDE isRich OG singleLine -- berre about.text/services[].text (ekte
+  // fleire-avsnitt-felt) manglar dette flagget.
   var LIVE_EDIT_FIELDS = {
     "hero.title": {
+      richText: true, singleLine: true,
       get: function () { return content.hero.title; },
       set: function (v) { content.hero.title = v; }
     },
     "hero.subtitle": {
+      richText: true, singleLine: true,
       get: function () { return content.hero.subtitle; },
       set: function (v) { content.hero.subtitle = v; }
     },
     "about.heading": {
+      richText: true, singleLine: true,
       get: function () { return content.about.heading; },
       set: function (v) { content.about.heading = v; }
     },
     "about.intro": {
+      richText: true, singleLine: true,
       get: function () { return content.about.intro; },
       set: function (v) { content.about.intro = v; }
     },
@@ -1714,10 +1740,12 @@ window.App = (function () {
       set: function (v) { content.about.text = v; }
     },
     "servicesSection.heading": {
+      richText: true, singleLine: true,
       get: function () { return content.servicesSection.heading; },
       set: function (v) { content.servicesSection.heading = v; }
     },
     "servicesSection.intro": {
+      richText: true, singleLine: true,
       get: function () { return content.servicesSection.intro; },
       set: function (v) { content.servicesSection.intro = v; }
     }
@@ -1740,7 +1768,11 @@ window.App = (function () {
     if (!card) return null;
     var field = m[2];
     return {
-      richText: field === "text",
+      richText: true,
+      // singleLine: title er ei éin-line korttittel (Enter skal lagre, same
+      // grunngjeving som LIVE_EDIT_FIELDS sitt singleLine-flagg over) --
+      // .text er ekte fleire-avsnitt-brødtekst og skal IKKJE ha dette.
+      singleLine: field === "title",
       get: function () { return card[field]; },
       set: function (v) { card[field] = v; }
     };
@@ -1859,7 +1891,19 @@ window.App = (function () {
     LIVE_EDIT_COLORS.forEach(function (c) {
       var b = document.createElement("button");
       b.type = "button"; b.className = "vc-live-edit-toolbar__swatch"; b.style.background = c;
-      b.addEventListener("mousedown", function (e) { e.preventDefault(); document.execCommand("foreColor", false, c); });
+      // styleWithCSS må slåast på FØR foreColor -- elles skriv execCommand()
+      // ut <font color="..."> i staden for <span style="color:...">, og
+      // sanitizeRichHtml() sin RICH_ALLOWED_TAGS-kviteliste (components.js)
+      // godtek ikkje <font> -- taggen vart då pakka ut ved lagring og fargen
+      // gjekk reint tapt. Retta reell feilmelding frå Frode (2026-09-12):
+      // fargeval "lagrer seg ikke når jeg klikker utenfor". Same mønster som
+      // den eksisterande richTextField()-verktøylinja bruker alt (sjå
+      // App.ui.bindRichTextFields() lenger nede i denne fila).
+      b.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        document.execCommand("styleWithCSS", false, true);
+        document.execCommand("foreColor", false, c);
+      });
       bar.appendChild(b);
     });
     var sep2 = document.createElement("div"); sep2.className = "vc-live-edit-toolbar__sep"; bar.appendChild(sep2);
@@ -1937,18 +1981,23 @@ window.App = (function () {
     // ville vore dersom dei to nokon gong skulle divergere.
     var original = target.get();
     var isRich = !!target.richText;
+    // singleLine -- retta UX/Mobile Reviewer-funn 2026-09-12: éin-line
+    // rik-tekst-felt (overskrifter/korttitlar) skal framleis oppføre seg som
+    // "éin-line" for Enter-tasten OG merke-alt-ved-fokus, sjølv om dei no ER
+    // rik tekst (treng formatering). Berre ekte fleire-avsnitt-felt
+    // (about.text/services[].text) manglar dette flagget.
+    var isSingleLine = !isRich || !!target.singleLine;
     el.setAttribute("contenteditable", "true");
     el.classList.add("vc-live-edit-editing");
     el.focus();
-    if (!isRich) {
+    if (isSingleLine) {
       var range = document.createRange();
       range.selectNodeContents(el);
       var sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(range);
-    } else {
-      showLiveEditToolbar(el);
     }
+    if (isRich) showLiveEditToolbar(el);
 
     // Mellombels hint på avslutt-knappen MEDAN redigering er aktiv -- retta
     // UX/Mobile Reviewer-funn 2026-09-17 (HIGH: ingen synleg lagre/avbryt-
@@ -1990,10 +2039,16 @@ window.App = (function () {
     }
     function onBlur() { finish(true); }
     function onKeydown(ev) {
-      // Enter lagrar/blurar berre for PLAIN TEXT-felt (enkeltline) -- eit
-      // rik tekst-felt (fleire avsnitt) må kunne bruke Enter til vanleg
-      // linjeskift utan å avslutte redigeringa kvar gong.
-      if (ev.key === "Enter" && !isRich) { ev.preventDefault(); el.blur(); }
+      // Enter lagrar/blurar for ALLE éin-line-felt (isSingleLine), anten dei
+      // er rein tekst eller rik tekst -- retta reell regresjon (UX/Mobile
+      // Reviewer, 2026-09-12): før dette flagget vart Enter på t.d. hero.title
+      // (no rik tekst) tolka som "vanleg linjeskift" (same som about.text),
+      // som sette inn ein <br>/<div> INNI <h1> -- ein linjeskift som vart
+      // SANERT OG LAGRA, og produserte ei ekte, vedvarande øydelagd overskrift
+      // på den live sida, ikkje berre eit forbigåande visningsavvik. Berre
+      // ekte fleire-avsnitt-felt (about.text/services[].text) skal la Enter
+      // vere eit vanleg linjeskift.
+      if (ev.key === "Enter" && isSingleLine) { ev.preventDefault(); el.blur(); }
       else if (ev.key === "Escape") { ev.preventDefault(); finish(false); el.blur(); }
     }
     el.addEventListener("blur", onBlur);
@@ -3620,24 +3675,24 @@ window.App = (function () {
       <form data-content class="admin-form">
         <fieldset class="admin-group">
           <legend>Forsidetopp</legend>
-          ${C.field({ id: "f-hero-title", label: "Tittel", value: content.hero.title })}
-          ${C.field({ id: "f-hero-sub", label: "Undertittel", multiline: true, rows: 2, value: content.hero.subtitle })}
+          ${C.richTextField({ id: "f-hero-title", label: "Tittel", value: content.hero.title, lists: false })}
+          ${C.richTextField({ id: "f-hero-sub", label: "Undertittel", value: content.hero.subtitle, lists: false })}
           ${imgField("f-hero-image", "Bakgrunnsbilde (vises i full bredde)", content.hero.image, 2.4)}
           ${C.field({ id: "f-hero-cta-label", label: "Knappetekst", value: content.hero.ctaLabel, placeholder: "Ta kontakt" })}
           ${C.field({ id: "f-hero-cta-target", label: "Knappen peker til (seksjon-id)", value: content.hero.ctaTarget, placeholder: "#kontakt", hint: "Tomt = knappen vises ikke" })}
         </fieldset>
         <fieldset class="admin-group">
           <legend>Om oss</legend>
-          ${C.field({ id: "f-about-heading", label: "Overskrift", value: content.about.heading, placeholder: "Om oss" })}
-          ${C.field({ id: "f-about-intro", label: "Ingress (valgfri)", value: content.about.intro, placeholder: "" })}
+          ${C.richTextField({ id: "f-about-heading", label: "Overskrift", value: content.about.heading, lists: false })}
+          ${C.richTextField({ id: "f-about-intro", label: "Ingress (valgfri)", value: content.about.intro, lists: false })}
           ${C.richTextField({ id: "f-about", label: "Tekst", value: content.about.text })}
           ${imgField("f-about-image", "Bilde", content.about.image, 4/3)}
         </fieldset>
         <fieldset class="admin-group">
           <legend>Tjenester-seksjon</legend>
           <p style="font-size:.82rem;color:var(--color-muted);margin:0 0 .8rem">Selve tjenestekortene redigeres i egen fane («Tjenester») — her styres kun overskriften over dem.</p>
-          ${C.field({ id: "f-svc-heading", label: "Overskrift", value: content.servicesSection.heading, placeholder: "Tjenester" })}
-          ${C.field({ id: "f-svc-intro", label: "Ingress (valgfri)", value: content.servicesSection.intro, placeholder: "" })}
+          ${C.richTextField({ id: "f-svc-heading", label: "Overskrift", value: content.servicesSection.heading, lists: false })}
+          ${C.richTextField({ id: "f-svc-intro", label: "Ingress (valgfri)", value: content.servicesSection.intro, lists: false })}
         </fieldset>
         <fieldset class="admin-group">
           <legend>Aktuelt-seksjon</legend>
@@ -3694,17 +3749,17 @@ window.App = (function () {
 
     body.querySelector("[data-content]").addEventListener("submit", function (e) {
       e.preventDefault();
-      content.hero.title     = body.querySelector("#f-hero-title").value;
-      content.hero.subtitle  = body.querySelector("#f-hero-sub").value;
+      content.hero.title     = readRichTextField(body, "f-hero-title");
+      content.hero.subtitle  = readRichTextField(body, "f-hero-sub");
       content.hero.image     = readImageField(body, "f-hero-image");
       content.hero.ctaLabel  = body.querySelector("#f-hero-cta-label").value.trim();
       content.hero.ctaTarget = body.querySelector("#f-hero-cta-target").value.trim();
-      content.about.heading = body.querySelector("#f-about-heading").value.trim();
-      content.about.intro   = body.querySelector("#f-about-intro").value.trim();
+      content.about.heading = readRichTextField(body, "f-about-heading");
+      content.about.intro   = readRichTextField(body, "f-about-intro");
       content.about.text    = readRichTextField(body, "f-about");
       content.about.image   = readImageField(body, "f-about-image");
-      content.servicesSection.heading = body.querySelector("#f-svc-heading").value.trim();
-      content.servicesSection.intro   = body.querySelector("#f-svc-intro").value.trim();
+      content.servicesSection.heading = readRichTextField(body, "f-svc-heading");
+      content.servicesSection.intro   = readRichTextField(body, "f-svc-intro");
       content.newsSection.heading = body.querySelector("#f-news-heading").value.trim();
       content.newsSection.intro   = body.querySelector("#f-news-intro").value.trim();
       content.contactSection.heading        = body.querySelector("#f-cs-heading").value.trim();
@@ -3845,7 +3900,7 @@ window.App = (function () {
       return `
         <li class="admin-row" data-id="${C.esc(c.id)}">
           <div class="admin-row__main">
-            <strong>${C.icon(c.icon)} ${C.esc(c.title)}</strong>
+            <strong>${C.icon(c.icon)} ${C.esc(C.stripHtml(c.title))}</strong>
             <span class="admin-row__meta">${C.esc(C.stripHtml(c.text))}</span>
           </div>
           <div class="admin-row__actions">
@@ -3900,7 +3955,7 @@ window.App = (function () {
             <input id="s-icon" type="text" value="${C.esc(editing ? editing.icon : "")}" placeholder="rocket">
           </div>
         </div>
-        ${C.field({ id: "s-title", label: "Tittel", required: true, value: editing ? editing.title : "" })}
+        ${C.richTextField({ id: "s-title", label: "Tittel", value: editing ? editing.title : "", lists: false, required: true })}
         ${C.richTextField({ id: "s-text", label: "Beskrivelse", value: editing ? editing.text : "", maxChars: SERVICE_CARD_TEXT_MAX })}
         ${imgField("s-image", "Bilde (valgfritt — erstatter ikonet)", editing ? editing.image : "", 16/10)}
         <div class="admin-row__actions">
@@ -3923,10 +3978,18 @@ window.App = (function () {
     editor.querySelector("[data-svc]").addEventListener("submit", function (e) {
       e.preventDefault();
       const icon = cleanIcon(iconInput.value) || "point";
-      const title = editor.querySelector("#s-title").value.trim();
+      const title = readRichTextField(editor, "s-title");
       const text = readRichTextField(editor, "s-text");
       const image = readImageField(editor, "s-image");
-      if (!title) return;
+      // Eksplisitt feilmelding i staden for eit stille `return` -- s-title
+      // mista den native HTML5 required-valideringa då feltet vart konvertert
+      // frå eit vanleg <input required> til eit contenteditable rik-tekst-felt
+      // (2026-09-12), som ikkje støttar required. Utan denne meldinga ville
+      // eit tomt tittelfelt berre late som ingenting skjedde ved lagring.
+      if (!C.stripHtml(title).trim()) {
+        setStatus(editor.querySelector("[data-svc-status]"), "Tittel er påkrevd.", "error");
+        return;
+      }
       // Handhevet ved lagring (ikkje berre visuelt klipt ved framvisning, sjå
       // .card__text sin CSS-cap) -- så teksten som faktisk vart skrive inn
       // alltid får plass, i staden for å stille forsvinne på den ferdige sida.
@@ -5965,7 +6028,12 @@ window.App = (function () {
     });
     // Tjenester
     (content.services || []).forEach(function (s) {
-      items.push({ type: "Tjenester", title: s.title || "", text: C.stripHtml(s.text || ""), href: "#tjenester" });
+      // C.stripHtml() på tittelen -- retta Architect-funn 2026-09-12: sidan
+      // services[].title no kan innehalde sanert HTML (rik-tekst-felt via
+      // "Rediger direkte på sida"), ville rå tagar elles synast som
+      // bokstaveleg tekst i søketreff-lista, som alltid C.esc()-rendrar
+      // titlar (rett for rein tekst, feil for HTML-berande strengar).
+      items.push({ type: "Tjenester", title: C.stripHtml(s.title || ""), text: C.stripHtml(s.text || ""), href: "#tjenester" });
     });
     // Om oss
     if (content.about && content.about.text) {

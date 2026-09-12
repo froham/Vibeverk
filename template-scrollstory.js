@@ -90,8 +90,8 @@
       '<section id="hjem" class="story-hero reveal' + (img ? "" : " story-hero--noimg") + '"' + style + ariaLabel + '>' +
         (img ? '<div class="story-hero__scrim"></div>' : "") +
         '<div class="story-hero__inner">' +
-          '<h1 class="story-hero__title">' + C.esc(d.title) + '</h1>' +
-          (d.subtitle ? '<p class="story-hero__subtitle">' + C.esc(d.subtitle) + '</p>' : "") +
+          '<h1 class="story-hero__title">' + C.sanitizeRichHtml(d.title) + '</h1>' +
+          (d.subtitle ? '<p class="story-hero__subtitle">' + C.sanitizeRichHtml(d.subtitle) + '</p>' : "") +
           (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : "") +
         '</div>' +
         (img ? '<div class="story-scrollcue" aria-hidden="true"><span></span></div>' : "") +
@@ -107,8 +107,8 @@
       '<section id="om-oss" class="story-about reveal' + (hasImg ? "" : " story-about--noimg") + '">' +
         (hasImg ? '<div class="story-about__media">' + C.coverImg(d.image, "") + '</div><div class="story-about__scrim"></div>' : "") +
         '<div class="story-about__body">' +
-          C.eyebrow(d.intro || d.heading) +
-          '<h2 class="reveal">' + C.esc(d.heading) + '</h2>' +
+          C.eyebrow(d.intro || d.heading, true) +
+          '<h2 class="reveal">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
           '<div class="prose reveal" style="transition-delay:.15s">' + C.sanitizeRichHtml(d.text) + '</div>' +
         '</div>' +
       '</section>'
@@ -119,8 +119,8 @@
     injectCss();
     var intro =
       '<div class="story-services__intro">' +
-        C.eyebrow(d.intro || d.heading) +
-        '<h2 class="reveal">' + C.esc(d.heading) + '</h2>' +
+        C.eyebrow(d.intro || d.heading, true) +
+        '<h2 class="reveal">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
       '</div>';
     // Kvart kort er sitt EIGE "augeblikk" i sekvensen -- fungerer best med eit
     // moderat tal kort (~3-6). Svært mange kort gjev ei ekstremt lang side,
@@ -133,7 +133,7 @@
             '<div class="story-moment__media">' + C.coverImg(c.image, "") + '</div>' +
             '<div class="story-moment__scrim"></div>' +
             '<div class="story-moment__body">' +
-              '<h3>' + C.esc(c.title) + '</h3>' +
+              '<h3>' + C.sanitizeRichHtml(c.title) + '</h3>' +
               (c.text ? '<div class="prose">' + C.sanitizeRichHtml(c.text) + '</div>' : "") +
             '</div>' +
           '</article>'
@@ -144,7 +144,7 @@
       return (
         '<article class="story-moment story-moment--noimg reveal">' +
           '<span class="card__icon">' + C.icon(c.icon) + '</span>' +
-          '<h3 style="margin:0;font-size:1.2rem">' + C.esc(c.title) + '</h3>' +
+          '<h3 style="margin:0;font-size:1.2rem">' + C.sanitizeRichHtml(c.title) + '</h3>' +
           (c.text ? '<div class="prose" style="font-size:.9rem">' + C.sanitizeRichHtml(c.text) + '</div>' : "") +
         '</article>'
       );

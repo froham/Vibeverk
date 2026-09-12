@@ -22,8 +22,8 @@
       BANNER +
       '<section id="hjem" class="section section--hero reveal" style="background:#0b2b35;color:#fff;">' +
         '<div class="container hero">' +
-          '<h1 class="hero__title">' + C.esc(d.title) + '</h1>' +
-          '<p class="hero__subtitle">' + C.esc(d.subtitle) + '</p>' +
+          '<h1 class="hero__title">' + C.sanitizeRichHtml(d.title) + '</h1>' +
+          '<p class="hero__subtitle">' + C.sanitizeRichHtml(d.subtitle) + '</p>' +
         '</div>' +
       '</section>'
     );
@@ -34,8 +34,8 @@
       '<section id="om-oss" class="section reveal">' +
         '<div class="container about">' +
           '<div class="about__body">' +
-            C.eyebrow(d.intro || d.heading) +
-            '<h2 class="section__title">' + C.esc(d.heading) + '</h2>' +
+            C.eyebrow(d.intro || d.heading, true) +
+            '<h2 class="section__title">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
             '<div class="prose">' + C.sanitizeRichHtml(d.text) + '</div>' +
           '</div>' +
         '</div>' +
@@ -48,7 +48,7 @@
       return (
         '<article class="card">' +
           '<div class="card__body">' +
-            '<h3 class="card__title">' + C.esc(c.title) + '</h3>' +
+            '<h3 class="card__title">' + C.sanitizeRichHtml(c.title) + '</h3>' +
             '<div class="card__text">' + C.sanitizeRichHtml(c.text) + '</div>' +
           '</div>' +
         '</article>'
@@ -57,8 +57,8 @@
     return (
       '<section id="tjenester" class="section reveal">' +
         '<div class="container">' +
-          C.eyebrow(d.intro || d.heading) +
-          '<h2 class="section__title">' + C.esc(d.heading) + '</h2>' +
+          C.eyebrow(d.intro || d.heading, true) +
+          '<h2 class="section__title">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
           '<div class="cards">' + cards + '</div>' +
         '</div>' +
       '</section>'

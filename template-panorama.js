@@ -56,8 +56,8 @@
       '<section id="hjem" class="pano-hero reveal"' + style + '>' +
         (img ? '<div class="pano-hero__scrim"></div>' : "") +
         '<div class="pano-hero__inner">' +
-          '<h1 class="pano-hero__title">' + C.esc(d.title) + '</h1>' +
-          (d.subtitle ? '<p class="pano-hero__subtitle">' + C.esc(d.subtitle) + '</p>' : "") +
+          '<h1 class="pano-hero__title">' + C.sanitizeRichHtml(d.title) + '</h1>' +
+          (d.subtitle ? '<p class="pano-hero__subtitle">' + C.sanitizeRichHtml(d.subtitle) + '</p>' : "") +
           (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : "") +
         '</div>' +
         (img ? C.creditBadge(img) : "") +
@@ -73,8 +73,8 @@
         '<div class="container">' +
           (hasImg ? C.coverImg(d.image, "pano-about__img") : "") +
           '<div class="pano-about__body">' +
-            C.eyebrow(d.intro || d.heading) +
-            '<h2>' + C.esc(d.heading) + '</h2>' +
+            C.eyebrow(d.intro || d.heading, true) +
+            '<h2>' + C.sanitizeRichHtml(d.heading) + '</h2>' +
             '<div class="prose">' + C.sanitizeRichHtml(d.text) + '</div>' +
           '</div>' +
         '</div>' +
@@ -90,7 +90,7 @@
         return (
           '<article class="pano-card">' +
             C.coverImg(c.image, "pano-card__img") +
-            '<div class="pano-card__caption">' + C.esc(c.title) + '</div>' +
+            '<div class="pano-card__caption">' + C.sanitizeRichHtml(c.title) + '</div>' +
           '</article>'
         );
       }
@@ -99,7 +99,7 @@
       return (
         '<article class="pano-card pano-card--noimg">' +
           '<span class="card__icon">' + C.icon(c.icon) + '</span>' +
-          '<h3 style="margin:0;font-size:1rem">' + C.esc(c.title) + '</h3>' +
+          '<h3 style="margin:0;font-size:1rem">' + C.sanitizeRichHtml(c.title) + '</h3>' +
           '<div class="card__text" style="font-size:.85rem;text-align:center">' + C.sanitizeRichHtml(c.text) + '</div>' +
         '</article>'
       );
@@ -107,8 +107,8 @@
     return (
       '<section id="tjenester" class="pano-services reveal">' +
         '<div class="container" style="text-align:center;margin-bottom:1.5rem">' +
-          C.eyebrow(d.intro || d.heading) +
-          '<h2 class="section__title">' + C.esc(d.heading) + '</h2>' +
+          C.eyebrow(d.intro || d.heading, true) +
+          '<h2 class="section__title">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
         '</div>' +
         '<div class="pano-services__grid">' + cards + '</div>' +
       '</section>'
