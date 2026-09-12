@@ -1962,7 +1962,56 @@ window.App = (function () {
       // storleik (laga for admin-liste-radhandlingar, ikkje primære modal-
       // knappar), godt under 44px. Klassenamnet er unikt for denne eine
       // modalen -- ingen risiko for å påverke andre .btn-bruksstader.
-      '.vc-live-edit-image-modal-btn{min-height:44px;padding:.6rem 1.1rem;}';
+      '.vc-live-edit-image-modal-btn{min-height:44px;padding:.6rem 1.1rem;}' +
+      // Seksjonsrekkefølgje-panelet -- same mørke pille-språk som resten av
+      // live-edit-kontrollane, plassert nede til VENSTRE (avslutt-knappen sit
+      // midtstilt, biletbyte-knappane er inni sjølve innhaldet) for å unngå
+      // kollisjon med begge, og fordi chat-widgeten (module-chat.js) sin
+      // DEFAULT-posisjon er nede til høgre. Kjent, akseptert avgrensa
+      // avveging: chat-widgeten KAN konfigurerast til venstre-plassering
+      // (features.chat.position:"left") -- ville då visuelt kollidere med
+      // denne knappen medan live-redigering er aktiv. Reint eit
+      // admin-verktøy-overlapp under redigering, ingen kundevendt konsekvens,
+      // og eksisterande sjeldan-brukt konfigurasjon -- ikkje fiksa no.
+      // safe-area-aware botn, same grunngjeving som avslutt-knappen (iOS
+      // heim-indikator/Android gest-navigasjon).
+      '.vc-live-edit-reorder-btn{display:none;position:fixed;left:24px;bottom:calc(24px + env(safe-area-inset-bottom, 0px));' +
+        'z-index:9999;background:var(--color-text,#142033);color:#fff;border:none;border-radius:999px;' +
+        'padding:.7rem 1.1rem;min-height:44px;font:600 .85rem/1 var(--font-body,sans-serif);cursor:pointer;' +
+        'box-shadow:0 12px 32px rgba(0,0,0,.28);align-items:center;gap:.4rem;}' +
+      'body.vc-live-edit .vc-live-edit-reorder-btn{display:flex;}' +
+      // max-height/overflow-y -- retta UX/Mobile Reviewer-funn (HIGH,
+      // 2026-09-12): panelet hadde ingen høgdegrense, og liveEditReorderable
+      // Mods() viser ALLE synlege sidemodular (kan bli 8-9+ rader på ein
+      // tenant med FAQ/Booking/Referansar/Scrollbanner alle aktiverte). Utan
+      // grense og med scroll ville dei øvste radene (inkl. den fyrste
+      // FLYTTBARE rada sin ↑-knapp) blitt skuvne heilt av skjermen på ein
+      // kort viewport (t.d. liggjande mobil, 667×375), utan nokon måte å nå
+      // dei på.
+      '.vc-live-edit-reorder-panel{display:none;position:fixed;left:24px;bottom:calc(84px + env(safe-area-inset-bottom, 0px));' +
+        'z-index:9999;background:var(--color-text,#142033);padding:10px;border-radius:14px;' +
+        'box-shadow:0 20px 50px rgba(0,0,0,.32);min-width:260px;max-width:calc(100vw - 48px);flex-direction:column;gap:2px;' +
+        'max-height:calc(100vh - 140px);overflow-y:auto;}' +
+      '.vc-live-edit-reorder-panel.is-open{display:flex;}' +
+      '.vc-live-edit-reorder-panel .vc-reorder-title{margin:0;color:rgba(255,255,255,.6);' +
+        'font:700 11px/1 var(--font-body,sans-serif);text-transform:uppercase;letter-spacing:.06em;padding:2px 8px 8px;}' +
+      '.vc-reorder-row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.06);color:#fff;' +
+        'padding:0 6px 0 10px;border-radius:8px;font:600 13px/1 var(--font-body,sans-serif);min-height:44px;box-sizing:border-box;}' +
+      '.vc-reorder-row.is-locked{opacity:.55;}' +
+      '.vc-reorder-row .vc-reorder-hint{margin-left:auto;font-size:.72rem;opacity:.8;font-weight:500;}' +
+      '.vc-reorder-btns{margin-left:auto;display:flex;gap:2px;}' +
+      // 44px -- retta UX/Mobile Reviewer-funn (HIGH, 2026-09-12): det
+      // opphavlege 36px-avviket vart grunngjeve med at to knappar ikkje
+      // hadde plass ved sida av kvarandre i eit 230px-breitt panel, men
+      // panelet sitt max-width (over) gjev langt meir slingringsmonn enn
+      // 230px på nesten alle skjermar -- ei enkel breidde-auke til 260px
+      // løyser plassproblemet utan å måtte bryte touch-mål-standarden denne
+      // same funksjonen elles handhevar strengt (avslutt-knapp, biletbyte-
+      // knapp, biletmodal-knappar).
+      '.vc-reorder-mv{width:44px;height:44px;min-width:44px;background:rgba(255,255,255,.1);border:none;' +
+        'border-radius:6px;color:#fff;font-size:1.1rem;cursor:pointer;}' +
+      '.vc-reorder-mv:hover:not(:disabled){background:rgba(255,255,255,.2);}' +
+      '.vc-reorder-mv:disabled{opacity:.3;cursor:default;}';
     document.head.appendChild(style);
   }
 
@@ -2187,6 +2236,83 @@ window.App = (function () {
     el.addEventListener("keydown", onKeydown);
   }
 
+  /* ── Seksjonsrekkefølgje via "Rediger direkte på sida" (2026-09-12) ──────
+     Porta frå vibeverk-template sitt validerte "PROTOTYPE nr. 8" (separat
+     mockup-prosjekt, ikkje del av dette repoet), MEN med éin medviten
+     endring frå originalen: mockupen brukte ekte HTML5 drag-og-slepp i eit
+     flytande panel, medan denne versjonen bruker opp/ned-knappar --
+     Vibeverk sitt admin-panel vert reelt brukt frå mobil/nettbrett (heile
+     denne live-edit-funksjonen er bygd med 44px-touch-mål som standard),
+     og natic HTML5 drag-og-slepp fungerer ikkje på touch-skjermar i det
+     heile, i tillegg til at det ikkje er tastaturtilgjengeleg. Gjenbruker i
+     staden EKSAKT same data/lagringsveg som den alt eksisterande ↑/↓-
+     tabellen i Innstillingar → Navigasjon (nav-settings.pageOrder via
+     getNavSettings()/saveNavSettings()) -- IKKJE eit nytt, konkurrerande
+     rekkefølgje-omgrep, sjå Architect-vurderinga 2026-09-12.
+     "Hjem" (hero) er MEDVITE låst først og aldri flyttbar her: cinema-malen
+     sin gjennomsiktige nav-over-hero-effekt (vc-on-image, sjå
+     template-vibeverk-cinema.js sin updateOnImage()) reknar ut om nav-en
+     skal vere gjennomsiktig utelukkande frå #hjem sin EIGEN høgde, utan
+     omsyn til kva som faktisk står fyrst på sida -- flytta hero vekk frå
+     posisjon 1 ville late nav-en visast gjennomsiktig oppå eit lyst avsnitt
+     utan biletbakgrunn, uleseleg kvit tekst på lys bakgrunn. Same
+     eksklusjon som vibeverk-template sin eigen mockup gjorde, av tilsvarande
+     grunn (der pga. ein hardkoda negativ margin-top). */
+  function liveEditReorderableMods() {
+    var ns = getNavSettings();
+    var hidden = ns.pageHidden || [];
+    var shown = ns.pageShown || [];
+    var allMods = orderedModules().filter(function (m) { return m.label && !m.adminOnly && (m.render || m.renderPage); });
+    var custOrder = ns.pageOrder || [];
+    var mods;
+    if (custOrder.length) {
+      var indexed = {}; allMods.forEach(function (m) { indexed[m.id] = m; });
+      mods = [];
+      custOrder.forEach(function (id) { if (indexed[id]) { mods.push(indexed[id]); delete indexed[id]; } });
+      Object.values(indexed).forEach(function (m) { mods.push(m); });
+    } else { mods = allMods.slice(); }
+    return mods.filter(function (m) {
+      var isPageOnly = !!(m.page && !m.inline);
+      return isPageOnly ? shown.indexOf(m.id) > -1 : hidden.indexOf(m.id) === -1;
+    });
+  }
+  function renderLiveEditReorderPanel() {
+    var listEl = document.querySelector("#vc-live-edit-reorder-panel [data-reorder-list]");
+    if (!listEl) return;
+    var mods = liveEditReorderableMods();
+    var heroMod = mods.filter(function (m) { return m.id === "hjem"; })[0];
+    var rest = mods.filter(function (m) { return m.id !== "hjem"; });
+    var heroRow = heroMod
+      ? '<div class="vc-reorder-row is-locked" title="Forsida må alltid stå først for at malen skal fungere som tiltenkt"><span>' + C.esc(modLabel(heroMod)) + '</span><span class="vc-reorder-hint">alltid først</span></div>'
+      : "";
+    listEl.innerHTML = heroRow + rest.map(function (m, i) {
+      return '<div class="vc-reorder-row" data-reorder-row-id="' + C.esc(m.id) + '">' +
+        '<span>' + C.esc(modLabel(m)) + '</span>' +
+        '<span class="vc-reorder-btns">' +
+          '<button type="button" class="vc-reorder-mv" data-reorder-up="' + C.esc(m.id) + '" aria-label="Flytt opp" ' + (i === 0 ? "disabled" : "") + '>↑</button>' +
+          '<button type="button" class="vc-reorder-mv" data-reorder-dn="' + C.esc(m.id) + '" aria-label="Flytt ned" ' + (i === rest.length - 1 ? "disabled" : "") + '>↓</button>' +
+        '</span>' +
+      '</div>';
+    }).join("");
+    listEl.querySelectorAll("[data-reorder-up],[data-reorder-dn]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var isUp = btn.hasAttribute("data-reorder-up");
+        var id = btn.getAttribute(isUp ? "data-reorder-up" : "data-reorder-dn");
+        var ids = rest.map(function (m) { return m.id; });
+        var idx = ids.indexOf(id);
+        var swap = isUp ? idx - 1 : idx + 1;
+        if (swap < 0 || swap >= ids.length) return;
+        var tmp = ids[idx]; ids[idx] = ids[swap]; ids[swap] = tmp;
+        var cur = getNavSettings();
+        cur.pageOrder = (heroMod ? [heroMod.id] : []).concat(ids);
+        saveNavSettings(cur);
+        render();
+        if (liveEditMode) applyLiveEditA11y(true);
+        renderLiveEditReorderPanel();
+      });
+    });
+  }
+
   function setLiveEditMode(on) {
     liveEditMode = on;
     // Rydd opp ein ope biletbyte-modal FØR modusen slåast av -- retta
@@ -2207,6 +2333,28 @@ window.App = (function () {
       document.body.appendChild(exitBtn);
     } else if (!on && exitBtn) {
       exitBtn.remove();
+    }
+    var reorderBtn = document.getElementById("vc-live-edit-reorder-btn");
+    var reorderPanel = document.getElementById("vc-live-edit-reorder-panel");
+    if (on && !reorderBtn) {
+      reorderBtn = document.createElement("button");
+      reorderBtn.type = "button";
+      reorderBtn.id = "vc-live-edit-reorder-btn";
+      reorderBtn.className = "vc-live-edit-reorder-btn";
+      reorderBtn.textContent = "↕ Rekkefølge";
+      reorderPanel = document.createElement("div");
+      reorderPanel.id = "vc-live-edit-reorder-panel";
+      reorderPanel.className = "vc-live-edit-reorder-panel";
+      reorderPanel.innerHTML = '<p class="vc-reorder-title">Rekkefølge på seksjonar</p><div data-reorder-list></div>';
+      reorderBtn.addEventListener("click", function () {
+        reorderPanel.classList.toggle("is-open");
+        if (reorderPanel.classList.contains("is-open")) renderLiveEditReorderPanel();
+      });
+      document.body.appendChild(reorderBtn);
+      document.body.appendChild(reorderPanel);
+    } else if (!on) {
+      if (reorderBtn) reorderBtn.remove();
+      if (reorderPanel) reorderPanel.remove();
     }
     if (!liveEditBound) {
       liveEditBound = true;
@@ -2254,6 +2402,37 @@ window.App = (function () {
         e.stopPropagation();
         openLiveEditImageModal(el.getAttribute("data-content-image-key"), target);
       });
+      // Escape/klikk-utanfor lukkar rekkefølgje-panelet -- retta UX/Mobile
+      // Reviewer-funn (MEDIUM, 2026-09-12): biletbyte-modalen har alt begge
+      // desse, dette panelet mangla dei heilt. Bunde HER (éin gong, inni
+      // liveEditBound-porten) i staden for inni knapp-skapinga over --
+      // knappen/panelet vert oppretta PÅ NYTT kvar gong live-redigering vert
+      // slått av og på att, så ein listener bunden der ville lekt éin ny,
+      // aldri fjerna document-lyttar for kvar syklus. Slår difor opp
+      // elementa PÅ NYTT via id kvar gong, ikkje via ein fastfrosen closure-
+      // referanse frå oppsettstidspunktet.
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        var panel = document.getElementById("vc-live-edit-reorder-panel");
+        if (panel) panel.classList.remove("is-open");
+      });
+      // capture:true (fangst-fase, IKKJE boble-fase) -- retta reell bug
+      // fanga av eigen test: ei rad inni panelet sin ↑/↓-klikk fører til at
+      // renderLiveEditReorderPanel() byter ut HEILE radlista SYNKRONT, MEDAN
+      // same klikk-hending framleis er undervegs. I boble-fasen ville denne
+      // lyttaren difor sjekke panel.contains(e.target) MOT eit element som
+      // alt var fjerna frå DOM-en av re-renderinga, og feilaktig tolke det
+      // som eit klikk UTANFOR panelet -- lukka panelet med det same det vart
+      // opna. Fangst-fasen køyrer FØR target sin eigen handterar, altså før
+      // nokon re-rendering kan ha skjedd, så e.target er framleis eit ekte
+      // medlem av panelet på sjekketidspunktet.
+      document.addEventListener("click", function (e) {
+        var panel = document.getElementById("vc-live-edit-reorder-panel");
+        var btn = document.getElementById("vc-live-edit-reorder-btn");
+        if (!panel || !panel.classList.contains("is-open")) return;
+        if (panel.contains(e.target) || e.target === btn) return;
+        panel.classList.remove("is-open");
+      }, true);
     }
   }
 
@@ -3515,7 +3694,7 @@ window.App = (function () {
     var liveEditSection = LIVE_EDIT_TEMPLATES.indexOf(current) !== -1
       ? '<div class="admin-group" style="margin-bottom:1.2rem">' +
           '<strong style="display:block;margin-bottom:.3rem">Rediger direkte på sida</strong>' +
-          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver. Bilder som allerede er lagt inn kan byttes ut ved å klikke «Bytt bilete» øverst i hjørnet — for å legge til et helt nytt bilde der det ikke finnes et fra før, bruk skjemaet under «Innhold».</p>' +
+          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver. Bilder som allerede er lagt inn kan byttes ut ved å klikke «Bytt bilete» øverst i hjørnet — for å legge til et helt nytt bilde der det ikke finnes et fra før, bruk skjemaet under «Innhold». Bruk «↕ Rekkefølge»-knappen nede til venstre for å endre rekkefølgen på seksjonene (samme innstilling som tabellen i Innstillinger → Navigasjon).</p>' +
           C.button({ label: "Rediger direkte på sida", variant: "ghost", attrs: 'data-live-edit-start' }) +
         '</div>'
       : '';
