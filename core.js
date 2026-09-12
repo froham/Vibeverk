@@ -1684,11 +1684,13 @@ window.App = (function () {
   // frå sjølve den live sida (tidlegare versjon skreiv ALDRI noko sjølv, berre
   // navigerte til skjemaet) -- må gjennom ein ny Security Auditor-runde før
   // dette vert rekna klart, sjå eiga vurdering i PR-skildringa.
-  // Utvida 2026-09-17 (same dag) frå berre hero.title til fire PLAIN TEXT-
-  // felt -- sjå eigen kommentar i template-klassisk.js for kvifor rik
-  // tekst (about.text/services[].text), eyebrow-felt (about.intro/
-  // servicesSection.intro) og enkelt-kort-titlar i services[] ALLE er
-  // medvite utelatne frå denne runda.
+  // Utvida 2026-09-17 (same dag, to steg): fyrst fire PLAIN TEXT-felt, så
+  // ALLE tekstfelt Klassisk-malen faktisk viser, inkl. rik tekst
+  // (about.text/services[].text -- get()/set() les/skriv innerHTML, sjå
+  // richText-flagget under og startInlineEdit()) og eyebrow-felta
+  // (about.intro/servicesSection.intro). Framleis IKKJE dynamisk her --
+  // services[].title/.text (per-kort, ulik id kvar gong) løysast via
+  // resolveDynamicField() lenger nede, ikkje som faste oppføringar.
   var LIVE_EDIT_FIELDS = {
     "hero.title": {
       get: function () { return content.hero.title; },
@@ -1702,11 +1704,53 @@ window.App = (function () {
       get: function () { return content.about.heading; },
       set: function (v) { content.about.heading = v; }
     },
+    "about.intro": {
+      get: function () { return content.about.intro; },
+      set: function (v) { content.about.intro = v; }
+    },
+    "about.text": {
+      richText: true,
+      get: function () { return content.about.text; },
+      set: function (v) { content.about.text = v; }
+    },
     "servicesSection.heading": {
       get: function () { return content.servicesSection.heading; },
       set: function (v) { content.servicesSection.heading = v; }
+    },
+    "servicesSection.intro": {
+      get: function () { return content.servicesSection.intro; },
+      set: function (v) { content.servicesSection.intro = v; }
     }
   };
+  // Dynamisk oppløysing for services[]-kort (data-content-key =
+  // "services.<id>.title" eller "services.<id>.text") -- SAME
+  // tryggleiksprinsipp som den statiske kvitelista over, berre mønster-
+  // match PLUSS eksistenssjekk mot content.services sin FAKTISKE,
+  // noverande liste, i staden for eit fast oppslag. Ein DOM-verdi ein
+  // brukar ikkje kontrollerer sjølv kan difor i verste fall referere til
+  // eit kort som IKKJE finst -- og får då simpelthen ingen match (null),
+  // ALDRI eit gjettesteg til eit anna, ekte kort. `card` er ein DIREKTE
+  // referanse inn i content.services-arrayet (objekt er alltid ved
+  // referanse i JS) -- set() mutrer difor det faktiske, eksisterande
+  // objektet, ingen ny find() trengst ved lagringstidspunktet.
+  function resolveDynamicField(key) {
+    var m = /^services\.([^.]+)\.(title|text)$/.exec(key || "");
+    if (!m) return null;
+    var card = content.services.filter(function (c) { return c.id === m[1]; })[0];
+    if (!card) return null;
+    var field = m[2];
+    return {
+      richText: field === "text",
+      get: function () { return card[field]; },
+      set: function (v) { card[field] = v; }
+    };
+  }
+  function resolveLiveEditTarget(el) {
+    if (!el) return null;
+    var key = el.getAttribute("data-content-key");
+    if (Object.prototype.hasOwnProperty.call(LIVE_EDIT_FIELDS, key)) return LIVE_EDIT_FIELDS[key];
+    return resolveDynamicField(key);
+  }
   var liveEditMode = false;
   var liveEditBound = false;
 
@@ -1735,7 +1779,26 @@ window.App = (function () {
         'background:var(--color-text,#142033);color:#fff;border:none;border-radius:999px;padding:.7rem 1.3rem;min-height:44px;' +
         'font:600 .92rem/1 var(--font-body,sans-serif);cursor:pointer;box-shadow:0 12px 32px rgba(0,0,0,.28);' +
         'display:flex;align-items:center;justify-content:center;gap:.5rem;text-align:center;}' +
-      '.vc-live-edit-exit:hover{opacity:.9;}';
+      '.vc-live-edit-exit:hover{opacity:.9;}' +
+      // Formateringsverktøylinje for rik tekst-felt -- same visuelle språk
+      // som avslutt-knappen (mørk botn, kvit tekst), fast posisjonert nær
+      // det aktive feltet (showLiveEditToolbar() reknar ut plassering).
+      // Knappar/fargeprikkar er 44px -- retta UX/Mobile Reviewer-funn
+      // (HIGH, 2026-09-17): 32px/20px var under 44px-touch-mål-minimumet.
+      // Fargeprikken sjølv er visuelt mindre (28px), men padding fyller
+      // resten av den 44px store trykkflata.
+      '.vc-live-edit-toolbar{position:fixed;z-index:9999;display:none;gap:2px;align-items:center;' +
+        'background:var(--color-text,#142033);padding:4px;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.28);}' +
+      '.vc-live-edit-toolbar.is-visible{display:flex;}' +
+      '.vc-live-edit-toolbar button{background:none;border:none;color:#fff;width:44px;height:44px;min-width:44px;' +
+        'border-radius:8px;cursor:pointer;font:600 14px/1 var(--font-body,sans-serif);}' +
+      '.vc-live-edit-toolbar button:hover{background:rgba(255,255,255,.15);}' +
+      '.vc-live-edit-toolbar__sep{width:1px;align-self:stretch;background:rgba(255,255,255,.2);margin:2px 2px;}' +
+      // Bakgrunnsfargen sjølv vert sett via inline style (JS, éin farge per
+      // knapp) -- CSS-en her styrer berre storleik/form/kant, ALDRI farge
+      // (ville elles trengt !important og brote den faktiske fargevisinga).
+      '.vc-live-edit-toolbar__swatch{width:44px;height:44px;min-width:44px;border-radius:8px;padding:0;' +
+        'border:1.5px solid rgba(255,255,255,.4);}';
     document.head.appendChild(style);
   }
 
@@ -1747,10 +1810,16 @@ window.App = (function () {
   // hero()-markupen på nytt frå malen, som ALDRI kjenner til desse
   // attributta -- utan denne re-applikasjonen mista elementet tastatur-
   // tilgjenget sitt STRAKS etter fyrste vellukka lagring.
+  // Itererer over FAKTISKE DOM-element (querySelectorAll), ikkje over
+  // LIVE_EDIT_FIELDS sine nøklar -- retta 2026-09-17 då dynamiske
+  // services[]-kort-nøklar vart lagt til (dei finst ikkje som faste
+  // oppføringar å liste opp på førehand). resolveLiveEditTarget() er
+  // framleis det einaste som avgjer om eit element faktisk er gyldig --
+  // eit data-content-key utan gyldig mål (ukjend/sletta) hoppar rett over.
   function applyLiveEditA11y(on) {
-    Object.keys(LIVE_EDIT_FIELDS).forEach(function (key) {
-      var el = document.querySelector('[data-content-key="' + key + '"]');
-      if (!el) return;
+    document.querySelectorAll("[data-content-key]").forEach(function (el) {
+      var target = resolveLiveEditTarget(el);
+      if (!target) return;
       if (on) {
         el.setAttribute("tabindex", "0");
         el.setAttribute("role", "button");
@@ -1763,25 +1832,123 @@ window.App = (function () {
     });
   }
 
+  // ---- Flytande formateringsverktøylinje for RIK TEKST-felt (about.text,
+  // services[].text) -- same mønster som mockupen sin buildToolbar() (sjå
+  // Architect-vurderinga/samtalehistorikk): execCommand() på det aktivt
+  // fokuserte contenteditable-elementet, mousedown+preventDefault (IKKJE
+  // click) på kvar knapp -- click ville fyrst blurra det redigerbare
+  // elementet (og dermed avslutta/lagra redigeringa) FØR kommandoen fekk
+  // køyre. ---- */
+  var LIVE_EDIT_COLORS = ["#142033", "#005cff", "#ff7a00", "#16a34a", "#ffffff"];
+  function liveEditToolbar() {
+    var bar = document.getElementById("vc-live-edit-toolbar");
+    if (bar) return bar;
+    bar = document.createElement("div");
+    bar.id = "vc-live-edit-toolbar";
+    bar.className = "vc-live-edit-toolbar";
+    function cmdBtn(label, cmd, val) {
+      var b = document.createElement("button");
+      b.type = "button"; b.innerHTML = label;
+      b.addEventListener("mousedown", function (e) { e.preventDefault(); document.execCommand(cmd, false, val || null); });
+      return b;
+    }
+    bar.appendChild(cmdBtn("<b>F</b>", "bold"));
+    bar.appendChild(cmdBtn("<i>K</i>", "italic"));
+    bar.appendChild(cmdBtn("U", "underline"));
+    var sep = document.createElement("div"); sep.className = "vc-live-edit-toolbar__sep"; bar.appendChild(sep);
+    LIVE_EDIT_COLORS.forEach(function (c) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "vc-live-edit-toolbar__swatch"; b.style.background = c;
+      b.addEventListener("mousedown", function (e) { e.preventDefault(); document.execCommand("foreColor", false, c); });
+      bar.appendChild(b);
+    });
+    var sep2 = document.createElement("div"); sep2.className = "vc-live-edit-toolbar__sep"; bar.appendChild(sep2);
+    var linkBtn = document.createElement("button");
+    linkBtn.type = "button"; linkBtn.textContent = "🔗";
+    linkBtn.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+      var url = prompt("Lenke (URL):", "https://");
+      if (url) document.execCommand("createLink", false, url);
+    });
+    bar.appendChild(linkBtn);
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button"; clearBtn.textContent = "✕"; clearBtn.title = "Fjern formatering";
+    clearBtn.addEventListener("mousedown", function (e) { e.preventDefault(); document.execCommand("removeFormat"); });
+    bar.appendChild(clearBtn);
+    document.body.appendChild(bar);
+    return bar;
+  }
+  // liveEditToolbarTrackEl + repositionLiveEditToolbar() -- retta to HIGH-
+  // funn frå UX/Mobile Reviewer (2026-09-17): (1) posisjonen vart berre
+  // rekna ut ÉIN gong ved fokus, aldri på nytt ved scroll/endra
+  // vindaugsstorleik/mobil-tastatur som skyv synsfeltet -- verktøylinja
+  // kunne difor "hengje att" langt frå feltet ho høyrer til. (2) "under
+  // feltet i staden"-fallbacken sjekka aldri om resultatet kolliderte med
+  // den faste avslutt-knappen (EXIT_PILL_SPACE) nedst på skjermen.
+  var liveEditToolbarTrackEl = null;
+  var EXIT_PILL_SPACE = 76; // ~44px knapp + 24px avstand + litt margin
+  function repositionLiveEditToolbar() {
+    if (!liveEditToolbarTrackEl || !document.body.contains(liveEditToolbarTrackEl)) return;
+    var bar = document.getElementById("vc-live-edit-toolbar");
+    if (!bar || !bar.classList.contains("is-visible")) return;
+    var r = liveEditToolbarTrackEl.getBoundingClientRect();
+    var top = r.top - bar.offsetHeight - 10;
+    if (top < 8) top = r.bottom + 10;
+    var maxTop = window.innerHeight - EXIT_PILL_SPACE - bar.offsetHeight;
+    top = Math.min(top, Math.max(8, maxTop));
+    bar.style.top = Math.max(8, top) + "px";
+    bar.style.left = Math.max(8, Math.min(r.left, window.innerWidth - bar.offsetWidth - 8)) + "px";
+  }
+  var liveEditToolbarRepositionBound = false;
+  function showLiveEditToolbar(el) {
+    var bar = liveEditToolbar();
+    bar.classList.add("is-visible");
+    liveEditToolbarTrackEl = el;
+    repositionLiveEditToolbar();
+    if (!liveEditToolbarRepositionBound) {
+      liveEditToolbarRepositionBound = true;
+      window.addEventListener("scroll", repositionLiveEditToolbar, { passive: true, capture: true });
+      window.addEventListener("resize", repositionLiveEditToolbar, { passive: true });
+      if (window.visualViewport) window.visualViewport.addEventListener("resize", repositionLiveEditToolbar);
+    }
+  }
+  function hideLiveEditToolbar() {
+    var bar = document.getElementById("vc-live-edit-toolbar");
+    if (bar) bar.classList.remove("is-visible");
+    liveEditToolbarTrackEl = null;
+  }
+
   // Gjer sjølve elementet redigerbart PÅ STADEN (contenteditable), ikkje
   // hopp til skjemaet -- lagrar på blur/Enter, kan angrast med Escape.
   // saveContent()/render() er dei NØYAKTIG same kalla adminContent() sin
   // skjema-innsending alt gjer -- ingen ny lagringsmekanisme, berre ein ny
   // UTLØYSAR for han (klikk direkte på sida i staden for eit skjema-"Lagre").
+  //
+  // target.richText skil PLAIN TEXT-felt (enkeltline, textContent, Enter =
+  // lagre) frå RIK TEKST-felt (fleirline, innerHTML, Enter = vanleg
+  // linjeskift -- må ALDRI lagre på Enter for eit fleire-avsnitt-felt).
+  // Rik tekst vert sanert med C.sanitizeRichHtml() PÅ VEGEN INN òg (ikkje
+  // berre av render()-sida sin eigen kommentar) -- forsvar i djupn, sidan
+  // dette no er ein ekte innerHTML-lagringsveg, ikkje berre ren tekst.
   function startInlineEdit(el, target) {
     // Les original-verdien frå CONTENT-MODELLEN (target.get()), ikkje frå
     // DOM-en -- retta Security Auditor-funn (LOW, 2026-09-17): get() var
     // definert men aldri kalla. Denne er òg meir korrekt enn el.textContent
     // ville vore dersom dei to nokon gong skulle divergere.
     var original = target.get();
+    var isRich = !!target.richText;
     el.setAttribute("contenteditable", "true");
     el.classList.add("vc-live-edit-editing");
     el.focus();
-    var range = document.createRange();
-    range.selectNodeContents(el);
-    var sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+    if (!isRich) {
+      var range = document.createRange();
+      range.selectNodeContents(el);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      showLiveEditToolbar(el);
+    }
 
     // Mellombels hint på avslutt-knappen MEDAN redigering er aktiv -- retta
     // UX/Mobile Reviewer-funn 2026-09-17 (HIGH: ingen synleg lagre/avbryt-
@@ -1796,10 +1963,13 @@ window.App = (function () {
       el.removeEventListener("keydown", onKeydown);
       el.removeAttribute("contenteditable");
       el.classList.remove("vc-live-edit-editing");
+      if (isRich) hideLiveEditToolbar();
       if (exitBtnDuringEdit && document.body.contains(exitBtnDuringEdit)) exitBtnDuringEdit.textContent = exitBtnOrigText;
-      var newVal = el.textContent.trim();
-      if (save && newVal && newVal !== original) {
-        target.set(newVal);
+      var newVal = isRich ? el.innerHTML : el.textContent.trim();
+      var hasContent = isRich ? !!el.textContent.trim() : !!newVal;
+      if (save && hasContent && newVal !== original) {
+        var toSave = isRich && typeof C.sanitizeRichHtml === "function" ? C.sanitizeRichHtml(newVal) : newVal;
+        target.set(toSave);
         saveContent();
         // Re-rendrar heile sida -- t.d. <title>/SEO kan òg vise same verdien.
         // Trygt no: verdien er alt lesen ut av DOM-en og lagra før dette køyrer.
@@ -1815,12 +1985,15 @@ window.App = (function () {
         // (eit svært sannsynleg fyrste-gongs uhell) let den live sida stå att
         // med ein synleg TOM overskrift heilt til noko anna tilfeldigvis
         // trigga ein full render().
-        el.textContent = original;
+        if (isRich) el.innerHTML = original; else el.textContent = original;
       }
     }
     function onBlur() { finish(true); }
     function onKeydown(ev) {
-      if (ev.key === "Enter") { ev.preventDefault(); el.blur(); }
+      // Enter lagrar/blurar berre for PLAIN TEXT-felt (enkeltline) -- eit
+      // rik tekst-felt (fleire avsnitt) må kunne bruke Enter til vanleg
+      // linjeskift utan å avslutte redigeringa kvar gong.
+      if (ev.key === "Enter" && !isRich) { ev.preventDefault(); el.blur(); }
       else if (ev.key === "Escape") { ev.preventDefault(); finish(false); el.blur(); }
     }
     el.addEventListener("blur", onBlur);
@@ -1844,18 +2017,13 @@ window.App = (function () {
     } else if (!on && exitBtn) {
       exitBtn.remove();
     }
-    function resolveTarget(el) {
-      if (!el) return null;
-      var key = el.getAttribute("data-content-key");
-      return Object.prototype.hasOwnProperty.call(LIVE_EDIT_FIELDS, key) ? LIVE_EDIT_FIELDS[key] : null;
-    }
     if (!liveEditBound) {
       liveEditBound = true;
       document.addEventListener("click", function (e) {
         if (!liveEditMode) return;
         var el = e.target.closest("[data-content-key]");
         if (!el || el.getAttribute("contenteditable") === "true") return; // ukjent nøkkel ELLER alt under redigering
-        var target = resolveTarget(el);
+        var target = resolveLiveEditTarget(el);
         if (!target) return; // ukjent/ikkje-kviteliste nøkkel -- ignorer, ikkje gjett
         e.preventDefault();
         e.stopPropagation();
@@ -1869,7 +2037,7 @@ window.App = (function () {
         var el = document.activeElement;
         if (!el || !el.hasAttribute || !el.hasAttribute("data-content-key")) return;
         if (el.getAttribute("contenteditable") === "true") return;
-        var target = resolveTarget(el);
+        var target = resolveLiveEditTarget(el);
         if (!target) return;
         e.preventDefault();
         startInlineEdit(el, target);
@@ -3085,16 +3253,17 @@ window.App = (function () {
       { id: "scrollstory", label: "Scroll-story", desc: "Sida les som ein sekvens av store augeblikk som opnar seg idet du scrollar — fungerer best med eit moderat tal tenestekort (om lag 3–6)." }
     ];
     var current = activeTemplate();
-    // "Rediger direkte på sida" -- fyrste, medvite avgrensa skive (2026-09-17,
-    // sjå Architect-vurderinga): berre hovudtittelen på forsida, berre på
-    // Klassisk-malen (dei andre malane manglar enno data-content-key i det
-    // heile). Knappen syner difor berre når Klassisk faktisk er aktiv --
-    // å vise han uansett mal ville late brukaren klikke rundt på ei side
-    // der ingenting responderer, som ser ut som ein feil, ikkje ei avgrensing.
-    var liveEditSection = current === "klassisk"
+    // "Rediger direkte på sida" -- no på BÅDE Klassisk og den skreddarsydde
+    // vibeverk-cinema-malen (2026-09-17, eksplisitt ønske: "kun klassisk ...
+    // og den skreddarsydde malen"). panorama/scrollstory manglar framleis
+    // data-content-key heilt, difor eksplisitt utelatne her -- å vise
+    // knappen uansett mal ville late brukaren klikke rundt på ei side der
+    // ingenting responderer, som ser ut som ein feil, ikkje ei avgrensing.
+    var LIVE_EDIT_TEMPLATES = ["klassisk", "vibeverk-cinema"];
+    var liveEditSection = LIVE_EDIT_TEMPLATES.indexOf(current) !== -1
       ? '<div class="admin-group" style="margin-bottom:1.2rem">' +
           '<strong style="display:block;margin-bottom:.3rem">Rediger direkte på sida</strong>' +
-          '<p class="prose prose--muted" style="margin:0 0 .6rem">Foreløpig kan du klikke direkte på noen overskrifter på forsida (hovedtittel, undertittel, «Om oss» og «Tjenester») for å endre dem. Flere felt kommer etter hvert.</p>' +
+          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver.</p>' +
           C.button({ label: "Rediger direkte på sida", variant: "ghost", attrs: 'data-live-edit-start' }) +
         '</div>'
       : '';

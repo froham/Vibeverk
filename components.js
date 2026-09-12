@@ -141,6 +141,25 @@ window.Components = (function () {
     return `<button type="button" class="help-icon" data-help-toggle aria-label="Hjelp">?<span class="help-icon__pop">${esc(text)}</span></button>`;
   }
 
+  // Security Auditor-funn (LOW, 2026-09-17, "rediger direkte på sida"-
+  // utvidinga): den gamle regexen (/^\s*javascript:/i) fangar berre LEIANDE
+  // whitespace -- ein URL med eit INNBAKA tab-/linjeskift-teikn midt i
+  // ordet ("java\tscript:...") vert IKKJE fanga av regexen, men nettlesaren
+  // fjernar likevel dei teikna før han tolkar sjølve opphavet, så URL-en
+  // køyrer framleis som javascript: for den som til slutt klikkar lenka.
+  // Retta ved å faktisk PARSE URL-en (new URL()) og kvitelista protokollen,
+  // i staden for å regex-matche råstrengen -- robust mot denne klassen
+  // omgåingar uansett kor mellomrom-teikna står.
+  function isSafeHrefProtocol(href) {
+    if (!href) return false;
+    try {
+      var u = new URL(href, "https://example.invalid/");
+      return ["http:", "https:", "mailto:", "tel:"].indexOf(u.protocol) !== -1;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Knapp eller lenke-knapp. variant: "primary" | "secondary" | "ghost"
   //
   // Security Auditor-funn (MEDIUM, 2026-08-11, sidebygger-runda): dei nye
@@ -148,25 +167,29 @@ window.Components = (function () {
   // knapplenke frå ein Console-operatør og sender henne uendra hit som
   // o.href -- esc() åleine hindrar IKKJE ein javascript:-URL, berre HTML-
   // spesialteikn. Same fareklasse som sanitizeRichHtml() sin eigen <a href>-
-  // sanering og module-quote.js/module-crm.js sin isSafeAttachmentUrl()
-  // (begge bruker nøyaktig same regex) -- retta HER, éin gong, i staden for
-  // i kvar einskild kallar, sidan button() er den einaste staden ein href
-  // faktisk vert til eit <a>-element.
+  // sanering -- retta HER, éin gong, i staden for i kvar einskild kallar,
+  // sidan button() er den einaste staden ein href faktisk vert til eit
+  // <a>-element.
   function button(opts) {
     const o = opts || {};
     const variant = o.variant || "primary";
     const cls = `btn btn--${variant} ${o.class || ""}`.trim();
     const inner = `${o.icon ? icon(o.icon) + " " : ""}${esc(o.label)}`;
-    const safeHref = o.href && !/^\s*javascript:/i.test(o.href);
+    const safeHref = o.href && isSafeHrefProtocol(o.href);
     if (safeHref) {
       return `<a class="${cls}" href="${esc(o.href)}" ${o.attrs || ""}>${inner}</a>`;
     }
     return `<button type="${o.type || "button"}" class="${cls}" ${o.attrs || ""}>${inner}</button>`;
   }
 
-  // Seksjonsetikett ("eyebrow") med signatur-markøren foran.
-  function eyebrow(text) {
-    return `<p class="eyebrow"><span class="eyebrow__mark"></span>${esc(text)}</p>`;
+  // Seksjonsetikett ("eyebrow") med signatur-markøren foran. contentKey er
+  // valfri (2026-09-17, "rediger direkte på sida") -- set data-content-key
+  // berre når ein kallar eksplisitt ber om det, så alle eksisterande
+  // kallstader (modular/andre malar som ikkje er del av denne funksjonen)
+  // er heilt uendra.
+  function eyebrow(text, contentKey) {
+    var attr = contentKey ? ' data-content-key="' + esc(contentKey) + '"' : "";
+    return `<p class="eyebrow"${attr}><span class="eyebrow__mark"></span>${esc(text)}</p>`;
   }
 
   // Delt vilkår/personvern-rad: avhukingsboks + lenke som åpner popup med fulltekst.
@@ -263,8 +286,11 @@ window.Components = (function () {
             const m = /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|[a-zA-Z]+)/.exec(attr.value);
             if (m) child.setAttribute("style", "color:" + m[1]); else child.removeAttribute("style");
           } else if (tag === "A" && name === "href") {
+            // isSafeHrefProtocol() -- retta Security Auditor-funn (LOW,
+            // 2026-09-17), sjå eigen kommentar attmed button() for kvifor
+            // reint URL-parsing er meir robust enn regex-matching her.
             const href = attr.value.trim();
-            if (/^\s*javascript:/i.test(href)) child.removeAttribute("href");
+            if (!isSafeHrefProtocol(href)) child.removeAttribute("href");
             else { child.setAttribute("target", "_blank"); child.setAttribute("rel", "noopener noreferrer"); }
           } else if (!(tag === "A" && name === "target") && !(tag === "A" && name === "rel")) {
             child.removeAttribute(attr.name);
