@@ -2096,18 +2096,39 @@ window.App = (function () {
         e.preventDefault();
         document.execCommand("styleWithCSS", false, true);
         document.execCommand("foreColor", false, c);
+        // Slå AV styleWithCSS att med det same -- retta medverkande årsak
+        // til "understrek fungerer ikkje" (2026-09-12): med styleWithCSS
+        // ståande PÅ, la seinare feit/kursiv/understrek-kommandoar i SAME
+        // redigeringsøkt av og til CSS-eigenskapar rett på det same
+        // fargelagde spanet i staden for eigne <b>/<i>/<u>-tag -- ein god
+        // del av desse eigenskapane vart sanerte vekk ved lagring (sjå
+        // fiksen i sanitizeRichHtml() sin SPAN-handtering, components.js).
+        // Tilbake til vanleg tag-basert modus for alt anna enn nettopp
+        // DENNE eine fargehandlinga -- neste fargeklikk slår sjølv på
+        // styleWithCSS att, akkurat som no.
+        document.execCommand("styleWithCSS", false, false);
       });
       bar.appendChild(b);
     });
     // Eigendefinert farge (2026-09-12, Frode: "er det mulig å få en farge
     // som man kan definere selv i tillegg til paletten?") -- ekte
-    // <input type="color"> (native OS-fargeveljar), same mønster som den
-    // eksisterande richTextField()-verktøylinja i Web-admin alt bruker (sjå
-    // data-rt-color-handteraren i bindRichTextFields() lenger nede i denne
-    // fila): fokuser tilbake på det redigerbare elementet FØR execCommand,
-    // sidan eit klikk på ein ekte <input type="color"> flyttar nettlesar-
-    // fokuset dit medan OS-fargeveljaren er open. Held på SAME styleWithCSS-
-    // rekkefølgje som dei faste fargeprikkane over, av same grunn (elles
+    // <input type="color"> (native OS-fargeveljar). RETTA reell bug (Frode:
+    // "Custom farge fungerer ikkje, understrek fungerer ikkje" -- stadfesta
+    // via ekte nettlesar-test 2026-09-12): eit KLIKK på ein ekte
+    // <input type="color"> flyttar nettlesarfokuset DIT UMIDDELBART, som i
+    // dei fleste nettlesarar KOLLAPSAR/misser sjølve tekstutvalet (Range)
+    // inni det redigerbare elementet -- eit `.focus()`-kall attende åleine
+    // (den opphavlege, feilaktige fiksen) gjenopprettar IKKJE det utvalet,
+    // berre fokuset, så execCommand("foreColor") hadde ingenting å farge og
+    // gjorde reint ingenting. Sidan utvalet var kollapsa/borte, la ALLE
+    // ETTERFØLGJANDE verktøylinje-handlingar (feit/kursiv/UNDERSTREK/andre
+    // fargar) i SAME redigeringsøkt òg ramme ingenting synleg -- difor
+    // verka understrek "øydelagt" òg, sjølv om understrek-knappen sjølv
+    // aldri var broten. Fiksa ved å LAGRE det faktiske Range-objektet på
+    // "mousedown" (køyrer FØR nettlesaren sitt eige fokusskifte er fullført)
+    // og GJENOPPRETTE nøyaktig det utvalet før execCommand køyrer, i staden
+    // for berre å fokusere elementet på nytt. Held på SAME styleWithCSS-
+    // rekkefølgje som dei faste fargeprikkane, av same grunn som før (elles
     // <font>-tagar som vert filtrerte vekk ved lagring).
     var customColorLabel = document.createElement("label");
     customColorLabel.className = "vc-live-edit-toolbar__custom-color";
@@ -2116,10 +2137,24 @@ window.App = (function () {
     customColorInput.type = "color";
     customColorInput.value = "#142033";
     customColorLabel.appendChild(customColorInput);
+    var customColorSavedRange = null;
+    customColorInput.addEventListener("mousedown", function () {
+      var sel = window.getSelection();
+      customColorSavedRange = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    });
     customColorInput.addEventListener("input", function () {
       if (liveEditToolbarTrackEl) liveEditToolbarTrackEl.focus();
+      if (customColorSavedRange) {
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(customColorSavedRange);
+      }
       document.execCommand("styleWithCSS", false, true);
       document.execCommand("foreColor", false, customColorInput.value);
+      // Slå AV styleWithCSS att -- sjå kommentaren attmed dei faste
+      // fargeprikkane sin tilsvarande handterar for grunngjevinga
+      // ("understrek fungerer ikkje"-fiksen, 2026-09-12).
+      document.execCommand("styleWithCSS", false, false);
     });
     bar.appendChild(customColorLabel);
     var sep2 = document.createElement("div"); sep2.className = "vc-live-edit-toolbar__sep"; bar.appendChild(sep2);
@@ -3050,11 +3085,37 @@ window.App = (function () {
         document.execCommand("createLink", false, url);
         sync();
       });
+      // RETTA reell bug (Frode: "Custom farge fungerer ikkje", 2026-09-12,
+      // fanga i live-edit-verktøylinja, MEN same feilaktige mønster fanst
+      // her òg -- same rot: eit klikk på ein ekte <input type="color">
+      // flyttar nettlesarfokuset DIT, som kollapsar/misser sjølve
+      // tekstutvalet (Range) inni editor. editor.focus() åleine
+      // gjenopprettar berre fokuset, ikkje utvalet, så foreColor hadde
+      // ingenting å farge. Vanlege <button>-baserte verktøy (feit/kursiv/
+      // lenke/fjern formatering over/under) råkast IKKJE av dette --
+      // stadfesta empirisk via Playwright -- sidan ein knapp ikkje utløyser
+      // same "kollaps utvalet"-åtferd som eit ekte skjemafelt gjer. Fiksa
+      // ved å lagre Range på "mousedown" (før fokusskiftet er fullført) og
+      // gjenopprette han eksplisitt før execCommand køyrer.
       const colorInput = wrap.querySelector("[data-rt-color]");
+      let colorSavedRange = null;
+      if (colorInput) colorInput.addEventListener("mousedown", function () {
+        const sel = window.getSelection();
+        colorSavedRange = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+      });
       if (colorInput) colorInput.addEventListener("input", function () {
         editor.focus();
+        if (colorSavedRange) {
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(colorSavedRange);
+        }
         document.execCommand("styleWithCSS", false, true);
         document.execCommand("foreColor", false, colorInput.value);
+        // Slå AV styleWithCSS att -- sjå tilsvarande fiks i live-edit-
+        // verktøylinja (core.js, liveEditToolbar()) for grunngjevinga
+        // ("understrek fungerer ikkje"-funnet, 2026-09-12).
+        document.execCommand("styleWithCSS", false, false);
         sync();
       });
       const clearBtn = wrap.querySelector("[data-rt-clear]");

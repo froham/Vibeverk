@@ -307,8 +307,25 @@ window.Components = (function () {
         Array.prototype.slice.call(child.attributes).forEach(function (attr) {
           const name = attr.name.toLowerCase();
           if (tag === "SPAN" && name === "style") {
-            const m = /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|[a-zA-Z]+)/.exec(attr.value);
-            if (m) child.setAttribute("style", "color:" + m[1]); else child.removeAttribute("style");
+            // Retta reell bug (Frode: "understrek fungerer ikkje", 2026-09-12):
+            // med styleWithCSS aktivert (naudsynt for at foreColor skal skrive
+            // <span style="color:..."> i staden for eit <font>-tag, sjå
+            // eigen kommentar i core.js) legg nettlesaren av og til
+            // UNDERSTREKING PÅ SAME SPAN som fargen, som ei ekstra CSS-
+            // eigenskap (text-decoration-line), i staden for eit eige <u>-
+            // tag -- denne regexen fanga FØR berre "color:", og bygde
+            // style-attributtet på nytt med BERRE fargen, som stille kasta
+            // vekk understrekinga heilt ved lagring. Utvida til å ta vare på
+            // BÅDE color OG text-decoration-line, med eit smalt, trygt
+            // verditillate-liste (underline/line-through/overline/none) --
+            // ingen fri CSS-injeksjon, same prinsipp som color-regexen alt
+            // brukte.
+            const parts = [];
+            const colorM = /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|[a-zA-Z]+)/.exec(attr.value);
+            if (colorM) parts.push("color:" + colorM[1]);
+            const tdM = /text-decoration(?:-line)?\s*:\s*(underline|line-through|overline|none)/.exec(attr.value);
+            if (tdM) parts.push("text-decoration-line:" + tdM[1]);
+            if (parts.length) child.setAttribute("style", parts.join(";")); else child.removeAttribute("style");
           } else if (tag === "A" && name === "href") {
             // isSafeHrefProtocol() -- retta Security Auditor-funn (LOW,
             // 2026-09-17), sjå eigen kommentar attmed button() for kvifor
