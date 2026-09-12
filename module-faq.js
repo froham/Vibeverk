@@ -159,6 +159,7 @@
         intro:   root.querySelector("#faq-intro").value.trim(),
         image:   App.ui.readImageField(root, "faq-image")
       });
+      App.ui.commitImageFields(root);
       var st = root.querySelector("[data-faq-cs]");
       st.textContent = "Lagret."; st.className = "form__status is-ok";
     });

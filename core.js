@@ -1719,6 +1719,16 @@ window.App = (function () {
       get: function () { return content.hero.title; },
       set: function (v) { content.hero.title = v; }
     },
+    // Rein tekst (IKKJE rik) -- retta 2026-09-12 (Frode: "sørge for at man
+    // kan redigere all endringsbar tekst"): dette var det siste synlege
+    // tekstfeltet på Klassisk/cinema utan data-content-key. Bevisst IKKJE
+    // rik tekst: C.button() sin esc(o.label) (components.js) godtek aldri
+    // HTML i knappeteksten -- å tillate formatering her ville anten blitt
+    // usynleg (escapa vekk ved rendering) eller sett vekk med knappestilen.
+    "hero.ctaLabel": {
+      get: function () { return content.hero.ctaLabel; },
+      set: function (v) { content.hero.ctaLabel = v; }
+    },
     "hero.subtitle": {
       richText: true, singleLine: true,
       get: function () { return content.hero.subtitle; },
@@ -1783,6 +1793,106 @@ window.App = (function () {
     if (Object.prototype.hasOwnProperty.call(LIVE_EDIT_FIELDS, key)) return LIVE_EDIT_FIELDS[key];
     return resolveDynamicField(key);
   }
+
+  /* ── Biletbyte via "Rediger direkte på sida" (2026-09-12) ────────────────
+     Eige system, ADSKILT frå LIVE_EDIT_FIELDS/resolveLiveEditTarget over:
+     bilete er { src, pos }-objekt (Media.norm()-forma), ikkje strengar, og
+     krev heile imgField()/bindImageFields()/readImageField()-mekanismen
+     (opplasting, URL, fokuspunkt-beskjering, kreditering) -- ikkje eit
+     get()/set() på ei DOM-textContent/innerHTML-verdi. Bruker eit eige
+     attributt (data-content-image-key) i staden for å overlaste
+     data-content-key, sidan verdiforma er fundamentalt ulik. Same
+     tryggleiksprinsipp som LIVE_EDIT_FIELDS: kviteliste for statiske felt,
+     mønster+eksistenssjekk for services[]-kort sine dynamiske bilete.
+  */
+  var LIVE_EDIT_IMAGE_FIELDS = {
+    "hero.image": {
+      label: "Bakgrunnsbilete", aspect: 2.4,
+      get: function () { return content.hero.image; },
+      set: function (v) { content.hero.image = v; }
+    },
+    "about.image": {
+      label: "Bilete", aspect: 4 / 3,
+      get: function () { return content.about.image; },
+      set: function (v) { content.about.image = v; }
+    }
+  };
+  function resolveDynamicImageField(key) {
+    var m = /^services\.([^.]+)\.image$/.exec(key || "");
+    if (!m) return null;
+    var card = content.services.filter(function (c) { return c.id === m[1]; })[0];
+    if (!card) return null;
+    return {
+      label: "Bilete", aspect: 16 / 10,
+      get: function () { return card.image; },
+      set: function (v) { card.image = v; }
+    };
+  }
+  function resolveLiveEditImageTarget(key) {
+    if (Object.prototype.hasOwnProperty.call(LIVE_EDIT_IMAGE_FIELDS, key)) return LIVE_EDIT_IMAGE_FIELDS[key];
+    return resolveDynamicImageField(key);
+  }
+  // Modalen gjenbruker EKSAKT same imgField()/bindImageFields()/
+  // readImageField()-mekanisme som Web-admin sitt Innhald-skjema og
+  // tenestekort-editoren alt bruker (Architect-vurdering 2026-09-12) --
+  // bindImageFields()/readImageField() opererer utelukkande via
+  // scope.querySelector(), ingen global-id- eller foreldre-skjema-antakelse,
+  // så dei fungerer identisk inni ein sjølvstendig modal utanfor
+  // #admin-root. Frigjering av eit FAKTISK erstatta bilete skjer via ein
+  // eksplisitt commitImageFields(root)-kall etter lagring (sjå save-
+  // handteraren under) -- IKKJE automatisk inni imgField() sin eigen
+  // setSrc()/clear() lenger (retta Security Auditor-funn, HIGH, 2026-09-12:
+  // det gamle biletet vart før fjerna frå lagring med EIN GONG ved kvart
+  // tastetrykk/filval, uavhengig av om brukaren sidan lagra eller avbraut).
+  // Modul-scope referanse til aktiv modal sin close() -- retta Security
+  // Auditor-funn (LOW/MEDIUM, 2026-09-12): setLiveEditMode(false) ("✕ Avslutt
+  // redigering") visste tidlegare ingenting om ein ope biletbyte-modal, så
+  // BÅDE DOM-noden OG keydown-lyttaren vart ståande att for alltid dersom
+  // brukaren avslutta live-redigering medan modalen var open (ingen reell
+  // kode-garanti mot dette, berre tilfeldig z-index-stabling som PLEIA å
+  // dekkje over det). Same referanse løyser òg attopning-tilfellet: eit
+  // andre opningskall ryddar no opp FØRRE sin lyttar via close(), ikkje berre
+  // fjernar DOM-noden slik det gjorde før.
+  var liveEditImageModalClose = null;
+  function openLiveEditImageModal(key, target) {
+    if (liveEditImageModalClose) liveEditImageModalClose();
+    var fieldId = "vc-live-edit-img-" + key.replace(/[^a-zA-Z0-9]/g, "-");
+    var root = document.createElement("div");
+    root.id = "vc-live-edit-image-modal";
+    root.innerHTML = C.modal({
+      title: "Bytt " + (target.label || "bilete").toLowerCase(),
+      label: "Bytt bilete",
+      body:
+        imgField(fieldId, target.label || "Bilete", target.get(), target.aspect || (16 / 9)) +
+        '<div class="admin-row__actions" style="margin-top:1rem">' +
+          C.button({ label: "Lagre", variant: "primary", class: "vc-live-edit-image-modal-btn", attrs: 'data-live-edit-image-save' }) +
+          C.button({ label: "Avbryt", variant: "ghost", class: "vc-live-edit-image-modal-btn", attrs: 'data-modal-close' }) +
+        '</div>' +
+        '<p class="field__hint" style="margin-top:.6rem">Esc eller «Avbryt» lukkar utan å lagre.</p>'
+    });
+    document.body.appendChild(root);
+    bindImageFields(root);
+    function close() {
+      root.remove();
+      document.removeEventListener("keydown", onEsc);
+      liveEditImageModalClose = null;
+    }
+    function onEsc(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", onEsc);
+    liveEditImageModalClose = close;
+    root.querySelectorAll("[data-modal-close]").forEach(function (el) {
+      el.addEventListener("click", close);
+    });
+    root.querySelector("[data-live-edit-image-save]").addEventListener("click", function () {
+      target.set(readImageField(root, fieldId));
+      saveContent();
+      commitImageFields(root);
+      close();
+      render();
+      if (liveEditMode) applyLiveEditA11y(true);
+    });
+  }
+
   var liveEditMode = false;
   var liveEditBound = false;
 
@@ -1830,7 +1940,29 @@ window.App = (function () {
       // knapp) -- CSS-en her styrer berre storleik/form/kant, ALDRI farge
       // (ville elles trengt !important og brote den faktiske fargevisinga).
       '.vc-live-edit-toolbar__swatch{width:44px;height:44px;min-width:44px;border-radius:8px;padding:0;' +
-        'border:1.5px solid rgba(255,255,255,.4);}';
+        'border:1.5px solid rgba(255,255,255,.4);}' +
+      // "Bytt bilete"-knappen (data-content-image-key) -- position:relative
+      // på foreldrene er OGSÅ gata bak body.vc-live-edit, sjølv om det i seg
+      // sjølv er visuelt harmlaust (ingen offset sett), for å halde
+      // fotavtrykket til denne heile funksjonen fullstendig null utanfor
+      // live-redigeringsmodus, same prinsipp som resten av live-edit-CSS-en.
+      // min-height:44px -- same touch-mål-minimum som resten av live-edit-
+      // kontrollane (UX/Mobile Reviewer-standarden etablert 2026-09-17).
+      'body.vc-live-edit .section--hero, body.vc-live-edit .vc-hero__visual,' +
+      'body.vc-live-edit .about__media, body.vc-live-edit .vc-about__photo,' +
+      'body.vc-live-edit .card{position:relative;}' +
+      '.vc-live-edit-image-btn{display:none;}' +
+      'body.vc-live-edit .vc-live-edit-image-btn{display:flex;position:absolute;top:10px;right:10px;z-index:5;' +
+        'align-items:center;gap:.35rem;min-height:44px;padding:.4rem .8rem;' +
+        'background:rgba(20,32,51,.85);color:#fff;border:none;border-radius:999px;' +
+        'font:600 .8rem/1 var(--font-body,sans-serif);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);}' +
+      'body.vc-live-edit .vc-live-edit-image-btn:hover{background:rgba(20,32,51,.95);}' +
+      // Save/Avbryt i biletbyte-modalen -- retta UX/Mobile Reviewer-funn
+      // (HIGH, 2026-09-12): dei arva .admin-row__actions .btn sin kompakte
+      // storleik (laga for admin-liste-radhandlingar, ikkje primære modal-
+      // knappar), godt under 44px. Klassenamnet er unikt for denne eine
+      // modalen -- ingen risiko for å påverke andre .btn-bruksstader.
+      '.vc-live-edit-image-modal-btn{min-height:44px;padding:.6rem 1.1rem;}';
     document.head.appendChild(style);
   }
 
@@ -2057,6 +2189,10 @@ window.App = (function () {
 
   function setLiveEditMode(on) {
     liveEditMode = on;
+    // Rydd opp ein ope biletbyte-modal FØR modusen slåast av -- retta
+    // Security Auditor-funn (LOW/MEDIUM, 2026-09-12), sjå kommentaren attmed
+    // liveEditImageModalClose over.
+    if (!on && liveEditImageModalClose) liveEditImageModalClose();
     liveEditStyleTag();
     document.body.classList.toggle("vc-live-edit", on);
     applyLiveEditA11y(on);
@@ -2077,11 +2213,19 @@ window.App = (function () {
       document.addEventListener("click", function (e) {
         if (!liveEditMode) return;
         var el = e.target.closest("[data-content-key]");
-        if (!el || el.getAttribute("contenteditable") === "true") return; // ukjent nøkkel ELLER alt under redigering
+        if (!el) return;
         var target = resolveLiveEditTarget(el);
         if (!target) return; // ukjent/ikkje-kviteliste nøkkel -- ignorer, ikkje gjett
+        // preventDefault() FØR "alt under redigering"-sjekken -- retta reell
+        // risiko 2026-09-12 (hero.ctaLabel lagt til: fyrste editerbare feltet
+        // som ligg INNI ein ekte <a href>-lenke, C.button()). Eit klikk MIDT I
+        // ei pågåande redigering (t.d. for å flytte markøren i teksten) trefte
+        // tidlegare berre eit tidleg `return` UTAN preventDefault, så
+        // nettlesaren sin eigen lenkje-navigasjon kunne trigge og forlate sida
+        // midt i ei ulagra redigering.
         e.preventDefault();
         e.stopPropagation();
+        if (el.getAttribute("contenteditable") === "true") return; // alt under redigering -- ikkje start på nytt
         startInlineEdit(el, target);
       });
       // Enter/Mellomrom på eit fokusert (tastatur-nådd) element -- same
@@ -2096,6 +2240,19 @@ window.App = (function () {
         if (!target) return;
         e.preventDefault();
         startInlineEdit(el, target);
+      });
+      // Biletbyte-knappane (data-content-image-key) -- eige, separat
+      // klikk-mål frå tekst-nøklane over (sjå kommentaren attmed
+      // LIVE_EDIT_IMAGE_FIELDS for kvifor dei er halde heilt adskilte).
+      document.addEventListener("click", function (e) {
+        if (!liveEditMode) return;
+        var el = e.target.closest("[data-content-image-key]");
+        if (!el) return;
+        var target = resolveLiveEditImageTarget(el.getAttribute("data-content-image-key"));
+        if (!target) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openLiveEditImageModal(el.getAttribute("data-content-image-key"), target);
       });
     }
   }
@@ -2792,6 +2949,19 @@ window.App = (function () {
 
       let state, crop = null;   // crop = { ww, wh } i prosent av forhåndsvisningen
       try { state = Media.norm(JSON.parse(hidden.value)); } catch (e) { state = Media.norm(hidden.value); }
+      // Fangar OPPHAVLEG src FØR nokon redigering skjer -- retta Security
+      // Auditor-funn (HIGH, 2026-09-12): Media.free() vart tidlegare kalla
+      // her (i setSrc()/clear()) MED EIN GONG ved kvar tastetrykk/filval,
+      // ikkje ved faktisk lagring -- eit "prøv ei erstatning, angre"-forsøk
+      // sletta då det GAMLE biletet frå lagring sjølv om Avbryt/lukk aldri
+      // skreiv noko til content-modellen. Frigjeringa er no UTSETT til
+      // commitImageFields() (under) -- kalla av KVAR forbrukar av
+      // bindImageFields() rett etter sin eigen vellukka lagring, aldri her.
+      // Guard (`=== undefined`) -- retta Architect-vurdering 2026-09-12:
+      // bindImageFields() må berre fange dette FØRSTE gong for ein gjeven
+      // DOM-node, elles ville ein eventuell seinare re-binding av same
+      // (alt redigerte) node stille fange ein FEIL "opphavleg" verdi.
+      if (wrap.dataset.imgfieldOriginalSrc === undefined) wrap.dataset.imgfieldOriginalSrc = state.src || "";
 
       function parsePos(p) { const m = String(p).split(/\s+/); return [parseFloat(m[0]) || 50, parseFloat(m[1]) || 50]; }
       function sync() { hidden.value = JSON.stringify(state); }
@@ -2897,7 +3067,11 @@ window.App = (function () {
         if (img.complete && img.naturalWidth) layout(img.naturalWidth, img.naturalHeight);
         else { img.onload = function () { layout(img.naturalWidth, img.naturalHeight); }; img.onerror = function () { layout(0, 0); }; }
       }
-      function setSrc(src) { Media.free(state.src); state = { src: src, pos: "50% 50%", caption: state.caption || "", creditType: state.creditType || "", alt: state.alt || "" }; sync(); render(); }
+      // Media.free(state.src) FJERNA HERFRÅ 2026-09-12 -- sjå kommentaren
+      // attmed imgfieldOriginalSrc over. Frigjering av eit FAKTISK erstatta
+      // bilete skjer no berre via commitImageFields(), etter stadfesta
+      // lagring, aldri på kvart tastetrykk/filval her.
+      function setSrc(src) { state = { src: src, pos: "50% 50%", caption: state.caption || "", creditType: state.creditType || "", alt: state.alt || "" }; sync(); render(); }
 
       // Merking (enten/eller): radioknapper for type + fritekst-overstyring
       function activeCreditType() {
@@ -2937,7 +3111,8 @@ window.App = (function () {
       });
       url.addEventListener("input", function () { setSrc(url.value.trim()); });
       clear.addEventListener("click", function () {
-        Media.free(state.src);
+        // Media.free(state.src) FJERNA HERFRÅ 2026-09-12 -- same grunngjeving
+        // som setSrc() over, sjå imgfieldOriginalSrc-kommentaren.
         state = { src: "", pos: "50% 50%", caption: "", creditType: "", alt: "" };
         url.value = "";
         wrap.querySelectorAll("[data-imgfield-credit-type]").forEach(function (r) { r.checked = (r.value === ""); });
@@ -3005,6 +3180,28 @@ window.App = (function () {
       });
 
       render();
+    });
+  }
+
+  // Frigjer eit FAKTISK erstatta/fjerna bilete -- kalla av KVAR forbrukar av
+  // bindImageFields() rett etter sin eigen vellukka lagring (content-
+  // modellen alt oppdatert, saveContent()/tilsvarande alt kalla), ALDRI før.
+  // Retta Security Auditor-funn (HIGH, 2026-09-12): sjå imgfieldOriginalSrc-
+  // kommentaren i bindImageFields() for kvifor frigjeringa måtte flyttast
+  // hit frå setSrc()/clear(). Samanlikning er src-ONLY (Architect-vurdering
+  // 2026-09-12) -- pos/caption/creditType/alt endrar ikkje sjølve
+  // lagringsobjektet Media.free() peikar på. Ein nyleg opplasta, men aldri
+  // lagra, fil vert ståande att som eit orphan Storage-objekt dersom
+  // brukaren avbryt/lukkar utan å lagre -- akseptert bevisst avveging
+  // (bortkasta lagringsplass, ALDRI ei øydelagd, framleis brukt referanse).
+  function commitImageFields(scope) {
+    scope.querySelectorAll("[data-imgfield]").forEach(function (wrap) {
+      var original = wrap.dataset.imgfieldOriginalSrc || "";
+      var hidden = wrap.querySelector('input[type="hidden"]');
+      if (!hidden) return;
+      var finalSrc;
+      try { finalSrc = Media.norm(JSON.parse(hidden.value)).src; } catch (e) { finalSrc = Media.norm(hidden.value).src; }
+      if (original && original !== finalSrc) Media.free(original);
     });
   }
 
@@ -3318,7 +3515,7 @@ window.App = (function () {
     var liveEditSection = LIVE_EDIT_TEMPLATES.indexOf(current) !== -1
       ? '<div class="admin-group" style="margin-bottom:1.2rem">' +
           '<strong style="display:block;margin-bottom:.3rem">Rediger direkte på sida</strong>' +
-          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver.</p>' +
+          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver. Bilder som allerede er lagt inn kan byttes ut ved å klikke «Bytt bilete» øverst i hjørnet — for å legge til et helt nytt bilde der det ikke finnes et fra før, bruk skjemaet under «Innhold».</p>' +
           C.button({ label: "Rediger direkte på sida", variant: "ghost", attrs: 'data-live-edit-start' }) +
         '</div>'
       : '';
@@ -3791,6 +3988,7 @@ window.App = (function () {
         extraLines:     body.querySelector("#f-ft-extra").value.split("\n").map(function (l) { return l.trim(); }).filter(Boolean)
       };
       saveContent();
+      commitImageFields(body);
       render();
       setStatus(body.querySelector("[data-content-status]"), "Lagret.", "ok");
     });
@@ -3889,7 +4087,7 @@ window.App = (function () {
       } else {
         content.news.unshift({ id: "post-" + Date.now(), title: title, date: date, text: text, image: image, attachments: attachments });
       }
-      saveContent(); render(); adminNews(body);
+      saveContent(); commitImageFields(editor); render(); adminNews(body);
     });
   }
 
@@ -4004,7 +4202,7 @@ window.App = (function () {
       } else {
         content.services.push({ id: "svc-" + Date.now(), icon: icon, title: title, text: text, image: image });
       }
-      saveContent(); render(); adminServices(body);
+      saveContent(); commitImageFields(editor); render(); adminServices(body);
     });
   }
 
@@ -6362,6 +6560,10 @@ window.App = (function () {
       imageField:      imgField,
       bindImageFields: bindImageFields,
       readImageField:  readImageField,
+      // commitImageFields() -- MÅ kallast av kvar forbrukar rett etter sin
+      // eigen vellukka lagring (saveContent()/tilsvarande), aldri før. Sjå
+      // kommentaren attmed funksjonsdefinisjonen (2026-09-12-fiksen).
+      commitImageFields: commitImageFields,
       attachField:     function (id, existing) {   // vedleggsfelt-HTML
         return '<div class="field attach-field" data-attach>' +
           '<label>Vedlegg (valgfritt)</label>' +

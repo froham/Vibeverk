@@ -874,6 +874,7 @@
       if (a) { var i = list.findIndex(function (x) { return x.id === a.id; }); list[i] = obj; }
       else list.push(obj);
       setAssets(list);
+      App.ui.commitImageFields(ed);
       renderAdmin(root);
     });
   }

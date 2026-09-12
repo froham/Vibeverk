@@ -392,6 +392,7 @@
         list.push(obj);
       }
       saveImages(list);
+      App.ui.commitImageFields(ed);
       ed.innerHTML = "";
       renderAdmin(root);
     });

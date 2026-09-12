@@ -364,11 +364,11 @@
       : '<div class="vc-hero__bg vc-hero__bg--fallback"></div>';
     return (
       '<section id="hjem" class="vc-hero reveal">' +
-        '<div class="vc-hero__visual">' + bgHtml + '<div class="vc-hero__scrim"></div></div>' +
+        '<div class="vc-hero__visual">' + bgHtml + (img ? C.liveEditImageBtn("hero.image") : "") + '<div class="vc-hero__scrim"></div></div>' +
         '<div class="vc-hero__inner">' +
           '<h1 class="vc-hero__title" data-content-key="hero.title">' + C.sanitizeRichHtml(d.title) + '</h1>' +
           (d.subtitle ? '<p class="vc-hero__subtitle" data-content-key="hero.subtitle">' + C.sanitizeRichHtml(d.subtitle) + '</p>' : "") +
-          (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : "") +
+          (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary", attrs: 'data-content-key="hero.ctaLabel"' }) : "") +
           '<div class="vc-terminal" id="vcTerminal">' +
             '<div class="vc-terminal__bar"><span></span><span></span><span></span></div>' +
             '<div class="vc-terminal__body" data-vc-terminal-body></div>' +
@@ -404,7 +404,7 @@
   function about(d) {
     injectCss();
     var hasImg = d.image && d.image.src;
-    var photoHtml = hasImg ? '<div class="vc-about__photo reveal">' + C.coverImg(d.image, "") + '</div>' : "";
+    var photoHtml = hasImg ? '<div class="vc-about__photo reveal">' + C.coverImg(d.image, "") + C.liveEditImageBtn("about.image") + '</div>' : "";
     var reasonsHtml = '<div class="vc-reasons">' +
       '<div class="vc-reasons__intro reveal">' +
         C.eyebrow("Om Vibeverk") +

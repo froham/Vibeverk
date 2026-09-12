@@ -182,6 +182,19 @@ window.Components = (function () {
     return `<button type="${o.type || "button"}" class="${cls}" ${o.attrs || ""}>${inner}</button>`;
   }
 
+  // "Bytt bilete"-knapp for "Rediger direkte på sida" (2026-09-12) --
+  // eige, separat mekanisme frå eyebrow() sin data-content-key under (bilete
+  // er { src, pos }-objekt via imgField()/Media, ikkje tekst -- sjå
+  // LIVE_EDIT_IMAGE_FIELDS-kommentaren i core.js). Skal KUN plasserast inni
+  // eit bilete-berande element som FAKTISK har eit bilete i dag (hasImg) --
+  // dette let ein administrator BYTE eit eksisterande bilete, ikkje leggje
+  // til eit heilt nytt frå tomt (den vegen går framleis via Web-admin-
+  // skjemaet). Skjult heilt (display:none) utanfor live-redigeringsmodus,
+  // sjå body.vc-live-edit-CSS-en i core.js sin liveEditStyleTag().
+  function liveEditImageBtn(imageKey) {
+    return `<button type="button" class="vc-live-edit-image-btn" data-content-image-key="${esc(imageKey)}" aria-label="Bytt bilete">${icon("photo")} Bytt bilete</button>`;
+  }
+
   // Seksjonsetikett ("eyebrow") med signatur-markøren foran. contentKey er
   // valfri (2026-09-17, "rediger direkte på sida") -- set data-content-key
   // berre når ein kallar eksplisitt ber om det, så alle eksisterande
@@ -1108,7 +1121,7 @@ window.Components = (function () {
 
   /* --- Eksport -------------------------------------------------------------- */
   return {
-    esc, icon, button, eyebrow, field, passwordToggle, termsField, consentPurposesField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
+    esc, icon, button, liveEditImageBtn, eyebrow, field, passwordToggle, termsField, consentPurposesField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
     contact, footer, modal, tabbar,
