@@ -1619,6 +1619,15 @@ const __asyncTests = (async () => {
     aboutTextEl.dispatchEvent(new window.Event("click", { bubbles: true }));
     assert(aboutTextEl.getAttribute("contenteditable") === "true", "about.text: vert redigerbar ved klikk");
     assert(doc.getElementById("vc-live-edit-toolbar").classList.contains("is-visible"), "about.text: formateringsverktøylinja vert synleg for rik tekst-felt");
+    // Eigendefinert farge (2026-09-12, Frode: "er det mulig å få en farge
+    // som man kan definere selv i tillegg til paletten?") -- jsdom
+    // implementerer ikkje execCommand (same avgrensing som gjeld dei faste
+    // fargeprikkane, sjå kommentaren attmed hero.title-fargetesten lenger
+    // opp), så denne testen dekker berre at kontrollen faktisk finst og har
+    // rett type -- den ekte execCommand("foreColor")-åtferda er verifisert
+    // separat via Playwright mot ekte produksjonsinnhald.
+    var customColorInput = doc.querySelector(".vc-live-edit-toolbar__custom-color input[type=color]");
+    assert(!!customColorInput, "eigendefinert-farge-kontrollen finst i formateringsverktøylinja, i tillegg til dei 5 faste fargeprikkane");
     aboutTextEl.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     assert(aboutTextEl.getAttribute("contenteditable") === "true", "about.text: Enter avsluttar IKKJE redigering (rik tekst treng vanleg linjeskift)");
     aboutTextEl.innerHTML = "<p>Ny <b>feit</b> tekst</p>";
