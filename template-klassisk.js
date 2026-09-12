@@ -56,8 +56,8 @@
     return (
       '<section id="hjem" class="section section--hero reveal ' + (img ? "has-image" : "") + '"' + style + '>' +
         '<div class="container hero">' +
-          '<h1 class="hero__title" data-content-key="hero.title">' + C.esc(d.title) + '</h1>' +
-          '<p class="hero__subtitle" data-content-key="hero.subtitle">' + C.esc(d.subtitle) + '</p>' +
+          '<h1 class="hero__title" data-content-key="hero.title">' + C.sanitizeRichHtml(d.title) + '</h1>' +
+          '<p class="hero__subtitle" data-content-key="hero.subtitle">' + C.sanitizeRichHtml(d.subtitle) + '</p>' +
           '<div class="hero__actions">' +
             (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : "") +
           '</div>' +
@@ -77,7 +77,7 @@
         '<div class="container about ' + (hasImg ? "about--with-media" : "") + '">' +
           '<div class="about__body">' +
             C.eyebrow(d.intro || d.heading, "about.intro") +
-            '<h2 class="section__title" data-content-key="about.heading">' + C.esc(d.heading) + '</h2>' +
+            '<h2 class="section__title" data-content-key="about.heading">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
             '<div class="prose" data-content-key="about.text">' + C.sanitizeRichHtml(d.text) + '</div>' +
           '</div>' +
           media +
@@ -97,7 +97,7 @@
           (hasImg ? media : "") +
           '<div class="card__body">' +
             (hasImg ? "" : media) +
-            '<h3 class="card__title" data-content-key="services.' + C.esc(c.id) + '.title">' + C.esc(c.title) + '</h3>' +
+            '<h3 class="card__title" data-content-key="services.' + C.esc(c.id) + '.title">' + C.sanitizeRichHtml(c.title) + '</h3>' +
             '<div class="card__text" data-content-key="services.' + C.esc(c.id) + '.text">' + C.sanitizeRichHtml(c.text) + '</div>' +
           '</div>' +
         '</article>'
@@ -107,7 +107,7 @@
       '<section id="tjenester" class="section reveal">' +
         '<div class="container">' +
           C.eyebrow(d.intro || d.heading, "servicesSection.intro") +
-          '<h2 class="section__title" data-content-key="servicesSection.heading">' + C.esc(d.heading) + '</h2>' +
+          '<h2 class="section__title" data-content-key="servicesSection.heading">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
           '<div class="cards">' + cards + '</div>' +
         '</div>' +
       '</section>'

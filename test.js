@@ -407,6 +407,16 @@ assert(doc.querySelectorAll(".admin-list .admin-row").length === 4, "fire kort v
 // Rediger første kort
 const firstId = doc.querySelector(".admin-list .admin-row").getAttribute("data-id");
 doc.querySelector('[data-edit="' + firstId + '"]').dispatchEvent(new window.Event("click", { bubbles: true }));
+// s-title vart konvertert til C.richTextField() (2026-09-12) for å støtte
+// formatering på korttitlar -- retta UX/Mobile Reviewer-funn same dag:
+// punktliste-knappane skal IKKJE visast for eit éin-line-tittelfelt (ingen
+// CSS "forsvarar" ein <ul> inni ein korttittel), og feltet skal ha eit
+// synleg required-merke sidan det mista den native HTML5 required-stjerna.
+const sTitleField = doc.querySelector("#s-title").closest("[data-rtfield]");
+assert(!sTitleField.querySelector('[data-rt-cmd="insertUnorderedList"]'),
+  "s-title: har IKKJE punktliste-knappar (éin-line korttittel, ikkje fleire-avsnitt-tekst)");
+assert(sTitleField.querySelector("label").textContent.indexOf("*") !== -1,
+  "s-title: har eit synleg required-merke (erstattar den tapte native HTML5 required-stjerna)");
 doc.querySelector("#s-title").value = "Endret tjeneste";
 doc.querySelector("#s-icon").value = "bulb";
 doc.querySelector("[data-svc]").dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
@@ -1310,10 +1320,17 @@ const __asyncTests = (async () => {
     assert(heroTitle2b.textContent === "Ny tittel frå testen", "tomt felt + blur gjenopprettar original tekst, står IKKJE tomt");
     assert(window.App.getContent().hero.title === "Ny tittel frå testen", "content.hero.title er UENDRA etter eit tomt lagringsforsøk");
 
-    // (1d) Utvida 2026-09-17 (same dag) til fleire PLAIN TEXT-felt --
-    // kompakt sjekk (same mekanisme, alt djuptesta over) at kvar av dei har
+    // (1d) Utvida 2026-09-17 (same dag) til fleire felt -- kompakt sjekk
+    // (same mekanisme, alt djuptesta over) at kvar av dei har
     // data-content-key, vert redigerbar, og lagrar korrekt til RETT
-    // content-sti på blur.
+    // content-sti på blur. Konvertert til RIK TEKST 2026-09-12 (Frode ba om
+    // formateringsverktøylinje på ALLE felt, ikkje berre brødtekst -- sjå
+    // Architect-vurderinga same dag om kvifor dette kravde ei koordinert
+    // datamodell-endring på tvers av eyebrow()/admin-skjema/søkeindeks/dei
+    // tre out-of-scope-malane). newVal er her framleis rein tekst (utan
+    // tagar), så testen dekker at plain-tekst-lagring framleis fungerer
+    // identisk sjølv etter at feltet vart rik-tekst-kapabelt -- HTML-
+    // formatering sjølv er dekt separat rett under, i (1d-ii).
     [
       { key: "hero.subtitle", getPath: function () { return window.App.getContent().hero.subtitle; } },
       { key: "about.heading", getPath: function () { return window.App.getContent().about.heading; } },
@@ -1325,11 +1342,56 @@ const __asyncTests = (async () => {
       assert(!!el, f.key + ": elementet finst med data-content-key");
       el.dispatchEvent(new window.Event("click", { bubbles: true }));
       assert(el.getAttribute("contenteditable") === "true", f.key + ": vert redigerbar ved klikk");
+      assert(doc.getElementById("vc-live-edit-toolbar").classList.contains("is-visible"),
+        f.key + ": formateringsverktøylinja vert synleg (feltet er no rik tekst, ikkje lenger rein tekst)");
       var newVal = "Testverdi for " + f.key;
       el.textContent = newVal;
       el.dispatchEvent(new window.Event("blur", { bubbles: false }));
-      assert(f.getPath() === newVal, f.key + ": ny verdi lagra til rett content-sti på blur");
+      assert(f.getPath() === newVal, f.key + ": ny (rein-tekst) verdi lagra til rett content-sti på blur");
     });
+
+    // (1d-ii) HTML-formatering på eit tidlegare-plain felt (hero.title) må
+    // overleve lagringa på same måte som about.text alt gjer -- retta reell
+    // brukarrapport 2026-09-12 (Frode: "endring av farger fungerer ikke,
+    // lagrer seg ikke når jeg klikker utenfor"). Verifiserer sjølve
+    // datavegen (innerHTML -> sanitizeRichHtml() -> lagra); den faktiske
+    // execCommand("foreColor")-verktøylinje-koplinga (styleWithCSS-fiksen)
+    // er dekt av ein separat Playwright-verifisering i ekte nettlesar, sidan
+    // jsdom ikkje implementerer execCommand.
+    var heroTitleRich = doc.querySelector('[data-content-key="hero.title"]');
+    heroTitleRich.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(doc.getElementById("vc-live-edit-toolbar").classList.contains("is-visible"),
+      "hero.title: formateringsverktøylinja vert synleg (overskrifter er no rik tekst)");
+    heroTitleRich.innerHTML = '<span style="color:#005cff">Farga</span> tittel';
+    heroTitleRich.dispatchEvent(new window.Event("blur", { bubbles: false }));
+    assert(/<span style="color:#005cff">Farga<\/span> tittel/.test(window.App.getContent().hero.title),
+      "hero.title: fargeformatering (span style=color) overlever lagringa");
+    assert(doc.querySelector(".hero__title").innerHTML.indexOf('color:#005cff') !== -1,
+      "hero.title: fargen vert faktisk rendra på sida etter render()");
+
+    // (1d-iii) Enter må LAGRE for éin-line rik-tekst-felt (singleLine:true),
+    // IKKJE setje inn eit linjeskift -- retta reell regresjon (UX/Mobile
+    // Reviewer, 2026-09-12): hero.title vart rik tekst same dag som about.text
+    // sin "Enter = vanleg linjeskift"-åtferd, som ville sett inn ein <br>/<div>
+    // INNI <h1> og lagra ei ekte, vedvarande øydelagd overskrift.
+    var heroTitleEnter = doc.querySelector('[data-content-key="hero.title"]');
+    heroTitleEnter.dispatchEvent(new window.Event("click", { bubbles: true }));
+    heroTitleEnter.textContent = "Tittel lagra via Enter";
+    heroTitleEnter.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    assert(heroTitleEnter.getAttribute("contenteditable") !== "true",
+      "hero.title: Enter avsluttar OG lagrar redigeringa (éin-line-felt, sjølv om rik tekst)");
+    assert(window.App.getContent().hero.title === "Tittel lagra via Enter",
+      "hero.title: Enter lagra den nye verdien, sette IKKJE inn eit linjeskift");
+    assert(!/<br|<div/.test(window.App.getContent().hero.title),
+      "hero.title: ingen <br>/<div> vart lagra inn i overskrifta");
+
+    // Rydd opp att til rein tekst før resten av testsuiten (1e-1g, oppryddinga
+    // lenger nede) held fram som før. Må hente elementet PÅ NYTT -- render()
+    // over bytte ut heile noden (same mønster som (1b) lenger opp).
+    var heroTitleRichCleanup = doc.querySelector('[data-content-key="hero.title"]');
+    heroTitleRichCleanup.dispatchEvent(new window.Event("click", { bubbles: true }));
+    heroTitleRichCleanup.textContent = "Ny tittel frå testen";
+    heroTitleRichCleanup.dispatchEvent(new window.Event("blur", { bubbles: false }));
 
     // (1e) RIK TEKST-felt (about.text) -- les/skriv innerHTML, ikkje
     // textContent, så FORMATERING må overleve. Verktøylinja skal visast
@@ -1353,9 +1415,34 @@ const __asyncTests = (async () => {
     assert(!!svcTitleEl, "services.<id>.title: elementet finst for det FYRSTE, ekte kortet sin id");
     svcTitleEl.dispatchEvent(new window.Event("click", { bubbles: true }));
     assert(svcTitleEl.getAttribute("contenteditable") === "true", "services.<id>.title: vert redigerbar ved klikk");
+    // Konvertert til rik tekst 2026-09-12 saman med dei andre 6 felta --
+    // resolveDynamicField() gjev no richText:true for BÅDE .title og .text.
+    assert(doc.getElementById("vc-live-edit-toolbar").classList.contains("is-visible"),
+      "services.<id>.title: formateringsverktøylinja vert synleg (korttitlar er no rik tekst)");
     svcTitleEl.textContent = "Ny tenestetittel";
     svcTitleEl.dispatchEvent(new window.Event("blur", { bubbles: false }));
     assert(window.App.getContent().services[0].title === "Ny tenestetittel", "services.<id>.title: lagra til RETT kort (funne via id, ikkje indeks)");
+
+    // (1f-ii) Søkeindeksen -- retta Architect-funn 2026-09-12: sidan
+    // services[].title no kan innehalde sanert HTML, ville rå tagar synast
+    // som bokstaveleg tekst i søketreff-lista (som alltid C.esc()-rendrar
+    // titlar, rett for rein tekst, feil for HTML-berande strengar) utan at
+    // gatherSearchData() strippar HTML frå tittelen FØR indeksering.
+    window.App.getContent().services[0].title = '<b>Feit</b> Rørleggerteneste';
+    var searchBtn = doc.querySelector("[data-open-search]");
+    assert(!!searchBtn, "søkeknappen finst");
+    searchBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var searchInput = doc.querySelector("[data-search-input]");
+    searchInput.value = "rørleggerteneste";
+    searchInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    var hitTitle = doc.querySelector(".srch-hit__title");
+    assert(!!hitTitle, "søk på (stripped) tittel gjev treff");
+    assert(hitTitle.innerHTML.indexOf("&lt;b&gt;") === -1 && hitTitle.innerHTML.indexOf("<b>") === -1,
+      "søketreff viser IKKJE rå/escapa HTML-tagar frå tittelen -- gatherSearchData() strippar HTML før indeksering");
+    assert(hitTitle.textContent.indexOf("Feit Rørleggerteneste") !== -1,
+      "søketreff viser den reine, lesbare tittelteksten (HTML strippa, ikkje berre escapa)");
+    doc.getElementById("search-overlay").querySelector("[data-srch-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    window.App.getContent().services[0].title = "Ny tenestetittel";
 
     // (1g) Oppdikta/ikkje-eksisterande kort-id -- skal ALDRI matche noko,
     // sjølv om mønsteret elles er identisk med eit gyldig felt.

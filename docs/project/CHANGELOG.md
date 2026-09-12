@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.165.4 — 2026-09-12
+
+**To reelle brukarrapporterte feil retta, deretter rik-tekst-formatering utvida frå berre brødtekst til ALLE 7 "Rediger direkte på sida"-felt.**
+
+Frode: *"Kun brødtekst man kan endre? Og endring av farger fungerer ikke, lagrer seg ikke når jeg klikker utenfor."*
+
+- **Fargebug retta**: `document.execCommand("foreColor", ...)` skreiv `<font color="...">` (sidan `styleWithCSS` ikkje var slått på først), og `<font>` er ikkje i `sanitizeRichHtml()` sin `RICH_ALLOWED_TAGS`-kviteliste -- taggen vart difor pakka ut og fargen gjekk tapt ved kvar lagring. Fiksa ved å slå på `styleWithCSS` FØR `foreColor` i verktøylinja (same mønster som den eksisterande `richTextField()`-verktøylinja i Web-admin alt brukte).
+- **Formatering utvida til alle felt**: etter at Frode valde "legg til på alle felt" (mot ei arkitekt-vurdering av kva dette faktisk kravde), vart `hero.title`, `hero.subtitle`, `about.heading`, `about.intro`, `servicesSection.heading`, `servicesSection.intro` og `services[].title` konvertert frå rein tekst til rik tekst (sanert HTML). Dette var ei ekte datamodell-endring, ikkje berre eit UI-tillegg -- kravde koordinerte endringar same runde i:
+  - `components.js` sin `eyebrow()` (ny valfri "rich"-modus, kun for dei to editerbare intro-felta -- alle andre eyebrow()-kall utan contentKey er framleis rein tekst/esc())
+  - Web-admin sitt Innhald-skjema og tenestekort-editoren (`C.field()` -> `C.richTextField()`, med ny eksplisitt feilmelding for tomt tittelfelt sidan required-attributtet forsvinn ved konvertering)
+  - søkeindeksen (`gatherSearchData()` strippar no HTML frå `services[].title` og admin-lista over tenestekort strippar tilsvarande, elles ville rå tagar synt seg som bokstaveleg tekst)
+  - dei tre malane som IKKJE er del av live-edit-scopet, men deler same innhaldsmodell (`template-panorama.js`, `template-scrollstory.js`, `template-vedvik-test.js`) -- same `C.esc()` -> `C.sanitizeRichHtml()`-endring der, elles ville admin-redigert HTML vist som rå markup på desse malane sine kundar.
+- **UX/Mobile Reviewer-funn retta før merge**: (1) éin-line-felt (overskrifter/titlar) fekk feilaktig "Enter = vanleg linjeskift"-åtferd frå about.text sin mekanisme -- eit nytt `singleLine`-flagg skil no dei to, slik at Enter framleis lagrar/avsluttar for overskrifter sjølv om dei er rik tekst. (2) `richTextField()` (Web-admin-skjemaet) fekk ein ny `lists:false`-opsjon som fjernar punktliste-knappane for dei 6 éin-line-felta, sidan ingen CSS "forsvarar" ein `<ul>` inni t.d. eit `<h1>`. (3) `s-title` (tenestekort-tittel) fekk eit synleg required-merke (`*`) sidan feltet mista den native HTML5 `required`-stjerna ved konvertering til `richTextField()`.
+- Verifisert i ekte nettlesar via Playwright (fargeformatering og Enter-lagring på `hero.title` fungerer korrekt), null skriving til produksjon stadfesta via reload. `test.js` utvida til 847 OK / 0 FEIL.
+
 ## 0.165.3 — 2026-09-12
 
 **"Rediger direkte på sida" utvida til ALLE tilgjengelege tekstfelt på Klassisk OG den skreddarsydde Vibeverk-cinema-malen, med rik-tekst-redigering (fet/kursiv/understreking/farge/lenke) tilsvarande verktøyet frå `vibeverk-template`-mockupen.**

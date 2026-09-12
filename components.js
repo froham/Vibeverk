@@ -187,9 +187,20 @@ window.Components = (function () {
   // berre når ein kallar eksplisitt ber om det, så alle eksisterande
   // kallstader (modular/andre malar som ikkje er del av denne funksjonen)
   // er heilt uendra.
-  function eyebrow(text, contentKey) {
-    var attr = contentKey ? ' data-content-key="' + esc(contentKey) + '"' : "";
-    return `<p class="eyebrow"${attr}><span class="eyebrow__mark"></span>${esc(text)}</p>`;
+  // contentKeyOrRich: ein streng ("about.intro") gjev BÅDE data-content-key-
+  // attributtet OG sanering (dei to editerbare eyebrow-felta, klikkbare via
+  // "Rediger direkte på sida" på Klassisk/cinema); `true` gjev KUN sanering
+  // utan attributt (panorama/scrollstory/vedvik-test -- deler same
+  // content.about/servicesSection-felt, men skal ALDRI få eit klikkbart
+  // data-content-key sidan dei ikkje er del av live-edit-scopet); utelate
+  // (falsy) gjev rein esc() som før, for alle andre eyebrow()-kall som
+  // sender ekte plaintekst (t.d. "Spørsmål og svar", "Om Vibeverk") og
+  // ALDRI skal HTML-tolkast.
+  function eyebrow(text, contentKeyOrRich) {
+    var isKey = typeof contentKeyOrRich === "string" && contentKeyOrRich;
+    var attr = isKey ? ' data-content-key="' + esc(contentKeyOrRich) + '"' : "";
+    var body = contentKeyOrRich ? sanitizeRichHtml(text) : esc(text);
+    return `<p class="eyebrow"${attr}><span class="eyebrow__mark"></span>${body}</p>`;
   }
 
   // Delt vilkår/personvern-rad: avhukingsboks + lenke som åpner popup med fulltekst.
@@ -339,18 +350,39 @@ window.Components = (function () {
     const counter = o.maxChars
       ? `<p class="rtfield__counter field__hint" data-rtfield-counter data-max="${esc(o.maxChars)}">0/${esc(o.maxChars)} tegn</p>`
       : "";
+    // lists: false -- retta UX/Mobile Reviewer-funn 2026-09-12: felt som
+    // semantisk er éin-line-overskrifter/titlar (hero.title, korttitlar osv.)
+    // fekk elles punktliste-/nummerert liste-knappar utan at noko CSS
+    // "forsvarar" ein <ul>/<li> inni t.d. eit <h1> -- ei ekte, vedvarande
+    // øydelagd overskrift dersom ein admin klikka på knappen, ikkje berre eit
+    // kosmetisk avvik. Utelate heilt for desse felta, same avgjerd som den
+    // separate live-edit-verktøylinja (liveEditToolbar() i core.js) alt tok
+    // for det tilsvarande floating-verktøyet på sjølve den live sida.
+    const listsHtml = o.lists === false ? "" : `
+          <button type="button" data-rt-cmd="insertUnorderedList" title="Punktliste">${icon("list")}</button>
+          <button type="button" data-rt-cmd="insertOrderedList" title="Nummerert liste">${icon("list-numbers")}</button>
+          <span class="rtfield__sep"></span>`;
+    // required: reint visuelt hint (ikkje ekte HTML5-validering, sidan dette
+    // er eit contenteditable-felt, ikkje eit <input>) -- retta UX/Mobile
+    // Reviewer-funn 2026-09-12: s-title mista den native required-stjerna/
+    // -oppførselen då feltet vart konvertert frå <input required> til
+    // richTextField(), og hadde elles INGEN proaktiv indikasjon på at feltet
+    // er påkrevd før eit lagringsforsøk feilar.
+    // Ingen etablert CSS-klasse for eit required-merke finst frå før (jf.
+    // C.field(), som berre set det native HTML5 required-attributtet utan
+    // synleg stjerne) -- inline style her i staden for å innføre ein ny,
+    // ubrukt CSS-klasse berre for dette eine feltet.
+    const labelText = esc(o.label) + (o.required ? ' <span aria-hidden="true" style="color:var(--color-danger,#d33)">*</span>' : "");
     return `
       <div class="field rtfield" data-rtfield>
-        <label>${esc(o.label)}</label>
+        <label>${labelText}</label>
         <div class="rtfield__toolbar" role="toolbar" aria-label="Tekstformatering">
           <button type="button" data-rt-cmd="bold" title="Fet"><strong>F</strong></button>
           <button type="button" data-rt-cmd="italic" title="Kursiv"><em>K</em></button>
           <button type="button" data-rt-cmd="underline" title="Understrek"><u>U</u></button>
           <button type="button" data-rt-cmd="strikeThrough" title="Gjennomstrek"><s>G</s></button>
           <span class="rtfield__sep"></span>
-          <button type="button" data-rt-cmd="insertUnorderedList" title="Punktliste">${icon("list")}</button>
-          <button type="button" data-rt-cmd="insertOrderedList" title="Nummerert liste">${icon("list-numbers")}</button>
-          <span class="rtfield__sep"></span>
+          ${listsHtml}
           <button type="button" data-rt-link title="Lenke">${icon("link")}</button>
           <label class="rtfield__colorlabel" title="Tekstfarge">${icon("palette")}<input type="color" data-rt-color value="#15616d"></label>
           <button type="button" data-rt-clear title="Fjern formatering">${icon("clear-formatting")}</button>

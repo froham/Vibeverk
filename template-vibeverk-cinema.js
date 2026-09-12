@@ -366,8 +366,8 @@
       '<section id="hjem" class="vc-hero reveal">' +
         '<div class="vc-hero__visual">' + bgHtml + '<div class="vc-hero__scrim"></div></div>' +
         '<div class="vc-hero__inner">' +
-          '<h1 class="vc-hero__title" data-content-key="hero.title">' + C.esc(d.title) + '</h1>' +
-          (d.subtitle ? '<p class="vc-hero__subtitle" data-content-key="hero.subtitle">' + C.esc(d.subtitle) + '</p>' : "") +
+          '<h1 class="vc-hero__title" data-content-key="hero.title">' + C.sanitizeRichHtml(d.title) + '</h1>' +
+          (d.subtitle ? '<p class="vc-hero__subtitle" data-content-key="hero.subtitle">' + C.sanitizeRichHtml(d.subtitle) + '</p>' : "") +
           (d.ctaLabel && d.ctaTarget ? C.button({ label: d.ctaLabel, href: d.ctaTarget, variant: "primary" }) : "") +
           '<div class="vc-terminal" id="vcTerminal">' +
             '<div class="vc-terminal__bar"><span></span><span></span><span></span></div>' +
@@ -434,7 +434,7 @@
         photoHtml +
         '<div class="vc-about__body reveal">' +
           C.eyebrow(d.intro || "Bak Vibeverk", "about.intro") +
-          '<blockquote class="vc-about__quote" data-content-key="about.heading">' + C.esc(d.heading) + '</blockquote>' +
+          '<blockquote class="vc-about__quote" data-content-key="about.heading">' + C.sanitizeRichHtml(d.heading) + '</blockquote>' +
           '<p class="vc-about__who"><b>Frode Hammerseth</b> — Vibeverk</p>' +
           '<div class="vc-about__extra prose" data-content-key="about.text">' + C.sanitizeRichHtml(d.text) + '</div>' +
         '</div>' +
@@ -462,7 +462,7 @@
       var num = i < 9 ? "0" + (i + 1) : String(i + 1);
       return '<div class="vc-tj-band reveal">' +
         '<div class="vc-tj-band__num" style="color:' + TJ_COLORS[i % TJ_COLORS.length] + '">' + num + '</div>' +
-        '<h3 data-content-key="services.' + C.esc(c.id) + '.title">' + C.esc(c.title) + '</h3>' +
+        '<h3 data-content-key="services.' + C.esc(c.id) + '.title">' + C.sanitizeRichHtml(c.title) + '</h3>' +
         '<div class="prose" data-content-key="services.' + C.esc(c.id) + '.text">' + C.sanitizeRichHtml(c.text) + '</div>' +
       '</div>';
     }).join("");
@@ -470,7 +470,7 @@
       '<section id="tjenester" class="vc-services">' +
         '<div class="vc-services__intro reveal">' +
           C.eyebrow(d.intro || d.heading, "servicesSection.intro") +
-          '<h2 data-content-key="servicesSection.heading">' + C.esc(d.heading) + '</h2>' +
+          '<h2 data-content-key="servicesSection.heading">' + C.sanitizeRichHtml(d.heading) + '</h2>' +
         '</div>' +
         bandsHtml +
       '</section>'
