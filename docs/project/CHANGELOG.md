@@ -30,6 +30,21 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.165.3 — 2026-09-12
+
+**"Rediger direkte på sida" utvida til ALLE tilgjengelege tekstfelt på Klassisk OG den skreddarsydde Vibeverk-cinema-malen, med rik-tekst-redigering (fet/kursiv/understreking/farge/lenke) tilsvarande verktøyet frå `vibeverk-template`-mockupen.**
+
+Frode: *"Nei, ønsker at vi KUN får klassisk til å fungere svært bra, og den skreddersydde malen. Legg til alle tilgjengelige tekstfelter og tekstredigeringsfunksjon tilsvarende den i template-løsningen."* — eksplisitt avgrensa til desse to malane (IKKJE panorama/scrollstory), og eksplisitt ba om full tekstfelt-dekning + formateringsverktøy, ikkje berre fleire plain-text-felt.
+
+- **Nye felt** (utover dei 4 frå 0.165.2): `about.text`/`about.intro` (rik tekst), `servicesSection.intro`, og éin dynamisk `services.<id>.title`/`services.<id>.text` per tenestekort (id-basert oppløysing, ikkje indeks — eit korta som ikkje finst er eit reint no-op, aldri eit feil-treff på eit anna korta).
+- **`resolveDynamicField(key)`** — ny oppløysingsmekanisme ved sida av den statiske `LIVE_EDIT_FIELDS`-kvitelista, for felt som ikkje kan enumererast på førehand (per-korta-innhald).
+- **Rik-tekst-redigering**: `contenteditable` med `innerHTML`-lesing/skriving (i staden for `textContent`), sanert via `C.sanitizeRichHtml()` ved lagring (i tillegg til den eksisterande render-tidssaneringa — to-lags forsvar). Enter set inn linjeskift i staden for å lagre/avslutte (ulikt plain-text-felt).
+- **Flytande formateringsverktøylinje** (Bold/Italic/Underline/5 fargeprøver/lenke/fjern-formatering, via `document.execCommand`) — vises berre for rik-tekst-felt. Bruker `mousedown`+`preventDefault()` (ikkje `click`) for å unngå at feltet mister fokus før kommandoen køyrer.
+- **Vibeverk-cinema-malen** fekk same 7 felt-typar tilkopla — sjå malen sin eigen kommentar for kva som er MEDVITE utelate (VC_REASONS, terminal-animasjonen, signaturlinja m.m., alle hardkoda/strukturelt ulike frå dei redigerbare felta).
+- **Tryggingsfunn (Security Auditor, LOW)**: `javascript:`-scheme-sjekken i `components.js` (`button()` og `sanitizeRichHtml()`) brukte ein regex som berre sjekka LEIANDE whitespace, omgåeleg via innebygde tab/linjeskift midt i URL-en. Fiksa med ny `isSafeHrefProtocol()` som brukar ekte `new URL()`-parsing + protokoll-kvitelista (`http:`, `https:`, `mailto:`, `tel:`).
+- **UX/Mobile Reviewer-funn (HIGH)**: verktøylinja sine knappar/fargeprøver var under 44px-minimumet for touch-mål — retta til 44×44px. Posisjonen vart berre rekna ut éin gong ved fokus, aldri på nytt ved scroll/vindaugsendring/mobil-tastatur — retta med `scroll`/`resize`/`visualViewport.resize`-lyttarar som kallar ny `repositionLiveEditToolbar()`. Denne klemmer også "under feltet"-fallbacken mot den faste avslutt-knappen (`EXIT_PILL_SPACE`) slik at verktøylinja aldri overlappar han på korte skjermar.
+- Testa mot ekte produksjonsinnhald via Playwright (ingen skriving — stadfesta via reload). `test.js` utvida til 829 OK / 0 FEIL.
+
 ## 0.165.2 — 2026-09-17
 
 **"Rediger direkte på sida" utvida frå éitt til fire felt på Klassisk-malen: `hero.title`, `hero.subtitle`, `about.heading`, `servicesSection.heading`.**

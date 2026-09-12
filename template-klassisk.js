@@ -19,19 +19,29 @@
    template-vibeverk-cinema.js sitt "tre grunnar"-band og terminal-
    animasjon MÅ haldast utanfor dette heilt.
 
-   Utvida 2026-09-17 (same dag) frå berre hero.title til fire felt:
-   hero.title, hero.subtitle, about.heading, servicesSection.heading.
-   MEDVITE utelate frå denne runda: content.about.text/services[].text
-   (RIK TEKST -- C.sanitizeRichHtml()-rendra, inneheld ekte HTML-markup;
-   ei enkel contenteditable+textContent-lagring ville anten øydelagt
-   formateringa eller kravd ein heilt annan sanering-veg -- rik-tekst-
-   redigering er eit eige, større steg, ikkje ei utviding av dette
-   mønsteret), content.about.intro/servicesSection.intro (C.eyebrow()
-   viser `d.intro || d.heading` -- IKKJE eit reint 1:1-element-til-felt-
-   forhold når intro er tom, ville vore forvirrande å gjere klikkbart),
-   og enkelt-kort-titlar i services[] (dynamisk liste med eigen id per
-   kort -- krev eit anna oppløysingsmønster enn den flate, statiske
-   LIVE_EDIT_FIELDS-kvitelista, ikkje berre éin ny nøkkel).
+   Utvida 2026-09-17 fyrst til fire enkle plain-text-felt (hero.title,
+   hero.subtitle, about.heading, servicesSection.heading), deretter SAME
+   DAG (etter eksplisitt ønske om "alle tilgjengelege tekstfelt" + rik
+   tekst-redigering) til ALLE tekstfelt malen faktisk viser:
+   - about.intro/servicesSection.intro (C.eyebrow() sin valfrie
+     contentKey-parameter, viser `d.intro || d.heading` -- å redigere
+     denne set INTRO eksplisitt, som naturleg avsluttar fallback-åtferda)
+   - about.text/services[].text (RIK TEKST -- get()/set() les/skriv
+     el.innerHTML, ikkje textContent, og core.js sin startInlineEdit()
+     køyrer C.sanitizeRichHtml() på vegen inn IGJEN før lagring, sjølv om
+     render()-sida alt gjer det -- forsvar i djupn, ikkje stol på at berre
+     éin av dei to sidene sanerer)
+   - services[].title/.text (DYNAMISK per kort -- data-content-key er
+     "services.<id>.title"/"services.<id>.text", løyst i core.js sin
+     resolveDynamicField() mot content.services sin FAKTISKE, noverande
+     liste -- eit ukjent/oppdikta id gjev ALDRI eit gyldig mål, akkurat
+     same prinsipp som den statiske kvitelista, berre mønster+eksistens-
+     sjekk i staden for eit fast oppslag)
+
+   Framleis heilt utanfor: template-vibeverk-cinema.js sitt hardkoda "tre
+   grunnar"-band og terminal-animasjon (ALDRI data-content-key -- ingen
+   ekte innhaldsfelt bak dei), og alle andre malar (panorama/scrollstory)
+   -- eksplisitt utsett til seinare, sjå samtale 2026-09-17.
    ========================================================================== */
 (function () {
   "use strict";
@@ -66,9 +76,9 @@
       '<section id="om-oss" class="section reveal">' +
         '<div class="container about ' + (hasImg ? "about--with-media" : "") + '">' +
           '<div class="about__body">' +
-            C.eyebrow(d.intro || d.heading) +
+            C.eyebrow(d.intro || d.heading, "about.intro") +
             '<h2 class="section__title" data-content-key="about.heading">' + C.esc(d.heading) + '</h2>' +
-            '<div class="prose">' + C.sanitizeRichHtml(d.text) + '</div>' +
+            '<div class="prose" data-content-key="about.text">' + C.sanitizeRichHtml(d.text) + '</div>' +
           '</div>' +
           media +
         '</div>' +
@@ -87,8 +97,8 @@
           (hasImg ? media : "") +
           '<div class="card__body">' +
             (hasImg ? "" : media) +
-            '<h3 class="card__title">' + C.esc(c.title) + '</h3>' +
-            '<div class="card__text">' + C.sanitizeRichHtml(c.text) + '</div>' +
+            '<h3 class="card__title" data-content-key="services.' + C.esc(c.id) + '.title">' + C.esc(c.title) + '</h3>' +
+            '<div class="card__text" data-content-key="services.' + C.esc(c.id) + '.text">' + C.sanitizeRichHtml(c.text) + '</div>' +
           '</div>' +
         '</article>'
       );
@@ -96,7 +106,7 @@
     return (
       '<section id="tjenester" class="section reveal">' +
         '<div class="container">' +
-          C.eyebrow(d.intro || d.heading) +
+          C.eyebrow(d.intro || d.heading, "servicesSection.intro") +
           '<h2 class="section__title" data-content-key="servicesSection.heading">' + C.esc(d.heading) + '</h2>' +
           '<div class="cards">' + cards + '</div>' +
         '</div>' +

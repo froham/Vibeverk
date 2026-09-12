@@ -1310,14 +1310,16 @@ const __asyncTests = (async () => {
     assert(heroTitle2b.textContent === "Ny tittel frå testen", "tomt felt + blur gjenopprettar original tekst, står IKKJE tomt");
     assert(window.App.getContent().hero.title === "Ny tittel frå testen", "content.hero.title er UENDRA etter eit tomt lagringsforsøk");
 
-    // (1d) Utvida 2026-09-17 (same dag) til tre fleire PLAIN TEXT-felt --
+    // (1d) Utvida 2026-09-17 (same dag) til fleire PLAIN TEXT-felt --
     // kompakt sjekk (same mekanisme, alt djuptesta over) at kvar av dei har
     // data-content-key, vert redigerbar, og lagrar korrekt til RETT
     // content-sti på blur.
     [
       { key: "hero.subtitle", getPath: function () { return window.App.getContent().hero.subtitle; } },
       { key: "about.heading", getPath: function () { return window.App.getContent().about.heading; } },
-      { key: "servicesSection.heading", getPath: function () { return window.App.getContent().servicesSection.heading; } }
+      { key: "about.intro", getPath: function () { return window.App.getContent().about.intro; } },
+      { key: "servicesSection.heading", getPath: function () { return window.App.getContent().servicesSection.heading; } },
+      { key: "servicesSection.intro", getPath: function () { return window.App.getContent().servicesSection.intro; } }
     ].forEach(function (f) {
       var el = doc.querySelector('[data-content-key="' + f.key + '"]');
       assert(!!el, f.key + ": elementet finst med data-content-key");
@@ -1328,6 +1330,42 @@ const __asyncTests = (async () => {
       el.dispatchEvent(new window.Event("blur", { bubbles: false }));
       assert(f.getPath() === newVal, f.key + ": ny verdi lagra til rett content-sti på blur");
     });
+
+    // (1e) RIK TEKST-felt (about.text) -- les/skriv innerHTML, ikkje
+    // textContent, så FORMATERING må overleve. Verktøylinja skal visast
+    // medan aktiv, og Enter skal IKKJE lagre/avslutte (motsett av plain text).
+    var aboutTextEl = doc.querySelector('[data-content-key="about.text"]');
+    assert(!!aboutTextEl, "about.text: elementet finst med data-content-key");
+    aboutTextEl.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(aboutTextEl.getAttribute("contenteditable") === "true", "about.text: vert redigerbar ved klikk");
+    assert(doc.getElementById("vc-live-edit-toolbar").classList.contains("is-visible"), "about.text: formateringsverktøylinja vert synleg for rik tekst-felt");
+    aboutTextEl.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    assert(aboutTextEl.getAttribute("contenteditable") === "true", "about.text: Enter avsluttar IKKJE redigering (rik tekst treng vanleg linjeskift)");
+    aboutTextEl.innerHTML = "<p>Ny <b>feit</b> tekst</p>";
+    aboutTextEl.dispatchEvent(new window.Event("blur", { bubbles: false }));
+    assert(!doc.getElementById("vc-live-edit-toolbar").classList.contains("is-visible"), "about.text: verktøylinja skjules att etter blur");
+    assert(/<b>feit<\/b>/.test(window.App.getContent().about.text), "about.text: HTML-formatering overlever lagringa (innerHTML, ikkje textContent)");
+
+    // (1f) DYNAMISK services[]-kort (services.<id>.title/.text) -- løyst via
+    // mønster+eksistenssjekk mot content.services, ikkje ei fast oppføring.
+    var firstServiceId = window.App.getContent().services[0].id;
+    var svcTitleEl = doc.querySelector('[data-content-key="services.' + firstServiceId + '.title"]');
+    assert(!!svcTitleEl, "services.<id>.title: elementet finst for det FYRSTE, ekte kortet sin id");
+    svcTitleEl.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(svcTitleEl.getAttribute("contenteditable") === "true", "services.<id>.title: vert redigerbar ved klikk");
+    svcTitleEl.textContent = "Ny tenestetittel";
+    svcTitleEl.dispatchEvent(new window.Event("blur", { bubbles: false }));
+    assert(window.App.getContent().services[0].title === "Ny tenestetittel", "services.<id>.title: lagra til RETT kort (funne via id, ikkje indeks)");
+
+    // (1g) Oppdikta/ikkje-eksisterande kort-id -- skal ALDRI matche noko,
+    // sjølv om mønsteret elles er identisk med eit gyldig felt.
+    var fakeCard = doc.createElement("h3");
+    fakeCard.setAttribute("data-content-key", "services.dette-kortet-finst-ikkje.title");
+    fakeCard.textContent = "Skal ikkje kunne redigerast";
+    doc.body.appendChild(fakeCard);
+    fakeCard.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(fakeCard.getAttribute("contenteditable") !== "true", "services.<oppdikta-id>.title: matchar ALDRI (eksistenssjekk mot ekte content.services handhevast)");
+    fakeCard.remove();
 
     // (2) Ukjend nøkkel -- skal vere ein reint no-op, aldri bli redigerbar
     var ghost = doc.createElement("h2");
