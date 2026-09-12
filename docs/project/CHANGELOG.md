@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.166.2 — 2026-09-12
+
+**To reelle, brukarrapporterte feil retta: eigendefinert farge og understreking i rik-tekst-formatering.**
+
+Frode: *"Custom farge fungerer ikkje, understrek fungerer ikkje. Kan du sjekke at ALT faktisk fungerer?"*
+
+- **Fargebug**: eit klikk på den ekte `<input type="color">` (0.166.1-tillegget) flytta nettlesarfokuset dit UMIDDELBART, som kollapsa/mista sjølve tekstutvalet (Range) inni det redigerbare elementet -- `.focus()` tilbake åleine gjenoppretta berre fokuset, ikkje utvalet, så `foreColor` hadde ingenting å farge og gjorde reint ingenting. Fiksa ved å lagre Range på "mousedown" (før fokusskiftet er fullført) og gjenopprette han eksplisitt før `execCommand` køyrer. Retta i BÅDE live-edit-verktøylinja OG den eksisterande, delte `richTextField()`-verktøylinja i Web-admin (same feilaktige mønster fanst der òg, sidan lenge før denne økta -- oppdaga berre no fordi live-edit sin nye kontroll gjorde feilen synleg og rapportert).
+- **Understrek-bug** (viste seg å vere ein FØLGJEFEIL av fargebugen, med ei djupare rotårsak): når understreking vart brukt RETT ETTER ein fargeendring i same redigeringsøkt, la nettlesaren (med `styleWithCSS` aktivert, naudsynt for at farge skal lagrast korrekt) understrekinga PÅ SAME `<span>` som fargen, som ein ekstra CSS-eigenskap (`text-decoration-line`) i staden for eit eige `<u>`-tag -- `sanitizeRichHtml()` bygde FØR SPAN-style-attributtet på nytt med BERRE `color`, som stille kasta vekk understrekinga ved lagring. Fiksa på to nivå: (1) `sanitizeRichHtml()` tek no vare på BÅDE `color` OG `text-decoration-line` saman, med ei smal, trygg verditillate-liste (`underline|line-through|overline|none`) -- ingen fri CSS-injeksjon. (2) Alle tre fargehandterarane (dei faste fargeprikkane, den nye eigendefinerte fargen, og Web-admin sin delte `richTextField()`) slår no `styleWithCSS` AV att umiddelbart etter kvar fargehandling, som hindrar denne samanslåinga frå å skje i utgangspunktet for seinare formateringskommandoar i same økt.
+- **Security Auditor**: ingen BLOCKER/HIGH/MEDIUM-funn på den nye sanitizer-utvidinga. Eitt LOW-notat (ikkje-global regex ville teoretisk halde FYRSTE, ikkje siste, `text-decoration-line`-deklarasjon ved fleire duplikatar i same style-streng -- lite sannsynleg i praksis, ikkje fiksa).
+- Verifisert i ekte nettlesar mot ekte produksjonsinnhald med EKTE klikk (ikkje syntetiske hendingar) i nøyaktig den feilkjeda Frode opplevde: farge først, så understrek utan å velje teksten på nytt -- begge lagra no korrekt saman. `test.js` utvida med fire nye sanitizer-regresjonstestar (900 OK / 0 FEIL).
+
 ## 0.166.1 — 2026-09-12
 
 **Eigendefinert farge lagt til i live-edit-formateringsverktøylinja, i tillegg til dei 5 faste fargeprikkane.**

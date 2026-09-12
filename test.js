@@ -2578,6 +2578,21 @@ const __asyncTests = (async () => {
   assert(RT.sanitizeRichHtml('<x><img src=x onerror=alert(1)></x>') === "", "barn flytta ut av ein ukjent wrapper-tag vert framleis saerte (nested-wrapper-bypass lukka)");
   assert(RT.sanitizeRichHtml('<x><y><img src=x onerror=alert(1)>test</y></x>') === "test", "fleire nesta ukjente wrapper-taggar sanerer alle promoterte born, tekst overlever");
   assert(RT.sanitizeRichHtml('<x><b>fet</b></x>') === "<b>fet</b>", "tillate taggar promotert ut av ein ukjent wrapper beheld seg sjølv");
+  // Retta reell bug (Frode: "understrek fungerer ikkje", 2026-09-12): med
+  // styleWithCSS aktivert (naudsynt for at fargeval skal skrive <span
+  // style="color:..."> i staden for eit <font>-tag som vert filtrert
+  // heilt vekk) la nettlesaren av og til UNDERSTREKING på SAME span som
+  // fargen, som ei ekstra CSS-eigenskap (text-decoration-line) i staden for
+  // eit eige <u>-tag. sanitizeRichHtml() bygde FØR style-attributtet på nytt
+  // med BERRE "color:", som stille kasta vekk understrekinga ved lagring.
+  assert(RT.sanitizeRichHtml('<span style="color:#ff0000;text-decoration-line:underline">farge+strek</span>') === '<span style="color:#ff0000;text-decoration-line:underline">farge+strek</span>',
+    "BÅDE color OG text-decoration-line beheld seg saman på same span (regresjonstest for 'understrek fungerer ikkje')");
+  assert(RT.sanitizeRichHtml('<span style="text-decoration-line:underline">berre strek</span>') === '<span style="text-decoration-line:underline">berre strek</span>',
+    "text-decoration-line beheld seg åleine, utan farge");
+  assert(RT.sanitizeRichHtml('<span style="color:#ff0000;text-decoration-line:blink">farge+ugyldig</span>') === '<span style="color:#ff0000">farge+ugyldig</span>',
+    "ei ikkje-tillate text-decoration-line-verdi (t.d. 'blink') vert IKKJE teken vare på -- smal verditillate-liste, ikkje fri CSS");
+  assert(RT.sanitizeRichHtml('<span style="color:#ff0000;background:red;text-decoration-line:underline">alle tre</span>') === '<span style="color:#ff0000;text-decoration-line:underline">alle tre</span>',
+    "andre, ikkje-tillatne CSS-eigenskapar (t.d. background) vert framleis fjerna sjølv når color+text-decoration-line er til stades");
   assert(RT.stripHtml('<b>Fet</b> og <i>kursiv</i> tekst') === "Fet og kursiv tekst", "stripHtml fjerner alle tagger");
 
   // Verktøylinje + synk (uten execCommand, som ikke finnes i jsdom)
