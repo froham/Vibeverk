@@ -30,6 +30,19 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.166.0 — 2026-09-12
+
+**Seksjonsrekkefølgje lagt til i "Rediger direkte på sida" -- fyrste funksjonen porta frå det separate `vibeverk-template`-mockup-prosjektet.**
+
+Frode: *"prøve å implementere de funksjonene vi har testet med suksess i template-verktøyet"* -- brukaren si eiga oppfølging etter at alle tekstfelt+bilete-funksjonane var ferdige, som ei ny, eiga retning for funksjonen vidare.
+
+- **Ny funksjon**: eit flytande "↕ Rekkefølge"-panel (nede til venstre, safe-area-medvite) der ein administrator kan flytte seksjonar opp/ned med knappar, medan live-redigering er aktiv. Porta frå mockupen sin validerte "PROTOTYPE nr. 8", MEN med éin medviten arkitektur-endring: mockupen brukte ekte HTML5 drag-og-slepp, denne versjonen bruker opp/ned-knappar i staden, sidan native drag-og-slepp ikkje fungerer på touch-skjermar og dette admin-panelet reelt vert brukt frå mobil/nettbrett.
+- **Ingen ny lagringsmekanisme**: gjenbruker EKSAKT same `nav-settings.pageOrder` som den eksisterande ↑/↓-tabellen i Innstillingar → Navigasjon alt bruker (`getNavSettings()`/`saveNavSettings()`) -- Architect-vurdert (2026-09-12) for å unngå eit tredje, konkurrerande rekkefølgje-omgrep.
+- **"Hjem" (hero) er medvite låst fyrst og aldri flyttbar**: cinema-malen sin gjennomsiktige nav-over-hero-effekt (`vc-on-image`) reknar berre ut frå `#hjem` sin eigen høgde, utan omsyn til kor han faktisk står på sida -- å flytte han vekk frå posisjon 1 ville late nav-en visast gjennomsiktig oppå eit lyst avsnitt utan biletbakgrunn (uleseleg kvit tekst). Same eksklusjon som mockupen sjølv gjorde, av tilsvarande grunn.
+- **Security Auditor**: ingen BLOCKER/HIGH/MEDIUM-funn. To LOW-notat (sjølvkorrigerande stale-rekkefølgje-kant-tilfelle, og at hjem-låsinga heng på ein hardkoda id-streng) -- ingen av dei kravde ein fiks.
+- **UX/Mobile Reviewer-funn retta før merge**: (1) panelet hadde ingen `max-height`/scroll, kunne skuve rader utanfor skjermen på ein tenant med mange synlege modular på ein kort viewport -- lagt til. (2) opp/ned-knappane var 36px, eit medvite men ubegrunna avvik frå 44px-standarden resten av funksjonen handhevar -- fiksa ved å utvide panelet sin breidde i staden for å halde fram med avviket. (3) manglande Escape/klikk-utanfor-lukking, no lagt til -- fann OG FIKSA ein reell eigen bug under implementeringa av denne fiksen: eit klikk på ↑/↓ INNI panelet re-rendrar radlista synkront MEDAN klikket framleis boblar, som fekk klikk-utanfor-logikken til å tolke sitt eige opphavlege klikkmål som "utanfor" (alt fjerna frå DOM-en av re-renderinga) og lukke panelet med det same -- retta ved å bruke fangst-fasen i staden for boble-fasen. (4) lagt til ein forklarande `title`-attributt på den låste "Hjem"-rada.
+- Verifisert i ekte nettlesar (375×667, mobil-viewport) mot ekte produksjonsinnhald: knappestorleik, panel-scroll, Escape/klikk-utanfor, og at eit klikk på ↑/↓ ikkje lenger lukkar panelet. Null skriving til produksjon stadfesta via reload. `test.js` utvida til 895 OK / 0 FEIL.
+
 ## 0.165.6 — 2026-09-12
 
 **Fiksa Media.free()-tidspunktet på tvers av ALLE 11 bruksstader av `imgField()`/`bindImageFields()`, ikkje berre den nye biletbyte-modalen.**

@@ -1542,6 +1542,75 @@ const __asyncTests = (async () => {
     doc.querySelector("[data-live-edit-start]").dispatchEvent(new window.Event("click", { bubbles: true }));
     assert(doc.body.classList.contains("vc-live-edit"), "live-redigering slått på att for resten av testblokka");
 
+    // (1i) Seksjonsrekkefølgje -- porta frå vibeverk-template sitt
+    // "PROTOTYPE nr. 8", men opp/ned-knappar i staden for drag-og-slepp (sjå
+    // grunngjevinga attmed liveEditReorderableMods() i core.js: native HTML5
+    // drag-og-slepp fungerer ikkje på touch-skjermar). Gjenbruker EKSAKT
+    // same nav-settings.pageOrder-lagringsveg som den eksisterande ↑/↓-
+    // tabellen i Innstillingar → Navigasjon, IKKJE eit nytt datalager.
+    var reorderBtn = doc.getElementById("vc-live-edit-reorder-btn");
+    assert(!!reorderBtn, "«↕ Rekkefølge»-knappen finst medan live-redigering er aktiv");
+    reorderBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var reorderPanel = doc.getElementById("vc-live-edit-reorder-panel");
+    assert(reorderPanel.classList.contains("is-open"), "klikk opnar rekkefølgje-panelet");
+    var rows = reorderPanel.querySelectorAll(".vc-reorder-row");
+    assert(rows.length >= 2 && rows[0].classList.contains("is-locked") && rows[0].textContent.indexOf("Hjem") !== -1,
+      "«Hjem» er alltid fyrste rad og LÅST (ikkje flyttbar) -- retta reell risiko: cinema-malen sin gjennomsiktige nav-over-hero-effekt reknar berre ut frå #hjem sin eigen høgde, uavhengig av kor han faktisk står på sida");
+    assert(!rows[0].querySelector("[data-reorder-up],[data-reorder-dn]"), "«Hjem»-rada har ingen opp/ned-knappar");
+    var secondRowUpBtn = reorderPanel.querySelector('[data-reorder-up]');
+    assert(secondRowUpBtn && secondRowUpBtn.disabled, "fyrste FLYTTBARE rad (etter Hjem) har deaktivert opp-knapp");
+
+    // Flytt andre flyttbare rad (typisk "Om oss") NED éin plass, og stadfest
+    // at den delte nav-settings.pageOrder (SAME lagringsveg som ↑/↓-tabellen
+    // i Innstillingar → Navigasjon) faktisk endra seg konsistent. Samanlikna
+    // mot pageOrder FØR/ETTER, ikkje mot doc.querySelectorAll("#main >
+    // section") -- ikkje alle registrerte modular rendrar naudsynlegvis som
+    // eit topp-nivå <section id="..."> (t.d. Referansar-modulen), så ei
+    // DOM-basert 1:1-samanlikning ville vore ei feil test-anntaking, ikkje
+    // ein reell funksjonsfeil.
+    function rowIds() {
+      return Array.prototype.slice.call(reorderPanel.querySelectorAll("[data-reorder-row-id]")).map(function (r) { return r.getAttribute("data-reorder-row-id"); });
+    }
+    var beforeRowIds = rowIds();
+    var secondMovableId = rows[1].querySelector("[data-reorder-dn]").getAttribute("data-reorder-dn");
+    rows[1].querySelector("[data-reorder-dn]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    var afterRowIds = rowIds();
+    var afterOrder = (window.App.store.get("nav-settings", {}) || {}).pageOrder || [];
+    assert(afterOrder[0] === "hjem", "nav-settings.pageOrder har «hjem» fyrst etter ei flytting av eit anna element");
+    assert(afterOrder.slice(1).join(",") === afterRowIds.join(","), "nav-settings.pageOrder (etter «hjem») samsvarar med panelet sin nye radrekkefølgje");
+    assert(afterRowIds.join(",") !== beforeRowIds.join(","), "panelet sin radrekkefølgje endra seg faktisk etter klikk");
+    assert(afterRowIds.indexOf(secondMovableId) === beforeRowIds.indexOf(secondMovableId) + 1,
+      "det flytte elementet ('" + secondMovableId + "') flytta seg nøyaktig éin plass nedover i den lagra rekkefølgja");
+    // Regresjonstest for ein reell bug fanga under utvikling: eit klikk på
+    // ↑/↓ INNI panelet fører til at renderLiveEditReorderPanel() byter ut
+    // heile radlista SYNKRONT, MEDAN same klikk-hending framleis boblar mot
+    // document. Klikk-utanfor-lukkar-logikken (UX/Mobile Reviewer-funn,
+    // MEDIUM) må difor køyre i FANGST-fasen, elles sjekkar han
+    // panel.contains(e.target) mot eit element som alt er FJERNA frå DOM-en
+    // av re-renderinga, tolkar det feilaktig som eit klikk UTANFOR, og lukkar
+    // panelet med det same det vart brukt.
+    assert(doc.getElementById("vc-live-edit-reorder-panel").classList.contains("is-open"),
+      "eit klikk på ↑/↓ INNI panelet lukkar IKKJE panelet (regresjon: klikk-utanfor-logikken må bruke fangst-fasen, ikkje boble-fasen)");
+    // #hjem sitt element (den einaste sida DENNE runda medvite låser
+    // posisjonen til) skal framleis vere fyrste <section> i #main, uansett
+    // kva som skjedde med resten.
+    var mainSections = doc.querySelectorAll("#main > section");
+    if (mainSections.length) assert(mainSections[0].id === "hjem", "«hjem»-seksjonen er framleis fyrst i #main etter flyttinga");
+    // Panelet skal ha rendra seg sjølv på nytt (nye disabled-tilstandar for
+    // opp/ned ved dei nye posisjonane) utan at brukaren måtte lukke/opne det.
+    assert(!!doc.getElementById("vc-live-edit-reorder-panel").querySelector(".vc-reorder-row"),
+      "panelet viser framleis rader etter ei flytting (rendra seg sjølv på nytt in-place)");
+
+    // Rydd opp att: fjern den mellombelse pageOrder-endringa heilt, slik at
+    // resten av testsuiten (som ikkje ventar ei tilpassa seksjonsrekkefølgje)
+    // held fram med platforma sin vanlege standardrekkefølgje.
+    var nsCleanup = window.App.store.get("nav-settings", {}) || {};
+    delete nsCleanup.pageOrder;
+    window.App.store.set("nav-settings", nsCleanup);
+    window.App.reloadConfig();
+    reorderBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("vc-live-edit-reorder-panel").classList.contains("is-open"), "eit andre klikk lukkar panelet att");
+
     // (1e) RIK TEKST-felt (about.text) -- les/skriv innerHTML, ikkje
     // textContent, så FORMATERING må overleve. Verktøylinja skal visast
     // medan aktiv, og Enter skal IKKJE lagre/avslutte (motsett av plain text).
