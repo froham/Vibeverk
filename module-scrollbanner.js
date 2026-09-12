@@ -330,6 +330,7 @@
         list.push(obj);
       }
       setBanners(list);
+      App.ui.commitImageFields(ed);
       syncModules();
       ed.innerHTML = "";
       renderAdminRoot(root);

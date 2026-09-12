@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.165.6 — 2026-09-12
+
+**Fiksa Media.free()-tidspunktet på tvers av ALLE 11 bruksstader av `imgField()`/`bindImageFields()`, ikkje berre den nye biletbyte-modalen.**
+
+Følgjer opp funnet frå 0.165.5 (Security Auditor, HIGH) -- Frode valde å fikse dette FØR push i staden for å utsetje det.
+
+- **Rotårsak**: `bindImageFields()` sin interne `setSrc()` (kalla ved KVART tastetrykk i URL-feltet/filval) og "Fjern bilde"-knappen kalla `Media.free(state.src)` UMIDDELBART, ikkje ved faktisk lagring. Eit "prøv ei erstatning, angre"-forsøk kunne difor slette det GAMLE biletet frå lagring (Supabase Storage-objekt eller lokal `media:`-ref) sjølv om skjemaet aldri vart lagra og `content`-modellen framleis peika på den (no sletta) gamle URL-en.
+- **Fiks**: `Media.free()` fjerna heilt frå `setSrc()`/`clear()`. Ny funksjon `commitImageFields(scope)` samanliknar kvart biletfelt sin FANGA opphavlege src (`wrap.dataset.imgfieldOriginalSrc`, sett éin gong ved binding) mot den ferdig-redigerte verdien, og frigjer BERRE dersom han faktisk endra seg -- kalla eksplisitt av kvar forbrukar RETT ETTER sin eigen stadfesta lagring, aldri før. Eksponert som `App.ui.commitImageFields` for modulfiler.
+- **Arkitekt-vurdering (2026-09-12) avdekte 11 bruksstader** (retta talfeil i ei tidlegare utgåve av denne oppføringa, som sa "9" -- Security Auditor stadfesta det faktiske talet er 11), ikkje berre dei 3 eg opphavleg kjende til: Web-admin sitt Innhald-skjema, `openNewsEditor()` (Aktuelt), tenestekort-editoren og den nye live-edit-biletmodalen (`core.js`, 4 stader), OG `module-faq.js`, `module-references.js`, `module-carousel.js` (to felt per slide -- bilete OG video-poster, dekt automatisk sidan `commitImageFields()` er generisk over alle `[data-imgfield]`-wraps i eit scope), `module-mediabank.js`, `module-scrollbanner.js`, `module-booking.js`, og `workspace/module-announcements.js` (7 modulfiler). Alle elleve fekk lagt til eksplisitt `commitImageFields()`-kall rett etter sin eigen lagringslogikk.
+- **Security Auditor-funn retta i same runde (MEDIUM)**: `workspace/module-announcements.js` sin `saveItem()` kalla lagre-callbacken UANSETT om Supabase-skrivinga faktisk lykkast (ingen `r.error`-sjekk) -- ein RLS-avvising/nettverksfeil kunne difor la `commitImageFields()` frigjere det GAMLE biletet sjølv om raden aldri vart oppdatert. Retta ved å sende feilen til callbacken (`cb(err)`) og berre kalle `commitImageFields()` når `!err`.
+- **Avveging, medvite akseptert**: ein nyleg opplasta, men aldri lagra/stadfesta fil vert ståande att som eit orphan Storage-objekt dersom brukaren avbryt/lukkar utan å lagre -- bortkasta lagringsplass, men ALDRI ei øydelagd, framleis brukt referanse (motsett av den gamle åtferda).
+- **To PRE-EKSISTERANDE tilfelle av same feilklasse, IKKJE del av denne runda, flagga av Security Auditor for eiga vurdering**: `workspace/module-orgdrift.js` sin eiendeler-biletredigering (`bindEiendelerEditor`, linje ~2327/2351) kallar `App.media.free()` direkte ved fjern/erstatt, FØR skjemaet sitt eige lagre-steg -- same "prøv, angre"-sårbarheit, berre via ein bevisst skriven, ikkje-delt mekanisme (ikkje `bindImageFields()`/`setSrc()`, difor ikkje dekt av fiksen over). `module-carousel.js` sin slide-slett-knapp (`freeSlideMedia()`, linje ~396-404) fjernar tilsvarande biletet/videoen frå lagring FØR karusell-editoren sitt eige "Lagre" faktisk skriv den oppdaterte slide-lista.
+- Verifisert med ein ekte regresjonstest (både jsdom og Playwright mot ekte produksjonsinnhald) mot ein reell lokal `media:`-ref: stadfesta at han OVERLEVER både utfylling og Avbryt, og BERRE vert frigjort etter stadfesta lagring. `test.js` utvida til 882 OK / 0 FEIL.
+
 ## 0.165.5 — 2026-09-12
 
 **"Rediger direkte på sida" utvida med det siste tekstfeltet (`hero.ctaLabel`) og eit heilt nytt biletbyte-system for `hero.image`/`about.image`/`services[].image`.**

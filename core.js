@@ -1838,10 +1838,12 @@ window.App = (function () {
   // bindImageFields()/readImageField() opererer utelukkande via
   // scope.querySelector(), ingen global-id- eller foreldre-skjema-antakelse,
   // så dei fungerer identisk inni ein sjølvstendig modal utanfor
-  // #admin-root. Media.free()/gjenbruk av gamalt bilete skjer AUTOMATISK
-  // inni imgField() sin eigen setSrc()/clear()-logikk -- ingen eigen
-  // frigjerings-kode trengst her, berre les den ferdige verdien ut via
-  // readImageField() og skriv til content-modellen på vanleg vis.
+  // #admin-root. Frigjering av eit FAKTISK erstatta bilete skjer via ein
+  // eksplisitt commitImageFields(root)-kall etter lagring (sjå save-
+  // handteraren under) -- IKKJE automatisk inni imgField() sin eigen
+  // setSrc()/clear() lenger (retta Security Auditor-funn, HIGH, 2026-09-12:
+  // det gamle biletet vart før fjerna frå lagring med EIN GONG ved kvart
+  // tastetrykk/filval, uavhengig av om brukaren sidan lagra eller avbraut).
   // Modul-scope referanse til aktiv modal sin close() -- retta Security
   // Auditor-funn (LOW/MEDIUM, 2026-09-12): setLiveEditMode(false) ("✕ Avslutt
   // redigering") visste tidlegare ingenting om ein ope biletbyte-modal, så
@@ -1884,6 +1886,7 @@ window.App = (function () {
     root.querySelector("[data-live-edit-image-save]").addEventListener("click", function () {
       target.set(readImageField(root, fieldId));
       saveContent();
+      commitImageFields(root);
       close();
       render();
       if (liveEditMode) applyLiveEditA11y(true);
@@ -2946,6 +2949,19 @@ window.App = (function () {
 
       let state, crop = null;   // crop = { ww, wh } i prosent av forhåndsvisningen
       try { state = Media.norm(JSON.parse(hidden.value)); } catch (e) { state = Media.norm(hidden.value); }
+      // Fangar OPPHAVLEG src FØR nokon redigering skjer -- retta Security
+      // Auditor-funn (HIGH, 2026-09-12): Media.free() vart tidlegare kalla
+      // her (i setSrc()/clear()) MED EIN GONG ved kvar tastetrykk/filval,
+      // ikkje ved faktisk lagring -- eit "prøv ei erstatning, angre"-forsøk
+      // sletta då det GAMLE biletet frå lagring sjølv om Avbryt/lukk aldri
+      // skreiv noko til content-modellen. Frigjeringa er no UTSETT til
+      // commitImageFields() (under) -- kalla av KVAR forbrukar av
+      // bindImageFields() rett etter sin eigen vellukka lagring, aldri her.
+      // Guard (`=== undefined`) -- retta Architect-vurdering 2026-09-12:
+      // bindImageFields() må berre fange dette FØRSTE gong for ein gjeven
+      // DOM-node, elles ville ein eventuell seinare re-binding av same
+      // (alt redigerte) node stille fange ein FEIL "opphavleg" verdi.
+      if (wrap.dataset.imgfieldOriginalSrc === undefined) wrap.dataset.imgfieldOriginalSrc = state.src || "";
 
       function parsePos(p) { const m = String(p).split(/\s+/); return [parseFloat(m[0]) || 50, parseFloat(m[1]) || 50]; }
       function sync() { hidden.value = JSON.stringify(state); }
@@ -3051,7 +3067,11 @@ window.App = (function () {
         if (img.complete && img.naturalWidth) layout(img.naturalWidth, img.naturalHeight);
         else { img.onload = function () { layout(img.naturalWidth, img.naturalHeight); }; img.onerror = function () { layout(0, 0); }; }
       }
-      function setSrc(src) { Media.free(state.src); state = { src: src, pos: "50% 50%", caption: state.caption || "", creditType: state.creditType || "", alt: state.alt || "" }; sync(); render(); }
+      // Media.free(state.src) FJERNA HERFRÅ 2026-09-12 -- sjå kommentaren
+      // attmed imgfieldOriginalSrc over. Frigjering av eit FAKTISK erstatta
+      // bilete skjer no berre via commitImageFields(), etter stadfesta
+      // lagring, aldri på kvart tastetrykk/filval her.
+      function setSrc(src) { state = { src: src, pos: "50% 50%", caption: state.caption || "", creditType: state.creditType || "", alt: state.alt || "" }; sync(); render(); }
 
       // Merking (enten/eller): radioknapper for type + fritekst-overstyring
       function activeCreditType() {
@@ -3091,7 +3111,8 @@ window.App = (function () {
       });
       url.addEventListener("input", function () { setSrc(url.value.trim()); });
       clear.addEventListener("click", function () {
-        Media.free(state.src);
+        // Media.free(state.src) FJERNA HERFRÅ 2026-09-12 -- same grunngjeving
+        // som setSrc() over, sjå imgfieldOriginalSrc-kommentaren.
         state = { src: "", pos: "50% 50%", caption: "", creditType: "", alt: "" };
         url.value = "";
         wrap.querySelectorAll("[data-imgfield-credit-type]").forEach(function (r) { r.checked = (r.value === ""); });
@@ -3159,6 +3180,28 @@ window.App = (function () {
       });
 
       render();
+    });
+  }
+
+  // Frigjer eit FAKTISK erstatta/fjerna bilete -- kalla av KVAR forbrukar av
+  // bindImageFields() rett etter sin eigen vellukka lagring (content-
+  // modellen alt oppdatert, saveContent()/tilsvarande alt kalla), ALDRI før.
+  // Retta Security Auditor-funn (HIGH, 2026-09-12): sjå imgfieldOriginalSrc-
+  // kommentaren i bindImageFields() for kvifor frigjeringa måtte flyttast
+  // hit frå setSrc()/clear(). Samanlikning er src-ONLY (Architect-vurdering
+  // 2026-09-12) -- pos/caption/creditType/alt endrar ikkje sjølve
+  // lagringsobjektet Media.free() peikar på. Ein nyleg opplasta, men aldri
+  // lagra, fil vert ståande att som eit orphan Storage-objekt dersom
+  // brukaren avbryt/lukkar utan å lagre -- akseptert bevisst avveging
+  // (bortkasta lagringsplass, ALDRI ei øydelagd, framleis brukt referanse).
+  function commitImageFields(scope) {
+    scope.querySelectorAll("[data-imgfield]").forEach(function (wrap) {
+      var original = wrap.dataset.imgfieldOriginalSrc || "";
+      var hidden = wrap.querySelector('input[type="hidden"]');
+      if (!hidden) return;
+      var finalSrc;
+      try { finalSrc = Media.norm(JSON.parse(hidden.value)).src; } catch (e) { finalSrc = Media.norm(hidden.value).src; }
+      if (original && original !== finalSrc) Media.free(original);
     });
   }
 
@@ -3945,6 +3988,7 @@ window.App = (function () {
         extraLines:     body.querySelector("#f-ft-extra").value.split("\n").map(function (l) { return l.trim(); }).filter(Boolean)
       };
       saveContent();
+      commitImageFields(body);
       render();
       setStatus(body.querySelector("[data-content-status]"), "Lagret.", "ok");
     });
@@ -4043,7 +4087,7 @@ window.App = (function () {
       } else {
         content.news.unshift({ id: "post-" + Date.now(), title: title, date: date, text: text, image: image, attachments: attachments });
       }
-      saveContent(); render(); adminNews(body);
+      saveContent(); commitImageFields(editor); render(); adminNews(body);
     });
   }
 
@@ -4158,7 +4202,7 @@ window.App = (function () {
       } else {
         content.services.push({ id: "svc-" + Date.now(), icon: icon, title: title, text: text, image: image });
       }
-      saveContent(); render(); adminServices(body);
+      saveContent(); commitImageFields(editor); render(); adminServices(body);
     });
   }
 
@@ -6516,6 +6560,10 @@ window.App = (function () {
       imageField:      imgField,
       bindImageFields: bindImageFields,
       readImageField:  readImageField,
+      // commitImageFields() -- MÅ kallast av kvar forbrukar rett etter sin
+      // eigen vellukka lagring (saveContent()/tilsvarande), aldri før. Sjå
+      // kommentaren attmed funksjonsdefinisjonen (2026-09-12-fiksen).
+      commitImageFields: commitImageFields,
       attachField:     function (id, existing) {   // vedleggsfelt-HTML
         return '<div class="field attach-field" data-attach>' +
           '<label>Vedlegg (valgfritt)</label>' +

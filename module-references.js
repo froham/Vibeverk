@@ -451,6 +451,7 @@
         list.push(obj);
       }
       setItems(list);
+      App.ui.commitImageFields(ed);
       renderAdmin(root);
     });
   }

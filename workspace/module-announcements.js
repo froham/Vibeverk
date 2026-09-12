@@ -93,9 +93,15 @@
         Intranet.logActivity({ type: "ann_created", label: "Ny sak: " + row.title });
       }
       App.store.set(STORE_KEY, _items);
-      cb && cb();
+      cb && cb(null);
       return;
     }
+    // cb(err) -- retta 2026-09-12 (Security Auditor-funn, MEDIUM): kallaren
+    // (openEditor() sin save-handterar) MÅ vite om lagringa faktisk lykkast
+    // før han frigjer det gamle biletet via commitImageFields(). cb() vart
+    // FØR alltid kalla utan feilinfo, sjølv om r.error var sett -- ei RLS-
+    // avvising/nettverksfeil kunne difor la det gamle biletet bli sletta frå
+    // Storage sjølv om raden aldri faktisk vart oppdatert.
     if (item) {
       _sb.from("announcements").update(row).eq("id", item.id).select().single().then(function (r) {
         if (!r.error && r.data) {
@@ -103,14 +109,14 @@
           if (idx >= 0) _items[idx] = r.data;
         }
         Intranet.logActivity({ type: "ann_updated", label: "Sak oppdatert: " + row.title });
-        cb && cb();
+        cb && cb(r.error || null);
       });
     } else {
       var insert = Object.assign({ author_id: uid(), published_at: new Date().toISOString() }, row);
       _sb.from("announcements").insert(insert).select().single().then(function (r) {
         if (!r.error && r.data) _items.unshift(r.data);
         Intranet.logActivity({ type: "ann_created", label: "Ny sak: " + row.title });
-        cb && cb();
+        cb && cb(r.error || null);
       });
     }
   }
@@ -415,7 +421,11 @@
         image:       App.ui.readImageField(ed, "ann-image"),
         attachments: App.ui.readAttachments(ed, "ann-attachments")
       };
-      saveItem(item || null, data, function () {
+      saveItem(item || null, data, function (err) {
+        // Frigjer berre det gamle biletet dersom lagringa FAKTISK lykkast --
+        // retta Security Auditor-funn (MEDIUM, 2026-09-12): sjå cb(err)-
+        // kommentaren i saveItem() over.
+        if (!err) App.ui.commitImageFields(ed);
         close();
         renderList(root, ctx);
         renderBanner();

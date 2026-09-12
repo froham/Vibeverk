@@ -1484,6 +1484,38 @@ const __asyncTests = (async () => {
     assert(!doc.getElementById("vc-live-edit-image-modal"), "Avbryt lukkar modalen");
     assert(window.App.getContent().about.image.src === beforeCancel, "Avbryt lagrar IKKJE endringa i modalen");
 
+    // (1h-ii-b) Security Auditor-funn (HIGH, 2026-09-12): Media.free() vart
+    // FØR kalla med EIN GONG ved kvart tastetrykk i URL-feltet (inni
+    // setSrc()), ikkje ved faktisk lagring -- eit "prøv, så Avbryt"-forsøk
+    // sletta det GAMLE biletet frå lagring sjølv om content-modellen (og
+    // Avbryt-testen over) framleis peika på den gamle URL-en. Retta ved å
+    // utsetje Media.free() til commitImageFields(), kalla FØRST etter
+    // stadfesta lagring. Testar mot ein ekte lokal "media:"-ref (einaste
+    // Media.free()-grein som er testbar utan ekte Supabase Storage).
+    var mediaRef = "media:test-" + Date.now();
+    window.App.store.set(mediaRef, "data:image/jpeg;base64,Zm9v");
+    window.App.getContent().about.image = { src: mediaRef, pos: "50% 50%" };
+    var aboutBtnMedia = doc.querySelector('[data-content-image-key="about.image"]');
+    // Avbryt-forsøket: skal ALDRI frigjere mediaRef, uansett kva som vart
+    // skrive inn i URL-feltet før Avbryt vart klikka.
+    aboutBtnMedia.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var mediaModal1 = doc.getElementById("vc-live-edit-image-modal");
+    mediaModal1.querySelector("[data-imgfield-url]").value = "https://eksempel.no/erstatning-som-blir-angra.jpg";
+    mediaModal1.querySelector("[data-imgfield-url]").dispatchEvent(new window.Event("input", { bubbles: true }));
+    assert(window.App.store.get(mediaRef) !== undefined, "mediaRef er IKKJE fjerna berre av å skrive i URL-feltet (utsett frigjering)");
+    mediaModal1.querySelector("[data-modal-close]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(window.App.store.get(mediaRef) !== undefined, "Avbryt frigjer IKKJE det opphavlege biletet -- hovudfunnet frå Security Auditor er retta");
+    // Lagre-forsøket (annan runde): NO skal mediaRef faktisk frigjerast,
+    // sidan biletet vart reelt erstatta OG stadfesta lagra.
+    var aboutBtnMedia2 = doc.querySelector('[data-content-image-key="about.image"]');
+    aboutBtnMedia2.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var mediaModal2 = doc.getElementById("vc-live-edit-image-modal");
+    mediaModal2.querySelector("[data-imgfield-url]").value = "https://eksempel.no/faktisk-erstatning.jpg";
+    mediaModal2.querySelector("[data-imgfield-url]").dispatchEvent(new window.Event("input", { bubbles: true }));
+    mediaModal2.querySelector("[data-live-edit-image-save]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(window.App.store.get(mediaRef) === undefined, "mediaRef VERT frigjort etter stadfesta lagring (commitImageFields), ikkje før");
+    assert(window.App.getContent().about.image.src === "https://eksempel.no/faktisk-erstatning.jpg", "det nye biletet er faktisk lagra");
+
     // (1h-iii) Oppdikta/ikkje-eksisterande kort-id -- same tryggleiksprinsipp
     // som for tekst-felta (1g): skal ALDRI matche noko.
     var fakeImgBtn = doc.createElement("button");

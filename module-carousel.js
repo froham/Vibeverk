@@ -843,6 +843,11 @@
         list.push(obj);
       }
       setCarousels(list);
+      // App.ui.commitImageFields() er generisk over ALLE [data-imgfield]-
+      // wraps i scopet -- dekker automatisk BÅDE crsl-slide-image-<id> og
+      // crsl-slide-poster-<id> for kvar slide, ingen særhandsaming trengst
+      // for dei dynamiske per-slide-idane (Architect-vurdering 2026-09-12).
+      App.ui.commitImageFields(ed);
       syncModules();
       ed.innerHTML = "";
       renderAdminRoot(root);
