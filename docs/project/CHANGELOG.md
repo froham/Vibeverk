@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.166.1 — 2026-09-12
+
+**Eigendefinert farge lagt til i live-edit-formateringsverktøylinja, i tillegg til dei 5 faste fargeprikkane.**
+
+Frode: *"Er det mulig å få en farge som man kan definere selv i tillegg til paletten?"*
+
+- Ekte `<input type="color">` (native OS-fargeveljar) lagt til i `liveEditToolbar()`, same mønster som den eksisterande `richTextField()`-verktøylinja i Web-admin alt bruker (`data-rt-color` i `bindRichTextFields()`): fokuserer tilbake på det redigerbare elementet FØR `execCommand("foreColor")` køyrer, sidan eit klikk på ein ekte fargeinput flyttar nettlesarfokuset dit. Same `styleWithCSS`-rekkefølgje som dei faste fargeprikkane, av same grunn (unngår `<font>`-tagar som sanering fjerner ved lagring).
+- Skilt visuelt frå dei faste fargeprikkane med ein stipla (i staden for solid) kant.
+- Ingen ny mekanisme -- gjenbruker den etablerte, alt gjennomgåtte execCommand/styleWithCSS-vegen, difor ingen ny Security Auditor/UX-runde denne gongen.
+- Verifisert i ekte nettlesar mot ekte produksjonsinnhald (jsdom implementerer ikkje execCommand): vald farge lagra korrekt som `<span style="color:...">`, null skriving til produksjon stadfesta via reload. `test.js` utvida til 896 OK / 0 FEIL.
+
 ## 0.166.0 — 2026-09-12
 
 **Seksjonsrekkefølgje lagt til i "Rediger direkte på sida" -- fyrste funksjonen porta frå det separate `vibeverk-template`-mockup-prosjektet.**

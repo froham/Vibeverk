@@ -1941,6 +1941,18 @@ window.App = (function () {
       // (ville elles trengt !important og brote den faktiske fargevisinga).
       '.vc-live-edit-toolbar__swatch{width:44px;height:44px;min-width:44px;border-radius:8px;padding:0;' +
         'border:1.5px solid rgba(255,255,255,.4);}' +
+      // Eigendefinert-farge-kontrollen -- STRIKA kant (i staden for solid,
+      // som dei faste fargeprikkane) for å visuelt skilje "vel di eiga
+      // farge" frå dei faste, ferdigvalde alternativa, same visuelle språk
+      // som den stipla outline-en på sjølve [data-content-key]-elementa
+      // elles i live-edit. Den ekte <input type="color"> er berre 28px
+      // (native fargeinput-styling er upåliteleg på tvers av nettlesarar
+      // ved store storleikar), men SJØLVE knappen/etiketten held 44px for
+      // touch-mål-standarden.
+      '.vc-live-edit-toolbar__custom-color{width:44px;height:44px;display:flex;align-items:center;justify-content:center;' +
+        'border-radius:8px;border:1.5px dashed rgba(255,255,255,.5);cursor:pointer;}' +
+      '.vc-live-edit-toolbar__custom-color input[type="color"]{width:28px;height:28px;padding:0;border:none;' +
+        'cursor:pointer;background:none;}' +
       // "Bytt bilete"-knappen (data-content-image-key) -- position:relative
       // på foreldrene er OGSÅ gata bak body.vc-live-edit, sjølv om det i seg
       // sjølv er visuelt harmlaust (ingen offset sett), for å halde
@@ -2087,6 +2099,29 @@ window.App = (function () {
       });
       bar.appendChild(b);
     });
+    // Eigendefinert farge (2026-09-12, Frode: "er det mulig å få en farge
+    // som man kan definere selv i tillegg til paletten?") -- ekte
+    // <input type="color"> (native OS-fargeveljar), same mønster som den
+    // eksisterande richTextField()-verktøylinja i Web-admin alt bruker (sjå
+    // data-rt-color-handteraren i bindRichTextFields() lenger nede i denne
+    // fila): fokuser tilbake på det redigerbare elementet FØR execCommand,
+    // sidan eit klikk på ein ekte <input type="color"> flyttar nettlesar-
+    // fokuset dit medan OS-fargeveljaren er open. Held på SAME styleWithCSS-
+    // rekkefølgje som dei faste fargeprikkane over, av same grunn (elles
+    // <font>-tagar som vert filtrerte vekk ved lagring).
+    var customColorLabel = document.createElement("label");
+    customColorLabel.className = "vc-live-edit-toolbar__custom-color";
+    customColorLabel.title = "Eigendefinert farge";
+    var customColorInput = document.createElement("input");
+    customColorInput.type = "color";
+    customColorInput.value = "#142033";
+    customColorLabel.appendChild(customColorInput);
+    customColorInput.addEventListener("input", function () {
+      if (liveEditToolbarTrackEl) liveEditToolbarTrackEl.focus();
+      document.execCommand("styleWithCSS", false, true);
+      document.execCommand("foreColor", false, customColorInput.value);
+    });
+    bar.appendChild(customColorLabel);
     var sep2 = document.createElement("div"); sep2.className = "vc-live-edit-toolbar__sep"; bar.appendChild(sep2);
     var linkBtn = document.createElement("button");
     linkBtn.type = "button"; linkBtn.textContent = "🔗";
