@@ -1628,6 +1628,35 @@ const __asyncTests = (async () => {
     // separat via Playwright mot ekte produksjonsinnhald.
     var customColorInput = doc.querySelector(".vc-live-edit-toolbar__custom-color input[type=color]");
     assert(!!customColorInput, "eigendefinert-farge-kontrollen finst i formateringsverktøylinja, i tillegg til dei 5 faste fargeprikkane");
+    // Retta reell bug, EIN NIVÅ DJUPARE enn 0.166.2-fiksen (Frode:
+    // "Egendefinert farge fungerer ikke", stadfesta via ekte nettlesar-test
+    // 2026-09-12): eit fokus på den ekte <input type="color"> triggar eit
+    // EKTE blur-event på det redigerbare elementet (kan ALDRI unngåast via
+    // mousedown-preventDefault, ulikt vanlege verktøylinje-knappar). Utan
+    // relatedTarget-sjekken i onBlur() vart contenteditable/verktøylinja
+    // FJERNA MED DET SAME -- FØR brukaren i det heile hadde rokke å velje
+    // ein farge -- så den etterfølgjande execCommand("foreColor") trefte
+    // eit element som alt hadde slutta å vere redigerbart.
+    aboutTextEl.dispatchEvent(new window.FocusEvent("blur", { bubbles: false, relatedTarget: customColorInput }));
+    assert(aboutTextEl.getAttribute("contenteditable") === "true",
+      "blur MOT den eigendefinerte fargeveljaren avsluttar IKKJE redigeringa (relatedTarget peikar inn i verktøylinja)");
+    assert(doc.getElementById("vc-live-edit-toolbar").classList.contains("is-visible"),
+      "verktøylinja held fram med å vere synleg gjennom eit slikt blur");
+    // Eit blur mot NOKO ANNA (ikkje verktøylinja) skal framleis avslutte
+    // redigeringa som normalt -- regresjonsvakt mot at fiksen over vart for
+    // brei og aldri avsluttar redigering i det heile.
+    var outsideEl = doc.createElement("button");
+    doc.body.appendChild(outsideEl);
+    aboutTextEl.dispatchEvent(new window.FocusEvent("blur", { bubbles: false, relatedTarget: outsideEl }));
+    assert(aboutTextEl.getAttribute("contenteditable") !== "true",
+      "blur mot eit element UTANFOR verktøylinja avsluttar redigeringa som normalt");
+    outsideEl.remove();
+    // Attende i redigeringsmodus for resten av testblokka.
+    var aboutTextElAgain = doc.querySelector('[data-content-key="about.text"]');
+    aboutTextElAgain.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(aboutTextElAgain.getAttribute("contenteditable") === "true", "attende i redigeringsmodus for resten av testblokka");
+
+    aboutTextEl = aboutTextElAgain;
     aboutTextEl.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     assert(aboutTextEl.getAttribute("contenteditable") === "true", "about.text: Enter avsluttar IKKJE redigering (rik tekst treng vanleg linjeskift)");
     aboutTextEl.innerHTML = "<p>Ny <b>feit</b> tekst</p>";

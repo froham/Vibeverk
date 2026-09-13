@@ -2288,7 +2288,25 @@ window.App = (function () {
         if (isRich) el.innerHTML = original; else el.textContent = original;
       }
     }
-    function onBlur() { finish(true); }
+    // e.relatedTarget -- retta reell bug (Frode: "Egendefinert farge
+    // fungerer ikke", stadfesta via ekte nettlesar-test 2026-09-12, EIN
+    // NIVÅ DJUPARE enn 0.166.2-fiksen): eit klikk/fokus på den ekte
+    // <input type="color"> triggar eit EKTE blur-event på det redigerbare
+    // elementet (native fargeveljarar kan ALDRI unngå fokusskifte via
+    // mousedown-preventDefault, ulikt vanlege verktøylinje-knappar). Utan
+    // denne sjekken kalla onBlur() finish(true) MED DET SAME -- fjerna
+    // contenteditable OG gøymde verktøylinja -- FØR brukaren i det heile
+    // hadde rokke å velje ein farge i OS-fargeveljaren. Fargeklikk-
+    // handteraren sin etterfølgjande execCommand("foreColor") trefte då eit
+    // element som ALT hadde slutta å vere redigerbart, og gjorde reint
+    // ingenting. Løysing: ikkje avslutt redigeringa dersom fokuset gjekk
+    // TIL sjølve formateringsverktøylinja (som den eigendefinerte
+    // fargeveljaren ligg inni) -- berre til noko HEILT ANNA på sida.
+    function onBlur(e) {
+      var toolbar = document.getElementById("vc-live-edit-toolbar");
+      if (e && e.relatedTarget && toolbar && toolbar.contains(e.relatedTarget)) return;
+      finish(true);
+    }
     function onKeydown(ev) {
       // Enter lagrar/blurar for ALLE éin-line-felt (isSingleLine), anten dei
       // er rein tekst eller rik tekst -- retta reell regresjon (UX/Mobile

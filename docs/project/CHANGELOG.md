@@ -30,6 +30,16 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.166.3 — 2026-09-12
+
+**Eigendefinert farge -- fann og fiksa den EKTE rotårsaka, éin nivå djupare enn 0.166.2 sin fiks.**
+
+Frode: *"Egendefinert farge fungerer ikke"* -- rapportert på nytt etter at 0.166.2 (Range-lagring/gjenoppretting) alt skulle ha retta dette.
+
+- **Reell rotårsak**: eit fokus på den ekte `<input type="color">` triggar eit EKTE `blur`-event på det redigerbare elementet -- dette kan ALDRI unngåast via mousedown-preventDefault slik dei andre verktøylinje-knappane gjer, sidan det ville blokkert sjølve OS-fargeveljaren frå å opne. Feltet sin eigen `onBlur()`-handterar kalla FØR `finish(true)` UANSETT kva som utløyste blur-et -- fjerna `contenteditable` OG gøymde formateringsverktøylinja MED DET SAME, FØR brukaren i det heile hadde rokke å velje ein farge i dialogen. Den etterfølgjande `execCommand("foreColor")`-koden (frå 0.166.2-fiksen) trefte då eit element som alt hadde slutta å vere redigerbart, og gjorde reint ingenting -- ein heilt annan og djupare feil enn Range-tapet 0.166.2 retta, sjølv om symptomet var identisk.
+- **Fiks**: `onBlur()` sjekkar no `e.relatedTarget` (elementet som FEKK fokus) -- dersom det ligg INNI sjølve formateringsverktøylinja (der den eigendefinerte fargeveljaren bur), vert redigeringa IKKJE avslutta. Eit blur mot noko anna på sida oppfører seg heilt som før.
+- Verifisert i ekte nettlesar med ei ekte `.focus()`-hending mot fargeveljaren (nøyaktig det ein reell museklikk sin standardhandling utløyser): `contenteditable`/verktøylinja held no fram gjennom heile fargevalet, fargen vert lagra korrekt, og redigeringa held fram etterpå. `test.js` utvida med tre nye regresjonstestar (904 OK / 0 FEIL).
+
 ## 0.166.2 — 2026-09-12
 
 **To reelle, brukarrapporterte feil retta: eigendefinert farge og understreking i rik-tekst-formatering.**
