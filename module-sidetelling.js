@@ -49,6 +49,15 @@
   if (!(CFG.features && CFG.features.sidetelling === true)) return;
   var an = CFG.analytics || {};
   if (an.plausible) return; // kunden har valgt Plausible -- kjør ikke begge samtidig
+  // Security Auditor-funn (LOW, 2026-09-13): live-edit sin mobilvisning
+  // (core.js, openLiveEditMobilePreview) reloadar den ekte offentlege sida
+  // inni ein iframe kvar gong admin lagrar -- utan denne sperra ville KVAR
+  // slik reload telt som ein ekte, ny besøkjande-sidevisning, og stille
+  // blåst opp tenanten sine eigne besøkstal med éin rad per lagring medan
+  // ruta er open. "_mp="-parameteren er den same cache-buster-markøren
+  // openLiveEditMobilePreview() alt legg på src-en for å tvinge fram ein
+  // reload -- reint intern bruk, aldri sett av ein ekte besøkjande.
+  if (String(location.search || "").indexOf("_mp=") !== -1) return;
 
   var _sb = App.supabase;
   var sbCfg = CFG.supabase || {};

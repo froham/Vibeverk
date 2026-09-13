@@ -195,6 +195,17 @@ window.Components = (function () {
     return `<button type="button" class="vc-live-edit-image-btn" data-content-image-key="${esc(imageKey)}" aria-label="Bytt bilete">${icon("photo")} Bytt bilete</button>`;
   }
 
+  // "Dupliser"-knapp for tenestekort i "Rediger direkte på sida" (2026-09-13,
+  // enkelt/middels-lista) -- same skjult-utanfor-live-edit-prinsipp som
+  // liveEditImageBtn() over. Plassert i MOTSETT hjørne av biletbyte-knappen
+  // (som ligg top-right på kort MED bilete) for å aldri kollidere. Verkar
+  // likt på klassisk (card) og cinema (vc-tj-band), sjølv om dei har heilt
+  // ulik visuell utforming -- begge deler same underliggande
+  // content.services-datamodell.
+  function liveEditDupBtn(serviceId) {
+    return `<button type="button" class="vc-live-edit-dup-btn" data-dup-service="${esc(serviceId)}" aria-label="Dupliser dette tenestekortet">${icon("copy")}</button>`;
+  }
+
   // Seksjonsetikett ("eyebrow") med signatur-markøren foran. contentKey er
   // valfri (2026-09-17, "rediger direkte på sida") -- set data-content-key
   // berre når ein kallar eksplisitt ber om det, så alle eksisterande
@@ -1138,7 +1149,7 @@ window.Components = (function () {
 
   /* --- Eksport -------------------------------------------------------------- */
   return {
-    esc, icon, button, liveEditImageBtn, eyebrow, field, passwordToggle, termsField, consentPurposesField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
+    esc, icon, button, liveEditImageBtn, liveEditDupBtn, eyebrow, field, passwordToggle, termsField, consentPurposesField, richTextField, sanitizeRichHtml, stripHtml, formatDate, image, coverImg, imageField, creditBadge, helpIcon, SOCIAL_PLATFORMS,
     fileIcon, formatBytes, truncate, paragraphs,
     nav, hero, about, services, news, newsPost, articleView, archiveView, simpleView,
     contact, footer, modal, tabbar,

@@ -467,9 +467,48 @@ window.App = (function () {
 
     // Frigjør plass når et opplastet bilde fjernes/erstattes. Tåler både
     // { src, pos }-objekt og ren streng.
+    //
+    // isStillReferencedInContent() -- retta Security Auditor-funn (HIGH,
+    // 2026-09-13): "Dupliser tenestekort" gjer ein SHALLOW-klone av
+    // tenestekortet (Object.assign({}, card, {id:...})), som let originalen
+    // OG kopien DELE nøyaktig same image-objektreferanse (same src-streng,
+    // altså same faktiske lagringsfil) heilt til nokon eksplisitt byter
+    // biletet på det eine kortet. Utan denne sjekken ville eit slikt
+    // biletbyte -- via commitImageFields()/Media.free() -- SLETTA sjølve
+    // lagringsfila det ANDRE, urørte kortet framleis viser, og late det stå
+    // att med eit knekt bilete på den live sida, utan varsel. Skannar
+    // content.hero/about/services/news (alt som ligg i sjølve
+    // `content`-objektet) -- IKKJE andre modular sine eigne Store-nøklar
+    // (mediabank/karusell/scrollbanner/booking osv.), som har sine eigne,
+    // separate mekanismar og ikkje er del av dette funnet. Kalla FØR ei
+    // sletting, aldri etter -- av den nye verdien er alt skriven inn i
+    // content-modellen på kalletidspunktet, så eit treff her kan berre bety
+    // ein ANNAN, framleis-verande bruk av same fil.
+    // TEL faktiske treff (>= 2), returnerer IKKJE berre "finst han i det
+    // heile" -- retta ein reell falsk positiv fanga av eigen test: fleire
+    // EKSISTERANDE slette-handterarar (t.d. adminNews sin "Slett"-knapp)
+    // kallar alt Media.free(post.image) FØR sjølve elementet vert fjerna
+    // frå content.news-arrayet. Med ein rein "finst han"-sjekk ville dette
+    // sett den eine, faktiske referansen (elementet som held på å bli
+    // sletta) og feilaktig tolka det som "framleis i bruk ein annan stad",
+    // og BLOKKERT ei heilt vanleg, korrekt sletting. Ved å krevje >= 2 treff
+    // fungerer sjekken korrekt uansett rekkefølgje: éin treff (berre
+    // elementet som sjølv held på å forsvinne/bli bytt ut) frigjer som
+    // normalt, to eller fleire treff (eit ANNA element deler framleis same
+    // fil) blokkerer frigjeringa.
+    isStillReferencedInContent: function (src) {
+      function matches(img) { return img && img.src === src; }
+      var count = 0;
+      if (matches(content.hero && content.hero.image)) count++;
+      if (matches(content.about && content.about.image)) count++;
+      (content.services || []).forEach(function (c) { if (matches(c.image)) count++; });
+      (content.news || []).forEach(function (p) { if (matches(p.image)) count++; });
+      return count >= 2;
+    },
     free: function (value) {
       const src = (value && typeof value === "object") ? value.src : value;
       if (!src) return;
+      if (this.isStillReferencedInContent(src)) return;
       if (src.indexOf("media:") === 0) { Store.remove(src); return; }
       if (_sb && src.indexOf("/storage/v1/object/public/media/") > -1) {
         const path = src.split("/storage/v1/object/public/media/")[1];
@@ -794,7 +833,7 @@ window.App = (function () {
     content.services.forEach(function (c) { c.image = Media.norm(c.image); });
     content.news.forEach(function (p) { p.image = Media.norm(p.image); p.attachments = p.attachments || []; });
   }
-  function saveContent() { Store.set("content", content); }
+  function saveContent() { Store.set("content", content); refreshLiveEditMobilePreviewIfOpen(); }
 
   // Leads (innsendte kontaktskjema + tilbudsforespurnadar). Flytta ut av
   // store 2026-07-03 (del to av CRITICAL-funnet om ubetinga anon-SELECT, sjå
@@ -1893,6 +1932,119 @@ window.App = (function () {
     });
   }
 
+  // Skrifttypar (2026-09-13, enkelt/middels-lista) -- gjenbruker EKSAKT
+  // same adminDesignFontar(body) som Design-fana sin eigen "Fonter"-tab alt
+  // brukar (fontpar-snarvegar, fritekstfelt, live-førehandsvising, lagring
+  // til superconfig.fonts via applySuperConfig()/applyTheme()) -- ingen ny
+  // skriftveljar-mekanisme, berre ein ny inngangsstad for den same. Same
+  // gjenbruks-prinsipp som biletbyte-modalen over gjer med imgField().
+  var liveEditFontModalClose = null;
+  function openLiveEditFontModal() {
+    if (liveEditFontModalClose) liveEditFontModalClose();
+    var root = document.createElement("div");
+    root.id = "vc-live-edit-font-modal";
+    root.innerHTML = C.modal({
+      title: "Skrifttypar",
+      label: "Skrifttypar",
+      body: '<div data-live-edit-font-body></div>'
+    });
+    document.body.appendChild(root);
+    // Skjuler live-edit-verktøylinja/avslutt-knappen medan modalen er open
+    // -- sjå identisk grunngjeving (UX/Mobile Reviewer-funn, HIGH, 2026-09-13)
+    // attmed openLiveEditMobilePreview() sin tilsvarande klasse.
+    document.body.classList.add("vc-live-edit-modal-open");
+    adminDesignFontar(root.querySelector("[data-live-edit-font-body]"));
+    function close() {
+      root.remove();
+      document.body.classList.remove("vc-live-edit-modal-open");
+      document.removeEventListener("keydown", onEsc);
+      liveEditFontModalClose = null;
+    }
+    function onEsc(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", onEsc);
+    liveEditFontModalClose = close;
+    root.querySelectorAll("[data-modal-close]").forEach(function (el) {
+      el.addEventListener("click", close);
+    });
+  }
+
+  // Mobilvisning (enkelt/middels-lista, 2026-09-13). Lastar INN ATT den
+  // faktiske, offentlege sida i ein sandboksa iframe -- akkurat same
+  // filosofi som pbc-preview-iframe i Console (console-core.js sin
+  // pbRenderPreviewInto()-kommentar): operatøren skal sjå EKTE rendering,
+  // ikkje ein tilnærma kopi bygd på nytt her. Går via location.reload av
+  // iframe-en (ikkje ein eigen render-funksjon) sidan denne sida -- i
+  // motsetnad til Console sin side-byggjar -- ikkje har eit isolert
+  // seksjons-array å rendre frå; heile appen bootstrapar seg sjølv frå
+  // Store/localStorage kvar gong. saveContent()/saveNavSettings() skriv
+  // ALLTID synkront til localStorage (sjå Store.set), så ein fersk
+  // iframe-reload etter kvar lagring viser oppdatert innhald med det
+  // same, heilt uavhengig av den debounca Supabase-synken.
+  // sandbox="allow-scripts allow-same-origin": treng allow-scripts sidan
+  // iframe-en må bootstrapa heile appen sin eigen JS -- ikkje berre statisk
+  // HTML+CSS slik Console sin førehandsvisning er. Kombinasjonen fjernar
+  // formelt iframe-isolasjonen (kjent nettlesar-åtvaring), men målet her
+  // ER at iframe-en skal vere akkurat same opphav/session som foreldresida
+  // -- den viser berre den vanlege offentlege sida på nytt, ingen
+  // brukarstyrt/ekstern HTML kjem nokon gong inn i han.
+  var liveEditMobilePreviewClose = null;
+  function liveEditMobilePreviewUrl() {
+    var hash = location.hash;
+    // "#admin" er i dag den EINASTE hash-verdien route()/handleRoute() (sjå
+    // desse funksjonane i core.js) let utløyse noko anna enn ei rein
+    // lesevising -- stadfesta av Security Auditor 2026-09-13 (gjennomgått
+    // heile route()-tabellen: sak/, aktuelt/alle, modul-underrute, rein
+    // seksjonsanker -- ingen av dei skriv/utløyser handling berre av å
+    // lastast). Denne eine-verdi-lista må OPPDATERAST dersom ein framtidig
+    // modul nokon gong legg til ei hash-utløyst destruktiv/skrivande rute
+    // (t.d. avmelding, betalings-retur).
+    if (hash === "#admin") hash = ""; // ikkje opne passord-modalen på nytt inni førehandsvisinga
+    // "_mp"-parameteren er berre ein cache-buster som tvingar iframe-en til
+    // faktisk å laste sida på nytt (uendra src reloadar ikkje) -- route()
+    // over les BERRE location.hash, aldri location.search, så han påverkar
+    // ikkje kva som blir vist.
+    var sep = location.search ? "&" : "?";
+    return location.pathname + location.search + sep + "_mp=" + Date.now() + hash;
+  }
+  function openLiveEditMobilePreview() {
+    if (liveEditMobilePreviewClose) { liveEditMobilePreviewClose(); return; }
+    var root = document.createElement("div");
+    root.id = "vc-live-edit-mp-modal";
+    root.innerHTML = C.modal({
+      title: "Mobilvisning",
+      label: "Mobilvisning",
+      body: '<p class="vc-mp-hint">Viser sida på nytt etter kvar endring du lagrar. Adressefelt/skjermstorleik på ei ekte mobileining kan avvike noko frå ramma her.</p>' +
+        '<div class="vc-mp-scroll"><div class="vc-mp-frame"><iframe id="vc-live-edit-mp-iframe" class="vc-mp-iframe" title="Mobilvisning av sida" sandbox="allow-scripts allow-same-origin"></iframe></div></div>'
+    });
+    document.body.appendChild(root);
+    // UX/Mobile Reviewer-funn (HIGH, 2026-09-13): den nede-til-venstre live-
+    // edit-verktøylinja (z-index 9999) og «Avslutt redigering»-knappen låg
+    // OPPÅ denne modalen (som berre har z-index 100), og dekte i praksis
+    // hint-teksten heilt og delar av sjølve ramma i liggjande mobilformat.
+    // Skjuler dei heilt medan modalen er open -- same
+    // opne/lukke-livssyklus-mønster som liveEditFontModalClose alt bruker.
+    document.body.classList.add("vc-live-edit-modal-open");
+    var iframe = root.querySelector("#vc-live-edit-mp-iframe");
+    iframe.src = liveEditMobilePreviewUrl();
+    function close() {
+      root.remove();
+      document.body.classList.remove("vc-live-edit-modal-open");
+      document.removeEventListener("keydown", onEsc);
+      liveEditMobilePreviewClose = null;
+    }
+    function onEsc(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", onEsc);
+    liveEditMobilePreviewClose = close;
+    root.querySelectorAll("[data-modal-close]").forEach(function (el) {
+      el.addEventListener("click", close);
+    });
+  }
+  function refreshLiveEditMobilePreviewIfOpen() {
+    var iframe = document.getElementById("vc-live-edit-mp-iframe");
+    if (!iframe) return;
+    iframe.src = liveEditMobilePreviewUrl();
+  }
+
   var liveEditMode = false;
   var liveEditBound = false;
 
@@ -1962,13 +2114,24 @@ window.App = (function () {
       // kontrollane (UX/Mobile Reviewer-standarden etablert 2026-09-17).
       'body.vc-live-edit .section--hero, body.vc-live-edit .vc-hero__visual,' +
       'body.vc-live-edit .about__media, body.vc-live-edit .vc-about__photo,' +
-      'body.vc-live-edit .card{position:relative;}' +
+      'body.vc-live-edit .card, body.vc-live-edit .vc-tj-band{position:relative;}' +
       '.vc-live-edit-image-btn{display:none;}' +
       'body.vc-live-edit .vc-live-edit-image-btn{display:flex;position:absolute;top:10px;right:10px;z-index:5;' +
         'align-items:center;gap:.35rem;min-height:44px;padding:.4rem .8rem;' +
         'background:rgba(20,32,51,.85);color:#fff;border:none;border-radius:999px;' +
         'font:600 .8rem/1 var(--font-body,sans-serif);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);}' +
       'body.vc-live-edit .vc-live-edit-image-btn:hover{background:rgba(20,32,51,.95);}' +
+      // "Dupliser"-knappen (data-dup-service) -- MOTSETT hjørne (top-left)
+      // av biletbyte-knappen (top-right) for å aldri kollidere på kort som
+      // har begge. Same mørke pille-språk, 44px sirkelforma i staden for
+      // pille (berre eit ikon, ingen tekst -- meir kompakt for eit kort som
+      // alt kan ha ein anna knapp i motsett hjørne).
+      '.vc-live-edit-dup-btn{display:none;}' +
+      'body.vc-live-edit .vc-live-edit-dup-btn{display:flex;position:absolute;top:10px;left:10px;z-index:5;' +
+        'align-items:center;justify-content:center;width:44px;height:44px;' +
+        'background:rgba(20,32,51,.85);color:#fff;border:none;border-radius:999px;' +
+        'cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:1.1rem;}' +
+      'body.vc-live-edit .vc-live-edit-dup-btn:hover{background:rgba(20,32,51,.95);}' +
       // Save/Avbryt i biletbyte-modalen -- retta UX/Mobile Reviewer-funn
       // (HIGH, 2026-09-12): dei arva .admin-row__actions .btn sin kompakte
       // storleik (laga for admin-liste-radhandlingar, ikkje primære modal-
@@ -1987,11 +2150,21 @@ window.App = (function () {
       // og eksisterande sjeldan-brukt konfigurasjon -- ikkje fiksa no.
       // safe-area-aware botn, same grunngjeving som avslutt-knappen (iOS
       // heim-indikator/Android gest-navigasjon).
-      '.vc-live-edit-reorder-btn{display:none;position:fixed;left:24px;bottom:calc(24px + env(safe-area-inset-bottom, 0px));' +
-        'z-index:9999;background:var(--color-text,#142033);color:#fff;border:none;border-radius:999px;' +
-        'padding:.7rem 1.1rem;min-height:44px;font:600 .85rem/1 var(--font-body,sans-serif);cursor:pointer;' +
-        'box-shadow:0 12px 32px rgba(0,0,0,.28);align-items:center;gap:.4rem;}' +
-      'body.vc-live-edit .vc-live-edit-reorder-btn{display:flex;}' +
+      // FELLES flex-behaldar for BEGGE dei nede-til-venstre-knappane (2026-
+      // 09-13, retta då skrift-knappen vart lagt til): unngår å måtte finne
+      // eit NYTT, kollisjonsfritt hjørne for kvar ny knapp -- OPPE ville
+      // kollidert med sida sin eigen nav/header (ofte har ein mobil-meny-
+      // knapp nettopp i det hjørnet), NEDE-TIL-HØGRE med chat-widgeten sin
+      // standardplassering. Knappane legg seg naturleg attmed kvarandre
+      // (flex-wrap på svært smale skjermar), ingen manuell piksel-utrekning
+      // trengst for framtidige tillegg.
+      '.vc-live-edit-tools{display:none;position:fixed;left:24px;bottom:calc(24px + env(safe-area-inset-bottom, 0px));' +
+        'z-index:9999;gap:8px;flex-wrap:wrap;max-width:calc(100vw - 48px);}' +
+      'body.vc-live-edit .vc-live-edit-tools{display:flex;}' +
+      '.vc-live-edit-reorder-btn, .vc-live-edit-font-btn{background:var(--color-text,#142033);color:#fff;' +
+        'border:none;border-radius:999px;padding:.7rem 1.1rem;min-height:44px;' +
+        'font:600 .85rem/1 var(--font-body,sans-serif);cursor:pointer;box-shadow:0 12px 32px rgba(0,0,0,.28);' +
+        'display:flex;align-items:center;gap:.4rem;}' +
       // max-height/overflow-y -- retta UX/Mobile Reviewer-funn (HIGH,
       // 2026-09-12): panelet hadde ingen høgdegrense, og liveEditReorderable
       // Mods() viser ALLE synlege sidemodular (kan bli 8-9+ rader på ein
@@ -2002,16 +2175,27 @@ window.App = (function () {
       // dei på.
       '.vc-live-edit-reorder-panel{display:none;position:fixed;left:24px;bottom:calc(84px + env(safe-area-inset-bottom, 0px));' +
         'z-index:9999;background:var(--color-text,#142033);padding:10px;border-radius:14px;' +
-        'box-shadow:0 20px 50px rgba(0,0,0,.32);min-width:260px;max-width:calc(100vw - 48px);flex-direction:column;gap:2px;' +
+        'box-shadow:0 20px 50px rgba(0,0,0,.32);min-width:300px;max-width:calc(100vw - 48px);flex-direction:column;gap:2px;' +
         'max-height:calc(100vh - 140px);overflow-y:auto;}' +
       '.vc-live-edit-reorder-panel.is-open{display:flex;}' +
       '.vc-live-edit-reorder-panel .vc-reorder-title{margin:0;color:rgba(255,255,255,.6);' +
         'font:700 11px/1 var(--font-body,sans-serif);text-transform:uppercase;letter-spacing:.06em;padding:2px 8px 8px;}' +
       '.vc-reorder-row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.06);color:#fff;' +
         'padding:0 6px 0 10px;border-radius:8px;font:600 13px/1 var(--font-body,sans-serif);min-height:44px;box-sizing:border-box;}' +
+      // flex:1 på sjølve namnet -- retta layoutbug ved innføring av
+      // skjul/vis-knappen (2026-09-13): utan denne ville BÅDE han og opp/
+      // ned-knappane prøvd å pressast heilt til høgre kvar for seg via
+      // margin-left:auto, som i staden pressa dei FRÅ KVARANDRE (auga rett
+      // etter namnet, opp/ned lengst til høgre). Namnet tek no all ledig
+      // plass, så resten av kontrollane held seg naturleg samla til høgre.
+      '.vc-reorder-row > span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
       '.vc-reorder-row.is-locked{opacity:.55;}' +
-      '.vc-reorder-row .vc-reorder-hint{margin-left:auto;font-size:.72rem;opacity:.8;font-weight:500;}' +
-      '.vc-reorder-btns{margin-left:auto;display:flex;gap:2px;}' +
+      '.vc-reorder-row.is-hidden-section{opacity:.45;}' +
+      '.vc-reorder-row .vc-reorder-hint{font-size:.72rem;opacity:.8;font-weight:500;}' +
+      '.vc-reorder-btns{display:flex;gap:2px;}' +
+      '.vc-reorder-eye{width:44px;height:44px;min-width:44px;background:none;border:none;' +
+        'font-size:1.05rem;cursor:pointer;border-radius:6px;flex-shrink:0;}' +
+      '.vc-reorder-eye:hover{background:rgba(255,255,255,.15);}' +
       // 44px -- retta UX/Mobile Reviewer-funn (HIGH, 2026-09-12): det
       // opphavlege 36px-avviket vart grunngjeve med at to knappar ikkje
       // hadde plass ved sida av kvarandre i eit 230px-breitt panel, men
@@ -2023,7 +2207,48 @@ window.App = (function () {
       '.vc-reorder-mv{width:44px;height:44px;min-width:44px;background:rgba(255,255,255,.1);border:none;' +
         'border-radius:6px;color:#fff;font-size:1.1rem;cursor:pointer;}' +
       '.vc-reorder-mv:hover:not(:disabled){background:rgba(255,255,255,.2);}' +
-      '.vc-reorder-mv:disabled{opacity:.3;cursor:default;}';
+      '.vc-reorder-mv:disabled{opacity:.3;cursor:default;}' +
+      '.vc-reorder-status{margin:6px 2px 0;font-size:.76rem;color:rgba(255,255,255,.75);min-height:1.1em;}' +
+      // Telefonramme rundt førehandsvisings-iframen -- FAST 375px iframe-
+      // breidde (ei vanleg mobil-viewport-breidde), uansett kor smal sjølve
+      // modal-ramma er. Retta UX/Mobile Reviewer-funn (HIGH, 2026-09-13):
+      // den opphavlege max-width:100%-varianten let ramma KRYMPE ned mot
+      // ca. 299px inni ein smal admin-modal på ein 375px-brei skjerm (målt
+      // direkte via getBoundingClientRect() i ekte nettlesar) -- altså
+      // nettopp på den breidda ein admin sjølv sit på mobil ville brukt
+      // funksjonen frå, fekk han eit FALSKT, smalare mobilbilete enn sida
+      // sine eigne @media(max-width:...)-brytepunkt faktisk målrettar (same
+      // prinsipp som Console sin pbc-preview-iframe.w-mobile-klasse nyttar,
+      // berre der har sjølve Console-panelet nok fast breidde til at det
+      // aldri vart eit problem). Løysinga her er ein eigen skrollande
+      // ytre-behaldar (.vc-mp-scroll) i staden for å la ramma sjølv krympe
+      // -- ramma held alltid ekte 375px, og ein smal modal skrollar
+      // sidelengs for å vise heile ramma, i staden for å teikne feil.
+      '.vc-mp-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}' +
+      '.vc-mp-frame{width:375px;flex-shrink:0;height:min(70vh,640px);margin:0 auto;' +
+        'border:10px solid var(--color-text,#142033);border-radius:28px;overflow:hidden;' +
+        'box-shadow:0 12px 40px rgba(0,0,0,.25);background:#fff;}' +
+      '.vc-mp-iframe{width:100%;height:100%;border:none;display:block;}' +
+      '.vc-mp-hint{margin:0 0 12px;font-size:.8rem;color:var(--color-muted,#666);text-align:center;}' +
+      // Skjuler live-edit sin flytande verktøylinje og avslutt-knapp medan
+      // font- eller mobilvisings-modalen er open -- retta UX/Mobile
+      // Reviewer-funn (HIGH, 2026-09-13): begge desse hadde z-index:9999,
+      // HØGARE enn sjølve modalen (z-index:100 i index.html), og synte seg
+      // difor OPPÅ modalinnhaldet -- stadfesta i ekte nettlesar at dette i
+      // praksis dekte mobilvisinga sin hint-tekst heilt, og i liggjande
+      // mobilformat delar av sjølve telefonramma. Klassen vert sett/fjerna
+      // av openLiveEditFontModal()/openLiveEditMobilePreview() sine eigne
+      // opne/lukke-funksjonar.
+      // body.vc-live-edit.vc-live-edit-modal-open (IKKJE berre
+      // .vc-live-edit-modal-open åleine) -- må ha MINST like høg
+      // spesifisitet som "body.vc-live-edit .vc-live-edit-tools{display:
+      // flex}" (element+to klassar) lenger oppe, elles taper denne skjule-
+      // regelen mot han sjølv om han står seinare i fila. Retta reell feil
+      // fanga under eiga verifisering (2026-09-13): fyrste forsøket brukte
+      // berre to klassar utan "body", som var svakare enn element+to-klassar
+      // og difor ALDRI vann kappestriden -- verktøylinja synte seg framleis.
+      'body.vc-live-edit.vc-live-edit-modal-open .vc-live-edit-tools,' +
+      'body.vc-live-edit.vc-live-edit-modal-open .vc-live-edit-exit{display:none;}';
     document.head.appendChild(style);
   }
 
@@ -2346,10 +2571,14 @@ window.App = (function () {
      utan biletbakgrunn, uleseleg kvit tekst på lys bakgrunn. Same
      eksklusjon som vibeverk-template sin eigen mockup gjorde, av tilsvarande
      grunn (der pga. ein hardkoda negativ margin-top). */
+  // MERK 2026-09-13: returnerer no ALLE side-moduler, INKLUDERT skjulte --
+  // filteret på synlegheit vart flytta ut herifrå og inn i sjølve
+  // rendringa, sidan panelet no OGSÅ skal kunne VISE ATT ein skjult
+  // seksjon (same som Innstillingar → Navigasjon sin ↑/↓/synleg-tabell alt
+  // gjer) -- eit reint synleg-filter her ville gjort skjulte seksjonar
+  // umogleg å finne att frå live-edit-panelet.
   function liveEditReorderableMods() {
     var ns = getNavSettings();
-    var hidden = ns.pageHidden || [];
-    var shown = ns.pageShown || [];
     var allMods = orderedModules().filter(function (m) { return m.label && !m.adminOnly && (m.render || m.renderPage); });
     var custOrder = ns.pageOrder || [];
     var mods;
@@ -2359,10 +2588,16 @@ window.App = (function () {
       custOrder.forEach(function (id) { if (indexed[id]) { mods.push(indexed[id]); delete indexed[id]; } });
       Object.values(indexed).forEach(function (m) { mods.push(m); });
     } else { mods = allMods.slice(); }
-    return mods.filter(function (m) {
-      var isPageOnly = !!(m.page && !m.inline);
-      return isPageOnly ? shown.indexOf(m.id) > -1 : hidden.indexOf(m.id) === -1;
-    });
+    return mods;
+  }
+  // Same synleg/skjult-logikk som renderPageTable() i adminNavigation()
+  // (core.js) bruker for akkurat denne modulen -- to ulike lagringsnøklar
+  // avhengig av om modulen er "page-only" (krev eksplisitt pageShown) eller
+  // "inline" (synleg som standard, krev eksplisitt pageHidden for å skjulast).
+  function liveEditModHidden(m) {
+    var ns = getNavSettings();
+    var isPageOnly = !!(m.page && !m.inline);
+    return isPageOnly ? (ns.pageShown || []).indexOf(m.id) === -1 : (ns.pageHidden || []).indexOf(m.id) > -1;
   }
   function renderLiveEditReorderPanel() {
     var listEl = document.querySelector("#vc-live-edit-reorder-panel [data-reorder-list]");
@@ -2370,18 +2605,56 @@ window.App = (function () {
     var mods = liveEditReorderableMods();
     var heroMod = mods.filter(function (m) { return m.id === "hjem"; })[0];
     var rest = mods.filter(function (m) { return m.id !== "hjem"; });
+    // "Skjul/vis"-veksling (2026-09-13, Frode: enkelt/middels-lista) --
+    // gjenbruker EKSAKT same nav-settings.pageHidden/pageShown som
+    // Innstillingar → Navigasjon sin eksisterande synleg-avkryssingsboks
+    // alt skriv til, same prinsipp som pageOrder over. data-was-hidden
+    // lagrar tilstanden PÅ RENDER-TIDSPUNKTET, sidan klikk-handteraren
+    // treng å vite kva han skal VEKSLE TIL, ikkje berre lese ferskt att
+    // (som ville gjeve feil resultat viss han las etter eiga skriving).
+    // title lagt til (UX/Mobile Reviewer, MEDIUM, 2026-09-13) -- panelet
+    // brukte alt title på den låste "Hjem"-rada for akkurat denne typen
+    // "forklar ikkje-opplagt kontroll ved hover"-behov, denne mangla han
+    // heilt. aria-pressed FJERNA (same funn) -- send saman med ein
+    // handling-fraset aria-label ("Skjul...") las motstridande ut ("skjul
+    // denne", pressed=true) for skjermlesarar; knappen oppfører seg som
+    // opp/ned-knappane (ei eingongshandling, ikkje ein sann av/på-brytar
+    // med eige state-fraset namn).
+    function eyeBtn(m) {
+      var hidden = liveEditModHidden(m);
+      var isPageOnly = !!(m.page && !m.inline);
+      var label = hidden ? "Vis seksjonen «" + C.esc(modLabel(m)) + "» att" : "Skjul seksjonen «" + C.esc(modLabel(m)) + "»";
+      return '<button type="button" class="vc-reorder-eye" data-reorder-vis="' + C.esc(m.id) + '" ' +
+        'data-page-only="' + (isPageOnly ? "1" : "0") + '" data-was-hidden="' + (hidden ? "1" : "0") + '" ' +
+        'aria-label="' + label + '" title="' + label + '">' + (hidden ? "🚫" : "👁") + '</button>';
+    }
     var heroRow = heroMod
-      ? '<div class="vc-reorder-row is-locked" title="Forsida må alltid stå først for at malen skal fungere som tiltenkt"><span>' + C.esc(modLabel(heroMod)) + '</span><span class="vc-reorder-hint">alltid først</span></div>'
+      ? '<div class="vc-reorder-row is-locked' + (liveEditModHidden(heroMod) ? " is-hidden-section" : "") + '" title="Forsida må alltid stå først for at malen skal fungere som tiltenkt"><span>' + C.esc(modLabel(heroMod)) + '</span>' +
+          eyeBtn(heroMod) +
+          '<span class="vc-reorder-hint">alltid først</span></div>'
       : "";
     listEl.innerHTML = heroRow + rest.map(function (m, i) {
-      return '<div class="vc-reorder-row" data-reorder-row-id="' + C.esc(m.id) + '">' +
+      return '<div class="vc-reorder-row' + (liveEditModHidden(m) ? " is-hidden-section" : "") + '" data-reorder-row-id="' + C.esc(m.id) + '">' +
         '<span>' + C.esc(modLabel(m)) + '</span>' +
+        eyeBtn(m) +
         '<span class="vc-reorder-btns">' +
           '<button type="button" class="vc-reorder-mv" data-reorder-up="' + C.esc(m.id) + '" aria-label="Flytt opp" ' + (i === 0 ? "disabled" : "") + '>↑</button>' +
           '<button type="button" class="vc-reorder-mv" data-reorder-dn="' + C.esc(m.id) + '" aria-label="Flytt ned" ' + (i === rest.length - 1 ? "disabled" : "") + '>↓</button>' +
         '</span>' +
       '</div>';
     }).join("");
+    // Status-tekst -- retta UX/Mobile Reviewer-funn (HIGH, 2026-09-13):
+    // panelet gav FØR ingen tilbakemelding i det heile, korkje for
+    // flytting eller skjuling, ulikt tilsvarande Innstillingar → Navigasjon-
+    // tabell (som viser "Lagret."/"Rekkefølge oppdatert."). Særleg viktig
+    // for skjuling: ein admin scrolla vekk frå den aktuelle seksjonen har
+    // elles INGEN synleg stadfesting på at den live sida faktisk endra seg.
+    function setReorderStatus(msg) {
+      var st = document.querySelector("#vc-live-edit-reorder-panel [data-reorder-status]");
+      if (!st) return;
+      st.textContent = msg;
+      setTimeout(function () { if (st) st.textContent = ""; }, 2000);
+    }
     listEl.querySelectorAll("[data-reorder-up],[data-reorder-dn]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var isUp = btn.hasAttribute("data-reorder-up");
@@ -2397,6 +2670,28 @@ window.App = (function () {
         render();
         if (liveEditMode) applyLiveEditA11y(true);
         renderLiveEditReorderPanel();
+        setReorderStatus("Rekkefølge oppdatert.");
+      });
+    });
+    listEl.querySelectorAll("[data-reorder-vis]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-reorder-vis");
+        var isPageOnly = btn.getAttribute("data-page-only") === "1";
+        var nowVisible = btn.getAttribute("data-was-hidden") === "1"; // veksling: var skjult -> vert no synleg
+        var label = modLabel(liveEditReorderableMods().filter(function (mm) { return mm.id === id; })[0] || { id: id });
+        var cur = getNavSettings();
+        if (isPageOnly) {
+          cur.pageShown = (cur.pageShown || []).filter(function (x) { return x !== id; });
+          if (nowVisible) cur.pageShown.push(id);
+        } else {
+          cur.pageHidden = (cur.pageHidden || []).filter(function (x) { return x !== id; });
+          if (!nowVisible) cur.pageHidden.push(id);
+        }
+        saveNavSettings(cur);
+        render();
+        if (liveEditMode) applyLiveEditA11y(true);
+        renderLiveEditReorderPanel();
+        setReorderStatus(nowVisible ? "«" + label + "» er synleg att." : "«" + label + "» er skjult.");
       });
     });
   }
@@ -2407,6 +2702,8 @@ window.App = (function () {
     // Security Auditor-funn (LOW/MEDIUM, 2026-09-12), sjå kommentaren attmed
     // liveEditImageModalClose over.
     if (!on && liveEditImageModalClose) liveEditImageModalClose();
+    if (!on && liveEditFontModalClose) liveEditFontModalClose();
+    if (!on && liveEditMobilePreviewClose) liveEditMobilePreviewClose();
     liveEditStyleTag();
     document.body.classList.toggle("vc-live-edit", on);
     applyLiveEditA11y(on);
@@ -2422,10 +2719,13 @@ window.App = (function () {
     } else if (!on && exitBtn) {
       exitBtn.remove();
     }
-    var reorderBtn = document.getElementById("vc-live-edit-reorder-btn");
+    var toolsWrap = document.getElementById("vc-live-edit-tools");
     var reorderPanel = document.getElementById("vc-live-edit-reorder-panel");
-    if (on && !reorderBtn) {
-      reorderBtn = document.createElement("button");
+    if (on && !toolsWrap) {
+      toolsWrap = document.createElement("div");
+      toolsWrap.id = "vc-live-edit-tools";
+      toolsWrap.className = "vc-live-edit-tools";
+      var reorderBtn = document.createElement("button");
       reorderBtn.type = "button";
       reorderBtn.id = "vc-live-edit-reorder-btn";
       reorderBtn.className = "vc-live-edit-reorder-btn";
@@ -2433,15 +2733,30 @@ window.App = (function () {
       reorderPanel = document.createElement("div");
       reorderPanel.id = "vc-live-edit-reorder-panel";
       reorderPanel.className = "vc-live-edit-reorder-panel";
-      reorderPanel.innerHTML = '<p class="vc-reorder-title">Rekkefølge på seksjonar</p><div data-reorder-list></div>';
+      reorderPanel.innerHTML = '<p class="vc-reorder-title">Rekkefølge på seksjonar</p><div data-reorder-list></div><p class="vc-reorder-status" data-reorder-status role="status" aria-live="polite"></p>';
       reorderBtn.addEventListener("click", function () {
         reorderPanel.classList.toggle("is-open");
         if (reorderPanel.classList.contains("is-open")) renderLiveEditReorderPanel();
       });
-      document.body.appendChild(reorderBtn);
+      var fontBtn = document.createElement("button");
+      fontBtn.type = "button";
+      fontBtn.id = "vc-live-edit-font-btn";
+      fontBtn.className = "vc-live-edit-font-btn";
+      fontBtn.textContent = "Aa Skrift";
+      fontBtn.addEventListener("click", function () { openLiveEditFontModal(); });
+      var mobilePreviewBtn = document.createElement("button");
+      mobilePreviewBtn.type = "button";
+      mobilePreviewBtn.id = "vc-live-edit-mp-btn";
+      mobilePreviewBtn.className = "vc-live-edit-font-btn";
+      mobilePreviewBtn.textContent = "▭ Mobilvisning";
+      mobilePreviewBtn.addEventListener("click", function () { openLiveEditMobilePreview(); });
+      toolsWrap.appendChild(reorderBtn);
+      toolsWrap.appendChild(fontBtn);
+      toolsWrap.appendChild(mobilePreviewBtn);
+      document.body.appendChild(toolsWrap);
       document.body.appendChild(reorderPanel);
     } else if (!on) {
-      if (reorderBtn) reorderBtn.remove();
+      if (toolsWrap) toolsWrap.remove();
       if (reorderPanel) reorderPanel.remove();
     }
     if (!liveEditBound) {
@@ -2489,6 +2804,40 @@ window.App = (function () {
         e.preventDefault();
         e.stopPropagation();
         openLiveEditImageModal(el.getAttribute("data-content-image-key"), target);
+      });
+      // "Dupliser"-knappen (data-dup-service) -- enkelt/middels-lista,
+      // 2026-09-13. Same tryggleiksprinsipp som resten av live-edit: klikk-
+      // handteraren les ALDRI id-verdien direkte inn i eit array-index,
+      // berre bruker han til å SLÅ OPP det faktiske kortet -- ein oppdikta/
+      // ikkje-eksisterande id gjev simpelthen ingen match (null), aldri eit
+      // gjettesteg mot eit anna, ekte kort.
+      document.addEventListener("click", function (e) {
+        if (!liveEditMode) return;
+        var el = e.target.closest("[data-dup-service]");
+        if (!el) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var id = el.getAttribute("data-dup-service");
+        var card = content.services.filter(function (c) { return c.id === id; })[0];
+        if (!card) return;
+        var idx = content.services.indexOf(card);
+        // image: Object.assign({}, card.image) -- DJUP-kopierer biletobjektet
+        // (ikkje berre deler referansen) -- retta Security Auditor-funn
+        // (HIGH, 2026-09-13), sjå isStillReferencedInContent()-kommentaren i
+        // Media-objektet for full grunngjeving. Same underliggande
+        // lagringsfil (src) er framleis DELT mellom originalen og kopien
+        // rett etter duplisering -- det er korrekt og forventa for ein
+        // faktisk duplikat -- men Media.free() sin nye referanse-sjekk hindrar
+        // no at eit SEINARE biletbyte på det eine kortet slettar fila det
+        // andre framleis viser.
+        var clone = Object.assign({}, card, {
+          id: "svc-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          image: card.image ? Object.assign({}, card.image) : card.image
+        });
+        content.services.splice(idx + 1, 0, clone);
+        saveContent();
+        render();
+        if (liveEditMode) applyLiveEditA11y(true);
       });
       // Escape/klikk-utanfor lukkar rekkefølgje-panelet -- retta UX/Mobile
       // Reviewer-funn (MEDIUM, 2026-09-12): biletbyte-modalen har alt begge
@@ -3808,7 +4157,7 @@ window.App = (function () {
     var liveEditSection = LIVE_EDIT_TEMPLATES.indexOf(current) !== -1
       ? '<div class="admin-group" style="margin-bottom:1.2rem">' +
           '<strong style="display:block;margin-bottom:.3rem">Rediger direkte på sida</strong>' +
-          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver. Bilder som allerede er lagt inn kan byttes ut ved å klikke «Bytt bilete» øverst i hjørnet — for å legge til et helt nytt bilde der det ikke finnes et fra før, bruk skjemaet under «Innhold». Bruk «↕ Rekkefølge»-knappen nede til venstre for å endre rekkefølgen på seksjonene (samme innstilling som tabellen i Innstillinger → Navigasjon).</p>' +
+          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver. Bilder som allerede er lagt inn kan byttes ut ved å klikke «Bytt bilete» øverst i hjørnet — for å legge til et helt nytt bilde der det ikke finnes et fra før, bruk skjemaet under «Innhold». Bruk «↕ Rekkefølge»-knappen nede til venstre for å endre rekkefølgen på seksjonene, eller skjule/vise dem med øye-ikonet (samme innstilling som tabellen i Innstillinger → Navigasjon). Kopier-knappen øverst i venstre hjørne på et tjenestekort lager en kopi av kortet. Bruk «Aa Skrift»-knappen nede til venstre for å endre skrifttypene for hele siden. Bruk «▭ Mobilvisning»-knappen for å se hvordan siden ser ut på mobil mens du redigerer — den oppdaterer seg selv hver gang du lagrer en endring.</p>' +
           C.button({ label: "Rediger direkte på sida", variant: "ghost", attrs: 'data-live-edit-start' }) +
         '</div>'
       : '';
@@ -4503,7 +4852,7 @@ window.App = (function () {
   /* --- Navigasjons-innstillinger ------------------------------------------- */
   // Lagrer { moduleId: { nav: bool, footer: bool } }
   function getNavSettings() { return Store.get("nav-settings", {}) || {}; }
-  function saveNavSettings(v) { Store.set("nav-settings", v); }
+  function saveNavSettings(v) { Store.set("nav-settings", v); refreshLiveEditMobilePreviewIfOpen(); }
 
   // Henter moduler i custom nav-rekkefølge (felles for toppmeny og footer)
   function getNavOrderedMods() {
@@ -6457,6 +6806,22 @@ window.App = (function () {
       loadContent();
       applyTheme();         // på nytt etter hydration: plukk opp Supabase-lagra fargar/fontar
       initAnalytics();
+      // Må kallast HER, uavhengig av om nokon nokon gong går inn i live-
+      // redigering -- retta reell produksjonsbug (2026-09-13, oppdaga via
+      // Playwright-verifisering av mobilvisings-funksjonen, IKKJE spesifikk
+      // for han): «Bytt bilete»/dupliser-knappane (C.liveEditImageBtn()/
+      // C.liveEditDupBtn()) blir rendra UFORBEHOLDE av malane kvar gong
+      // hero/about/eit tenestekort har eit bilete, og var meint å vere
+      // skjulte via display:none i liveEditStyleTag() sin CSS -- men den
+      // funksjonen vart FØR berre kalla frå setLiveEditMode(), altså aldri
+      // for ein vanleg besøkande som ikkje sjølv opnar admin. Stadfesta ved
+      // å laste den ekte offentlege sida reint (ingen admin/live-edit i det
+      // heile): knappen synte "display:block" og var synleg oppå
+      // framsidebiletet for KVAR besøkande. liveEditStyleTag() er trygt å
+      // kalle her sjølv om han aldri blir brukt vidare -- han er idempotent
+      // (guard via document.getElementById) og set berre CSS-reglar som
+      // uansett berre trer i kraft under body.vc-live-edit.
+      liveEditStyleTag();
       currentView = route().view;
       render();
       started = true;
@@ -6700,6 +7065,10 @@ window.App = (function () {
   }
 
   function initAnalytics() {
+    // Security Auditor-funn (LOW, 2026-09-13): sjå tilsvarande sperre i
+    // module-sidetelling.js -- same grunngjeving, unngår at mobilvisings-
+    // iframen sine automatiske reloads tel som ekte Plausible-sidevisingar.
+    if (String(location.search || "").indexOf("_mp=") !== -1) return;
     const a  = Store.get("analytics", null) || (CFG.analytics || {});
     const pl = (a.plausible || "").trim();
 
