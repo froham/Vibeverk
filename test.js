@@ -1601,6 +1601,36 @@ const __asyncTests = (async () => {
     assert(!!doc.getElementById("vc-live-edit-reorder-panel").querySelector(".vc-reorder-row"),
       "panelet viser framleis rader etter ei flytting (rendra seg sjølv på nytt in-place)");
 
+    // (1i-ii) Skjul/vis-veksling (2026-09-13, Frode: enkelt/middels-lista) --
+    // gjenbruker EKSAKT same nav-settings.pageHidden/pageShown som
+    // Innstillingar → Navigasjon sin eksisterande synleg-avkryssingsboks alt
+    // skriv til. Målretter "tjenester" spesifikt (garantert ein ekte
+    // <section id="tjenester">, ulikt t.d. Referansar som rendrar under eit
+    // anna id-mønster) for ein påliteleg DOM-eksistens-sjekk.
+    var svcRow = reorderPanel.querySelector('[data-reorder-row-id="tjenester"]');
+    assert(!!svcRow, "tjenester har ei rad i rekkefølgje-panelet");
+    var svcEye = svcRow.querySelector("[data-reorder-vis]");
+    assert(!!svcEye, "tjenester-rada har ein skjul/vis-knapp");
+    assert(svcEye.getAttribute("title") === svcEye.getAttribute("aria-label"), "tjenester-auga har ein title-tooltip som samsvarar med aria-label");
+    assert(!!doc.getElementById("tjenester"), "tjenester-seksjonen finst i #main før skjuling");
+    svcEye.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var afterHideNs = window.App.store.get("nav-settings", {}) || {};
+    var svcRowAfterHide = reorderPanel.querySelector('[data-reorder-row-id="tjenester"]');
+    assert(svcRowAfterHide.classList.contains("is-hidden-section"), "tjenester-rada får is-hidden-section-klassen etter skjuling");
+    assert((afterHideNs.pageHidden || []).indexOf("tjenester") !== -1, "tjenester lagt til i nav-settings.pageHidden");
+    assert(!doc.getElementById("tjenester"), "tjenester-seksjonen er faktisk borte frå #main etter skjuling");
+    // Statustekst -- retta UX/Mobile Reviewer-funn (HIGH, 2026-09-13):
+    // panelet gav FØR ingen tilbakemelding om at skjulinga faktisk skjedde.
+    var reorderStatus = doc.querySelector("#vc-live-edit-reorder-panel [data-reorder-status]");
+    assert(!!reorderStatus && reorderStatus.textContent.indexOf("skjult") !== -1, "statustekst stadfestar skjulinga: " + (reorderStatus && reorderStatus.textContent));
+    // Vis han att.
+    svcRowAfterHide.querySelector("[data-reorder-vis]").dispatchEvent(new window.Event("click", { bubbles: true }));
+    var afterShowNs = window.App.store.get("nav-settings", {}) || {};
+    assert((afterShowNs.pageHidden || []).indexOf("tjenester") === -1, "tjenester fjerna att frå nav-settings.pageHidden");
+    assert(!!doc.getElementById("tjenester"), "tjenester-seksjonen er synleg att i #main");
+    assert(reorderStatus.textContent.indexOf("synleg") !== -1, "statustekst stadfestar at han er synleg att: " + reorderStatus.textContent);
+    reorderPanel = doc.getElementById("vc-live-edit-reorder-panel");
+
     // Rydd opp att: fjern den mellombelse pageOrder-endringa heilt, slik at
     // resten av testsuiten (som ikkje ventar ei tilpassa seksjonsrekkefølgje)
     // held fram med platforma sin vanlege standardrekkefølgje.
@@ -1610,6 +1640,20 @@ const __asyncTests = (async () => {
     window.App.reloadConfig();
     reorderBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
     assert(!doc.getElementById("vc-live-edit-reorder-panel").classList.contains("is-open"), "eit andre klikk lukkar panelet att");
+
+    // (1k) Skrift-snarveg (2026-09-13, enkelt/middels-lista) -- gjenbruker
+    // EKSAKT same adminDesignFontar(body) som Design-fana sin eigen "Fonter"-
+    // fane alt bruker, berre inni ein modal i staden for admin-panelet.
+    var fontBtn = doc.getElementById("vc-live-edit-font-btn");
+    assert(!!fontBtn, "«Aa Skrift»-knappen finst medan live-redigering er aktiv");
+    fontBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var fontModal = doc.getElementById("vc-live-edit-font-modal");
+    assert(!!fontModal, "klikk opnar skrift-modalen");
+    assert(!!fontModal.querySelector("#cs-d-dfont") && !!fontModal.querySelector("#cs-d-bfont"),
+      "modalen inneheld dei same display-/brødtekst-font-felta som Design-fana sin eigen fonteveljar");
+    assert(fontModal.querySelectorAll(".fontpair-btn").length > 0, "modalen viser dei ferdige fontpar-snarvegane");
+    fontModal.querySelector(".modal__close").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("vc-live-edit-font-modal"), "lukk-knappen fjernar modalen att");
 
     // (1e) RIK TEKST-felt (about.text) -- les/skriv innerHTML, ikkje
     // textContent, så FORMATERING må overleve. Verktøylinja skal visast
@@ -1709,6 +1753,64 @@ const __asyncTests = (async () => {
     fakeCard.dispatchEvent(new window.Event("click", { bubbles: true }));
     assert(fakeCard.getAttribute("contenteditable") !== "true", "services.<oppdikta-id>.title: matchar ALDRI (eksistenssjekk mot ekte content.services handhevast)");
     fakeCard.remove();
+
+    // (1j) "Dupliser"-knappen på tenestekort (2026-09-13, enkelt/middels-
+    // lista) -- same tryggleiksprinsipp som resten av live-edit: klikk-
+    // handteraren SLÅR OPP kortet via id, gjettar ALDRI ut frå eit
+    // array-index.
+    var dupCountBefore = window.App.getContent().services.length;
+    var dupBtn = doc.querySelector('[data-dup-service="' + firstServiceId + '"]');
+    assert(!!dupBtn, "tenestekortet har ein dupliser-knapp");
+    dupBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var svcAfterDup = window.App.getContent().services;
+    assert(svcAfterDup.length === dupCountBefore + 1, "eitt nytt kort er lagt til etter duplisering");
+    var origIdx = svcAfterDup.findIndex(function (c) { return c.id === firstServiceId; });
+    var clonedCard = svcAfterDup[origIdx + 1];
+    assert(!!clonedCard && clonedCard.id !== firstServiceId, "den nye kopien har ein NY, unik id -- ikkje same id som originalen");
+    assert(clonedCard.title === svcAfterDup[origIdx].title && clonedCard.text === svcAfterDup[origIdx].text,
+      "kopien har identisk tittel/tekst som originalen");
+    assert(svcAfterDup.filter(function (c) { return c.id === clonedCard.id; }).length === 1, "kopien sin id finst berre éin gong (ingen duplikat-id)");
+    // Oppdikta/ikkje-eksisterande id -- skal vere eit reint no-op.
+    var fakeDupBtn = doc.createElement("button");
+    fakeDupBtn.setAttribute("data-dup-service", "dette-kortet-finst-ikkje");
+    doc.body.appendChild(fakeDupBtn);
+    fakeDupBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(window.App.getContent().services.length === dupCountBefore + 1, "duplisering av ein oppdikta id legg IKKJE til noko nytt kort");
+    fakeDupBtn.remove();
+    // Rydd opp att: fjern kopien, slik at resten av testsuiten (som ventar
+    // eit fast tal tenestekort) held fram uendra.
+    window.App.getContent().services = window.App.getContent().services.filter(function (c) { return c.id !== clonedCard.id; });
+
+    // (1j-ii) Retta Security Auditor-funn (HIGH, 2026-09-13): "Dupliser"
+    // gjer at to kort kan DELE same underliggande biletfil (same src).
+    // Media.free() skal ALDRI slette ei fil så lenge NOKON ANNAN stad i
+    // content framleis peikar på henne -- verifisert direkte mot
+    // App.media (isStillReferencedInContent/free), sidan sjølve
+    // biletbyte-modal-flyten krev execCommand/native fargeveljar-mekanikk
+    // jsdom ikkje støttar (irrelevant her uansett, feltet dette gjeld er
+    // biletreferansar, ikkje rik tekst).
+    var sharedRef = "media:test-shared-" + Date.now();
+    window.App.store.set(sharedRef, "data:image/jpeg;base64,Zm9v");
+    var svcForShare = window.App.getContent().services;
+    var origImg0 = svcForShare[0].image, origImg1 = svcForShare[1].image;
+    svcForShare[0].image = { src: sharedRef, pos: "50% 50%" };
+    svcForShare[1].image = { src: sharedRef, pos: "50% 50%" };
+    assert(window.App.media.isStillReferencedInContent(sharedRef) === true,
+      "delt biletreferanse mellom to kort vert korrekt oppdaga (2 treff)");
+    window.App.media.free(sharedRef);
+    assert(window.App.store.get(sharedRef) !== undefined,
+      "Media.free() SLETTAR IKKJE ei fil som eit anna kort framleis peikar på (hovudfunnet frå Security Auditor er retta)");
+    // Det eine kortet "flyttar seg vidare" til eit anna bilete -- no er det
+    // berre EITT treff att, og fila skal kunne fjernast som normalt.
+    svcForShare[1].image = { src: "https://eksempel.no/anna-bilete.jpg", pos: "50% 50%" };
+    assert(window.App.media.isStillReferencedInContent(sharedRef) === false,
+      "berre éitt treff att (det andre kortet peikar no ein annan stad) -- IKKJE lenger rekna som delt");
+    window.App.media.free(sharedRef);
+    assert(window.App.store.get(sharedRef) === undefined,
+      "Media.free() fjernar fila som normalt når ho reelt ikkje er i bruk lenger andre stader");
+    // Rydd opp att.
+    svcForShare[0].image = origImg0;
+    svcForShare[1].image = origImg1;
 
     // (2) Ukjend nøkkel -- skal vere ein reint no-op, aldri bli redigerbar
     var ghost = doc.createElement("h2");

@@ -95,6 +95,7 @@
         : '<span class="card__icon">' + C.icon(c.icon) + '</span>';
       return (
         '<article class="card ' + (hasImg ? "card--media" : "") + '">' +
+          C.liveEditDupBtn(c.id) +
           (hasImg ? media : "") +
           '<div class="card__body">' +
             (hasImg ? "" : media) +

@@ -30,6 +30,20 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.167.0 — 2026-09-13
+
+**Tre nye funksjonar i "Rediger direkte på sida": skjul/vis seksjon, dupliser tenestekort, og ein skrift-snarveg -- dei tre "enkelt/middels"-elementa frå malverktøyet sitt prototypesett.**
+
+Frode: *"Kan du ta det som er på enkelt/middels?"* -- oppfølging etter ei kort vurdering av kva som attstår frå `vibeverk-template`-mockupen.
+
+- **Skjul/vis seksjon**: eit auge-ikon (👁/🚫) lagt til per rad i det eksisterande "↕ Rekkefølge"-panelet. Gjenbruker EKSAKT same `nav-settings.pageHidden`/`pageShown` som Innstillingar → Navigasjon sin eksisterande synleg-avkryssingsboks alt skriv til -- ingen ny lagringsmekanisme. `liveEditReorderableMods()` måtte utvidast til å returnere ALLE sidemodular (ikkje berre synlege), elles ville ein skjult seksjon vore umogleg å finne att frå panelet for å visast att.
+- **Dupliser tenestekort**: ein kopier-knapp i motsett hjørne av biletbyte-knappen på kvart tenestekort (klassisk sine `.card`, cinema sine `.vc-tj-band`). Slår opp kortet via id (aldri array-index), klonar det med ein ny, unik id.
+- **Skrift-snarveg**: ein ny "Aa Skrift"-knapp opnar EKSAKT same `adminDesignFontar(body)` som Design-fana sin eigen "Fonter"-fane alt bruker (fontpar-snarvegar, fritekstfelt, live-førehandsvising) -- berre inni ein liten modal i staden for admin-panelet. Ingen ny skriftveljar bygd.
+- **Layout-refaktorering**: "↕ Rekkefølge"- og "Aa Skrift"-knappane deler no ein felles flex-behaldar (`.vc-live-edit-tools`) nede til venstre, i staden for kvar sitt eige, hardkoda hjørne -- unngår å måtte finne eit nytt kollisjonsfritt hjørne for kvart nytt verktøy (oppe ville kollidert med sida sin eigen nav/mobil-meny-knapp, nede-til-høgre med chat-widgeten sin standardplassering).
+- **Security Auditor-funn retta før merge**: (1) hide-funksjonen sin `aria-label`/`data-was-hidden`-tilstand og eksistenssjekk vart uavhengig verifisert trygg (ingen BLOCKER/HIGH/MEDIUM). (2) Dupliser-funksjonen fekk eit REELT HIGH-funn: ein shallow-klone av tenestekortet let originalen og kopien DELE same biletobjektreferanse (same underliggande lagringsfil) -- eit seinare biletbyte på det eine kortet ville sletta fila det andre, urørte kortet framleis viser, via den eksisterande `Media.free()`. Fiksa generelt (ikkje berre for denne eine knappen) ved å leggje ein `isStillReferencedInContent()`-sjekk til sjølve `Media.free()`, som tel FAKTISKE treff (>= 2) i staden for berre "finst han" -- handterer korrekt at fleire EKSISTERANDE slette-handterarar alt kallar `Media.free()` FØR sjølve elementet vert fjerna frå arrayet.
+- **UX/Mobile Reviewer-funn retta før merge** (skjul/vis-funksjonen): manglande `title`-tooltip på auge-knappen (no lagt til, matcha den låste "Hjem"-rada sin eksisterande bruk av same mønster), manglande statustekst etter skjuling/framvising (no lagt til, matchar admin-tabellen sin "Lagret."-konvensjon), og eit `aria-pressed`/handling-fraset `aria-label`-mismatch som kunne lese motstridande for skjermlesarar (løyst ved å fjerne `aria-pressed`, sidan knappen oppfører seg som ei eingongshandling, ikkje ein sann av/på-brytar).
+- Verifisert i ekte nettlesar (375×667, mobil-viewport) mot ekte produksjonsinnhald: knapp-layout utan kollisjon, skrift-modal viser faktiske konfigurerte verdiar, skjul/vis fungerer med korrekt statustekst, biletdeling-vernet stadfesta direkte mot `Media.isStillReferencedInContent()`/`free()`. Null skriving til produksjon stadfesta via reload. `test.js` utvida til 930 OK / 0 FEIL.
+
 ## 0.166.3 — 2026-09-12
 
 **Eigendefinert farge -- fann og fiksa den EKTE rotårsaka, éin nivå djupare enn 0.166.2 sin fiks.**

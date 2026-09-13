@@ -461,6 +461,7 @@
     var bandsHtml = cards.map(function (c, i) {
       var num = i < 9 ? "0" + (i + 1) : String(i + 1);
       return '<div class="vc-tj-band reveal">' +
+        C.liveEditDupBtn(c.id) +
         '<div class="vc-tj-band__num" style="color:' + TJ_COLORS[i % TJ_COLORS.length] + '">' + num + '</div>' +
         '<h3 data-content-key="services.' + C.esc(c.id) + '.title">' + C.sanitizeRichHtml(c.title) + '</h3>' +
         '<div class="prose" data-content-key="services.' + C.esc(c.id) + '.text">' + C.sanitizeRichHtml(c.text) + '</div>' +
