@@ -113,6 +113,18 @@ assert(typeof window.VwSidetelling === "undefined", "sidetelling er av som stand
 assert(typeof window.App.getAnalyticsSessionId === "undefined",
   "App eksponerer ikkje lenger ein klient-side analyse-ID -- sesjonsgrupperinga skjer berre på serveren");
 
+// 1c) Regresjonstest for ein reell produksjonsbug (2026-09-13, oppdaga via
+// Playwright-verifisering av live-edit sin nye mobilvisings-funksjon, men
+// IKKJE spesifikk for han): #vc-live-edit-css (styletaggen som skjuler
+// «Bytt bilete»/dupliser-knappane via display:none utanfor live-redigering)
+// vart FØR berre injisert frå setLiveEditMode(), altså aldri for ein
+// vanleg besøkande som aldri opnar admin/live-edit sjølv. Ei stadfesta,
+// ekte, reint offentleg sidevising synte desse knappane synlege
+// (display:block) oppå framsidebiletet for KVAR besøkande. Sjekkar HER,
+// FØR nokon test lenger nede i fila nokon gong har starta live-edit, at
+// styletaggen alt finst rett etter vanleg oppstart.
+assert(!!doc.getElementById("vc-live-edit-css"), "vc-live-edit-css-styletaggen er injisert ved vanleg oppstart, ikkje berre når nokon faktisk startar live-redigering");
+
 // 1c) module-quiz.js: av som standard (features.quiz: false i config.js) --
 // modulen skal ikkje vise nokon seksjon i det heile, sjølv utan spørsmål
 // lagra (og her: fordi flagget er av, ikkje berre fordi lista er tom).
@@ -1652,8 +1664,58 @@ const __asyncTests = (async () => {
     assert(!!fontModal.querySelector("#cs-d-dfont") && !!fontModal.querySelector("#cs-d-bfont"),
       "modalen inneheld dei same display-/brødtekst-font-felta som Design-fana sin eigen fonteveljar");
     assert(fontModal.querySelectorAll(".fontpair-btn").length > 0, "modalen viser dei ferdige fontpar-snarvegane");
+    assert(doc.body.classList.contains("vc-live-edit-modal-open"), "body får vc-live-edit-modal-open medan skrift-modalen er open (same fiks som mobilvisinga)");
     fontModal.querySelector(".modal__close").dispatchEvent(new window.Event("click", { bubbles: true }));
     assert(!doc.getElementById("vc-live-edit-font-modal"), "lukk-knappen fjernar modalen att");
+    assert(!doc.body.classList.contains("vc-live-edit-modal-open"), "vc-live-edit-modal-open fjernast att når skrift-modalen lukkast");
+
+    // (1l) Mobilvisning (2026-09-13, enkelt/middels-lista) -- opnar ein
+    // sandboksa iframe som lastar sida sjølv på nytt. jsdom navigerer
+    // aldri faktisk ein iframe (ingen ekte nettverk/rendering-motor), så
+    // testen her dekkjer det som FAKTISK kan verifiserast i dette
+    // rammeverket: knappen finst, klikk opnar modalen med rett iframe-
+    // oppsett (sandbox-attributtet, src peikar på sida sjølv), og at src
+    // faktisk ENDRAR SEG (cache-buster) neste gong ei lagring skjer medan
+    // modalen er open -- provar at saveContent()/saveNavSettings() faktisk
+    // triggar ein ny "reload" i staden for å ikkje gjere noko. Sjølve
+    // sidevisinga inni iframe-en er verifisert manuelt (Playwright mot
+    // reell produksjon), ikkje her.
+    var mpBtn = doc.getElementById("vc-live-edit-mp-btn");
+    assert(!!mpBtn, "«Mobilvisning»-knappen finst medan live-redigering er aktiv");
+    mpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    var mpModal = doc.getElementById("vc-live-edit-mp-modal");
+    assert(!!mpModal, "klikk opnar mobilvisings-modalen");
+    var mpIframe = mpModal.querySelector("#vc-live-edit-mp-iframe");
+    assert(!!mpIframe, "modalen inneheld iframe-en");
+    assert(mpIframe.getAttribute("sandbox") === "allow-scripts allow-same-origin",
+      "iframe-en er sandboksa til akkurat allow-scripts+allow-same-origin, ikkje breiare");
+    assert(/_mp=\d+/.test(mpIframe.getAttribute("src") || ""), "src har ein cache-buster-parameter: " + mpIframe.getAttribute("src"));
+    // UX/Mobile Reviewer-funn (HIGH, 2026-09-13): den flytande verktøylinja/
+    // avslutt-knappen (z-index 9999) synte seg OPPÅ denne modalen (z-index
+    // 100) i ekte nettlesar, og dekte hint-teksten heilt. Fiksa via ein
+    // body-klasse CSS-en skjuler dei to elementa gjennom -- jsdom reknar
+    // ikkje pålitseleg ut CSS-spesifisitet/cascade for getComputedStyle, så
+    // testen her sjekkar det faktiske, jsdom-verifiserbare grunnlaget for
+    // fiksen (at klassen faktisk vert sett/fjerna), ikkje det visuelle
+    // resultatet -- det er verifisert manuelt i ekte nettlesar i staden.
+    assert(doc.body.classList.contains("vc-live-edit-modal-open"), "body får vc-live-edit-modal-open medan mobilvisings-modalen er open");
+    var mpSrcBefore = mpIframe.getAttribute("src");
+    var aboutHeadingEl = doc.querySelector('[data-content-key="about.heading"]');
+    var aboutHeadingBeforeMpTest = aboutHeadingEl.textContent;
+    aboutHeadingEl.dispatchEvent(new window.Event("click", { bubbles: true }));
+    aboutHeadingEl.textContent = "Om oss (mobilvisning-test)";
+    aboutHeadingEl.dispatchEvent(new window.Event("blur", { bubbles: true }));
+    var mpSrcAfter = doc.getElementById("vc-live-edit-mp-iframe").getAttribute("src");
+    assert(mpSrcAfter !== mpSrcBefore, "iframe-src endrar seg (tvingar reload) etter ei lagring medan modalen er open");
+    mpModal.querySelector(".modal__close").dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(!doc.getElementById("vc-live-edit-mp-modal"), "lukk-knappen fjernar mobilvisings-modalen att");
+    assert(!doc.body.classList.contains("vc-live-edit-modal-open"), "vc-live-edit-modal-open fjernast att når modalen lukkast");
+    // Rydd opp att: tilbakestill about.heading slik at resten av testsuiten
+    // ikkje ser den mellombelse testverdien.
+    var contentAfterMpTest = window.App.store.get("content", {});
+    contentAfterMpTest.about.heading = aboutHeadingBeforeMpTest;
+    window.App.store.set("content", contentAfterMpTest);
+    window.App.reloadConfig();
 
     // (1e) RIK TEKST-felt (about.text) -- les/skriv innerHTML, ikkje
     // textContent, så FORMATERING må overleve. Verktøylinja skal visast
