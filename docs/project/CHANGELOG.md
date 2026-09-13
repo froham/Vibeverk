@@ -30,6 +30,17 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.168.1 — 2026-09-13
+
+**Mobilvisning: bytt frå modal-med-iframe til eit eige popup-vindauge.**
+
+Frode: *"Mobilvisning bør være eit pop-up vindu, ikkje ein modal"* -- rett etter at 0.168.0 (modal-basert versjon) vart merga inn.
+
+- «▭ Mobilvisning»-knappen opnar no `window.open()` mot sida sjølv (390×844, eit namngjeve vindauge slik andre klikk gjenbruker/navigerer/fokuserer det same vindauget i staden for å opne fleire), ikkje lenger ein `C.modal()` med ein innebygd iframe. Same underliggande mekanisme som før (URL bygd av `liveEditMobilePreviewUrl()`, sett på nytt av `refreshLiveEditMobilePreviewIfOpen()` etter kvar `saveContent()`/`saveNavSettings()`), berre eit ekte separat vindauge i staden for eit innebygd rammeverk.
+- **Fjerna som følgje**: `sandbox`-attributtet og heile iframe-en (unødvendig for eit ekte, separat vindauge -- same tryggingsmodell som det eksisterande "opne dokument i ny fane"-mønsteret i `module-crm.js`), CSP-utvidinga av `frame-src` til `'self'` (reversert att til berre `https://plausible.io`, sidan ingenting lenger rammar inn sida i seg sjølv), telefonramme-CSS-en (`.vc-mp-frame`/`.vc-mp-iframe`/`.vc-mp-hint`/`.vc-mp-scroll`), og `vc-live-edit-modal-open`-koplinga for mobilvisinga spesifikt (skrift-modalen bruker han framleis, uendra).
+- Lukkar popup-vindauget automatisk når live-redigering vert avslutta (same rydde-opp-prinsipp som dei andre modalane hadde).
+- Verifisert i ekte nettlesar (Playwright, ingen skriving): popup opnar med rett url/storleik, navigerer ved lagring medan han er open, syner korrekt INGEN admin-overlegg-knappar (boot-fiksen frå 0.168.0 gjeld framleis), ingen CSP-brot. `test.js` sine iframe-baserte testar bytt ut med `window.open()`-stubbing (opning/gjenbruk/navigering/lukka-vindauge-ignorering) -- fann undervegs at `_mp`-cache-buster-verdien (berre `Date.now()`) kunne bli IDENTISK for to raske kall same millisekund, som gjorde denne nye testen sjølv sporadisk raud; retta ved å leggje ein aukande teljar attåt tidsstempelet. 943 OK / 0 FEIL, stabilt over gjentatte køyringar (éin føreeksisterande, urelatert jsdom-feilmelding i eit seinare, ikkje-relatert testoppsett -- stadfesta identisk til stades FØR denne endringa, ikkje ein regresjon).
+
 ## 0.168.0 — 2026-09-13
 
 **Mobilvisning i "Rediger direkte på sida" (den siste "enkelt/middels"-funksjonen) -- og ein reell, ikkje-relatert produksjonsbug oppdaga undervegs og retta same runde.**

@@ -1968,26 +1968,26 @@ window.App = (function () {
     });
   }
 
-  // Mobilvisning (enkelt/middels-lista, 2026-09-13). Lastar INN ATT den
-  // faktiske, offentlege sida i ein sandboksa iframe -- akkurat same
-  // filosofi som pbc-preview-iframe i Console (console-core.js sin
-  // pbRenderPreviewInto()-kommentar): operatøren skal sjå EKTE rendering,
-  // ikkje ein tilnærma kopi bygd på nytt her. Går via location.reload av
-  // iframe-en (ikkje ein eigen render-funksjon) sidan denne sida -- i
-  // motsetnad til Console sin side-byggjar -- ikkje har eit isolert
-  // seksjons-array å rendre frå; heile appen bootstrapar seg sjølv frå
-  // Store/localStorage kvar gong. saveContent()/saveNavSettings() skriv
-  // ALLTID synkront til localStorage (sjå Store.set), så ein fersk
-  // iframe-reload etter kvar lagring viser oppdatert innhald med det
-  // same, heilt uavhengig av den debounca Supabase-synken.
-  // sandbox="allow-scripts allow-same-origin": treng allow-scripts sidan
-  // iframe-en må bootstrapa heile appen sin eigen JS -- ikkje berre statisk
-  // HTML+CSS slik Console sin førehandsvisning er. Kombinasjonen fjernar
-  // formelt iframe-isolasjonen (kjent nettlesar-åtvaring), men målet her
-  // ER at iframe-en skal vere akkurat same opphav/session som foreldresida
-  // -- den viser berre den vanlege offentlege sida på nytt, ingen
-  // brukarstyrt/ekstern HTML kjem nokon gong inn i han.
-  var liveEditMobilePreviewClose = null;
+  // Mobilvisning (enkelt/middels-lista, 2026-09-13; endra frå modal til eit
+  // eige popup-vindauge 2026-09-13 etter brukarønske). Opnar den faktiske,
+  // offentlege sida på nytt i eit separat nettlesarvindauge i mobilstorleik
+  // -- akkurat same filosofi som pbc-preview-iframe i Console
+  // (console-core.js sin pbRenderPreviewInto()-kommentar): operatøren skal
+  // sjå EKTE rendering, ikkje ein tilnærma kopi bygd på nytt her. Går via
+  // window.open()/location.href på det opne vindauget (ikkje ein eigen
+  // render-funksjon) sidan denne sida -- i motsetnad til Console sin
+  // side-byggjar -- ikkje har eit isolert seksjons-array å rendre frå; heile
+  // appen bootstrapar seg sjølv frå Store/localStorage kvar gong.
+  // saveContent()/saveNavSettings() skriv ALLTID synkront til localStorage
+  // (sjå Store.set), så ei fersk omlasting etter kvar lagring viser
+  // oppdatert innhald med det same, heilt uavhengig av den debounca
+  // Supabase-synken. Eit ekte, separat vindauge (i staden for den
+  // opphavlege iframe-i-modal-varianten) treng ingen sandbox-attributt eller
+  // CSP frame-src-utviding -- det er berre eit vanleg, brukarutløyst
+  // window.open() mot sida sitt eige opphav, akkurat som det eksisterande
+  // "opne dokument i ny fane"-mønsteret i module-crm.js.
+  var liveEditMobilePreviewWin = null;
+  var liveEditMobilePreviewUrlCounter = 0;
   function liveEditMobilePreviewUrl() {
     var hash = location.hash;
     // "#admin" er i dag den EINASTE hash-verdien route()/handleRoute() (sjå
@@ -2004,45 +2004,34 @@ window.App = (function () {
     // over les BERRE location.hash, aldri location.search, så han påverkar
     // ikkje kva som blir vist.
     var sep = location.search ? "&" : "?";
-    return location.pathname + location.search + sep + "_mp=" + Date.now() + hash;
+    // Date.now() åleine kan gje IDENTISK verdi for to kall same millisekund
+    // (t.d. to raske klikk/lagringar rett etter kvarandre, fanga av eiga
+    // testsuite som feilar sporadisk) -- ein enkel aukande teljar attåt gjer
+    // verdien alltid unik, uavhengig av klokkeoppløysing.
+    liveEditMobilePreviewUrlCounter++;
+    return location.pathname + location.search + sep + "_mp=" + Date.now() + "-" + liveEditMobilePreviewUrlCounter + hash;
   }
   function openLiveEditMobilePreview() {
-    if (liveEditMobilePreviewClose) { liveEditMobilePreviewClose(); return; }
-    var root = document.createElement("div");
-    root.id = "vc-live-edit-mp-modal";
-    root.innerHTML = C.modal({
-      title: "Mobilvisning",
-      label: "Mobilvisning",
-      body: '<p class="vc-mp-hint">Viser sida på nytt etter kvar endring du lagrar. Adressefelt/skjermstorleik på ei ekte mobileining kan avvike noko frå ramma her.</p>' +
-        '<div class="vc-mp-scroll"><div class="vc-mp-frame"><iframe id="vc-live-edit-mp-iframe" class="vc-mp-iframe" title="Mobilvisning av sida" sandbox="allow-scripts allow-same-origin"></iframe></div></div>'
-    });
-    document.body.appendChild(root);
-    // UX/Mobile Reviewer-funn (HIGH, 2026-09-13): den nede-til-venstre live-
-    // edit-verktøylinja (z-index 9999) og «Avslutt redigering»-knappen låg
-    // OPPÅ denne modalen (som berre har z-index 100), og dekte i praksis
-    // hint-teksten heilt og delar av sjølve ramma i liggjande mobilformat.
-    // Skjuler dei heilt medan modalen er open -- same
-    // opne/lukke-livssyklus-mønster som liveEditFontModalClose alt bruker.
-    document.body.classList.add("vc-live-edit-modal-open");
-    var iframe = root.querySelector("#vc-live-edit-mp-iframe");
-    iframe.src = liveEditMobilePreviewUrl();
-    function close() {
-      root.remove();
-      document.body.classList.remove("vc-live-edit-modal-open");
-      document.removeEventListener("keydown", onEsc);
-      liveEditMobilePreviewClose = null;
+    var url = liveEditMobilePreviewUrl();
+    // Gjenbruker det opne vindauget (naviger det til nytt innhald + fokuser
+    // det att) i staden for å opne eit nytt kvar gong -- eit namngjeve
+    // window.open()-mål ("vc-live-edit-mobile-preview") ville uansett fått
+    // nettlesaren til å gjenbruke same vindauge, men den eksplisitte
+    // .closed-sjekken her let oss i tillegg kalle .focus() presist.
+    if (liveEditMobilePreviewWin && !liveEditMobilePreviewWin.closed) {
+      liveEditMobilePreviewWin.location.href = url;
+      liveEditMobilePreviewWin.focus();
+      return;
     }
-    function onEsc(e) { if (e.key === "Escape") close(); }
-    document.addEventListener("keydown", onEsc);
-    liveEditMobilePreviewClose = close;
-    root.querySelectorAll("[data-modal-close]").forEach(function (el) {
-      el.addEventListener("click", close);
-    });
+    // window.open() MÅ kallast synkront inni sjølve klikk-handteraren
+    // (ikkje etter nokon async/.then()) -- elles blokkerer iOS Safari sin
+    // popup-blokkerar det nye vindauget, sjå identisk grunngjeving attmed
+    // bindAttachmentChips() i module-crm.js.
+    liveEditMobilePreviewWin = window.open(url, "vc-live-edit-mobile-preview", "width=390,height=844,resizable=yes,scrollbars=yes");
   }
   function refreshLiveEditMobilePreviewIfOpen() {
-    var iframe = document.getElementById("vc-live-edit-mp-iframe");
-    if (!iframe) return;
-    iframe.src = liveEditMobilePreviewUrl();
+    if (!liveEditMobilePreviewWin || liveEditMobilePreviewWin.closed) return;
+    liveEditMobilePreviewWin.location.href = liveEditMobilePreviewUrl();
   }
 
   var liveEditMode = false;
@@ -2209,36 +2198,16 @@ window.App = (function () {
       '.vc-reorder-mv:hover:not(:disabled){background:rgba(255,255,255,.2);}' +
       '.vc-reorder-mv:disabled{opacity:.3;cursor:default;}' +
       '.vc-reorder-status{margin:6px 2px 0;font-size:.76rem;color:rgba(255,255,255,.75);min-height:1.1em;}' +
-      // Telefonramme rundt førehandsvisings-iframen -- FAST 375px iframe-
-      // breidde (ei vanleg mobil-viewport-breidde), uansett kor smal sjølve
-      // modal-ramma er. Retta UX/Mobile Reviewer-funn (HIGH, 2026-09-13):
-      // den opphavlege max-width:100%-varianten let ramma KRYMPE ned mot
-      // ca. 299px inni ein smal admin-modal på ein 375px-brei skjerm (målt
-      // direkte via getBoundingClientRect() i ekte nettlesar) -- altså
-      // nettopp på den breidda ein admin sjølv sit på mobil ville brukt
-      // funksjonen frå, fekk han eit FALSKT, smalare mobilbilete enn sida
-      // sine eigne @media(max-width:...)-brytepunkt faktisk målrettar (same
-      // prinsipp som Console sin pbc-preview-iframe.w-mobile-klasse nyttar,
-      // berre der har sjølve Console-panelet nok fast breidde til at det
-      // aldri vart eit problem). Løysinga her er ein eigen skrollande
-      // ytre-behaldar (.vc-mp-scroll) i staden for å la ramma sjølv krympe
-      // -- ramma held alltid ekte 375px, og ein smal modal skrollar
-      // sidelengs for å vise heile ramma, i staden for å teikne feil.
-      '.vc-mp-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}' +
-      '.vc-mp-frame{width:375px;flex-shrink:0;height:min(70vh,640px);margin:0 auto;' +
-        'border:10px solid var(--color-text,#142033);border-radius:28px;overflow:hidden;' +
-        'box-shadow:0 12px 40px rgba(0,0,0,.25);background:#fff;}' +
-      '.vc-mp-iframe{width:100%;height:100%;border:none;display:block;}' +
-      '.vc-mp-hint{margin:0 0 12px;font-size:.8rem;color:var(--color-muted,#666);text-align:center;}' +
       // Skjuler live-edit sin flytande verktøylinje og avslutt-knapp medan
-      // font- eller mobilvisings-modalen er open -- retta UX/Mobile
-      // Reviewer-funn (HIGH, 2026-09-13): begge desse hadde z-index:9999,
-      // HØGARE enn sjølve modalen (z-index:100 i index.html), og synte seg
-      // difor OPPÅ modalinnhaldet -- stadfesta i ekte nettlesar at dette i
-      // praksis dekte mobilvisinga sin hint-tekst heilt, og i liggjande
-      // mobilformat delar av sjølve telefonramma. Klassen vert sett/fjerna
-      // av openLiveEditFontModal()/openLiveEditMobilePreview() sine eigne
-      // opne/lukke-funksjonar.
+      // skrift-modalen er open -- retta UX/Mobile Reviewer-funn (HIGH,
+      // 2026-09-13): han hadde z-index:9999, HØGARE enn sjølve modalen
+      // (z-index:100 i index.html), og synte seg difor OPPÅ modalinnhaldet.
+      // (Mobilvisinga hadde same problem den gongen han var ein modal med
+      // ein innebygd iframe -- retta då på same vis, men sidan flytta til
+      // eit eige popup-vindauge 2026-09-13 etter brukarønske, så han deler
+      // ikkje lenger denne klassen; sjå openLiveEditMobilePreview().)
+      // Klassen vert sett/fjerna av openLiveEditFontModal() sin eigen
+      // opne/lukke-funksjon.
       // body.vc-live-edit.vc-live-edit-modal-open (IKKJE berre
       // .vc-live-edit-modal-open åleine) -- må ha MINST like høg
       // spesifisitet som "body.vc-live-edit .vc-live-edit-tools{display:
@@ -2703,7 +2672,12 @@ window.App = (function () {
     // liveEditImageModalClose over.
     if (!on && liveEditImageModalClose) liveEditImageModalClose();
     if (!on && liveEditFontModalClose) liveEditFontModalClose();
-    if (!on && liveEditMobilePreviewClose) liveEditMobilePreviewClose();
+    // Lukk att mobilvisings-popupvindauget når live-redigering vert
+    // avslutta -- det har uansett ingenting nytt å vise etter dette punktet.
+    if (!on && liveEditMobilePreviewWin && !liveEditMobilePreviewWin.closed) {
+      liveEditMobilePreviewWin.close();
+      liveEditMobilePreviewWin = null;
+    }
     liveEditStyleTag();
     document.body.classList.toggle("vc-live-edit", on);
     applyLiveEditA11y(on);
@@ -4157,7 +4131,7 @@ window.App = (function () {
     var liveEditSection = LIVE_EDIT_TEMPLATES.indexOf(current) !== -1
       ? '<div class="admin-group" style="margin-bottom:1.2rem">' +
           '<strong style="display:block;margin-bottom:.3rem">Rediger direkte på sida</strong>' +
-          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver. Bilder som allerede er lagt inn kan byttes ut ved å klikke «Bytt bilete» øverst i hjørnet — for å legge til et helt nytt bilde der det ikke finnes et fra før, bruk skjemaet under «Innhold». Bruk «↕ Rekkefølge»-knappen nede til venstre for å endre rekkefølgen på seksjonene, eller skjule/vise dem med øye-ikonet (samme innstilling som tabellen i Innstillinger → Navigasjon). Kopier-knappen øverst i venstre hjørne på et tjenestekort lager en kopi av kortet. Bruk «Aa Skrift»-knappen nede til venstre for å endre skrifttypene for hele siden. Bruk «▭ Mobilvisning»-knappen for å se hvordan siden ser ut på mobil mens du redigerer — den oppdaterer seg selv hver gang du lagrer en endring.</p>' +
+          '<p class="prose prose--muted" style="margin:0 0 .6rem">Klikk direkte på tekstene på forsida for å redigere dem — overskrifter, tekst og tjenestekort. Tekstfelt med formatering (fet/kursiv/farge/lenke) får en liten verktøylinje mens du skriver. Bilder som allerede er lagt inn kan byttes ut ved å klikke «Bytt bilete» øverst i hjørnet — for å legge til et helt nytt bilde der det ikke finnes et fra før, bruk skjemaet under «Innhold». Bruk «↕ Rekkefølge»-knappen nede til venstre for å endre rekkefølgen på seksjonene, eller skjule/vise dem med øye-ikonet (samme innstilling som tabellen i Innstillinger → Navigasjon). Kopier-knappen øverst i venstre hjørne på et tjenestekort lager en kopi av kortet. Bruk «Aa Skrift»-knappen nede til venstre for å endre skrifttypene for hele siden. Bruk «▭ Mobilvisning»-knappen for å åpne siden i et eget vindu i mobilstørrelse mens du redigerer — det oppdaterer seg selv hver gang du lagrer en endring. Hvis nettleseren blokkerer vinduet, må du tillate popup-vinduer for siden.</p>' +
           C.button({ label: "Rediger direkte på sida", variant: "ghost", attrs: 'data-live-edit-start' }) +
         '</div>'
       : '';

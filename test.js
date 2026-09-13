@@ -1669,47 +1669,65 @@ const __asyncTests = (async () => {
     assert(!doc.getElementById("vc-live-edit-font-modal"), "lukk-knappen fjernar modalen att");
     assert(!doc.body.classList.contains("vc-live-edit-modal-open"), "vc-live-edit-modal-open fjernast att når skrift-modalen lukkast");
 
-    // (1l) Mobilvisning (2026-09-13, enkelt/middels-lista) -- opnar ein
-    // sandboksa iframe som lastar sida sjølv på nytt. jsdom navigerer
-    // aldri faktisk ein iframe (ingen ekte nettverk/rendering-motor), så
-    // testen her dekkjer det som FAKTISK kan verifiserast i dette
-    // rammeverket: knappen finst, klikk opnar modalen med rett iframe-
-    // oppsett (sandbox-attributtet, src peikar på sida sjølv), og at src
-    // faktisk ENDRAR SEG (cache-buster) neste gong ei lagring skjer medan
-    // modalen er open -- provar at saveContent()/saveNavSettings() faktisk
-    // triggar ein ny "reload" i staden for å ikkje gjere noko. Sjølve
-    // sidevisinga inni iframe-en er verifisert manuelt (Playwright mot
-    // reell produksjon), ikkje her.
+    // (1l) Mobilvisning (2026-09-13, enkelt/middels-lista; endra frå modal
+    // til eit eige popup-vindauge same dag etter brukarønske) -- opnar sida
+    // sjølv på nytt i eit separat window.open()-vindauge. jsdom sin eigen
+    // window.open() er "Not implemented" og returnerer ingenting, så testen
+    // her stubbar window.open sjølv (same prinsipp som andre stader i denne
+    // fila stubbar fetch/Supabase) for å verifisere den FAKTISKE logikken:
+    // rett url/namn/features ved fyrste opning, gjenbruk (IKKJE eit nytt
+    // window.open-kall) ved andre klikk medan vindauget framleis er ope, og
+    // at ei lagring medan det er ope faktisk navigerer det vidare (provar
+    // saveContent()/saveNavSettings() sin refreshLiveEditMobilePreviewIfOpen-
+    // kopling). Sjølve sidevisinga i det opne vindauget er verifisert
+    // manuelt (Playwright mot reell produksjon), ikkje her.
     var mpBtn = doc.getElementById("vc-live-edit-mp-btn");
     assert(!!mpBtn, "«Mobilvisning»-knappen finst medan live-redigering er aktiv");
+    var mpOpenCalls = [];
+    var mpFakeWin = {
+      closed: false, focusCount: 0,
+      location: { href: "" },
+      focus: function () { this.focusCount++; },
+      close: function () { this.closed = true; }
+    };
+    var realWindowOpen = window.open;
+    window.open = function (url, name, features) {
+      mpOpenCalls.push({ url: url, name: name, features: features });
+      return mpFakeWin;
+    };
     mpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
-    var mpModal = doc.getElementById("vc-live-edit-mp-modal");
-    assert(!!mpModal, "klikk opnar mobilvisings-modalen");
-    var mpIframe = mpModal.querySelector("#vc-live-edit-mp-iframe");
-    assert(!!mpIframe, "modalen inneheld iframe-en");
-    assert(mpIframe.getAttribute("sandbox") === "allow-scripts allow-same-origin",
-      "iframe-en er sandboksa til akkurat allow-scripts+allow-same-origin, ikkje breiare");
-    assert(/_mp=\d+/.test(mpIframe.getAttribute("src") || ""), "src har ein cache-buster-parameter: " + mpIframe.getAttribute("src"));
-    // UX/Mobile Reviewer-funn (HIGH, 2026-09-13): den flytande verktøylinja/
-    // avslutt-knappen (z-index 9999) synte seg OPPÅ denne modalen (z-index
-    // 100) i ekte nettlesar, og dekte hint-teksten heilt. Fiksa via ein
-    // body-klasse CSS-en skjuler dei to elementa gjennom -- jsdom reknar
-    // ikkje pålitseleg ut CSS-spesifisitet/cascade for getComputedStyle, så
-    // testen her sjekkar det faktiske, jsdom-verifiserbare grunnlaget for
-    // fiksen (at klassen faktisk vert sett/fjerna), ikkje det visuelle
-    // resultatet -- det er verifisert manuelt i ekte nettlesar i staden.
-    assert(doc.body.classList.contains("vc-live-edit-modal-open"), "body får vc-live-edit-modal-open medan mobilvisings-modalen er open");
-    var mpSrcBefore = mpIframe.getAttribute("src");
+    assert(mpOpenCalls.length === 1, "fyrste klikk kallar window.open() nøyaktig éin gong");
+    assert(mpOpenCalls[0].name === "vc-live-edit-mobile-preview", "vindauget får eit stabilt namn (let nettlesaren sjølv gjenbruke det om JS-referansen nokon gong går tapt)");
+    assert(/width=390/.test(mpOpenCalls[0].features || ""), "features-strengen set ei mobil-aktig vindaugsbreidde: " + mpOpenCalls[0].features);
+    assert(/_mp=\d+/.test(mpOpenCalls[0].url || ""), "url har ein cache-buster-parameter: " + mpOpenCalls[0].url);
+    var mpUrlAfterFirstOpen = mpFakeWin.location.href = mpOpenCalls[0].url;
+    // Andre klikk MEDAN vindauget framleis er "ope" (mpFakeWin.closed er
+    // framleis false) skal IKKJE opne eit nytt vindauge -- berre navigere
+    // og fokusere det eksisterande.
+    mpBtn.dispatchEvent(new window.Event("click", { bubbles: true }));
+    assert(mpOpenCalls.length === 1, "andre klikk (vindauget framleis ope) kallar IKKJE window.open() på nytt");
+    assert(mpFakeWin.focusCount === 1, "andre klikk kallar .focus() på det eksisterande vindauget");
+    assert(mpFakeWin.location.href !== mpUrlAfterFirstOpen, "andre klikk navigerer det eksisterande vindauget til ein ny (fersk cache-buster) url");
+    // Ei lagring medan vindauget er ope skal navigere det vidare (bevisar
+    // refreshLiveEditMobilePreviewIfOpen()-koplinga i saveContent()).
+    var mpUrlBeforeSave = mpFakeWin.location.href;
     var aboutHeadingEl = doc.querySelector('[data-content-key="about.heading"]');
     var aboutHeadingBeforeMpTest = aboutHeadingEl.textContent;
     aboutHeadingEl.dispatchEvent(new window.Event("click", { bubbles: true }));
     aboutHeadingEl.textContent = "Om oss (mobilvisning-test)";
     aboutHeadingEl.dispatchEvent(new window.Event("blur", { bubbles: true }));
-    var mpSrcAfter = doc.getElementById("vc-live-edit-mp-iframe").getAttribute("src");
-    assert(mpSrcAfter !== mpSrcBefore, "iframe-src endrar seg (tvingar reload) etter ei lagring medan modalen er open");
-    mpModal.querySelector(".modal__close").dispatchEvent(new window.Event("click", { bubbles: true }));
-    assert(!doc.getElementById("vc-live-edit-mp-modal"), "lukk-knappen fjernar mobilvisings-modalen att");
-    assert(!doc.body.classList.contains("vc-live-edit-modal-open"), "vc-live-edit-modal-open fjernast att når modalen lukkast");
+    assert(mpFakeWin.location.href !== mpUrlBeforeSave, "ei lagring medan vindauget er ope navigerer det til ein ny url");
+    // Eit LUKKA vindauge (brukaren har sjølv lukka det, eller
+    // setLiveEditMode(false) har lukka det) skal IKKJE navigerast vidare --
+    // .closed-sjekken i refreshLiveEditMobilePreviewIfOpen() må faktisk
+    // handhevast, ikkje berre eksistere i koden.
+    mpFakeWin.closed = true;
+    var mpUrlAfterClose = mpFakeWin.location.href;
+    aboutHeadingEl.dispatchEvent(new window.Event("click", { bubbles: true }));
+    aboutHeadingEl.textContent = "Om oss (mobilvisning-test, runde 2)";
+    aboutHeadingEl.dispatchEvent(new window.Event("blur", { bubbles: true }));
+    assert(mpFakeWin.location.href === mpUrlAfterClose, "eit lukka vindauge vert IKKJE navigert vidare ved ei ny lagring");
+    window.open = realWindowOpen;
     // Rydd opp att: tilbakestill about.heading slik at resten av testsuiten
     // ikkje ser den mellombelse testverdien.
     var contentAfterMpTest = window.App.store.get("content", {});
