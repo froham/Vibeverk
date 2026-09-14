@@ -28,7 +28,7 @@ window.VwConsole = (function () {
   var CONTROL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4b2dsdGhybnNoYWJxbWRtbnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTU5NDMsImV4cCI6MjA5OTAzMTk0M30.W1_bBTWxbalRdxuDnIFrRdoNFcOI8IECCbGIxTkiECM";
 
   // Plattformversjon — bump ved kvar meiningsfulle endring, sjå docs/project/CHANGELOG.md
-  var VIBEVERK_VERSION = "0.169.0";
+  var VIBEVERK_VERSION = "0.170.0";
 
   if (!App || !C) {
     var errEl = document.getElementById("console-app");
@@ -541,8 +541,8 @@ window.VwConsole = (function () {
   // valt i det heile). Verifisert direkte i kvar render-funksjon før denne
   // gruppa vart sett, ikkje berre gjetta frå namnet -- t.d. "system" har eit
   // generisk namn, men er faktisk kundespesifikk (viser den valde kunden sitt
-  // Supabase-prosjekt), medan "priser"/"kundeanalyse"/"laring" har eit
-  // usynt-brukt sc/_sc-parameter og ALDRI les den valde kunden. "kundar"
+  // Supabase-prosjekt), medan "priser"/"kundeanalyse"/"laring"/"strategi" har
+  // eit usynt-brukt sc/_sc-parameter og ALDRI les den valde kunden. "kundar"
   // (tenant-registeret sjølv) har ingen gruppe -- han er MEKANISMEN ein vel
   // kunde gjennom, ikkje eit medlem av nokon av dei to datasetta. Reint ei
   // rendering-/CSS-gruppering her -- NAV_ITEMS/RENDERERS/TITLES sine id-ar,
@@ -560,6 +560,7 @@ window.VwConsole = (function () {
     { id: "arctic",     icon: "snowflake",   label: "Arctic",     group: "internt", superadminOnly: true },
     { id: "analyse",    icon: "chart-bar",   label: "Analyse",    group: "kundedrift" },
     { id: "personvern", icon: "shield-lock", label: "Personvern", group: "kundedrift" },
+    { id: "strategi",   icon: "compass",     label: "Strategi",  group: "internt" },
     { id: "laring",     icon: "book",        label: "Læring",     group: "internt" },
     { id: "system",     icon: "settings",    label: "System",     group: "kundedrift" }
   ];
@@ -6651,52 +6652,157 @@ window.VwConsole = (function () {
   }
 
   /* =========================================================================
-     LÆRING — viser docs/onboarding/*.md (+ tilgrensande dokument) direkte i
-     Console, i staden for at nokon må opne rå Markdown-filer i repoet.
+     DOKUMENTVISNING (LÆRING + STRATEGI) — viser kurerte .md-filer frå repoet
+     direkte i Console, i staden for at nokon må opne rå Markdown-filer.
      Ikkje tenant-spesifikt -- same innhald uansett kva kunde er vald i
      kundeveljaren, sidan dette er interne Vibeverk-dokument, ikkje
      kundekonfigurasjon. Hentar rå .md-filer via fetch() (same opphav, sjølve
      kjeldedokumenta er alt del av det statiske repoet som blir servert) og
      konverterer til HTML med `marked` (lasta via CDN, sjå console/index.html).
+     Felles for begge seksjonane (2026-09-14, brukarønske: "strategi/roadmap
+     bør vere tilgjengeleg i Console" + "vesentleg forbetre Læring") -- same
+     mekanisme som den opphavlege, enklare fane-baserte Læring-visinga, berre
+     utvida til ei GRUPPERT sidemeny (flate faner skalerer ikkje forbi 4-5
+     dokument, og kvar seksjon har no 13-19). Kuratert utval, ikkje heile
+     docs/-treet automatisk -- sjå kommentarane attmed kvar konfig-liste for
+     kvifor akkurat desse dokumenta og ikkje t.d. docs/archive/ eller
+     docs/marketing/.
      ====================================================================== */
-  var LARING_DOCS = [
-    { id: "onboarding", label: "Læringsdokument",  path: "../docs/onboarding/new-team-member-onboarding.md" },
-    { id: "safe",       label: "Trygge endringar", path: "../docs/onboarding/safe-changes-guide.md" },
-    { id: "incident",   label: "Hendingsguide",    path: "../docs/security/incident-and-escalation-guide.md" },
-    { id: "delivery",   label: "Kundeleveranse",   path: "../docs/architecture/customer-delivery-checklist.md" }
+  var DOC_GROUPS_LARING = [
+    { label: "Kom i gang", docs: [
+      { id: "docs-readme",     label: "Dokumentasjonskart",   path: "../docs/README.md" },
+      { id: "onboarding",      label: "Nytt teammedlem",      path: "../docs/onboarding/new-team-member-onboarding.md" },
+      { id: "system-overview", label: "Arkitektur-oversikt",  path: "../docs/architecture/system-overview.md" },
+      { id: "roles-tenants",   label: "Roller og tenantar",   path: "../docs/architecture/roles-and-tenants.md" }
+    ]},
+    { label: "Trygge endringar", docs: [
+      { id: "safe",              label: "Trygge endringar",   path: "../docs/onboarding/safe-changes-guide.md" },
+      { id: "module-conventions", label: "Modul-konvensjonar", path: "../docs/architecture/module-conventions.md" },
+      { id: "copy-style",        label: "Tekststil-guide",    path: "../docs/architecture/copy-style-guide.md" }
+    ]},
+    { label: "Tryggleik", docs: [
+      { id: "security-baseline", label: "Tryggleiksbasis",         path: "../docs/security/security-baseline.md" },
+      { id: "incident",          label: "Hendingsguide",           path: "../docs/security/incident-and-escalation-guide.md" },
+      { id: "release-security",  label: "Sjekkliste før utrulling", path: "../docs/security/release-security-checklist.md" }
+    ]},
+    { label: "Kundeleveranse", docs: [
+      { id: "delivery",          label: "Kundeleveranse-sjekkliste", path: "../docs/architecture/customer-delivery-checklist.md" },
+      { id: "tenant-onboarding", label: "Tenant-onboarding-runbook", path: "../docs/architecture/tenant-onboarding-runbook.md" },
+      { id: "go-live",           label: "Go-live-sjekkliste",        path: "../docs/compliance/customer-go-live-checklist.md" }
+    ]}
   ];
-  var _laringActive = LARING_DOCS[0].id;
 
-  function renderLaring(sc, wrap) {
+  // Avgjerder (ADR) -- titlane er henta ord for ord (berre forkorta der dei
+  // er for lange for ei sidemeny-rad) frå docs/decisions/README.md sin
+  // eigen indekstabell, som framleis er den einaste kjelda-til-sanning for
+  // ADR-tittel/status -- hald denne lista synkronisert med den fila om ein
+  // ny ADR vert lagt til, ikkje omvendt.
+  var ADR_DOCS = [
+    { id: "adr-readme", label: "Oversikt",                              path: "../docs/decisions/README.md" },
+    { id: "adr-0001",   label: "0001 · Dokumentasjonsstyring",          path: "../docs/decisions/ADR-0001-documentation-governance.md" },
+    { id: "adr-0002",   label: "0002 · crmFull e-posttiering",          path: "../docs/decisions/ADR-0002-crmfull-email-tiering.md" },
+    { id: "adr-0003",   label: "0003 · Lukk web-admin passord-fallback", path: "../docs/decisions/ADR-0003-close-admin-auth-fallback.md" },
+    { id: "adr-0004",   label: "0004 · Console-tilgang uavh. av rolle", path: "../docs/decisions/ADR-0004-console-access-decoupled-from-tenant-role.md" },
+    { id: "adr-0005",   label: "0005 · Fallback-fiks til Workspace",    path: "../docs/decisions/ADR-0005-extend-auth-fallback-fix-to-intranet-login.md" },
+    { id: "adr-0006",   label: "0006 · Fjern owner-rolle-referansar",   path: "../docs/decisions/ADR-0006-remove-owner-role-references.md" },
+    { id: "adr-0007",   label: "0007 · Multi-tenant hosting-arkitektur", path: "../docs/decisions/ADR-0007-multi-tenant-hosting-architecture.md" },
+    { id: "adr-0008",   label: "0008 · Kontrollplan/dataplan-splitt",   path: "../docs/decisions/ADR-0008-control-plane-data-plane-split.md" },
+    { id: "adr-0009",   label: "0009 · Console-auth mot kontrollplanet", path: "../docs/decisions/ADR-0009-console-control-plane-auth-and-broker-actions.md" },
+    { id: "adr-0010",   label: "0010 · Semi-automatisert onboarding",   path: "../docs/decisions/ADR-0010-phase9-semi-automated-onboarding.md" },
+    { id: "adr-0011",   label: "0011 · export_backup_tables()-omfang", path: "../docs/decisions/ADR-0011-backup-export-rpc-scope.md" },
+    { id: "adr-0012",   label: "0012 · Biletfokuspunkt: éin posisjon", path: "../docs/decisions/ADR-0012-single-focus-point-position.md" },
+    { id: "adr-0013",   label: "0013 · «Unike besøkjande» avvist",     path: "../docs/decisions/ADR-0013-unique-visitors-rejected.md" },
+    { id: "adr-0014",   label: "0014 · Sidebygger sine «blocks»",      path: "../docs/decisions/ADR-0014-page-builder-blocks-sibling-type.md" },
+    { id: "adr-0015",   label: "0015 · AI/agent-verktøytilgangspolicy", path: "../docs/decisions/ADR-0015-agent-tool-access-policy.md" }
+  ];
+  var DOC_GROUPS_STRATEGI = [
+    { label: "Strategi", docs: [
+      { id: "strategy", label: "Strategi og grunnprinsipp", path: "../docs/STRATEGY.md" }
+    ]},
+    { label: "Roadmap", docs: [
+      { id: "roadmap", label: "Roadmap", path: "../docs/roadmap/ROADMAP.md" }
+    ]},
+    { label: "Status", docs: [
+      { id: "current-state", label: "Noverande tilstand", path: "../docs/project/CURRENT_STATE.md" }
+    ]},
+    { label: "Avgjerder (ADR)", docs: ADR_DOCS }
+  ];
+
+  // sectionKey -> aktiv dokument-id, halde separat per seksjon slik at kvar
+  // hugsar sin eigen siste opne fane uavhengig av kvarandre.
+  var _docViewerActive = {};
+  // Bygd lazy, éin gong -- flat liste over ALLE dokument i BEGGE seksjonane,
+  // brukt av interceptDocLinks() til å slå opp om ei intern md-lenke peikar
+  // på eit anna kuratert dokument (evt. i den ANDRE seksjonen -- ei ADR-lenke
+  // kan t.d. peike attende til STRATEGY.md).
+  var _docRegistry = null;
+  function buildDocRegistry() {
+    if (_docRegistry) return _docRegistry;
+    _docRegistry = [];
+    [["laring", DOC_GROUPS_LARING], ["strategi", DOC_GROUPS_STRATEGI]].forEach(function (pair) {
+      pair[1].forEach(function (g) {
+        g.docs.forEach(function (d) {
+          _docRegistry.push({ id: d.id, path: d.path, sectionKey: pair[0] });
+        });
+      });
+    });
+    return _docRegistry;
+  }
+  // Alle doc.path-verdiar er skrivne relativt til console/ (t.d.
+  // "../docs/STRATEGY.md") -- løyser dei til ein stabil, samanliknbar
+  // "absolutt" sti via ein fiktiv, aldri-brukt base-URL (reint eit
+  // sti-normaliseringstriks, ingen faktisk nettverkstilgang skjer).
+  function docAbsPath(relFromConsole) {
+    try { return new URL(relFromConsole, "https://vc-docs.invalid/console/").pathname; }
+    catch (e) { return relFromConsole; }
+  }
+
+  function renderDocSection(wrap, sectionKey, groups) {
+    var allDocs = [];
+    groups.forEach(function (g) { allDocs = allDocs.concat(g.docs); });
+    if (!allDocs.some(function (d) { return d.id === _docViewerActive[sectionKey]; })) {
+      _docViewerActive[sectionKey] = allDocs[0].id;
+    }
+    var activeId = _docViewerActive[sectionKey];
+
     wrap.innerHTML =
-      '<div class="cs-md-tabs">' +
-        LARING_DOCS.map(function (d) {
-          return '<button type="button" class="cs-md-tab' + (d.id === _laringActive ? " is-active" : "") + '" data-laring-doc="' + d.id + '">' + C.esc(d.label) + '</button>';
-        }).join("") +
-      '</div>' +
-      '<div class="cs-md-body" id="cs-md-body"><p style="color:var(--color-muted)">Lastar…</p></div>';
+      '<div class="cs-doc-layout">' +
+        '<nav class="cs-doc-nav" aria-label="Dokumentliste">' +
+          groups.map(function (g) {
+            return '<div class="cs-doc-nav__group"><p class="cs-doc-nav__group-label">' + C.esc(g.label) + '</p>' +
+              g.docs.map(function (d) {
+                // aria-current="page" -- retta UX/Mobile Reviewer-funn
+                // (MEDIUM, 2026-09-14): den aktive knappen fekk berre eit
+                // visuelt .is-active-utslag (farge/kant), ingen ikkje-visuelt
+                // signal om KVA dokument som er ope for ein skjermlesar-brukar.
+                return '<button type="button" class="cs-doc-nav__item' + (d.id === activeId ? " is-active" : "") + '"' + (d.id === activeId ? ' aria-current="page"' : "") + ' data-doc-id="' + C.esc(d.id) + '">' + C.esc(d.label) + '</button>';
+              }).join("") +
+            '</div>';
+          }).join("") +
+        '</nav>' +
+        '<div class="cs-md-body" id="cs-md-body"><p style="color:var(--color-muted)">Lastar…</p></div>' +
+      '</div>';
 
-    wrap.querySelectorAll("[data-laring-doc]").forEach(function (btn) {
+    wrap.querySelectorAll("[data-doc-id]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        _laringActive = btn.getAttribute("data-laring-doc");
-        renderLaring(sc, wrap);
+        _docViewerActive[sectionKey] = btn.getAttribute("data-doc-id");
+        renderDocSection(wrap, sectionKey, groups);
       });
     });
 
-    loadLaringDoc(_laringActive);
+    loadDocInto(allDocs.filter(function (d) { return d.id === activeId; })[0]);
   }
 
-  function loadLaringDoc(id) {
-    var doc = LARING_DOCS.filter(function (d) { return d.id === id; })[0];
+  function loadDocInto(doc) {
     var body = document.getElementById("cs-md-body");
     if (!doc || !body) return;
     fetch(doc.path).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
     }).then(function (md) {
-      if (!document.getElementById("cs-md-body")) return; // brukar navigerte vekk medan henting pågjekk
+      var mdBody = document.getElementById("cs-md-body");
+      if (!mdBody) return; // brukar navigerte vekk medan henting pågjekk
       if (window.marked) {
-        var mdBody = document.getElementById("cs-md-body");
         mdBody.innerHTML = window.marked.parse(md);
         // Pakk kvar tabell i ein scrollbar wrapper -- lange, ubrytbare
         // `code`-strengar (t.d. filstiar) kan framleis presse ein kolonne
@@ -6708,21 +6814,57 @@ window.VwConsole = (function () {
           table.parentNode.insertBefore(tableWrap, table);
           tableWrap.appendChild(table);
         });
+        interceptDocLinks(mdBody, doc.path);
       } else {
         // marked lasta ikkje (t.d. CDN utilgjengeleg) -- vis rå tekst i staden
         // for ei tom side.
         var pre = document.createElement("pre");
         pre.style.whiteSpace = "pre-wrap";
         pre.textContent = md;
-        document.getElementById("cs-md-body").innerHTML = "";
-        document.getElementById("cs-md-body").appendChild(pre);
+        mdBody.innerHTML = "";
+        mdBody.appendChild(pre);
       }
     }).catch(function (e) {
-      if (!document.getElementById("cs-md-body")) return;
-      document.getElementById("cs-md-body").innerHTML =
+      var mdBody = document.getElementById("cs-md-body");
+      if (!mdBody) return;
+      mdBody.innerHTML =
         '<p style="color:#c0392b">Kunne ikkje laste dokumentet (' + C.esc(e.message) + '). Sjå ' + C.esc(doc.path) + ' direkte i repoet.</p>';
     });
   }
+
+  // Interne md-til-md-lenker (t.d. ei ADR som viser til ein annan ADR, eller
+  // til eit arkitekturdokument) peika FØR denne runda berre på den rå
+  // .md-fila -- eit klikk let brukaren berre lese rå Markdown-tekst, ute av
+  // Console heilt. Fangar no opp lenker som treffer eit ANNA kuratert
+  // dokument (i begge seksjonane, sjå buildDocRegistry()) og navigerer inni
+  // Console i staden. Ei lenke som IKKJE er i det kurerte utvalet (t.d. til
+  // eit ikkje-kuratert arkitekturdokument) får i staden target="_blank" --
+  // opnar rå Markdown i eit nytt vindauge i staden for å forlate Console
+  // heilt i same fane.
+  function interceptDocLinks(mdBody, currentDocPath) {
+    var baseAbs = docAbsPath(currentDocPath);
+    mdBody.querySelectorAll("a[href]").forEach(function (a) {
+      var href = a.getAttribute("href");
+      if (!href || /^https?:\/\//i.test(href) || href.indexOf("#") === 0 || href.indexOf("mailto:") === 0) return;
+      var targetAbs;
+      try { targetAbs = new URL(href, "https://vc-docs.invalid" + baseAbs).pathname; }
+      catch (e) { return; }
+      var match = buildDocRegistry().filter(function (d) { return docAbsPath(d.path) === targetAbs; })[0];
+      if (match) {
+        a.addEventListener("click", function (e) {
+          e.preventDefault();
+          _docViewerActive[match.sectionKey] = match.id;
+          navigate(match.sectionKey);
+        });
+      } else if (/\.md($|#)/i.test(href)) {
+        a.target = "_blank";
+        a.rel = "noopener";
+      }
+    });
+  }
+
+  function renderLaring(sc, wrap) { renderDocSection(wrap, "laring", DOC_GROUPS_LARING); }
+  function renderStrategi(sc, wrap) { renderDocSection(wrap, "strategi", DOC_GROUPS_STRATEGI); }
 
   /* =========================================================================
      AI LAB — lokal utvikling og kvalitetssikring
@@ -10781,7 +10923,7 @@ window.VwConsole = (function () {
      ====================================================================== */
   var TITLES = {
     kundar:"Kundar", produkt:"Produkt", web:"Web", "sidebygger-sider":"Sider", workspace:"Workspace",
-    modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", compliance:"Compliance", arctic:"Arctic", analyse:"Analyse", personvern:"Personvern", laring:"Læring", system:"System"
+    modular:"Modular", priser:"Priser", kundeanalyse:"Kundeanalyse", compliance:"Compliance", arctic:"Arctic", analyse:"Analyse", personvern:"Personvern", strategi:"Strategi", laring:"Læring", system:"System"
   };
   var RENDERERS = {
     kundar:     renderKundar,
@@ -10796,6 +10938,7 @@ window.VwConsole = (function () {
     arctic:     renderArctic,
     analyse:    renderAnalyse,
     personvern: renderPersonvern,
+    strategi:   renderStrategi,
     laring:     renderLaring,
     system:     renderSystem
   };
@@ -10810,8 +10953,10 @@ window.VwConsole = (function () {
     if (!content) return;
     // Priser og den eksplisitte side-ved-side-visninga i Arctic/AI Lab treng breiare
     // enn lesebreidde -- sjå CSS-kommentaren ved
-    // .cs-content--wide (console/index.html) for grunngjeving.
-    content.classList.toggle("cs-content--wide", id === "priser" || id === "arctic" || id === "kundeanalyse" || id === "sidebygger-sider");
+    // .cs-content--wide (console/index.html) for grunngjeving. Strategi/Læring
+    // lagt til 2026-09-14: den nye sidemeny+innhald-tolayouten deira treng
+    // same ekstra breidde av same grunn.
+    content.classList.toggle("cs-content--wide", id === "priser" || id === "arctic" || id === "kundeanalyse" || id === "sidebygger-sider" || id === "strategi" || id === "laring");
     var myGen = ++_renderGen;
     content.innerHTML =
       '<div class="cs-page-head"><h1 class="cs-page-title">' + C.esc(TITLES[id] || id) + '</h1></div>' +
@@ -10821,7 +10966,13 @@ window.VwConsole = (function () {
     var wrap = document.getElementById("cs-section-wrap"); // fanga no, før det asynkrone hoppet
     // Arctic/AI Lab er eit globalt Vibeverk-verktøy utan tenantdata eller
     // App.store. Det skal difor ikkje hentast eller koplast til SC-data.
-    if (id === "arctic" || id === "kundeanalyse" || id === "compliance") {
+    // Strategi/Læring lagt til her 2026-09-14 -- retta ein reell, føre-
+    // eksisterande inkonsistens (kommentaren over NAV_ITEMS hevda alt at
+    // "laring" aldri les den valde kunden, men berre arctic/kundeanalyse/
+    // compliance hoppa faktisk over getSC()-ventinga). Utan denne fiksen
+    // måtte Strategi/Læring vente på ei tenant-lasting dei aldri brukar,
+    // sjølv når ingen kunde er vald i det heile.
+    if (id === "arctic" || id === "kundeanalyse" || id === "compliance" || id === "strategi" || id === "laring") {
       fn({}, wrap);
       return;
     }

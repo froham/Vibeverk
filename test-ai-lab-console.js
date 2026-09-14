@@ -219,7 +219,7 @@ test("AI Lab ligg under lokal Arctic og Læring fungerer utan AI-kall", async fu
         },
       }), { status: 200 }));
     }
-    if (String(url).indexOf("docs/onboarding/") !== -1) return Promise.resolve(new Response("# Statisk læringsinnhold", { status: 200 }));
+    if (String(url).indexOf("docs/onboarding/") !== -1 || String(url).indexOf("docs/README.md") !== -1) return Promise.resolve(new Response("# Statisk læringsinnhold", { status: 200 }));
     return Promise.reject(new Error("Uventa fetch: " + url));
   });
   t.after(function () { dom.window.close(); });
@@ -312,7 +312,7 @@ test("AI Lab ligg under lokal Arctic og Læring fungerer utan AI-kall", async fu
   var aiCallsBeforeLearning = calls.filter(function (url) { return url.indexOf("/__ai-lab/") !== -1; }).length;
   window.VwConsole.navigate("laring");
   await new Promise(function (resolve) { setTimeout(resolve, 10); });
-  assert.match(window.document.getElementById("cs-section-wrap").textContent, /Læringsdokument/);
+  assert.match(window.document.getElementById("cs-section-wrap").textContent, /Dokumentasjonskart/);
   assert.match(window.document.getElementById("cs-section-wrap").textContent, /Statisk læringsinnhold/);
   assert.equal(calls.filter(function (url) { return url.indexOf("/__ai-lab/") !== -1; }).length, aiCallsBeforeLearning);
 });
