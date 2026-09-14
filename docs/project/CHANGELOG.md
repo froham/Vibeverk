@@ -30,6 +30,27 @@ Små eksperiment, reine spørsmål/analysar eller reverta forsøk treng ikkje ei
 
 ---
 
+## 0.169.0 — 2026-09-14
+
+**Fase 3 (siste av 3) i kontrollplan-varslinga: mønster-basert varsel på uvanleg `get_tenant_service_role_key()`-aktivitet.** Følgjer opp Fase 1 (`key_decrypt_log`, 20260903120000) og Fase 2 (sanntidsvarsel på `generate_support_access`, 20260903143000), begge live sidan 2026-09-03. Bestilt via ein rutinemessig ukentleg kontroll (same fire-punkts sjekk som 0.159.21) som flagga at Arkitekten sitt eige "vent minst ei vekes tid"-vilkår no var forbi.
+
+- **Kalibrert mot ekte trafikk FØR bygging** (ikkje berre eit gjett): henta 11 dagars reell `key_decrypt_log`-data (2026-09-03–2026-09-14, 118 rader, 3 distinkte tenantar) frå `vibeverk-control` og sendte funna til Arkitekten. Resultat: KUN éin 15-min-vindauge nokon gong hadde >1 distinkt tenant (2 tenantar, 4 kall), medan vindauge med høgt volum mot éin einaste tenant (opptil 35 kall) aldri utløyste noko -- stadfestar at tenant-*mangfald*, ikkje volum, faktisk er signalet. Terskelen `>1 distinkt tenant i eit rullerande 15-min-vindauge` er difor UENDRA frå det opphavlege forslaget, ikkje heva.
+- **Ny mekanisme**: `check_key_decrypt_anomaly()` (SECURITY DEFINER, `pg_cron` kvar 5. min, same Vault-nøkkel/`net.http_post`/Resend-mønster som Fase 2 og `trigger_retention_sweep()`) + ein ny Edge Function `alert-key-decrypt-anomaly` (identisk auth-mønster som `alert-support-access`). Ny singleton-tabell `key_decrypt_alert_state` gjev ein 30-minutters cooldown, slik at éi samanhengande hending ikkje sender eit nytt e-postvarsel for kvart einaste 5-min-tick.
+- **`called_via`-per-kallar-attribusjon** (det opne spørsmålet frå 2026-09-03): framleis medvite utsett per Arkitekten -- ville kravd å endre `broker`/`tenant-admin` sjølve for ein fordel data ikkje stadfestar behovet for enno.
+- **Security Auditor-funn retta før utrulling**: éin MEDIUM (TOCTOU-kappløp i cooldown-sjekken -- eit separat SELECT-så-UPDATE kunne late to samtidige køyringar begge sende kvart sitt varsel for same hending) retta ved å gjere kravet på cooldown-vindauget til éin atomisk `UPDATE ... WHERE ...` med radlås, i staden for to separate steg. To LOW/informative funn (fire-and-forget `net.http_post` utan stadfesta levering, og at reint `NULL`-tenant-kall ikkje tel mot mangfald-tersklen) vurdert som aksepterte, eksisterande mønster/tradeoffs, ingen endring kravd.
+- Ingen kundevendt platform-kodeendring -- berre kontrollplanet (`supabase-control/`). `VIBEVERK_VERSION` bumpa likevel, per same konvensjon som Fase 1/2 (0.159.11/0.159.12).
+
+## 0.168.1 — 2026-09-13
+
+**Mobilvisning: bytt frå modal-med-iframe til eit eige popup-vindauge.**
+
+Frode: *"Mobilvisning bør være eit pop-up vindu, ikkje ein modal"* -- rett etter at 0.168.0 (modal-basert versjon) vart merga inn.
+
+- «▭ Mobilvisning»-knappen opnar no `window.open()` mot sida sjølv (390×844, eit namngjeve vindauge slik andre klikk gjenbruker/navigerer/fokuserer det same vindauget i staden for å opne fleire), ikkje lenger ein `C.modal()` med ein innebygd iframe. Same underliggande mekanisme som før (URL bygd av `liveEditMobilePreviewUrl()`, sett på nytt av `refreshLiveEditMobilePreviewIfOpen()` etter kvar `saveContent()`/`saveNavSettings()`), berre eit ekte separat vindauge i staden for eit innebygd rammeverk.
+- **Fjerna som følgje**: `sandbox`-attributtet og heile iframe-en (unødvendig for eit ekte, separat vindauge -- same tryggingsmodell som det eksisterande "opne dokument i ny fane"-mønsteret i `module-crm.js`), CSP-utvidinga av `frame-src` til `'self'` (reversert att til berre `https://plausible.io`, sidan ingenting lenger rammar inn sida i seg sjølv), telefonramme-CSS-en (`.vc-mp-frame`/`.vc-mp-iframe`/`.vc-mp-hint`/`.vc-mp-scroll`), og `vc-live-edit-modal-open`-koplinga for mobilvisinga spesifikt (skrift-modalen bruker han framleis, uendra).
+- Lukkar popup-vindauget automatisk når live-redigering vert avslutta (same rydde-opp-prinsipp som dei andre modalane hadde).
+- Verifisert i ekte nettlesar (Playwright, ingen skriving): popup opnar med rett url/storleik, navigerer ved lagring medan han er open, syner korrekt INGEN admin-overlegg-knappar (boot-fiksen frå 0.168.0 gjeld framleis), ingen CSP-brot. `test.js` sine iframe-baserte testar bytt ut med `window.open()`-stubbing (opning/gjenbruk/navigering/lukka-vindauge-ignorering) -- fann undervegs at `_mp`-cache-buster-verdien (berre `Date.now()`) kunne bli IDENTISK for to raske kall same millisekund, som gjorde denne nye testen sjølv sporadisk raud; retta ved å leggje ein aukande teljar attåt tidsstempelet. 943 OK / 0 FEIL, stabilt over gjentatte køyringar (éin føreeksisterande, urelatert jsdom-feilmelding i eit seinare, ikkje-relatert testoppsett -- stadfesta identisk til stades FØR denne endringa, ikkje ein regresjon).
+
 ## 0.168.0 — 2026-09-13
 
 **Mobilvisning i "Rediger direkte på sida" (den siste "enkelt/middels"-funksjonen) -- og ein reell, ikkje-relatert produksjonsbug oppdaga undervegs og retta same runde.**
