@@ -7,7 +7,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - run: npm install --save-dev jsdom
       # De to kjende, aksepterte testfeila (sjå CLAUDE.md/AGENTS.md) skal ikkje
       # gjere at CI feiler — men ein ny, uventa feil skal framleis stoppe bygget.
